@@ -79,6 +79,7 @@
   .set-tabs { margin: 0; padding: 0 16px; }
   .set-pane { padding: 18px 16px 32px; }
   .dev-pair { flex-direction: column; align-items: center; }
+  .set-row.device-access .set-end { grid-column: 1 / -1; grid-row: 3; justify-content: flex-start; margin-top: 8px; }
   .set-row.sub:not(.has-logo) { padding-left: 0; }
 }
 

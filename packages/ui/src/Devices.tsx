@@ -1,10 +1,12 @@
 /** Settings → Devices (docs/research/remote-access.md). On the Mac: one switch that has Tailscale Serve reach Alfred,
  * the address, pairing with a QR code, and the device list. On another device: just itself, and a way to disconnect.
  */
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { encode } from "uqr";
 import type { DeviceInfo, PairingCode, RemoteResponse } from "@alfred/protocol";
 import { api } from "./api.ts";
+import { DevAccessApproval } from "./DevAccessApproval.tsx";
+import { RequestDevAccess } from "./RequestDevAccess.tsx";
 import { Logo } from "./brand/Logo.tsx";
 import { getLocale, t, type Key } from "./i18n/index.ts";
 import { disablePush, enablePush, pushSupport } from "./push.ts";
@@ -71,15 +73,13 @@ function DeviceRow({ device, onRevoke, onDev }: { device: DeviceInfo; onRevoke?:
 }
 
 /** On the Mac. */
-function Manage({ initial, onError }: { initial: Local; onError: (message: string | null) => void }) {
-  const [remote, setRemote] = useState(initial);
+function Manage({ remote, onChange, onError }: { remote: Local; onChange(next: RemoteResponse): void; onError(message: string | null): void }) {
   const [busy, setBusy] = useState(false);
   const [pairing, setPairing] = useState<PairingCode | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const apply = (next: RemoteResponse) => { if (next.local) setRemote(next); };
   const fail = (reason: Error) => onError(reason.message);
-  const reload = useCallback(() => api.remote().then(apply, fail), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const reload = () => api.remote().then(onChange, fail);
 
   // A device that just paired shows up in the list; the code it spent goes away.
   useEffect(() => {
@@ -87,7 +87,7 @@ function Manage({ initial, onError }: { initial: Local; onError: (message: strin
     const count = remote.devices.length;
     const timer = setInterval(() => api.remote().then((next) => {
       if (!next.local) return;
-      setRemote(next);
+      onChange(next);
       if (next.devices.length > count) setPairing(null);
     }, () => {}), 2000);
     const expire = setTimeout(() => setPairing(null), Date.parse(pairing.expiresAt) - Date.now());
@@ -98,10 +98,10 @@ function Manage({ initial, onError }: { initial: Local; onError: (message: strin
     setBusy(true);
     onError(null);
     setPairing(null);
-    api.setRemote(!remote.enabled).then(apply, fail).finally(() => setBusy(false));
+    api.setRemote(!remote.enabled).then(onChange, fail).finally(() => setBusy(false));
   };
   const newCode = () => { onError(null); api.pairingCode().then(setPairing, fail); };
-  const revoke = (id: string) => api.revokeDevice(id).then(apply, fail);
+  const revoke = (id: string) => api.revokeDevice(id).then(onChange, fail);
   const copy = () => {
     if (!remote.url) return;
     void navigator.clipboard?.writeText(remote.url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
@@ -181,8 +181,11 @@ function Manage({ initial, onError }: { initial: Local; onError: (message: strin
           <span className="set-note">{t("devices.thisMac.note")}</span>
         </div>
         {remote.devices.map((device) => (
-          <DeviceRow key={device.id} device={device} onRevoke={() => void revoke(device.id)}
-            onDev={(enabled) => void api.deviceScope(device.id, "dev", enabled).then(apply, fail)} />
+          <Fragment key={device.id}>
+            <DeviceRow device={device} onRevoke={() => void revoke(device.id)}
+              onDev={device.devAccessRequested ? undefined : (enabled) => void api.deviceScope(device.id, { scope: "dev", enabled }).then(onChange, fail)} />
+            {device.devAccessRequested && <DevAccessApproval device={device} onDecision={onChange} />}
+          </Fragment>
         ))}
         {!remote.devices.length && <p className="quiet small dev-none">{t("devices.none")}</p>}
       </div>
@@ -226,7 +229,7 @@ function Notifications({ device }: { device: DeviceInfo }) {
   );
 }
 
-function Self({ device }: { device: DeviceInfo }) {
+function Self({ device, onChange }: { device: DeviceInfo; onChange(next: RemoteResponse): void }) {
   const [confirming, setConfirming] = useState(false);
   const forget = () => disablePush().catch(() => {}).then(() => api.forgetDevice()).finally(() => location.reload());
   return (
@@ -234,6 +237,15 @@ function Self({ device }: { device: DeviceInfo }) {
       <p className="quiet small">{t("devices.self.note")}</p>
       <div className="set-rows">
         <DeviceRow device={device} />
+        <div className="set-row device-access">
+          <span className="set-name">{t("devices.dev")}</span>
+          <span className="set-note">{t("devices.dev.note")}</span>
+          <div className="set-end">
+            {device.scopes?.includes("dev") ? <span className="set-status on">{t("devices.dev.allowed")}</span>
+              : device.devAccessRequested === undefined ? <span className="quiet small">{t("dev.needsScope")}</span>
+              : <RequestDevAccess pending={device.devAccessRequested} onRequested={onChange} />}
+          </div>
+        </div>
         <Notifications device={device} />
       </div>
       {confirming ? (
@@ -251,7 +263,7 @@ function Self({ device }: { device: DeviceInfo }) {
   );
 }
 
-export function Devices({ remote }: { remote: RemoteResponse | null }) {
+export function Devices({ remote, onChange }: { remote: RemoteResponse | null; onChange(next: RemoteResponse): void }) {
   const [error, setError] = useState<string | null>(null);
   if (!remote) return null;
   return (
@@ -259,7 +271,7 @@ export function Devices({ remote }: { remote: RemoteResponse | null }) {
       <h2>{remote.local ? t("devices.title") : t("devices.self")}</h2>
       {remote.local && <p className="quiet">{t("devices.sub")}</p>}
       {error && <p className="problem small" role="alert">{error}</p>}
-      {remote.local ? <Manage initial={remote} onError={setError} /> : <Self device={remote.device} />}
+      {remote.local ? <Manage remote={remote} onChange={onChange} onError={setError} /> : <Self device={remote.device} onChange={onChange} />}
     </section>
   );
 }

@@ -372,6 +372,10 @@ export interface ProposalResponse { proposal: Proposal; replayed: boolean; run?:
 export interface Area { id: string; name: Record<Locale, string>; k: string }
 export interface StateResponse {
   protocol: typeof PROTOCOL_VERSION;
+  /** Development-session access for the caller. Older home nodes omit this. */
+  devAccess?: "off" | "pending" | "allowed";
+  /** Outstanding requests to review on the home node's machine. */
+  devAccessRequests?: { id: string; name: string }[];
   /** The newest event seq this state reflects. Subscribe to events after it. */
   cursor: number;
   /** Not archived, most recently active first. */
@@ -476,6 +480,7 @@ export type ConnectFlow =
  *   POST /api/devices/:id/scope         DeviceScopeRequest -> RemoteResponse      (local only)
  *   POST /api/pair                      PairRequest -> { device } and the cookie (a device that is not paired yet)
  *   POST /api/device/forget             -> {} (a device revokes itself)
+ *   POST /api/device/request-dev        {} -> RemoteResponse (a paired device requests access for itself)
  *   GET  /api/push                      PushInfo                                   (a paired device)
  *   POST /api/push/subscribe            { subscription: PushSubscriptionJSON } -> PushInfo
  *   POST /api/push/unsubscribe          -> PushInfo
@@ -489,7 +494,7 @@ export type ConnectFlow =
  * and talking in one, answering one or starting one is refused with 403 and code `needs_dev`.
  */
 export type DeviceScope = "dev";
-export interface DeviceScopeRequest { scope: DeviceScope; enabled: boolean }
+export interface DeviceScopeRequest { scope: DeviceScope; enabled: boolean; onlyIfRequested?: boolean }
 export type DeviceKind = "desktop" | "phone" | "browser";
 export interface DeviceInfo {
   id: string; name: string; kind: DeviceKind; via: string | null; pairedAt: string; lastSeenAt: string | null;
@@ -497,6 +502,8 @@ export interface DeviceInfo {
   push?: boolean;
   /** What it may do beyond the everyday. Absent from a home node older than this field. */
   scopes?: DeviceScope[];
+  /** This device is waiting for the Mac to approve development access. */
+  devAccessRequested?: boolean;
 }
 /** VAPID public key to subscribe with, and whether this device already is. */
 export interface PushInfo { publicKey: string; subscribed: boolean }

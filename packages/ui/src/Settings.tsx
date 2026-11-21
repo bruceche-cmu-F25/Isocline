@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { RemoteResponse } from "@alfred/protocol";
 import { api } from "./api.ts";
+import type { Alfred } from "./useAlfred.ts";
 import { Accounts } from "./Accounts.tsx";
 import { Connectors } from "./Connectors.tsx";
 import { Devices } from "./Devices.tsx";
@@ -32,14 +33,25 @@ const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
 const KEY = "alfred.settings.tab";
 const saved = (): Tab => { try { const value = localStorage.getItem(KEY); return TABS.some((tab) => tab.id === value) ? value as Tab : "general"; } catch { return "general"; } };
 
-export function Settings({ name, saveName }: NamePreference) {
+export function Settings({ name, saveName, onEvent }: NamePreference & Pick<Alfred, "onEvent">) {
   useLocale();
   /** Null until known; an older home node without remote access answers 404, which is treated as the Mac. */
   const [remote, setRemote] = useState<RemoteResponse | null | "old">(null);
   const [tab, setTab] = useState<Tab>(saved);
   const [opened, setOpened] = useState<ReadonlySet<Tab>>(() => new Set([tab]));
   const list = useRef<HTMLDivElement>(null);
-  useEffect(() => { api.remote().then(setRemote, () => setRemote("old")); }, []);
+  useEffect(() => {
+    let latest = 0;
+    const reload = () => {
+      const request = ++latest;
+      api.remote().then((next) => { if (request === latest) setRemote(next); }, () => {
+        if (request === latest) setRemote((last) => last ?? "old");
+      });
+    };
+    const stop = onEvent((event) => { if (event.kind.startsWith("device.")) reload(); });
+    reload();
+    return () => { ++latest; stop(); };
+  }, [onEvent]);
 
   const local = remote === "old" || remote?.local !== false;
   const tabs = TABS.filter((item) => (local || !item.home) && (item.id !== "devices" || remote !== "old"));
@@ -79,7 +91,7 @@ export function Settings({ name, saveName }: NamePreference) {
       {pane("accounts", <Accounts />)}
       {pane("skills", <Skills />)}
       {pane("connectors", <Connectors />)}
-      {pane("devices", <Devices remote={remote === "old" ? null : remote} />)}
+      {pane("devices", <Devices remote={remote === "old" ? null : remote} onChange={setRemote} />)}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { mkdtempSync } from "node:fs";
-import { request as httpRequest, type IncomingHttpHeaders, type Server } from "node:http";
+import { get as httpGet, request as httpRequest, type IncomingHttpHeaders, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -339,5 +340,71 @@ test("a paired device stays out of development sessions until the user lets it i
     const now = (await ask(ingress, "/api/state", { headers: as })).body as unknown as StateResponse;
     assert.ok(now.runs.some((candidate) => candidate.id === run.id));
     assert.equal((await ask(local, `/api/devices/${device.id}/scope`, { body: { scope: "root", enabled: true } })).status, 400);
+  } finally { close(); }
+});
+
+test("a paired device requests development access for itself and the decision takes effect on open streams", async () => {
+  const { home, local, ingress, close } = await setUp();
+  try {
+    const token = "p".repeat(43);
+    const phone = pairDevice(home.world, { name: "Phone", kind: "phone", token });
+    const as = viaServe({ Cookie: `alfred_device=${token}` });
+    const otherToken = "b".repeat(43);
+    const other = pairDevice(home.world, { name: "Browser", kind: "browser", token: otherToken });
+    const request = "/api/device/request-dev";
+    const scope = `/api/devices/${phone.id}/scope`;
+    const decide = (enabled: boolean) => ask(local, scope, { body: { scope: "dev", enabled } });
+    const status = async () => (await ask(ingress, "/api/state", { headers: as })).body.devAccess;
+    const outstanding = async () => (await ask(local, "/api/state")).body.devAccessRequests;
+    const askForAccess = () => ask(ingress, request, { headers: as, body: {} });
+    const watch = async () => {
+      const get = httpGet({ host: "127.0.0.1", port: ingress, path: "/api/events", headers: as });
+      const [res] = await once(get, "response") as [IncomingMessage];
+      assert.equal(res.statusCode, 200);
+      res.resume();
+      return res;
+    };
+
+    assert.equal(await status(), "off");
+    assert.equal((await ask(local, "/api/state")).body.devAccess, "allowed");
+    assert.equal((await ask(ingress, request, { headers: viaServe(), body: {} })).status, 401);
+    assert.equal((await ask(ingress, request, { headers: as, body: { id: other.id } })).status, 400);
+    assert.equal(await outstanding(), undefined);
+    const pending = (await askForAccess()).body as Extract<RemoteResponse, { local: false }>;
+    assert.equal(pending.local, false);
+    assert.equal(pending.device.id, phone.id);
+    assert.equal(pending.device.devAccessRequested, true);
+    assert.deepEqual(pending.device.scopes, []);
+    assert.equal((await askForAccess()).status, 200);
+    assert.equal(listEvents(home.world, { subject: `device:${phone.id}` }).events.filter((event) => event.kind === "device.dev_requested").length, 1);
+    assert.equal(await status(), "pending");
+    assert.deepEqual(await outstanding(), [{ id: phone.id, name: phone.name }]);
+    const otherState = (await ask(ingress, "/api/state", { headers: viaServe({ Cookie: `alfred_device=${otherToken}` }) })).body;
+    assert.equal(otherState.devAccess, "off");
+    assert.equal(otherState.devAccessRequests, undefined);
+    assert.equal((await ask(ingress, scope, { headers: as, body: { scope: "dev", enabled: true } })).body.code, "local_only");
+    assert.equal((await ask(ingress, "/api/conversations", { headers: as, body: {} })).body.code, "needs_dev");
+
+    assert.equal((await decide(false)).status, 200);
+    assert.equal(await status(), "off");
+    assert.equal(await outstanding(), undefined);
+    // Another Mac window still showing the request cannot approve it after it was declined.
+    assert.equal((await ask(local, scope, { body: { scope: "dev", enabled: true, onlyIfRequested: true } })).status, 200);
+    assert.equal(await status(), "off");
+    await askForAccess();
+    for (const enabled of [true, false]) {
+      // The old stream closes before it can deliver more data with its previous permissions.
+      const stream = await watch();
+      const ended = once(stream, "end", { signal: AbortSignal.timeout(3000) });
+      assert.equal((await decide(enabled)).status, 200);
+      await ended;
+      assert.equal(await status(), enabled ? "allowed" : "off");
+      assert.equal(await outstanding(), undefined);
+      if (enabled) assert.equal(((await askForAccess()).body.device as { devAccessRequested: boolean }).devAccessRequested, false);
+    }
+    await askForAccess();
+    await ask(local, `/api/devices/${phone.id}/revoke`, { body: {} });
+    assert.equal((await askForAccess()).status, 401);
+    assert.equal(await outstanding(), undefined);
   } finally { close(); }
 });

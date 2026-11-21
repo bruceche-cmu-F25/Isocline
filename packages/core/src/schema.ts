@@ -349,4 +349,9 @@ CREATE TABLE core_run_replies (
   reply TEXT NOT NULL
 ) STRICT;
 `,
+}, {
+  id: "core:24",
+  sql: `
+ALTER TABLE core_devices ADD COLUMN dev_access_requested INTEGER NOT NULL DEFAULT 0 CHECK (dev_access_requested IN (0, 1));
+`,
 }];

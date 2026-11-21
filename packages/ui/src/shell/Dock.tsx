@@ -48,7 +48,7 @@ export function Dock({ state, pages, page, figure, onPage, onAlfred, onMenu, ask
           {shown.map(button)}
         </div>
       )}
-      <button type="button" className="dock-alfred" onClick={onAlfred} aria-label="Alfred"><Figure state={figure} size={40} anchor /></button>
+      <button type="button" className="dock-alfred" onClick={onAlfred} aria-label="Alfred"><Figure state={figure} size={40} anchor centered /></button>
     </nav>
   );
 }

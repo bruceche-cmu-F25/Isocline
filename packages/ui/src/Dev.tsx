@@ -6,7 +6,7 @@ import { ConversationStatus } from "./shell/ConversationStatus.tsx";
  * session. With one open it is that session, full page: the same conversation component as everyday ones, without a
  * page to ask from. Behind both moves a field of characters (shell/AsciiField.tsx): this is where code is written.
  */
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactElement } from "react";
 import type { Conversation as ConversationRow, CoreEvent, Project, SessionChanges, SessionMode, StateResponse } from "@alfred/protocol";
 import { ApiError, api } from "./api.ts";
 import { Conversation } from "./Conversation.tsx";
@@ -26,6 +26,7 @@ import { BrowserPane } from "./BrowserPane.tsx";
 import { when } from "./shell/Nav.tsx";
 import { ProcessLogs, Processes, Ship, useProcesses } from "./DevWork.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
+import { RequestDevAccess } from "./RequestDevAccess.tsx";
 import type { SessionProcess } from "@alfred/protocol";
 
 export interface DevProps {
@@ -33,6 +34,7 @@ export interface DevProps {
   /** The open session, or null for the new-session screen. */
   session: string | null;
   onSession(id: string | null): void;
+  refresh(): void;
   live: Readonly<Record<string, string>>;
   highlighted: ReadonlySet<string>;
   onEvent(listener: (event: CoreEvent) => void): () => void;
@@ -47,11 +49,34 @@ export const sessionsOf = (state: StateResponse, projectId?: string) =>
 export function Dev(props: DevProps) {
   const { state, session } = props;
   const open = session ? state.conversations.find((conversation) => conversation.id === session) : undefined;
+  const restricted = state.devAccess === "off" || state.devAccess === "pending";
+  const request = restricted ? (
+    <div className="set-flow">
+      {state.devAccess === "off" && <p>{t("dev.accessNeeded")}</p>}
+      <RequestDevAccess pending={state.devAccess === "pending"} onRequested={props.refresh} />
+    </div>
+  ) : null;
+  let content: ReactElement;
+  if (!session) {
+    content = <NewSession state={state} onSession={props.onSession} accessRequest={request} />;
+  } else if (request) {
+    content = (
+      <div className="dev-new">
+        <div className="dev-new-in">
+          <header className="dev-new-head"><h2>{open?.title || t("devices.dev")}</h2></header>
+          {request}
+          <div><button type="button" className="set-button ghost" onClick={() => props.onSession(null)}>{t("dev.back")}</button></div>
+        </div>
+      </div>
+    );
+  } else {
+    content = <Session key={session} {...props} id={session} conversation={open} />;
+  }
   return (
     <div className="dev-stage" data-in={session ? "session" : "new"}>
       <AsciiField />
       {!session && <div className="dev-drag" aria-hidden="true" />}
-      {session ? <Session key={session} {...props} id={session} conversation={open} /> : <NewSession state={state} onSession={props.onSession} />}
+      {content}
     </div>
   );
 }
@@ -213,7 +238,7 @@ function Session({ id, conversation, state, onSession, live, highlighted, onEven
   );
 }
 
-function NewSession({ state, onSession }: { state: StateResponse; onSession(id: string): void }) {
+function NewSession({ state, onSession, accessRequest }: { state: StateResponse; onSession(id: string): void; accessRequest: ReactElement | null }) {
   const projects = state.projects ?? [];
   const [chosen, setChosen] = useState<string | null>(() => projects.find((project) => project.trustedAt)?.id ?? null);
   const [mode, setMode] = useState<SessionMode>("ask");
@@ -239,7 +264,7 @@ function NewSession({ state, onSession }: { state: StateResponse; onSession(id: 
     event?.preventDefault();
     const files = attachments.ids;
     const text = draft.trim() || (files.length ? t("attach.look") : "");
-    if (!text || !project?.trustedAt || busy || attachments.busy) return;
+    if (accessRequest || !text || !project?.trustedAt || busy || attachments.busy) return;
     setBusy(true);
     setError(null);
     api.startSession(project.id, text, mode, worktree)
@@ -280,11 +305,12 @@ function NewSession({ state, onSession }: { state: StateResponse; onSession(id: 
             <span className="grow" />
             <AttachButton attachments={attachments} disabled={!project?.trustedAt} />
             <MicButton disabled={!project?.trustedAt} onText={(words) => setDraft((now) => appendDictation(now, words))} />
-            <button type="submit" className="send" disabled={(!draft.trim() && !attachments.ids.length) || !project?.trustedAt || busy || attachments.busy} aria-label={t("composer.send")}>
+            <button type="submit" className="send" disabled={!!accessRequest || (!draft.trim() && !attachments.ids.length) || !project?.trustedAt || busy || attachments.busy} aria-label={t("composer.send")}>
               <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
             </button>
           </div>
         </form>
+        {accessRequest}
         {/* What the two choices under the composer mean, in one line. */}
         <p className="dev-note">{project && <span className="mono" title={project.path}>{project.path}</span>}<span>{worktree ? `${t("dev.worktreeHint")} · ` : ""}{t(`mode.${mode}.hint` as Key)}</span></p>
         {picking && (

@@ -85,8 +85,8 @@
   86%  { transform: translateY(calc(var(--up) * 3px)) scale(calc(var(--big) - .03), calc(var(--big) + .04)); }
   100% { transform: translateY(0) scale(var(--big)); }
 }
-@keyframes speech-nod-a { 40% { transform: translateY(4px) scale(calc(var(--big) + .04), calc(var(--big) - .06)); } }
-@keyframes speech-nod-b { 40% { transform: translateY(4px) scale(calc(var(--big) + .04), calc(var(--big) - .06)); } }
+@keyframes speech-nod-a { 40% { transform: translateY(var(--nod-distance, 4px)) scale(calc(var(--big) + .04), calc(var(--big) - .06)); } }
+@keyframes speech-nod-b { 40% { transform: translateY(var(--nod-distance, 4px)) scale(calc(var(--big) + .04), calc(var(--big) - .06)); } }
 
 @media (prefers-reduced-motion: reduce) {
   .speech, .speech-foot, [data-speaking] { animation: none !important; transition: none !important; }

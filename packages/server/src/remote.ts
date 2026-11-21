@@ -46,8 +46,8 @@ export interface RemoteOptions {
 export const normalizeCode = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 export class RemoteAccess {
-  /** `revoked` (device id): close that device's open streams. */
-  readonly events = new EventEmitter<{ revoked: [string] }>();
+  /** Refresh a device's open streams when its permissions change. Revoking also removes its push subscription. */
+  readonly events = new EventEmitter<{ revoked: [string]; scopeChanged: [string] }>();
   readonly #options: RemoteOptions;
   readonly #file: string;
   #config: Config;
@@ -146,8 +146,10 @@ export class RemoteAccess {
   }
 
   /** Lets a device into development sessions, or takes that away (docs/design/dev-mode.md 4.7). */
-  setScope(id: string, scope: DeviceScope, enabled: boolean): Device {
-    const device = setDeviceScope(this.#options.world, id, scope, enabled);
+  setScope(id: string, scope: DeviceScope, enabled: boolean, onlyIfRequested = false): Device {
+    const device = setDeviceScope(this.#options.world, id, scope, enabled, Date.now(), onlyIfRequested);
+    if (device.scopes.includes(scope) !== enabled) return device;
+    this.events.emit("scopeChanged", id);
     this.#options.log?.(`${device.name}: ${scope} ${enabled ? "on" : "off"}`);
     return device;
   }

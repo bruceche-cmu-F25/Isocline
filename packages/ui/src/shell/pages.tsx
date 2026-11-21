@@ -224,7 +224,7 @@ const PAGES: PageDef[] = [
   {
     key: "core.settings", get title() { return t("page.settings"); }, icon: "gear", k: "gray", group: "system",
     summary: () => t("page.settings.summary"),
-    render: ({ name, saveName }) => <Settings name={name} saveName={saveName} />,
+    render: ({ name, saveName, dev }) => <Settings name={name} saveName={saveName} onEvent={dev.onEvent} />,
   },
 ];
 

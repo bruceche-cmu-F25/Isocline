@@ -10,7 +10,7 @@ let entered: object | null = null;
 /** Alfred's figure at a given size. Its far lines fade toward whatever it sits on, and it follows light and dark.
  * Touching it makes it flinch and wobble (a poke). `anchor`: Alfred speaks from this one (shell/Says.tsx); it is
  * wrapped so the drawing can hop while the wrapper stays still to measure. */
-export function Figure({ state, size, className, anchor }: { state: FigureState; size: number; className?: string; anchor?: boolean }) {
+export function Figure({ state, size, className, anchor, centered }: { state: FigureState; size: number; className?: string; anchor?: boolean; centered?: boolean }) {
   const svg = useRef<SVGSVGElement>(null);
   const live = useRef<Live | null>(null);
 
@@ -18,7 +18,7 @@ export function Figure({ state, size, className, anchor }: { state: FigureState;
     if (!svg.current) return;
     const first = !entered;
     // Thicker lines at small sizes; below 48 px the tesseract drops the edges joining its two cubes.
-    const figure = createFigure(svg.current, { width: size >= 100 ? 4 : size >= 48 ? 4.6 : 5.6, small: size < 48, dark: isDark(), enter: first ? "grow" : null });
+    const figure = createFigure(svg.current, { width: size >= 100 ? 4 : size >= 48 ? 4.6 : 5.6, small: size < 48, centered, dark: isDark(), enter: first ? "grow" : null });
     const born = performance.now();
     if (first) entered = figure;
     live.current = figure;
@@ -28,7 +28,7 @@ export function Figure({ state, size, className, anchor }: { state: FigureState;
       scheme.disconnect(); figure.destroy(); live.current = null;
       if (entered === figure && performance.now() - born < 300) entered = null;
     };
-  }, [size]);
+  }, [size, centered]);
 
   useEffect(() => { live.current?.setState(state); }, [state]);
   // Moving between places (panel, floating button) changes what it sits on.

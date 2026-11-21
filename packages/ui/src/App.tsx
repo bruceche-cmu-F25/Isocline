@@ -15,6 +15,7 @@ import type { Outcome, Said } from "./speech/useSpeech.ts";
 import { Icon } from "./shell/icons.tsx";
 import { ALF, dragHandle, NAV, PHONE, useLayout, useMedia, useViewportWidth, widths } from "./shell/layout.ts";
 import { ArchivedConversations } from "./ArchivedConversations.tsx";
+import { DevAccessApproval } from "./DevAccessApproval.tsx";
 import { ArchiveNotice } from "./shell/ArchiveNotice.tsx";
 import { MOD, Nav } from "./shell/Nav.tsx";
 import { Topbar, type Mode } from "./shell/Topbar.tsx";
@@ -384,6 +385,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
   const lastPage = useRef<Record<Mode, string>>({ daily: "", dev: "" });
   if (pageMode && current) { lastMode.current = pageMode; lastPage.current[pageMode] = current.key; }
   const mode = pageMode ?? lastMode.current;
+  const accessRequest = state.devAccessRequests?.[0];
   const hasDev = pages.some((page) => page.group === "dev");
   const switchMode = (next: Mode) => {
     const first = pages.find((page) => (next === "dev" ? page.group === "dev" : page.group === "work" || page.group === "modules"));
@@ -548,7 +550,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
             <div className="page-body">{current.render({
               snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName,
               onEnterInbox: welcoming ? () => setInboxOpen(true) : undefined, focus: inboxFocus, onFocused, openConversation, line,
-              dev: { session: route.session, onSession: openSession, live, highlighted, onEvent, pageTitle, automationTitle: automationOf },
+              dev: { session: route.session, onSession: openSession, refresh: alfred.refresh, live, highlighted, onEvent, pageTitle, automationTitle: automationOf },
             })}</div>
             {/* Under the page: the page's own controls are at its top, Alfred and search at its foot. */}
             {barHere && (
@@ -562,6 +564,11 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
       </main>
 
       {alfredMode !== "closed" && panel}
+      {accessRequest && (
+        <aside className="dev-access-notice" aria-label={t("devices.dev")} aria-live="polite">
+          <DevAccessApproval key={accessRequest.id} device={accessRequest} onDecision={alfred.refresh} />
+        </aside>
+      )}
 
       {!phone && (
         <>

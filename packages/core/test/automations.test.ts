@@ -204,6 +204,6 @@ test("upgrading a world keeps its automations, devices and sessions as they were
   const kept = all.find((automation) => automation.id === brief.id)!;
   assert.deepEqual([kept.enabled, kept.schedule, kept.createdAt], [true, { at: "06:45", days: [1, 2, 3] }, brief.createdAt]);
   assert.equal(all.find((automation) => automation.id === mine.id)!.goal, "Look over my todos");
-  assert.deepEqual(listDevices(after).map((device) => [device.name, device.scopes]), [["Phone", []]]);
+  assert.deepEqual(listDevices(after).map((device) => [device.name, device.scopes, device.devAccessRequested]), [["Phone", [], false]]);
   after.close();
 });

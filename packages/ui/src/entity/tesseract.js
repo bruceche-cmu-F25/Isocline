@@ -340,6 +340,19 @@ function makeLayer() {
   return { g, lines, order: [] };
 }
 
+/* A figure inside a button turns around the button's centre. Perspective can move the bounds of even a
+   symmetric shape. Use the whole pose so a wire being drawn or erased does not pull the rest of it along. */
+function centeredOffset(pieces) {
+  let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+  for (const [a, b] of pieces) {
+    left = Math.min(left, a[0], b[0]);
+    right = Math.max(right, a[0], b[0]);
+    top = Math.min(top, a[1], b[1]);
+    bottom = Math.max(bottom, a[1], b[1]);
+  }
+  return [60 - (left + right) / 2, 60 - (top + bottom) / 2];
+}
+
 /* Paints one figure into a layer. `span(wire, wires, length)` gives the visible part of each wire as
    [from, to] along it; pieces outside are hidden, pieces across an end are trimmed. With no span the whole figure is
    shown; zero-length pieces show as dots only when the frame asks for them (a figure growing from a point). */
@@ -384,7 +397,8 @@ function paint(I, layer, state, frame, span, fade) {
     line.setAttribute("stroke", base ? rgbHex(mix(base, bg, (1 - depth(i)) * shade)) : "currentColor");
     line.setAttribute("opacity", fade < 0.98 ? fade.toFixed(2) : "1");
   }
-  layer.g.setAttribute("transform", `translate(${(frame.dx || 0).toFixed(2)} ${(frame.dy || 0).toFixed(2)})`);
+  const [dx, dy] = I.centered ? centeredOffset(s) : [frame.dx || 0, frame.dy || 0];
+  layer.g.setAttribute("transform", `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
   if (frame.sw && frame.sw !== 1) layer.g.setAttribute("stroke-width", (I.width * frame.sw).toFixed(2));
   else layer.g.removeAttribute("stroke-width");
   layer.g.style.display = "";
@@ -474,7 +488,7 @@ const clockNow = () => (reduced() ? 0.6 : (typeof performance === "object" ? per
  * background: "auto" (nearest ancestor's background), a CSS colour, or null (no depth shading).
  * enter: a move to come in with ("grow": from a point), when the figure starts as the body.
  */
-export function createFigure(svg, { state = "rest", width = 4, mono = false, small = false, dark = false, background = "auto", enter = null } = {}) {
+export function createFigure(svg, { state = "rest", width = 4, mono = false, small = false, centered = false, dark = false, background = "auto", enter = null } = {}) {
   const first = STATES.includes(state) ? state : "rest";
   const root = document.createElementNS(SVGNS, "g");
   root.setAttribute("stroke-width", String(width));
@@ -484,7 +498,7 @@ export function createFigure(svg, { state = "rest", width = 4, mono = false, sma
   svg.replaceChildren(root);
   const t0 = clockNow();
   const I = {
-    svg, layers, mono, small, dark, width, state: first, now: first, mode: null, changed: -Infinity, out: null, asked: t0, entered: t0,
+    svg, layers, mono, small, centered, dark, width, state: first, now: first, mode: null, changed: -Infinity, out: null, asked: t0, entered: t0,
     seed: Math.random(), play: null, pose: STATE[first](0, 0, CTX0).s, glideFrom: null, bg: resolveBg(svg, background),
   };
   const play = (move) => {

@@ -3,7 +3,7 @@
  */
 import type {
   ArchivedConversation, Automation, AutomationHistory, Schedule,
-  Conversation, ConversationDetail, CoreEvent, DeviceInfo, FileInfo, DeviceKind, DeviceScope, LiveUpdate, ModelsResponse, Notice, OpResponse, PairingCode, ProposalResponse,
+  Conversation, ConversationDetail, CoreEvent, DeviceInfo, FileInfo, DeviceKind, DeviceScopeRequest, LiveUpdate, ModelsResponse, Notice, OpResponse, PairingCode, ProposalResponse,
   Project, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, ViewContext,
 } from "@alfred/protocol";
 import "./desktop.ts";
@@ -164,7 +164,8 @@ export const api = {
   pairingCode: () => post<PairingCode>("/api/remote/pairing", {}),
   revokeDevice: (id: string) => post<RemoteResponse>(`/api/devices/${id}/revoke`, {}),
   /** Lets a device into development sessions, or takes that away (this machine only). */
-  deviceScope: (id: string, scope: DeviceScope, enabled: boolean) => post<RemoteResponse>(`/api/devices/${id}/scope`, { scope, enabled }),
+  deviceScope: (id: string, change: DeviceScopeRequest) => post<RemoteResponse>(`/api/devices/${id}/scope`, change),
+  requestDevAccess: () => post<Extract<RemoteResponse, { local: false }>>("/api/device/request-dev", {}),
   /** On a device that is not paired yet: the home node answers with the device token in a cookie. */
   pair: (code: string, name: string, kind: DeviceKind) => post<{ device: DeviceInfo }>("/api/pair", { code, name, kind }),
   forgetDevice: () => post<Record<string, never>>("/api/device/forget", {}),

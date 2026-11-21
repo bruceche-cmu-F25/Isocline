@@ -15,6 +15,8 @@ export interface FigureOptions {
   mono?: boolean;
   /** Drop the tesseract's W edges, for small sizes. */
   small?: boolean;
+  /** Keep each complete pose centred in the viewBox as it animates inside a button. */
+  centered?: boolean;
   dark?: boolean;
   /** "auto" reads the nearest ancestor's background; a CSS colour; or null for no depth shading. */
   background?: "auto" | string | null;

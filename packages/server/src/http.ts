@@ -18,7 +18,7 @@ import {
   AREAS, getSettings, listOpenProposals, userLocale, withCoreContext, listAutomations, type World,
   acknowledgeNotice, answerRequest, claimNotice, getConversation, markConversationReplyRead, getRun, listAutomationRuns, getAutomation, latestEventSeq, listConversations, listArchivedConversations, listEvents, listNotices,
   listRunActivity, listRunReceipts, listRuns, conversationRuns, presentNotice, reportPresence, submitRun,
-  deviceForToken, DEVICE_KINDS, DEVICE_SCOPES, type Device, type DeviceKind, type DeviceScope, type LiveUpdate,
+  deviceForToken, listDevices, requestDevAccess, DEVICE_KINDS, DEVICE_SCOPES, type Device, type DeviceKind, type DeviceScope, type LiveUpdate,
   getProject, listProjects, getFile, listRunFiles, requireOpenSession, isSession, runInSession, sessionEvent, sessionIds, sessionRoot,
 } from "@alfred/core";
 import { invokeOp, runQuery } from "@alfred/module-kit";
@@ -92,20 +92,24 @@ const automationView = (world: World, id: string) => listAutomations(world).find
 
 /** Whether whoever asks may go into development sessions: this machine, or a device the user gave `dev`. */
 const mayDev = (peer: Peer) => peer.local || !!peer.device?.scopes.includes("dev");
-const NEEDS_DEV = "This device may not go into development sessions. Turn that on for it on the Mac: Settings → Devices.";
+const NEEDS_DEV = "This device needs permission to use development sessions.";
 
 function state(home: Home, peer: Peer): StateResponse {
   // One synchronous read: no commit can land between these statements.
   const modules: Record<string, unknown> = {};
   for (const module of home.modules) if (module.snapshot) modules[module.id] = module.snapshot(home.world);
   // A device without `dev` gets a development session's title and whether it is busy, and nothing it said or did.
-  const hidden = mayDev(peer) ? null : sessionIds(home.world);
+  const devAccess = mayDev(peer) ? "allowed" : !peer.local && peer.device?.devAccessRequested ? "pending" : "off";
+  const hidden = devAccess === "allowed" ? null : sessionIds(home.world);
+  const requests = peer.local ? listDevices(home.world).filter((device) => device.devAccessRequested).map(({ id, name }) => ({ id, name })) : [];
   const hiddenConversations = hidden ? [...hidden] : [];
   const runs = listRuns(home.world, { limit: 50, includeWaiting: true, hiddenConversations });
   const views: StateResponse["views"] = {};
   for (const module of home.modules) if (module.views?.length) views[module.id] = module.views.map((view) => ({ id: view.id, title: view.title }));
   return {
     protocol: PROTOCOL_VERSION,
+    devAccess,
+    ...(requests.length ? { devAccessRequests: requests } : {}),
     cursor: latestEventSeq(home.world),
     conversations: listConversations(home.world).map((conversation) => (hidden?.has(conversation.id) ? { ...conversation, lastGoal: null, commands: [], unreadReplyId: null } : conversation)),
     runs,
@@ -151,6 +155,7 @@ function events(home: Home, peer: Peer, req: IncomingMessage, res: ServerRespons
     for (;;) {
       const page = listEvents(home.world, { after: cursor, limit: 500 });
       for (const event of page.events as CoreEvent[]) {
+        if (event.kind === "device.dev_requested" && !peer.local && event.subject !== `device:${peer.device?.id}`) continue;
         const sent = open || !sessionEvent(home.world, event) ? event : { ...event, payload: {} };
         res.write(`id: ${event.seq}\nevent: core\ndata: ${JSON.stringify(sent)}\n\n`);
       }
@@ -229,7 +234,7 @@ async function remoteRoute(home: Home, options: ServeOptions, peer: Peer, req: I
   const method = req.method ?? "GET";
   const remote = options.remote;
   const isPush = path === "/api/push" || path.startsWith("/api/push/");
-  if (!remote || !(isPush || path === "/api/remote" || path.startsWith("/api/remote/") || path.startsWith("/api/devices/") || path === "/api/pair" || path === "/api/device/forget")) return false;
+  if (!remote || !(isPush || path === "/api/remote" || path.startsWith("/api/remote/") || path.startsWith("/api/devices/") || path === "/api/pair" || path === "/api/device/forget" || path === "/api/device/request-dev")) return false;
   if (isPush && peer.local) throw new HttpError(400, "This machine shows notifications itself");
   if (method === "POST" && path === "/api/pair") {
     if (peer.local) throw new HttpError(400, "This machine needs no pairing");
@@ -244,6 +249,12 @@ async function remoteRoute(home: Home, options: ServeOptions, peer: Peer, req: I
     if (!peer.device) throw new HttpError(401, "This device is not paired with Alfred yet", "unpaired");
     if (method === "GET" && path === "/api/remote") return send(res, 200, withPush({ local: false, device: peer.device } satisfies RemoteResponse, options.push)), true;
     if (isPush) return await pushRoute(options.push, peer.device, req, res, path, userLocale(home.world)), true;
+    if (method === "POST" && path === "/api/device/request-dev") {
+      const body = await readJson(req);
+      if (Object.keys(body).length) throw new HttpError(400, "Send an empty object to request access for this device");
+      const device = requestDevAccess(home.world, peer.device.id);
+      return send(res, 200, withPush({ local: false, device } satisfies RemoteResponse, options.push)), true;
+    }
     if (method === "POST" && path === "/api/device/forget") {
       await readJson(req);
       remote.revoke(peer.device.id);
@@ -265,9 +276,10 @@ async function remoteRoute(home: Home, options: ServeOptions, peer: Peer, req: I
   }
   const scope = /^\/api\/devices\/([A-Za-z0-9_-]{1,64})\/scope$/.exec(path);
   if (scope && method === "POST") {
-    const body = await readJson<{ scope?: unknown; enabled?: unknown }>(req);
+    const body = await readJson<{ scope?: unknown; enabled?: unknown; onlyIfRequested?: unknown }>(req);
     if (!(DEVICE_SCOPES as readonly unknown[]).includes(body.scope) || typeof body.enabled !== "boolean") throw new HttpError(400, "scope and enabled are required");
-    remote.setScope(scope[1], body.scope as DeviceScope, body.enabled);
+    if (body.onlyIfRequested !== undefined && typeof body.onlyIfRequested !== "boolean") throw new HttpError(400, "onlyIfRequested must be a boolean");
+    remote.setScope(scope[1], body.scope as DeviceScope, body.enabled, body.onlyIfRequested);
     return send(res, 200, withPush(await remote.describe(), options.push) satisfies RemoteResponse), true;
   }
   const revoke = /^\/api\/devices\/([A-Za-z0-9_-]{1,64})\/revoke$/.exec(path);
@@ -644,12 +656,13 @@ function dispatch(home: Home, options: ServeOptions, peer: Peer, req: IncomingMe
       // A folder path means something only on the home node's machine, and trusting one lets Alfred read it.
       if (path.startsWith("/api/projects") && req.method === "POST") throw new HttpError(403, LOCAL_ONLY, "local_only");
       if (path === "/api/events" && options.remote) {
-        // Revoking ends the device's stream at once; its reconnect is refused.
+        // The reconnect checks the device's current scopes and rejects a revoked device.
         const id = peer.device.id;
         const remote = options.remote;
-        const onRevoked = (revoked: string) => { if (revoked === id) res.end(); };
-        remote.events.on("revoked", onRevoked);
-        req.on("close", () => remote.events.off("revoked", onRevoked));
+        const endStream = (changed: string) => { if (changed === id) res.end(); };
+        remote.events.on("revoked", endStream);
+        remote.events.on("scopeChanged", endStream);
+        req.on("close", () => { remote.events.off("revoked", endStream); remote.events.off("scopeChanged", endStream); });
       }
     }
     if (path === "/api/voice" || path.startsWith("/api/voice/")) return voiceRoute(options.voice, req, res, path);

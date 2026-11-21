@@ -46,7 +46,7 @@ export {
   type Automation, type AutomationView, type AutomationTemplate, type AutomationPatch, type NewAutomation, type Schedule,
 } from "./automations.ts";
 export { listProjects, getProject, addProject, trustProject, removeProject, ProjectError, PROJECT_ID, SESSION_MODES, type Project, type SessionMode } from "./projects.ts";
-export { listDevices, pairDevice, deviceForToken, revokeDevice, setDeviceScope, hashToken, DeviceError, DEVICE_KINDS, DEVICE_SCOPES, type Device, type DeviceKind, type DeviceScope } from "./devices.ts";
+export { listDevices, pairDevice, deviceForToken, revokeDevice, requestDevAccess, setDeviceScope, hashToken, DeviceError, DEVICE_KINDS, DEVICE_SCOPES, type Device, type DeviceKind, type DeviceScope } from "./devices.ts";
 export {
   addFile, getFile, listRunFiles, dropUnattachedFiles, fileName, FileError, FILE_KINDS, FILE_ID, MAX_FILES_PER_RUN, type FileInfo, type FileKind,
 } from "./files.ts";
