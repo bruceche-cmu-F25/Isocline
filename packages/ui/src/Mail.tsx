@@ -274,7 +274,11 @@ function Reader({ message, draft, writing, sent, canSend, line, acts, written, o
   );
 }
 
-export function Mail({ snapshot, state, line }: { snapshot: MailSnapshot | undefined; state: StateResponse; line: PageLine }) {
+export function Mail({ snapshot, state, line, focus, onFocused }: {
+  snapshot: MailSnapshot | undefined; state: StateResponse; line: PageLine;
+  /** A letter to open (`<account>|<id>`), asked for from another page. */
+  focus?: string | null; onFocused?(): void;
+}) {
   const [filter, setFilter] = useState<Filter>("primary");
   /** `<account>|<id>` for a message; `d:<draft key>` for a draft with no message here (`d:new` while one is written). */
   const [picked, setPicked] = useState<string | null>(null);
@@ -285,6 +289,16 @@ export function Mail({ snapshot, state, line }: { snapshot: MailSnapshot | undef
   const [sending, setSending] = useState<string[]>([]);
   const messages = snapshot?.messages ?? [];
   const sources = snapshot?.sources ?? [];
+  useEffect(() => {
+    if (!focus) return;
+    const asked = messages.find((message) => messageKey(message) === focus);
+    if (asked) {
+      // The list shows the primary letters unless told otherwise; one from elsewhere needs all of them.
+      if (asked.category !== "primary") setFilter("all");
+      setPicked(messageKey(asked));
+    }
+    onFocused?.();
+  }, [focus]);
   const senders = sources.filter((source) => source.canSend).map((source) => source.account);
   const sentMail = snapshot?.sent ?? [];
   const lineNow = useRef(line);

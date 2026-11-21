@@ -83,7 +83,7 @@ function useRoute() {
     if (next.page) params.set("p", next.page);
     if (next.selected) params.set("c", next.selected);
     if (next.session) params.set("s", next.session);
-    if (next.page === "core.inbox" && next.item) params.set("item", next.item);
+    if ((next.page === "core.inbox" || next.page === "mail.inbox") && next.item) params.set("item", next.item);
     const hash = params.toString();
     history.replaceState(null, "", hash ? `#${hash}` : location.pathname);
     latest.current = next;
@@ -357,6 +357,15 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     if (layout.alfred === "wide") setLayout({ alfred: "open" });
   }, [route, layout.alfred, setLayout]);
 
+  /** From one page to another, and to one thing on it. An Inbox item goes the way a notification's does. */
+  const goTo = useCallback((key: string, item?: string) => {
+    if (key === "core.inbox" && item) { showInboxItem(item); return; }
+    route.go({ page: key, item: item ?? null });
+    setSheet(null);
+    if (layout.alfred === "wide") setLayout({ alfred: "open" });
+  }, [route, layout.alfred, setLayout, showInboxItem]);
+  const clearItem = useCallback(() => { route.go({ item: null }); }, [route.go]);
+
   // A run opened a module's view: show that page.
   const onView = useCallback((module: string, view: string) => goPage(`${module}.${view}`), [goPage]);
   const onStarted = useCallback((id: string) => route.go({ selected: id }), [route]);
@@ -537,7 +546,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
       {showArchive && <ArchivedConversations projects={state.projects ?? []} onClose={() => setShowArchive(false)}
         onRestore={restoreConversation} onEvent={onEvent} />}
 
-      <main className="page" data-k={current?.k} data-bare={bare || undefined}>
+      <main className="page" data-k={current?.k} data-page={current?.key} data-bare={bare || undefined}>
         {current ? (
           <>
             {/* The top bar carries the page's name and facts; a phone has no top bar, so there the page says them. */}
@@ -550,6 +559,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
             <div className="page-body">{current.render({
               snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName,
               onEnterInbox: welcoming ? () => setInboxOpen(true) : undefined, focus: inboxFocus, onFocused, openConversation, line,
+              go: goTo, item: route.item, onItem: clearItem,
               dev: { session: route.session, onSession: openSession, refresh: alfred.refresh, live, highlighted, onEvent, pageTitle, automationTitle: automationOf },
             })}</div>
             {/* Under the page: the page's own controls are at its top, Alfred and search at its foot. */}

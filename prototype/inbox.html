@@ -1,0 +1,819 @@
+<!doctype html>
+<!--
+  SUPERSEDED (2026-11-20) by today.html and docs/design/today-and-inbox.md. This was made before the direction was
+  agreed: it keeps "in progress" and results inside the inbox and shows reply drafts Alfred wrote unasked, both of
+  which were decided against. Kept only to look back at.
+
+  Alfred: the 通知 page (Inbox), rethought. A prototype: no build step, sample data, nothing is sent anywhere.
+  The question it asks: what is this page for, and what would make it worth opening?
+
+  The answer it tries: the page is where what you handed to Alfred comes back to you. One promise: when nothing
+  is listed under 等你, nothing is waiting on you. So the page is a ledger of three things, not a list of notices:
+    等你    what only you can decide. Everything that waits, from every page (a task's question, reply drafts,
+            a suggested todo, a calendar clash, a send Gmail did not confirm, an expired sign-in). Only this is counted.
+    在办    what Alfred is doing now, and what runs next. When nothing waits, this is what the page shows.
+    给你的  what you asked to be handed: the morning brief, a report. Opening one reads it; there is no "got it".
+  Below them, folded: 晚点再说 (what you put off, and when it comes back) and 记录 (what was decided, by whom,
+  and where you were told), with the rules Alfred has been given.
+
+  What is different from the page in the app:
+    · no greeting in front of the list; the page opens on its contents;
+    · no "got it" buttons: what only tells you something is in 记录, not in the count;
+    · each thing that waits says why Alfred suggests what it does, and its first button is that suggestion;
+    · one thing is current: ↵ does it, E changes it (in the line at the bottom), X says no, S puts it off, Z undoes;
+    · a decision is undone, not confirmed: an email leaves ten seconds after "send";
+    · what blocks a running task comes first, with how long it has been stuck;
+    · the same kind of yes a few times over, and Alfred asks whether to just do it from now on.
+
+  The strip switches the layout (A one column, B the queue with a rail), the scene (a morning, an ordinary
+  afternoon, nothing waiting), the language and light/dark. "Now" is fixed per scene.
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Alfred：通知</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --ease: cubic-bezier(.23, 1, .32, 1);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
+h1, h2, h3, p, ul, ol { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+kbd { padding: 0 5px; border-radius: 5px; background: var(--wash); color: var(--muted); font: .6875rem/1.6 var(--mono); }
+
+/* ── The prototype's own strip ── */
+.proto { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; }
+.proto b { flex: none; padding: 0 6px; }
+.proto .lab { flex: none; padding: 0 4px 0 10px; opacity: .6; }
+.proto button { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; }
+.proto button:hover { opacity: 1; }
+.proto button[aria-pressed="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+.proto .what { flex: 1; min-width: 0; padding: 0 10px; opacity: .7; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1100px) { .proto .what { visibility: hidden; } }
+@media (max-width: 620px) { .proto .lab, .proto b { display: none; } }
+
+/* ── The page ── */
+.page { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; container: page / inline-size; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 0 170px; }
+.col { max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+.col[data-layout="a"] { max-width: 720px; }
+.head { display: flex; align-items: baseline; gap: 6px 12px; padding: 20px 0 6px; flex-wrap: wrap; }
+.head h1 { display: flex; align-items: center; gap: 10px; font-size: 1.5rem; line-height: 1.25; font-weight: 650; letter-spacing: -.01em; }
+.head h1 svg { width: 22px; height: 22px; color: var(--k-solid); stroke-width: 1.8; }
+.head .sum { color: var(--muted); font-size: .875rem; }
+.head .sum b { color: var(--k-text, var(--copy)); font-weight: 600; }
+
+.split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 32px; align-items: start; }
+.col[data-layout="b"] .split { grid-template-columns: minmax(0, 1fr) 320px; }
+.main, .rail { min-width: 0; }
+.col[data-layout="b"] .rail { position: sticky; top: 0; display: flex; flex-direction: column; gap: 12px; padding-top: 22px; }
+.col[data-layout="b"] .rail .block { padding: 12px 8px 8px; border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.col[data-layout="b"] .rail .sec-h { padding: 0 8px 6px; }
+
+.sec-h { display: flex; align-items: center; gap: 8px; padding: 22px 2px 8px; color: var(--muted); font-size: .8125rem; font-weight: 500; min-width: 0; }
+.sec-h .n { font-size: .75rem; font-variant-numeric: tabular-nums; }
+.sec-h .n[data-k] { height: 20px; min-width: 20px; padding: 0 6px; display: inline-grid; place-items: center; border-radius: 999px; background: var(--k-fill); color: var(--k-text); font-weight: 600; }
+.sec-h .grow { flex: 1; }
+.sec-h .keys { min-width: 0; display: flex; gap: 10px; font-size: .6875rem; font-weight: 400; white-space: nowrap; overflow: hidden; }
+.sec-h .keys span { display: inline-flex; gap: 4px; align-items: center; }
+@media (hover: none) { .keys, .btn kbd, .rc kbd { display: none !important; } }
+
+/* ── 等你: one card per thing that waits ── */
+.q { display: flex; flex-direction: column; gap: 10px; }
+.it { position: relative; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); scroll-margin: 16px 0 180px; }
+.it[data-cur] { box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--alf) 60%, transparent); }
+.it-top { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; color: var(--muted); font-size: .75rem; min-width: 0; }
+.it-top .src { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.it-top .src svg.i { width: 14px; height: 14px; }
+.it-top .grow { flex: 1; }
+.left { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: .75rem; font-weight: 500; white-space: nowrap; background: var(--k-fill); color: var(--k-text); font-variant-numeric: tabular-nums; }
+.left i { width: 6px; height: 6px; border-radius: 50%; background: var(--k-solid); }
+.it h3 { font-size: .9375rem; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.why { display: flex; gap: 7px; color: var(--copy); font-size: .8125rem; line-height: 1.55; min-width: 0; }
+.why svg.i { width: 14px; height: 14px; margin-top: 3px; color: var(--alf); }
+.why span { min-width: 0; overflow-wrap: anywhere; }
+.pv { padding: 9px 12px; border-radius: 10px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--copy); font-size: .8125rem; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
+.pv li { display: flex; gap: 8px; }
+.pv li::before { content: "·"; color: var(--muted); }
+.changed { color: var(--alf); font-size: .75rem; }
+.writing { display: flex; flex-direction: column; gap: 7px; padding: 12px; border-radius: 10px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.writing i { height: 8px; border-radius: 4px; background: var(--alf-soft); animation: write 1.1s var(--ease) infinite alternate; }
+.writing i:nth-child(2) { width: 82%; animation-delay: .15s; }
+.writing i:nth-child(3) { width: 54%; animation-delay: .3s; }
+@keyframes write { from { opacity: .35; } to { opacity: 1; } }
+
+.acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 2px; }
+.acts .grow { flex: 1; }
+.btn { height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; font-size: .8125rem; color: var(--copy); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; transition: background .15s var(--ease), color .15s var(--ease); }
+.btn:hover { color: var(--ink); background: var(--wash); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.yes { color: var(--ink); font-weight: 500; }
+/* One solid in the region: the current card's suggestion, or the one under the pointer. */
+.it[data-cur] .btn.yes, .q .it:hover .btn.yes { background: var(--alf-solid); color: var(--on-alf); box-shadow: none; }
+.q:has(.it:hover) .it[data-cur]:not(:hover) .btn.yes { background: none; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.it[data-cur] .btn.yes kbd, .q .it:hover .btn.yes kbd { background: color-mix(in oklch, var(--on-alf) 22%, transparent); color: var(--on-alf); }
+.btn.quiet { box-shadow: none; color: var(--muted); padding: 0 8px; }
+.btn kbd { display: none; }
+.it[data-cur] .btn kbd { display: inline-block; }
+.menu { position: absolute; right: 12px; bottom: 48px; z-index: 4; min-width: 172px; padding: 6px; border-radius: 12px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); display: flex; flex-direction: column; }
+.menu button { display: flex; justify-content: space-between; gap: 16px; padding: 6px 10px; border-radius: 8px; font-size: .8125rem; white-space: nowrap; }
+.menu button:hover { background: var(--wash); }
+.menu button span { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* A group: several of one kind, decided together or one by one. */
+.kids { display: flex; flex-direction: column; border-radius: 10px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.kid + .kid { border-top: 1px solid var(--line-soft); }
+.kid-h { width: 100%; display: grid; grid-template-columns: minmax(64px, 7.5em) minmax(0, 1fr) 16px; align-items: center; gap: 10px; padding: 8px 12px; font-size: .8125rem; }
+.kid-h b { font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.kid-h span { color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.kid-h svg.i { width: 14px; height: 14px; color: var(--muted); transition: transform .2s var(--ease); }
+.kid[data-open] .kid-h svg.i { transform: rotate(90deg); }
+.kid-b { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 10px; }
+.kid-b .pv { background: var(--raise); }
+.kid-b .writing { background: var(--raise); }
+
+/* What a decision leaves for a few seconds: said back, with undo. */
+.rc { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 9px 14px; border-radius: 12px; background: var(--alf-soft); color: var(--alf); font-size: .8125rem; animation: rc-in 260ms var(--ease); }
+.rc .grow { flex: 1; }
+.rc span { min-width: 0; overflow-wrap: anywhere; }
+.rc button { display: inline-flex; gap: 6px; align-items: center; font-weight: 500; white-space: nowrap; }
+.rc button:hover { text-decoration: underline; }
+.rc kbd { background: color-mix(in oklch, var(--alf) 14%, transparent); color: var(--alf); }
+@keyframes rc-in { from { opacity: 0; transform: translateY(-4px); } }
+.rule { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 10px 14px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); outline: 1px dashed color-mix(in oklch, var(--alf) 50%, transparent); outline-offset: -1px; font-size: .8125rem; color: var(--copy); }
+.rule svg.i { color: var(--alf); }
+.rule .grow { flex: 1; }
+.rule span { min-width: 0; overflow-wrap: anywhere; }
+
+/* Nothing waits. */
+.clear { display: flex; align-items: center; gap: 18px; padding: 26px 4px 8px; }
+.clear svg { flex: none; width: 76px; height: 76px; color: var(--alf); }
+.clear p { font-size: 1.0625rem; font-weight: 600; }
+.clear small { display: block; color: var(--muted); font-size: .8125rem; font-weight: 400; }
+
+/* ── Rows: 在办, 给你的, 晚点再说, 记录 ── */
+.rows { display: flex; flex-direction: column; }
+.row { width: 100%; min-width: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; padding: 8px; border-radius: 10px; font-size: .875rem; }
+button.row:hover { background: var(--wash); }
+.row .lead { display: grid; place-items: center; color: var(--muted); }
+.row .t { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.row .s { grid-column: 2; min-width: 0; color: var(--muted); font-size: .75rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.row .e { grid-row: 1; grid-column: 3; color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row .e .btn { height: 26px; font-size: .75rem; }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--alf); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .3; transform: scale(.8); } }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--alf); }
+.row.read .t { color: var(--copy); }
+.row.unread .t { font-weight: 600; }
+.none { padding: 4px 8px 8px; color: var(--muted); font-size: .8125rem; }
+.fold { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: .8125rem; font-weight: 500; }
+.fold:hover { color: var(--ink); }
+.fold svg.i { width: 14px; height: 14px; transition: transform .2s var(--ease); }
+.fold[aria-expanded="true"] svg.i { transform: rotate(90deg); }
+.log .ev { grid-template-columns: 44px 16px minmax(0, 1fr) auto; font-size: .8125rem; padding: 6px 8px; }
+.log .ev .at { color: var(--muted); font: .75rem var(--mono); }
+.log .ev .who { color: var(--muted); display: grid; place-items: center; }
+.log .ev .who.alf { color: var(--alf); }
+.log .ev .who svg.i { width: 14px; height: 14px; }
+.log .ev .t { white-space: normal; overflow-wrap: anywhere; color: var(--copy); }
+.log .ev .e { grid-column: 4; }
+.log .day { padding: 10px 8px 2px; color: var(--muted); font-size: .6875rem; }
+.fresh { animation: fresh 1.6s var(--ease); }
+@keyframes fresh { from { background: var(--alf-soft); } to { background: transparent; } }
+
+@container page (max-width: 860px) {
+  .col[data-layout="b"] .split { grid-template-columns: minmax(0, 1fr); }
+  .col[data-layout="b"] .rail { position: static; padding-top: 16px; }
+  .sec-h .keys { display: none; }
+}
+@container page (max-width: 520px) {
+  .col { padding: 0 14px; }
+  .it { padding: 12px; }
+  .btn kbd, .rc kbd { display: none !important; }
+  .log .ev { grid-template-columns: 40px 16px minmax(0, 1fr); }
+  .log .ev .e { grid-column: 3; grid-row: auto; white-space: normal; }
+  .clear svg { width: 60px; height: 60px; }
+}
+
+/* ── A card over the blurred page: reading what was handed over; a running task ── */
+.pop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: color-mix(in oklch, var(--bg) 40%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: pop-in 180ms var(--ease); }
+@keyframes pop-in { from { opacity: 0; } }
+.sheet { width: min(600px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; border-radius: 18px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), 0 2px 4px oklch(0 0 0 / .06), 0 24px 70px oklch(0 0 0 / .18); animation: sheet-in 220ms var(--ease); }
+.sheet.small { width: min(440px, 100%); }
+@keyframes sheet-in { from { transform: translateY(8px) scale(.98); } }
+.sheet-h { display: flex; gap: 12px; align-items: flex-start; padding: 20px 20px 4px; }
+.sheet-h div { flex: 1; min-width: 0; }
+.sheet-h h2 { font-size: 1.25rem; font-weight: 650; line-height: 1.35; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.sheet-h small { color: var(--muted); font-size: .8125rem; }
+.sheet-h .x { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: var(--muted); }
+.sheet-h .x:hover { background: var(--wash); color: var(--ink); }
+.reading { padding: 6px 20px 8px; }
+.reading h3 { padding: 16px 0 4px; color: var(--muted); font-size: .75rem; font-weight: 500; }
+.reading p { color: var(--copy); font-size: .9375rem; line-height: 1.7; overflow-wrap: anywhere; }
+.reading li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 5px 0; font-size: .9375rem; min-width: 0; }
+.reading li time { flex: none; min-width: 46px; color: var(--muted); font: .8125rem var(--mono); }
+.reading li span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.reading li.go { padding: 6px 10px; margin: 4px -10px; border-radius: 10px; background: var(--k-fill); color: var(--k-text); }
+.reading li.go button { font-size: .8125rem; font-weight: 600; white-space: nowrap; display: inline-flex; gap: 4px; align-items: center; }
+.reading li.go button svg.i { width: 14px; height: 14px; }
+.sheet-f { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 20px 18px; margin-top: 6px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: .75rem; }
+.sheet-f .grow { flex: 1; }
+.steps { padding: 8px 20px 4px; display: flex; flex-direction: column; }
+.steps li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: center; padding: 6px 0; font-size: .875rem; color: var(--copy); }
+.steps li svg.i { color: var(--ok); }
+.steps li.todo { color: var(--muted); }
+.steps li.todo::before { content: ""; width: 6px; height: 6px; margin: 0 5px; border-radius: 50%; background: var(--line); }
+.steps li.cur { color: var(--ink); }
+.steps li.cur .pulse { margin: 0 4px; }
+
+/* ── The line at the bottom ── */
+.line-wrap { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 16px 16px; pointer-events: none; background: linear-gradient(to top, var(--bg) 62%, transparent); }
+.line-col { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
+.will { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 8px 8px 14px; border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); font-size: .8125rem; min-width: 0; }
+.will b { font-weight: 600; flex: none; }
+.will span { flex: 1; min-width: 0; color: var(--copy); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.will .x { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; color: var(--muted); }
+.will .x:hover { background: var(--wash); color: var(--ink); }
+.hint { flex: none; height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .75rem; font-weight: 400; white-space: nowrap; }
+.hint:hover { color: var(--ink); }
+.hint svg.i { width: 14px; height: 14px; color: var(--alf); }
+.line { display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 8px 0 16px; border-radius: 16px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); }
+.line:focus-within { box-shadow: inset 0 0 0 1.5px var(--alf), var(--shadow); }
+.line > svg.i { color: var(--alf); width: 20px; height: 20px; }
+.line input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; outline: none; }
+.line input::placeholder { color: var(--muted); }
+.line .go { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--alf-solid); color: var(--on-alf); }
+.line .go:disabled { background: var(--wash); color: var(--muted); cursor: default; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pop, .sheet, .rc, .fresh, .writing i, .pulse { animation: none; }
+}
+</style>
+</head>
+<body>
+<div class="proto" id="proto"></div>
+<main class="page">
+  <div class="scroll" id="scroll"><div class="col" id="view"></div></div>
+  <div class="line-wrap"><div class="line-col" id="line"></div></div>
+</main>
+<div id="pop"></div>
+
+<script type="module">
+/* The figure itself lives in packages/ui/src/entity/tesseract.js (linked here as figure.js), shared with the app. */
+import { createFigure } from "./figure.js";
+
+/* ── State ── */
+const params = new URLSearchParams(location.search);
+const SCENES = ["morning", "usual", "clear"];
+const S = {
+  lang: params.get("lang") === "en" ? "en" : "zh",
+  layout: params.get("v") === "a" ? "a" : "b",
+  scene: SCENES.includes(params.get("s")) ? params.get("s") : "morning",
+  items: [], later: [], doing: [], next: [], given: [], log: [], rules: [],
+  cur: null,            // the current thing under 等你
+  last: null,           // what the last decision left: { index, text, rule, snap }
+  snooze: null,         // the card whose 晚点 menu is open
+  kid: null,            // the open row of a group
+  attach: null,         // what the line at the bottom is about: { id, kid }
+  draft: "", said: null,
+  open: null,           // the card over the page: { type: "read" | "run", id }
+  laterOpen: false, logOpen: false, rulesOpen: false,
+  now: "08:10",
+};
+if (params.get("scheme") === "dark") document.documentElement.dataset.scheme = "dark";
+const t = (zh, en) => (S.lang === "en" ? en : zh);
+const pick = (pair) => (Array.isArray(pair) ? pair[S.lang === "en" ? 1 : 0] : pair);
+const esc = (text) => String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* ── Icons (the app's 20 grid) ── */
+const I = {
+  inbox: '<path d="M3.5 11.5l2-6.5h9l2 6.5v3.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/><path d="M3.5 11.5h4a2.5 2.5 0 0 0 5 0h4"/>',
+  alfred: '<path d="M10 2.5l6.5 3.75v7.5L10 17.5l-6.5-3.75v-7.5z"/><path d="M10 10l6.5-3.75M10 10v7.5M10 10L3.5 6.25"/>',
+  you: '<circle cx="10" cy="7" r="3"/><path d="M4 17c.8-3 3.2-4.5 6-4.5s5.2 1.5 6 4.5"/>',
+  task: '<path d="M4 5.5h12M4 10h12M4 14.5h7"/>',
+  mail: '<rect x="2.5" y="4.5" width="15" height="11" rx="2.5"/><path d="M3 6l7 5 7-5"/>',
+  todo: '<circle cx="10" cy="10" r="7"/><path d="M7 10.5l2 2 4-4.5"/>',
+  calendar: '<rect x="3" y="4.5" width="14" height="12.5" rx="2.5"/><path d="M3 8.5h14M7 2.5v3M13 2.5v3"/>',
+  account: '<circle cx="7.5" cy="10" r="3.5"/><path d="M11 10h6.5M15 10v2.5"/>',
+  clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/>',
+  note: '<path d="M5 3h7l3 3v11H5z"/><path d="M8 9h4M8 12h4"/>',
+  x: '<path d="M6 6l8 8M14 6l-8 8"/>',
+  arrow: '<path d="M4 10h12M11 5l5 5-5 5"/>',
+  chev: '<path d="M8 5l5 5-5 5"/>',
+  check: '<path d="M5.5 10.5l3 3 6-7"/>',
+  undo: '<path d="M7 5L3.5 8.5 7 12"/><path d="M3.5 8.5h8a4.5 4.5 0 0 1 0 9H9"/>',
+  rule: '<path d="M11 2.5L5 11h4.5L9 17.5 15 9h-4.5z"/>',
+  off: '<path d="M6.5 6.5l7 7M13.5 6.5l-7 7"/><circle cx="10" cy="10" r="7"/>',
+};
+const icon = (name, cls = "i") => `<svg class="${cls}" viewBox="0 0 20 20" aria-hidden="true">${I[name]}</svg>`;
+const SRC = {
+  task: ["task", ["任务", "Task"]], mail: ["mail", ["邮件", "Mail"]], todo: ["todo", ["待办", "Todos"]],
+  calendar: ["calendar", ["日程", "Calendar"]], account: ["account", ["账号", "Account"]],
+};
+
+/* ── Sample data ── */
+const DRAFTS = () => [
+  { id: "k1", to: ["周老师", "Prof. Zhou"], subject: ["组会改到周四", "Group meeting moved to Thursday"],
+    body: ["周老师好，\n周四下午三点我可以，会议室我来订。", "Dear Prof. Zhou,\nThursday at 3 pm works for me. I'll book the room."],
+    alt: ["周老师您好，\n周四下午三点我可以参加。会议室我来订，订好后把房间号发给您。辛苦您了。", "Dear Prof. Zhou,\nThank you for letting me know. Thursday at 3 pm works well for me. I'll book the room and send you the number."] },
+  { id: "k2", to: ["物业", "Building office"], subject: ["暖气检修上门时间", "Heating check visit"],
+    body: ["你好，\n周六上午我在家，九点到十二点都可以上门。", "Hello,\nI'm home on Saturday morning; any time from 9 to 12 is fine."],
+    alt: ["你好，\n周六上午九点到十二点我在家，方便的话请提前半小时打个电话。谢谢。", "Hello,\nI'm home on Saturday from 9 to 12. Please call half an hour ahead if you can. Thanks."] },
+  { id: "k3", to: ["Mia Chen", "Mia Chen"], subject: ["Interview availability", "Interview availability"],
+    body: ["Hi Mia,\nTuesday 10–12 or Wednesday after 3 pm both work for me. Looking forward to it.", "Hi Mia,\nTuesday 10–12 or Wednesday after 3 pm both work for me. Looking forward to it."],
+    alt: ["Hi Mia,\nThank you for reaching out. Tuesday 10–12 or Wednesday after 3 pm would both work for me. Looking forward to speaking with you.", "Hi Mia,\nThank you for reaching out. Tuesday 10–12 or Wednesday after 3 pm would both work for me. Looking forward to speaking with you."] },
+];
+const BOOKING = { id: "r-book", title: ["订周六去杭州的票", "Book Saturday's train to Hangzhou"], step: ["正在下单 G7505", "Booking G7505"], for: ["刚接着办", "just resumed"],
+  steps: [[["查了周六上午的车次", "Looked up Saturday morning trains"], 1], [["问了你换哪一班", "Asked you which train"], 1], [["下单 G7505 08:35", "Booking G7505 08:35"], 0], [["把行程放进日历", "Put the trip on the calendar"], -1]] };
+const INVOICES = (n) => ({ id: "r-inv", title: ["整理十一月的发票", "Sort November's invoices"], step: [`读第 ${n} 封，共 31 封`, `Reading email ${n} of 31`], for: n > 20 ? ["38 分", "38m"] : ["6 分", "6m"],
+  steps: [[["找出带发票的邮件：31 封", "Found emails with invoices: 31"], 1], [[`读每一封：${n} / 31`, `Reading each: ${n} / 31`], 0], [["按类别列成一张表", "List them by category"], -1], [["表放到「给你的」", "Hand you the list"], -1]] });
+const BRIEF = { id: "g-brief", kind: "brief", title: ["早报 · 11 月 20 日 周五", "Morning brief · Fri, Nov 20"], sub: ["读了日历、待办、12 封邮件", "From calendar, todos, 12 emails"], at: "07:30" };
+const BROADBAND = { id: "g-net", kind: "report", title: ["三家宽带对比", "Broadband: three plans compared"], sub: ["你周三问的", "You asked on Wednesday"], at: ["昨天", "Yesterday"] };
+const HANGZHOU = { id: "g-hz", kind: "trip", title: ["杭州周末：天气和两条路线", "Hangzhou weekend: weather and two routes"], sub: ["你上午问的", "You asked this morning"], at: "15:21" };
+
+function seed() {
+  const scene = S.scene;
+  S.now = { morning: "08:10", usual: "15:40", clear: "21:05" }[scene];
+  S.later = []; S.last = null; S.snooze = null; S.kid = null; S.attach = null; S.draft = ""; S.said = null; S.open = null;
+  S.laterOpen = false; S.logOpen = false; S.rulesOpen = false;
+  S.rules = [{ id: "u1", name: ["促销邮件直接归档", "Archive promo emails straight away"], since: ["11/17 起 · 办过 9 次", "Since 11/17 · used 9 times"] }];
+  S.next = [
+    { title: ["邮件里找待办", "Find todos in mail"], at: scene === "morning" ? "12:00" : t("明天 12:00", "Tomorrow 12:00") },
+    { title: ["早报", "Morning brief"], at: t("明早 7:30", "Tomorrow 7:30") },
+  ];
+  if (scene === "morning") {
+    S.items = [
+      { id: "a1", src: "task", label: ["在等你回答", "Waiting on your answer"], from: ["订周六去杭州的票", "Book Saturday's train to Hangzhou"],
+        title: ["08:02 那班二等座没了，换哪一班？", "The 08:02 has no second-class seats left. Which train instead?"],
+        why: ["我建议 08:35：只晚到半小时，贵 18 元", "I'd take the 08:35: half an hour later, ¥18 more"],
+        urgent: { k: "now", text: ["卡住 12 分", "Stuck 12m"] },
+        yes: { label: ["换 08:35", "Take the 08:35"], done: ["接着订 08:35 的 G7505", "Going on with the 08:35 (G7505)"], resume: BOOKING },
+        alt: { label: ["候补 08:02", "Waitlist the 08:02"], done: ["去候补 08:02", "Waitlisting the 08:02"], resume: { ...BOOKING, step: ["正在候补 G7311", "Waitlisting G7311"] } },
+        no: { label: ["先不订", "Don't book"], done: ["不订了，任务停下", "Not booking; the task stopped"] } },
+      { id: "a2", src: "mail", label: ["回信草稿", "Reply drafts"], kids: DRAFTS(),
+        why: ["三封都在问时间，我按你的日历答了", "All three ask about times; I answered from your calendar"],
+        yes: { label: ["全部发送", "Send all"] }, no: { label: ["都不发", "Send none"] }, edit: true },
+      { id: "a3", src: "todo", label: ["建议的待办", "Suggested todo"],
+        title: ["11/25 前把报销单交到财务", "Hand in the expense form by 11/25"],
+        why: ["财务昨天的邮件里写了截止日", "Finance's email yesterday gave the deadline"],
+        yes: { label: ["加上", "Add it"], done: ["已加到待办：11/25 前交报销单", "Added to todos: expense form by 11/25"] },
+        no: { label: ["不用", "No"], done: ["没加，这封不会再提", "Not added; this email won't come up again"] }, edit: true,
+        rule: { name: ["财务邮件里的截止日直接加成待办", "Add deadlines from Finance emails as todos"], ask: ["这类你加过 4 次 · 以后直接加？", "You've added 4 of these · add them straight away?"] } },
+      { id: "a4", src: "calendar", label: ["两件事撞了", "Two things clash"],
+        title: ["周二 14:00 牙医和小组讨论撞了", "Tue 14:00: the dentist and the group discussion clash"],
+        why: ["小组讨论是你组织的，挪它最省事", "You organise the discussion, so moving it is easiest"],
+        steps: [["把「小组讨论」挪到周二 16:00", "Move “Group discussion” to Tue 16:00"], ["通知小林、阿杰、Mia", "Tell Lin, Jay and Mia"]],
+        urgent: { k: "warm", text: ["周一前要定", "Decide by Mon"] },
+        yes: { label: ["挪到 16:00", "Move to 16:00"], done: ["小组讨论挪到周二 16:00，已通知 3 人", "Group discussion moved to Tue 16:00; 3 people told"] },
+        no: { label: ["不动", "Leave it"], done: ["没动，两件事还撞着", "Left as is; they still clash"] }, edit: true },
+    ];
+    S.doing = [INVOICES(12)];
+    S.given = [{ ...BRIEF, unread: true }, { ...BROADBAND, unread: false }];
+    S.log = [
+      { at: "07:58", who: "you", text: ["你同意了：「回房东」已发出", "You said yes: the reply to your landlord was sent"], where: ["在 iPhone 上", "On iPhone"] },
+      { at: "07:30", who: "alfred", text: ["早报送到", "Morning brief delivered"], where: ["在 iPhone 上说过", "Told on iPhone"] },
+      { at: "07:12", who: "alfred", text: ["直接办了：归档 4 封促销邮件", "Done without asking: archived 4 promo emails"], where: ["按规矩", "By a rule"] },
+      { day: ["昨天", "Yesterday"] },
+      { at: "22:40", who: "alfred", text: ["过期了，没执行：删 3 条旧待办", "Expired, not done: delete 3 old todos"] },
+      { at: "18:05", who: "you", text: ["你没同意：把「健身」挪到周四", "You said no: move Gym to Thursday"], where: ["在 Mac 上", "On the Mac"] },
+    ];
+  } else if (scene === "usual") {
+    S.items = [
+      { id: "b1", src: "mail", label: ["可能没发出去", "May not have been sent"],
+        title: ["Gmail 没确认「回 Mia Chen」发出了没有", "Gmail didn't confirm the reply to Mia Chen went out"],
+        why: ["先去「已发送」看一眼，别直接再发一遍", "Look in Sent first; don't just send it again"],
+        urgent: { k: "now", text: ["要你看一眼", "Needs a look"] },
+        yes: { label: ["看过了，发了", "Checked: it went"], done: ["记下了：已发出", "Noted: it was sent"] },
+        alt: { label: ["没发，再发一次", "Not sent: send again"], done: ["「回 Mia Chen」10 秒后再发", "Reply to Mia Chen goes again in 10s"] } },
+      { id: "b2", src: "account", label: ["登录过期", "Sign-in expired"],
+        title: ["Google 要重新登录", "Google needs you to sign in again"],
+        why: ["日历和邮件停在 14:52", "Calendar and mail stopped at 14:52"],
+        yes: { label: ["重新登录", "Sign in"], done: ["登录好了，正在补上这段时间的", "Signed in; catching up"] } },
+    ];
+    S.doing = [INVOICES(29), { id: "r-wk", title: ["把下周的课和作业排进日历", "Put next week's classes and homework on the calendar"], step: ["排到周三", "Up to Wednesday"], for: ["3 分", "3m"],
+      steps: [[["读了课表和 6 条待办", "Read the timetable and 6 todos"], 1], [["排到周三", "Placed up to Wednesday"], 0], [["有撞的地方就来问你", "Ask you about any clash"], -1]] }];
+    S.given = [{ ...HANGZHOU, unread: true }, { ...BRIEF, unread: false }, { ...BROADBAND, unread: false }];
+    S.log = [
+      { at: "15:21", who: "alfred", text: ["「杭州周末」写好了", "“Hangzhou weekend” is ready"], where: ["在 Mac 上说过", "Told on the Mac"] },
+      { at: "10:02", who: "you", text: ["你同意了：小组讨论挪到周二 16:00", "You said yes: group discussion moved to Tue 16:00"], where: ["在 Mac 上", "On the Mac"] },
+      { at: "08:14", who: "you", text: ["你同意了：3 封回信已发出", "You said yes: 3 replies sent"], where: ["在 Mac 上", "On the Mac"] },
+      { at: "08:11", who: "you", text: ["你答了：换 08:35，票订好了", "You answered: the 08:35; the ticket is booked"], where: ["在 Mac 上", "On the Mac"] },
+      { at: "07:30", who: "alfred", text: ["早报送到", "Morning brief delivered"], where: ["在 iPhone 上说过", "Told on iPhone"] },
+    ];
+  } else {
+    S.items = [];
+    S.doing = [];
+    S.given = [{ ...HANGZHOU, unread: false }, { ...BRIEF, unread: false }, { id: "g-inv", kind: "list", title: ["十一月的发票：31 张", "November's invoices: 31"], sub: ["你上午交代的", "You asked this morning"], at: "16:02", unread: false }];
+    S.log = [
+      { at: "19:40", who: "alfred", text: ["直接办了：把「交报销单」加到待办", "Done without asking: added “expense form” to todos"], where: ["按规矩", "By a rule"] },
+      { at: "16:02", who: "alfred", text: ["「十一月的发票」整理好了", "“November's invoices” is ready"], where: ["在 iPhone 上说过", "Told on iPhone"] },
+      { at: "15:44", who: "you", text: ["Google 重新登录了", "Signed in to Google again"], where: ["在 Mac 上", "On the Mac"] },
+      { at: "15:21", who: "alfred", text: ["「杭州周末」写好了", "“Hangzhou weekend” is ready"], where: ["在 Mac 上说过", "Told on the Mac"] },
+    ];
+    S.rules.push({ id: "u2", name: ["财务邮件里的截止日直接加成待办", "Add deadlines from Finance emails as todos"], since: ["今天起 · 办过 1 次", "Since today · used once"] });
+  }
+  S.cur = S.items[0]?.id ?? null;
+}
+
+/* ── Pieces ── */
+const waiting = () => S.items.reduce((n, it) => n + (it.kids ? it.kids.length : 1), 0);
+const unread = () => S.given.filter((g) => g.unread).length;
+const titleOf = (it) => it.kids ? [`${it.kids.length} 封回信写好了`, it.kids.length === 1 ? "1 reply drafted" : `${it.kids.length} replies drafted`] : it.title;
+const key = (k) => `<kbd>${k}</kbd>`;
+const writing = `<div class="writing" aria-label="${"…"}"><i></i><i></i><i></i></div>`;
+
+function head() {
+  const n = waiting(), d = S.doing.length, u = unread();
+  const parts = [];
+  if (n) parts.push(`<b data-k="warm">${t(`${n} 件等你`, `${n} waiting on you`)}</b>`);
+  if (d) parts.push(t(`${d} 件在办`, `${d} in progress`));
+  if (u) parts.push(t(`${u} 份没读`, `${u} unread`));
+  return `<header class="head"><h1 data-k="warm">${icon("inbox")}${t("通知", "Inbox")}</h1>
+    <span class="sum">${parts.length ? parts.join(" · ") : t("没有事在等你", "Nothing is waiting on you")}</span></header>`;
+}
+
+function card(it) {
+  const cur = it.id === S.cur;
+  const [srcIcon, srcName] = SRC[it.src];
+  const top = `<div class="it-top"><span class="src">${icon(srcIcon)}${pick(srcName)} · ${pick(it.label)}</span>
+    ${it.from ? `<span>${t("来自", "from")}「${esc(pick(it.from))}」</span>` : ""}<span class="grow"></span>
+    ${it.urgent ? `<span class="left" data-k="${it.urgent.k}"><i></i>${pick(it.urgent.text)}</span>` : ""}</div>`;
+  let body = "";
+  if (it.kids) {
+    body = `<ol class="kids">${it.kids.map((k) => {
+      const open = S.kid === k.id;
+      const first = pick(k.body).split("\n").slice(1).join(" ");
+      return `<li class="kid" ${open ? "data-open" : ""}>
+        <button type="button" class="kid-h" data-act="kid" data-id="${it.id}" data-kid="${k.id}" aria-expanded="${open}"><b>${esc(pick(k.to))}</b><span>${esc(pick(k.subject))} — ${esc(first)}</span>${icon("chev")}</button>
+        ${open ? `<div class="kid-b">${k.revising ? writing : `<div class="pv">${esc(pick(k.body))}</div>`}
+          ${k.revised ? `<p class="changed">${t("按你说的改了：", "Changed as you said: ")}${esc(k.revised)}</p>` : ""}
+          <div class="acts"><button type="button" class="btn" data-act="yes" data-id="${it.id}" data-kid="${k.id}" ${k.revising ? "disabled" : ""}>${t("发送", "Send")}</button>
+          <button type="button" class="btn" data-act="edit" data-id="${it.id}" data-kid="${k.id}" ${k.revising ? "disabled" : ""}>${t("改", "Change")}</button>
+          <button type="button" class="btn" data-act="no" data-id="${it.id}" data-kid="${k.id}" ${k.revising ? "disabled" : ""}>${t("不发", "Don't send")}</button></div></div>` : ""}
+      </li>`;
+    }).join("")}</ol>`;
+  } else if (it.revising) body = writing;
+  else if (it.steps) body = `<ul class="pv">${it.steps.map((s) => `<li>${esc(pick(s))}</li>`).join("")}</ul>`;
+  const off = it.revising ? "disabled" : "";
+  const acts = `<div class="acts">
+    <button type="button" class="btn yes" data-act="yes" data-id="${it.id}" ${off}>${pick(it.yes.label)}${key("↵")}</button>
+    ${it.alt ? `<button type="button" class="btn" data-act="alt" data-id="${it.id}" ${off}>${pick(it.alt.label)}</button>` : ""}
+    ${it.edit && !it.kids ? `<button type="button" class="btn" data-act="edit" data-id="${it.id}" ${off} aria-pressed="${S.attach?.id === it.id}">${t("改", "Change")}${key("E")}</button>` : ""}
+    ${it.no ? `<button type="button" class="btn" data-act="no" data-id="${it.id}" ${off}>${pick(it.no.label)}${key("X")}</button>` : ""}
+    <span class="grow"></span>
+    <button type="button" class="btn quiet" data-act="snooze" data-id="${it.id}" aria-expanded="${S.snooze === it.id}">${icon("clock")}${t("晚点", "Later")}${key("S")}</button>
+  </div>`;
+  const menu = S.snooze === it.id ? `<div class="menu" role="menu">${LATER().map(([label, at], n) =>
+    `<button type="button" role="menuitem" data-act="later" data-id="${it.id}" data-n="${n}">${label}<span>${at}</span></button>`).join("")}</div>` : "";
+  return `<li class="it" ${cur ? "data-cur" : ""} data-card="${it.id}" aria-current="${cur}">
+    ${top}<h3>${esc(pick(titleOf(it)))}</h3>
+    <p class="why">${icon("alfred")}<span>${esc(pick(it.why))}</span></p>
+    ${body}${it.revised ? `<p class="changed">${t("按你说的改了：", "Changed as you said: ")}${esc(it.revised)}</p>` : ""}
+    ${acts}${menu}</li>`;
+}
+const LATER = () => S.scene === "morning"
+  ? [[t("今天下午", "This afternoon"), "15:00"], [t("今晚", "Tonight"), "20:00"], [t("明早", "Tomorrow morning"), "8:00"]]
+  : [[t("今晚", "Tonight"), "20:00"], [t("明早", "Tomorrow morning"), "8:00"], [t("下周一", "Next Monday"), "8:00"]];
+
+function receipt() {
+  const { text, rule } = S.last;
+  return `<li class="rc" role="status">${icon("check")}<span>${esc(pick(text))}</span><span class="grow"></span>
+      <button type="button" data-act="undo">${t("撤销", "Undo")}${key("Z")}</button></li>
+    ${rule ? `<li class="rule">${icon("alfred")}<span>${esc(pick(rule.ask))}</span><span class="grow"></span>
+      <button type="button" class="btn yes" data-act="rule-yes">${t("好", "Yes")}</button><button type="button" class="btn" data-act="rule-no">${t("不用", "No")}</button></li>` : ""}`;
+}
+
+function clear() {
+  const d = S.doing.length, next = S.next[0];
+  const sub = [d ? t(`在办 ${d} 件`, `${d} in progress`) : "", next ? t(`下一件 ${next.at}`, `Next at ${next.at}`) : ""].filter(Boolean).join(" · ");
+  return `<div class="clear"><svg id="fig" viewBox="0 0 120 120" role="img" aria-label="Alfred"></svg>
+    <p>${t("没有事在等你", "Nothing is waiting on you")}<small>${sub}</small></p></div>`;
+}
+
+function queue() {
+  const n = waiting();
+  const rows = S.items.map(card);
+  if (S.last) rows.splice(Math.min(S.last.index, rows.length), 0, receipt());
+  const keys = `<span class="keys"><span>${key("J")}${key("K")}${t("换一件", "move")}</span><span>${key("↵")}${t("照办", "do it")}</span><span>${key("Z")}${t("撤销", "undo")}</span></span>`;
+  return `<section>
+    ${n ? `<h2 class="sec-h">${t("等你", "Waiting on you")}<span class="n" data-k="warm">${n}</span><span class="grow"></span>${keys}
+      ${S.items.length >= 3 ? `<button type="button" class="hint" data-act="all">${icon("alfred")}${t("都按建议办", "Do all as suggested")}</button>` : ""}</h2>` : `<div style="height:14px"></div>`}
+    ${rows.length ? `<ol class="q">${rows.join("")}</ol>` : ""}
+    ${n ? "" : clear()}
+    ${laterBlock()}</section>`;
+}
+
+function laterBlock() {
+  if (!S.later.length) return "";
+  return `<h2 class="sec-h"><button type="button" class="fold" data-act="fold-later" aria-expanded="${S.laterOpen}">${icon("chev")}${t("晚点再说", "Put off")}<span class="n">${S.later.length}</span></button></h2>
+    ${S.laterOpen ? `<ul class="rows">${S.later.map(({ item, until }, n) => `<li class="row"><span class="lead">${icon("clock")}</span>
+      <span class="t">${esc(pick(titleOf(item)))}</span><span class="s">${pick(until)}${t(" 回到这里", " it comes back")}</span>
+      <span class="e"><button type="button" class="btn" data-act="back" data-n="${n}">${t("现在看", "Now")}</button></span></li>`).join("")}</ul>` : ""}`;
+}
+
+function doing() {
+  const rows = S.doing.map((r) => `<li><button type="button" class="row" data-act="open" data-type="run" data-id="${r.id}">
+      <span class="lead"><i class="pulse"></i></span><span class="t">${esc(pick(r.title))}</span><span class="s">${esc(pick(r.step))}</span><span class="e">${pick(r.for)}</span></button></li>`).join("");
+  const next = S.next.map((n) => `<li class="row"><span class="lead">${icon("clock")}</span><span class="t" style="color:var(--copy)">${esc(pick(n.title))}</span><span class="e">${n.at}</span></li>`).join("");
+  return `<section class="block"><h2 class="sec-h">${t("在办", "In progress")}<span class="n">${S.doing.length || ""}</span></h2>
+    <ul class="rows">${rows || `<li class="none">${t("现在没有在办的", "Nothing running now")}</li>`}${next}</ul></section>`;
+}
+
+function given() {
+  const rows = S.given.map((g) => `<li><button type="button" class="row ${g.unread ? "unread" : "read"}" data-act="open" data-type="read" data-id="${g.id}">
+      <span class="lead">${g.unread ? `<i class="dot" aria-label="${t("没读", "Unread")}"></i>` : icon("note")}</span><span class="t">${esc(pick(g.title))}</span><span class="s">${esc(pick(g.sub))}</span><span class="e">${pick(g.at)}</span></button></li>`).join("");
+  const u = unread();
+  return `<section class="block"><h2 class="sec-h">${t("给你的", "Handed to you")}<span class="n">${u ? t(`${u} 份没读`, `${u} unread`) : ""}</span></h2><ul class="rows">${rows}</ul></section>`;
+}
+
+function logBlock() {
+  const today = S.log.findIndex((e) => e.day);
+  const n = today < 0 ? S.log.length : today;
+  const rows = S.log.map((e) => e.day ? `<li class="day">${pick(e.day)}</li>` : `<li class="row ev ${e.fresh ? "fresh" : ""}"><span class="at">${e.at}</span>
+      <span class="who ${e.who === "alfred" ? "alf" : ""}">${icon(e.who === "alfred" ? "alfred" : "you")}</span><span class="t">${esc(pick(e.text))}</span>${e.where ? `<span class="e">${pick(e.where)}</span>` : ""}</li>`).join("");
+  const rules = S.rules.map((r) => `<li class="row"><span class="lead" style="color:var(--alf)">${icon("rule")}</span><span class="t">${esc(pick(r.name))}</span><span class="s">${pick(r.since)}</span>
+      <span class="e"><button type="button" class="btn" data-act="rule-off" data-id="${r.id}">${t("取消", "Stop")}</button></span></li>`).join("");
+  return `<section class="log"><h2 class="sec-h"><button type="button" class="fold" data-act="fold-log" aria-expanded="${S.logOpen}">${icon("chev")}${t("记录", "Record")}<span class="n">${t(`今天 ${n} 件`, `${n} today`)}</span></button>
+      <span class="grow"></span><button type="button" class="fold" data-act="fold-rules" aria-expanded="${S.rulesOpen}">${icon("chev")}${t("规矩", "Rules")}<span class="n">${S.rules.length}</span></button></h2>
+    ${S.rulesOpen ? `<ul class="rows">${rules || `<li class="none">${t("还没有规矩", "No rules yet")}</li>`}</ul>` : ""}
+    ${S.logOpen ? `<ul class="rows">${rows}</ul>` : ""}</section>`;
+}
+
+/* ── The cards over the page ── */
+const READS = {
+  brief: () => `<h3>${t("今天", "Today")}</h3><ul>
+      <li><time>10:00</time><span>${t("组会，改成线上了", "Group meeting, now online")}</span></li>
+      <li><time>14:00</time><span>${t("算法课，到 15:30", "Algorithms class, until 15:30")}</span></li>
+      <li><time>19:00</time><span>${t("和小周吃饭", "Dinner with Zhou")}</span></li></ul>
+    <h3>${t("等你定的", "For you to decide")}</h3><ul>
+      ${S.items.some((i) => i.id === "a1") ? `<li class="go" data-k="warm"><span>${t("去杭州的票卡住了：08:02 没座", "The Hangzhou ticket is stuck: no seats on the 08:02")}</span><button type="button" data-act="goto" data-id="a1">${t("去定", "Decide")}${icon("arrow")}</button></li>` : ""}
+      ${S.items.some((i) => i.id === "a2") ? `<li class="go" data-k="warm"><span>${t("回信的草稿写好了", "Reply drafts are ready")}</span><button type="button" data-act="goto" data-id="a2">${t("去看", "Look")}${icon("arrow")}</button></li>` : ""}
+      ${S.items.some((i) => i.id === "a4") ? `<li class="go" data-k="warm"><span>${t("周二 14:00 两件事撞了", "Two things clash on Tue 14:00")}</span><button type="button" data-act="goto" data-id="a4">${t("去定", "Decide")}${icon("arrow")}</button></li>` : ""}
+      ${S.items.some((i) => ["a1", "a2", "a4"].includes(i.id)) ? "" : `<li><span style="color:var(--muted)">${t("都定了", "All decided")}</span></li>`}</ul>
+    <h3>${t("留意", "Keep in mind")}</h3>
+    <p>${t("报销单 11/25 截止。周六上午物业上门检修暖气，和去杭州是同一天，票订好后可能要改约。", "The expense form is due 11/25. The heating check is Saturday morning, the same day as Hangzhou; once the ticket is booked it may need moving.")}</p>`,
+  report: () => `<h3>${t("结论", "In short")}</h3><p>${t("按你现在的用量，第二家最合适：300M，每月 89 元，合约一年，装机免费。", "For how you use it, the second plan fits best: 300M, ¥89 a month, a one-year contract, free installation.")}</p>
+    <h3>${t("三家", "The three")}</h3><ul>
+      <li><time>¥69</time><span>${t("100M，两年合约，装机 100 元", "100M, two-year contract, ¥100 installation")}</span></li>
+      <li><time>¥89</time><span>${t("300M，一年合约，装机免费", "300M, one-year contract, free installation")}</span></li>
+      <li><time>¥129</time><span>${t("1000M，一年合约，送路由器", "1000M, one-year contract, router included")}</span></li></ul>`,
+  trip: () => `<h3>${t("天气", "Weather")}</h3><p>${t("周六多云 9–16°C，周日小雨。带一件外套和伞。", "Saturday cloudy, 9–16°C; light rain on Sunday. Bring a jacket and an umbrella.")}</p>
+    <h3>${t("两条路线", "Two routes")}</h3><ul>
+      <li><time>A</time><span>${t("西湖北线：断桥、孤山、苏堤，走路 3 小时", "North of West Lake: Broken Bridge, Gushan, Su Causeway; a 3-hour walk")}</span></li>
+      <li><time>B</time><span>${t("龙井、九溪：周日下雨的话更合适", "Longjing and Nine Creeks: the better one if Sunday is wet")}</span></li></ul>`,
+  list: () => `<h3>${t("按类别", "By category")}</h3><ul>
+      <li><time>12</time><span>${t("吃饭", "Meals")}</span></li><li><time>9</time><span>${t("打车和地铁", "Taxis and metro")}</span></li>
+      <li><time>6</time><span>${t("书和文具", "Books and stationery")}</span></li><li><time>4</time><span>${t("其他", "Other")}</span></li></ul>`,
+};
+function sheet() {
+  if (!S.open) return "";
+  if (S.open.type === "read") {
+    const g = S.given.find((x) => x.id === S.open.id);
+    if (!g) return "";
+    return `<div class="pop" data-act="close"><article class="sheet" role="dialog" aria-modal="true" aria-label="${esc(pick(g.title))}">
+      <header class="sheet-h"><div><h2>${esc(pick(g.title))}</h2><small>${pick(g.at)} · ${esc(pick(g.sub))}</small></div><button type="button" class="x" data-act="close" aria-label="${t("关上", "Close")}">${icon("x")}</button></header>
+      <div class="reading">${READS[g.kind]()}</div>
+      <footer class="sheet-f"><span>${t("打开就算读过，今天留在「给你的」", "Opening it reads it; it stays under “Handed to you” today")}</span></footer></article></div>`;
+  }
+  const r = S.doing.find((x) => x.id === S.open.id);
+  if (!r) return "";
+  return `<div class="pop" data-act="close"><article class="sheet small" role="dialog" aria-modal="true" aria-label="${esc(pick(r.title))}">
+    <header class="sheet-h"><div><h2>${esc(pick(r.title))}</h2><small>${t("在办", "In progress")} · ${pick(r.for)}</small></div><button type="button" class="x" data-act="close" aria-label="${t("关上", "Close")}">${icon("x")}</button></header>
+    <ol class="steps">${r.steps.map(([text, state]) => state > 0 ? `<li>${icon("check")}<span>${esc(pick(text))}</span></li>` : state === 0 ? `<li class="cur"><i class="pulse"></i><span>${esc(pick(text))}</span></li>` : `<li class="todo"><span>${esc(pick(text))}</span></li>`).join("")}</ol>
+    <footer class="sheet-f"><span class="grow"></span><button type="button" class="btn" data-act="stop" data-id="${r.id}">${t("停下", "Stop")}</button></footer></article></div>`;
+}
+
+/* ── The line at the bottom ── */
+function line() {
+  let above = "";
+  if (S.attach) {
+    const it = S.items.find((x) => x.id === S.attach.id), k = it?.kids?.find((x) => x.id === S.attach.kid);
+    const name = k ? t(`回${pick(k.to)}的信`, `Reply to ${pick(k.to)}`) : it ? pick(titleOf(it)) : "";
+    above = `<div class="will"><b>${t("改", "Change")}</b><span>${esc(name)}</span><button type="button" class="x" data-act="detach" aria-label="${t("不改了", "Never mind")}">${icon("x")}</button></div>`;
+  } else if (S.said) above = `<div class="will">${icon("alfred")}<span>${esc(S.said)}</span></div>`;
+  const hold = S.attach ? t("想怎么改？比如：语气再客气一点", "What should change? e.g. make it a little more polite") : t("问 Alfred，或交代一件事", "Ask Alfred, or hand something over");
+  return `${above}<form class="line" id="line-form">${icon("alfred")}<input id="draft" autocomplete="off" value="${esc(S.draft)}" placeholder="${hold}">
+    <button class="go" type="submit" ${S.draft.trim() ? "" : "disabled"} aria-label="${t("发出", "Send")}">${icon("arrow")}</button></form>`;
+}
+
+/* ── Render ── */
+const LAYOUT = { a: ["A 一栏", "A One column"], b: ["B 队列 + 侧栏", "B Queue + rail"] };
+const SCENE = { morning: ["早上", "Morning"], usual: ["平常", "Ordinary"], clear: ["空", "Clear"] };
+let figure = null;
+function render({ reveal = false } = {}) {
+  document.documentElement.lang = S.lang === "en" ? "en" : "zh-CN";
+  document.title = t("Alfred：通知", "Alfred: Inbox");
+  document.getElementById("proto").innerHTML = `<b>Alfred · ${t("通知", "Inbox")}</b><span class="lab">${t("布局", "Layout")}</span>`
+    + Object.keys(LAYOUT).map((v) => `<button type="button" data-layout="${v}" aria-pressed="${S.layout === v}">${pick(LAYOUT[v])}</button>`).join("")
+    + `<span class="lab">${t("场景", "Scene")}</span>`
+    + SCENES.map((s) => `<button type="button" data-scene="${s}" aria-pressed="${S.scene === s}">${pick(SCENE[s])}</button>`).join("")
+    + `<span class="what">${t(`「现在」固定在 11/20 周五 ${S.now} · 样例数据，什么都不会真的发出`, `“now” is fixed at Fri 11/20 ${S.now} · sample data, nothing is really sent`)}</span>`
+    + `<button type="button" data-reset>${t("重来", "Reset")}</button><button type="button" data-lang>${S.lang === "en" ? "中文" : "EN"}</button><button type="button" data-scheme aria-label="${t("深浅", "Light or dark")}">◐</button>`;
+  const view = document.getElementById("view");
+  view.dataset.layout = S.layout;
+  view.innerHTML = S.layout === "b"
+    ? `${head()}<div class="split"><div class="main">${queue()}${logBlock()}</div><aside class="rail">${doing()}${given()}</aside></div>`
+    : `${head()}<div class="split"><div class="main">${queue()}${doing()}${given()}${logBlock()}</div></div>`;
+  const input = document.getElementById("draft"), focused = document.activeElement === input, at = input?.selectionStart;
+  document.getElementById("line").innerHTML = line();
+  if (focused) { const fresh = document.getElementById("draft"); fresh.focus(); fresh.setSelectionRange(at, at); }
+  document.getElementById("pop").innerHTML = sheet();
+  const fig = document.getElementById("fig");
+  if (fig) figure = createFigure(fig, { state: S.doing.length ? "work" : "rest", width: 4.4, dark: document.documentElement.dataset.scheme === "dark" });
+  if (reveal) document.querySelector(".it[data-cur]")?.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+
+/* ── Doing things ── */
+const snapshot = () => structuredClone({ items: S.items, later: S.later, doing: S.doing, log: S.log, rules: S.rules, cur: S.cur });
+let timer = 0;
+function leave(index, text, snap, rule = null) {
+  S.last = { index, text, rule, snap };
+  S.snooze = null;
+  if (S.attach && !S.items.some((it) => it.id === S.attach.id)) S.attach = null;
+  if (!S.items.some((it) => it.id === S.cur)) S.cur = (S.items[index] ?? S.items[index - 1])?.id ?? null;
+  clearTimeout(timer);
+  // The few seconds in which a decision can be taken back. A question from Alfred stays until it is answered.
+  if (!rule) timer = setTimeout(() => { S.last = null; render(); }, 9000);
+}
+const record = (text, who = "you") => S.log.unshift({ at: S.now, who, text, where: who === "you" ? ["在这台 Mac 上", "On this Mac"] : undefined, fresh: true });
+
+function decide(id, how, kidId) {
+  const index = S.items.findIndex((it) => it.id === id), it = S.items[index];
+  if (!it || it.revising) return;
+  const snap = snapshot();
+  let text, rule = null;
+  if (it.kids) {
+    const gone = kidId ? it.kids.filter((k) => k.id === kidId) : it.kids;
+    if (!gone.length || gone.some((k) => k.revising)) return;
+    it.kids = it.kids.filter((k) => !gone.includes(k));
+    const who = gone.length === 1 ? pick(gone[0].to) : null;
+    text = how === "yes"
+      ? (who ? [`回${who}的信 10 秒后发出`, `The reply to ${who} leaves in 10s`] : [`${gone.length} 封回信 10 秒后发出`, `${gone.length} replies leave in 10s`])
+      : (who ? [`回${who}的信没发，草稿丢掉了`, `The reply to ${who} was not sent; the draft is gone`] : [`${gone.length} 封都没发`, `None of the ${gone.length} sent`]);
+    if (!it.kids.length) S.items.splice(index, 1);
+    S.kid = null;
+  } else {
+    const act = it[how];
+    if (!act) return;
+    S.items.splice(index, 1);
+    text = act.done;
+    if (act.resume) S.doing.unshift(structuredClone(act.resume));
+    if (how === "yes") rule = it.rule ?? null;
+  }
+  record([`${how === "no" ? "你没同意" : "你同意了"}：${text[0]}`, `${how === "no" ? "You said no" : "You said yes"}: ${text[1]}`]);
+  leave(index, text, snap, rule);
+}
+function all() {
+  if (!S.items.length || S.items.some((it) => it.revising)) return;
+  const snap = snapshot(), n = waiting();
+  for (const it of S.items) {
+    if (it.yes.resume) S.doing.unshift(structuredClone(it.yes.resume));
+    const text = it.kids ? [`${it.kids.length} 封回信发出`, `${it.kids.length} replies sent`] : it.yes.done;
+    record([`你同意了：${text[0]}`, `You said yes: ${text[1]}`]);
+  }
+  S.items = []; S.kid = null;
+  leave(0, [`${n} 件都按建议办了，要发出去的 10 秒后发`, `All ${n} done as suggested; what is sent leaves in 10s`], snap);
+}
+function undo() {
+  if (!S.last) return;
+  Object.assign(S, S.last.snap);
+  S.last = null;
+  clearTimeout(timer);
+}
+function putOff(id, n) {
+  const index = S.items.findIndex((it) => it.id === id), it = S.items[index];
+  if (!it) return;
+  const snap = snapshot(), [label, at] = LATER()[n];
+  S.items.splice(index, 1);
+  S.later.push({ item: it, until: `${label} ${at}` });
+  leave(index, [`${label} ${at} 再给你`, `Back ${label.toLowerCase()} at ${at}`], snap);
+}
+function revise(words) {
+  const it = S.items.find((x) => x.id === S.attach.id);
+  const target = it?.kids?.find((k) => k.id === S.attach.kid) ?? it;
+  S.attach = null;
+  if (!target) return;
+  target.revising = true;
+  setTimeout(() => {
+    target.revising = false;
+    target.revised = words;
+    if (target.alt && target.body) target.body = target.alt;
+    render();
+  }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1500);
+}
+function move(step) {
+  if (!S.items.length) return;
+  const index = S.items.findIndex((it) => it.id === S.cur);
+  S.cur = S.items[Math.max(0, Math.min(S.items.length - 1, index + step))].id;
+  S.snooze = null;
+  render({ reveal: true });
+}
+function say(text) { S.said = text; setTimeout(() => { if (S.said === text) { S.said = null; render(); } }, 4000); }
+
+document.addEventListener("click", (event) => {
+  const el = event.target.closest("[data-act],[data-layout],[data-scene],[data-lang],[data-scheme],[data-reset],[data-card]");
+  if (!el) { if (S.snooze) { S.snooze = null; render(); } return; }
+  const url = () => history.replaceState(null, "", `?v=${S.layout}&s=${S.scene}${S.lang === "en" ? "&lang=en" : ""}`);
+  if (el.dataset.layout) { S.layout = el.dataset.layout; url(); return render(); }
+  if (el.dataset.scene) { S.scene = el.dataset.scene; seed(); url(); return render(); }
+  if (el.hasAttribute("data-lang")) { S.lang = S.lang === "en" ? "zh" : "en"; url(); return render(); }
+  if (el.hasAttribute("data-scheme")) { const root = document.documentElement; root.dataset.scheme = root.dataset.scheme === "dark" ? "light" : "dark"; return render(); }
+  if (el.hasAttribute("data-reset")) { seed(); return render(); }
+  const { act, id, kid } = el.dataset;
+  if (!act) { // a click on a card makes it the current one
+    if (el.dataset.card !== S.cur || S.snooze) { S.cur = el.dataset.card; S.snooze = null; render(); }
+    return;
+  }
+  if (id && S.items.some((it) => it.id === id)) S.cur = id;
+  switch (act) {
+    case "yes": case "no": case "alt": decide(id, act, kid); break;
+    case "kid": S.kid = S.kid === kid ? null : kid; break;
+    case "edit": S.attach = S.attach?.id === id && S.attach.kid === kid ? null : { id, kid }; render(); document.getElementById("draft").focus(); return;
+    case "detach": S.attach = null; break;
+    case "snooze": S.snooze = S.snooze === id ? null : id; break;
+    case "later": putOff(id, Number(el.dataset.n)); break;
+    case "back": { const [back] = S.later.splice(Number(el.dataset.n), 1); S.items.push(back.item); S.cur = back.item.id; if (!S.later.length) S.laterOpen = false; break; }
+    case "undo": undo(); break;
+    case "all": all(); break;
+    case "rule-yes": {
+      const rule = S.last.rule;
+      S.rules.push({ id: `u${Date.now()}`, name: rule.name, since: ["今天起", "Since today"] });
+      record([`新规矩：${rule.name[0]}`, `New rule: ${rule.name[1]}`], "alfred");
+      S.last = null; S.rulesOpen = true; break;
+    }
+    case "rule-no": S.last = null; break;
+    case "rule-off": S.rules = S.rules.filter((r) => r.id !== id); break;
+    case "fold-later": S.laterOpen = !S.laterOpen; break;
+    case "fold-log": S.logOpen = !S.logOpen; break;
+    case "fold-rules": S.rulesOpen = !S.rulesOpen; break;
+    case "open": {
+      S.open = { type: el.dataset.type, id };
+      const g = S.given.find((x) => x.id === id);
+      if (g) g.unread = false; // opening it reads it
+      break;
+    }
+    case "close": if (event.target !== el && !el.classList.contains("x")) return; S.open = null; break;
+    case "goto": S.open = null; S.cur = id; if (S.items.find((it) => it.id === id)?.kids) S.kid = null; render({ reveal: true }); return;
+    case "stop": {
+      const run = S.doing.find((r) => r.id === id);
+      S.doing = S.doing.filter((r) => r.id !== id); S.open = null;
+      if (run) record([`你停下了：${run.title[0]}`, `You stopped: ${run.title[1]}`]);
+      break;
+    }
+  }
+  render();
+});
+document.addEventListener("input", (event) => {
+  if (event.target.id !== "draft") return;
+  const was = !!S.draft.trim();
+  S.draft = event.target.value;
+  if (was !== !!S.draft.trim()) document.querySelector(".line .go").disabled = !S.draft.trim();
+});
+document.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const words = S.draft.trim();
+  if (!words) return;
+  S.draft = "";
+  if (S.attach) revise(words);
+  else if (/都同意|都按|全部同意|all yes|accept all|do all/i.test(words) && S.items.length) all();
+  else say(t("原型不接模型：这里会开始一件事，它之后出现在「在办」", "No model here: this would start a task, and it would show under “In progress”"));
+  render();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    if (S.open) S.open = null; else if (S.snooze) S.snooze = null; else if (S.attach) S.attach = null; else return;
+    return render();
+  }
+  if (event.target.closest("input, textarea") || event.metaKey || event.ctrlKey || event.altKey || S.open) return;
+  const it = S.items.find((x) => x.id === S.cur);
+  const k = event.key.toLowerCase();
+  if (k === "j" || k === "arrowdown") { event.preventDefault(); return move(1); }
+  if (k === "k" || k === "arrowup") { event.preventDefault(); return move(-1); }
+  if (k === "z") { undo(); return render(); }
+  if (!it) return;
+  if (k === "enter") { if (event.target.closest("button")) return; decide(it.id, "yes"); }
+  else if (k === "x" && it.no) decide(it.id, "no");
+  else if (k === "s") S.snooze = S.snooze === it.id ? null : it.id;
+  else if (k === "e" && it.kids) S.kid = S.kid ? null : it.kids[0].id;
+  else if (k === "e" && it.edit) { event.preventDefault(); S.attach = { id: it.id }; render(); document.getElementById("draft").focus(); return; }
+  else return;
+  render({ reveal: true });
+});
+
+seed();
+render();
+</script>
+</body>
+</html>

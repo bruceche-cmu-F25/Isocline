@@ -17,11 +17,13 @@ import type { NamePreference } from "../InboxEntry.tsx";
 import { Inbox } from "../Inbox.tsx";
 import { Links } from "../Links.tsx";
 import { Settings } from "../Settings.tsx";
+import { Today } from "../Today.tsx";
 import { Todos } from "../Todos.tsx";
 import { t, type Key } from "../i18n/index.ts";
 import type { PageLine } from "./about.ts";
 import { inboxItems, waitingCount } from "./inbox.ts";
 import type { IconName } from "./icons.tsx";
+import { todaySummary } from "./today.ts";
 
 export interface PageProps extends NamePreference {
   snapshot: unknown;
@@ -35,6 +37,11 @@ export interface PageProps extends NamePreference {
   focus: string | null;
   onFocused(): void;
   openConversation(conversationId: string, runId?: string): void;
+  /** To another page, and to one thing on it: an Inbox item (`p:…`), a letter (`<account>|<id>`). */
+  go(page: string, item?: string): void;
+  /** The thing a page was asked to bring up, and how it says it has. Mail's; the Inbox has `focus`. */
+  item: string | null;
+  onItem(): void;
   /** The Code page: its open session and what a conversation needs. */
   dev: Omit<DevProps, "state">;
   /** The bar under the page: where words about a thing picked on this page are written. */
@@ -108,6 +115,13 @@ function todoCounts(snapshot: unknown) {
 }
 
 const PAGES: PageDef[] = [
+  // First, so it is where the app opens: what is next and where to go in (docs/design/today-and-inbox.md).
+  {
+    key: "core.today", get title() { return t("page.today"); }, icon: "today", k: "alfred", group: "work",
+    summary: (_, state) => todaySummary(state),
+    headline: (_, state) => todaySummary(state),
+    render: ({ state, name, go, openConversation }) => <Today state={state} name={name} go={go} onOpenConversation={openConversation} />,
+  },
   {
     key: "core.inbox", get title() { return t("page.inbox"); }, icon: "inbox", k: "warm", group: "work",
     badge: (_, state) => waitingCount(state),
@@ -182,7 +196,7 @@ const PAGES: PageDef[] = [
       return mail.unread ? t("head.mail.unread", { n: mail.unread }) : t("head.mail.clear");
     },
     suggestions: (snapshot) => unreadMail(snapshot).canRead ? ["sug.mail.reply", "sug.mail.today", "sug.mail.important"] : [],
-    render: ({ snapshot, state, line }) => <Mail snapshot={snapshot as MailSnapshot | undefined} state={state} line={line} />,
+    render: ({ snapshot, state, line, item, onItem }) => <Mail snapshot={snapshot as MailSnapshot | undefined} state={state} line={line} focus={item} onFocused={onItem} />,
   },
   {
     key: "link.list", get title() { return t("page.links"); }, icon: "link", k: "violet", group: "modules",

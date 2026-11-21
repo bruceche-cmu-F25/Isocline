@@ -1,0 +1,97 @@
+/* 今天: one column, read from the top. A note, not a dashboard (docs/design/today-and-inbox.md, 3.1).
+   Everything here is laid out by the page's own width (@container page), never the window's. */
+.today { flex: 1; min-height: 0; overflow-y: auto; }
+.today-col { max-width: 720px; margin: 0 auto; padding: 0 28px 72px; }
+.workspace[data-phone] .page:not([data-bare]) .today-col { padding-bottom: calc(var(--dock-clear) + 24px); }
+.today section { min-width: 0; }
+/* On a phone the page's own first line already says what the summary under its name would. */
+.page[data-page="core.today"] .page-sub { display: none; }
+
+/* The first line, and the way in. */
+.today-lede { padding: 26px 0 4px; }
+.today-hello { margin: 0; font-size: 1.375rem; line-height: 1.45; font-weight: 400; letter-spacing: -.01em; color: var(--muted); text-wrap: pretty; overflow-wrap: anywhere; }
+.today-hello b { color: var(--ink); font-weight: 600; }
+.today-then { margin: 6px 0 0; color: var(--copy); font-size: .875rem; overflow-wrap: anywhere; }
+.today-way { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding-top: 14px; }
+.today-where { min-width: 0; color: var(--copy); font-size: .875rem; overflow-wrap: anywhere; }
+.today-problem { margin: 10px 0 0; color: var(--now); font-size: .8125rem; }
+.today-btn { flex: none; height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; color: var(--copy); font-size: .8125rem; white-space: nowrap; text-decoration: none; box-shadow: inset 0 0 0 1px var(--line); transition: background .15s var(--ease), color .15s var(--ease); }
+.today-btn:hover { color: var(--ink); background: var(--wash); }
+.today-btn[data-solid] { height: 34px; padding: 0 16px; background: var(--alf-solid); color: var(--on-alf); font-weight: 500; box-shadow: none; }
+.today-btn[data-solid]:hover { background: var(--alf-solid); color: var(--on-alf); filter: brightness(1.06); }
+
+/* A section's head: its name, a count or a few words, and the page it leads to. */
+.today-h { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: 28px 2px 8px; color: var(--muted); font-size: .8125rem; font-weight: 400; }
+.today-h b { flex: none; color: var(--ink); font-weight: 600; }
+.today-n { flex: none; min-width: 20px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center; border-radius: 999px; background: var(--k-fill); color: var(--k-text); font-size: .75rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.today-note { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.today-more { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 2px; color: var(--alf); font-size: .8125rem; font-weight: 500; white-space: nowrap; }
+.today-more:hover { text-decoration: underline; text-underline-offset: 3px; }
+.today-more svg { width: 14px; height: 14px; transform: rotate(-90deg); }
+.today-under { margin: 4px 0 0 6px; }
+.today-sub { margin: 0; padding: 14px 6px 2px; color: var(--muted); font-size: .75rem; font-weight: 500; }
+.today-none { margin: 0; padding: 4px 6px 8px; color: var(--muted); font-size: .8125rem; list-style: none; }
+
+/* What waits: a card each; the Inbox is where it is decided. */
+.today-wait { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.today-card { width: 100%; min-width: 0; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: baseline; column-gap: 12px; padding: 11px 14px; border-radius: 12px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); text-align: left; }
+.today-card:hover { box-shadow: inset 0 0 0 1px var(--line); }
+.today-card .mark { align-self: center; }
+.today-card .today-t { display: flex; flex-direction: column; gap: 1px; white-space: normal; }
+.today-card .today-t b { font-size: .9375rem; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.today-card .today-t span { color: var(--copy); font-size: .8125rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.today-card time, .today-item time { flex: none; color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* The day on one line of time. */
+.today-allday { margin: 0; padding: 0 6px 6px; display: flex; gap: 10px; color: var(--copy); font-size: .8125rem; overflow-wrap: anywhere; }
+.today-allday span { flex: none; color: var(--muted); }
+.today-tl { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.today-row { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding-right: 6px; border-radius: 10px; }
+.today-row:hover { background: var(--wash); }
+.today-row > .today-btn { margin-top: 8px; height: 26px; padding: 0 10px; font-size: .75rem; }
+.today-line { flex: 1; min-width: 0; display: grid; grid-template-columns: 46px 20px minmax(0, 1fr); align-items: start; column-gap: 12px; padding: 9px 0 9px 6px; text-align: left; }
+.today-at { padding-top: 1px; color: var(--copy); font-size: .8125rem; font-variant-numeric: tabular-nums; text-align: right; }
+.today-at small { display: block; color: var(--muted); font-size: .6875rem; line-height: 1.3; }
+.today-mk { display: grid; place-items: center; height: 24px; }
+.today-mk i:not(.today-ring) { width: 9px; height: 9px; border-radius: 3px; background: var(--k-solid, var(--muted)); }
+.today-ring { display: block; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--k-solid, var(--line)); }
+.today-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.today-title { font-size: .9375rem; line-height: 1.5; overflow-wrap: anywhere; }
+.today-meta { display: flex; flex-wrap: wrap; gap: 3px 10px; color: var(--muted); font-size: .75rem; overflow-wrap: anywhere; }
+.today-due { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--wash); color: var(--copy); font-weight: 500; white-space: nowrap; }
+.today-row[data-past] { opacity: .5; }
+.today-row[data-now] .today-at { color: var(--now); font-weight: 600; }
+.today-row[data-late] .today-due { background: none; color: var(--now); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--now) 45%, transparent); }
+.today-nowline { display: grid; grid-template-columns: 46px minmax(0, 1fr); align-items: center; column-gap: 12px; padding: 2px 6px; }
+.today-nowline .today-at { padding: 0; color: var(--now); font-weight: 600; }
+.today-nowline hr { margin: 0; border: 0; border-top: 1.5px solid var(--now); }
+.today-late { display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 0 6px; color: var(--k-text); font-size: .8125rem; font-weight: 500; }
+.today-late:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Rows: todos without an hour, mail, in progress, just finished. */
+.today-rows { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.today-item { width: 100%; min-width: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto; align-items: center; gap: 1px 10px; padding: 8px 6px; border-radius: 10px; font-size: .9375rem; text-align: left; }
+.today-item:hover { background: var(--wash); }
+.today-ld { display: grid; place-items: center; color: var(--muted); }
+.today-ld svg { width: 16px; height: 16px; }
+.today-t { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.today-item .today-t b { font-weight: 600; margin-right: .75em; }
+.today-item .today-t span { color: var(--copy); }
+.today-item time { grid-column: 4; }
+.today-s { grid-column: 2 / -1; min-width: 0; color: var(--muted); font-size: .75rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.today-tag { grid-column: 3; display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--wash); color: var(--copy); font-size: .75rem; white-space: nowrap; }
+.today-tag svg { width: 12px; height: 12px; }
+.today-item[data-unseen] .today-t { font-weight: 600; }
+.today-item[data-quiet] .today-t { color: var(--copy); }
+.today-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--alf); animation: today-pulse 1.4s ease-in-out infinite; }
+@keyframes today-pulse { 50% { opacity: .3; transform: scale(.8); } }
+@media (prefers-reduced-motion: reduce) { .today-pulse { animation: none; } }
+
+@container page (max-width: 520px) {
+  .today-col { padding-inline: 16px; }
+  .today-lede { padding-top: 14px; }
+  .today-hello { font-size: 1.1875rem; }
+  .today-line { grid-template-columns: 40px 20px minmax(0, 1fr); column-gap: 8px; }
+  .today-nowline { grid-template-columns: 40px minmax(0, 1fr); column-gap: 8px; }
+  .today-card { column-gap: 10px; padding: 10px 12px; }
+}
