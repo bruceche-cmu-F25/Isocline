@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import { listOutbound, recordDomainEvent, withDefaultActor, type World } from "@alfred/core";
 import { defineModule, defineQuery, defineTool, ServiceError, Type, type ModuleServices } from "@alfred/module-kit";
-import { readInbox } from "./google.ts";
+import { readInbox, unescapeHtml } from "./google.ts";
 import { deliverMail, mailOps, mailWriteTools } from "./write.ts";
 import type { MailCategory, MailDetail, MailMessage, MailSent, MailSnapshot, MailSource, SendInput } from "./types.ts";
 
@@ -132,7 +132,9 @@ const gmailLink = (account: string, threadId: string) => `https://mail.google.co
 function toMessage(row: Record<string, unknown>): MailMessage {
   return {
     id: row.id as string, account: row.account as string, threadId: row.thread_id as string,
-    from: row.from_name as string, fromEmail: row.from_email as string, subject: row.subject as string, snippet: row.snippet as string,
+    from: row.from_name as string, fromEmail: row.from_email as string, subject: row.subject as string,
+    // Gmail's snippet comes HTML-escaped ("didn&#39;t") and is kept as it came.
+    snippet: unescapeHtml(row.snippet as string),
     receivedAt: new Date(row.received_at as number).toISOString(), unread: row.unread === 1, important: row.important === 1, starred: row.starred === 1,
     category: row.category as MailCategory, link: gmailLink(row.account as string, row.thread_id as string),
   };

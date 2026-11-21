@@ -387,9 +387,9 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     if (layout.nav === "full" && navMode === "hidden") setLayout({ alfred: "closed" });
     else setLayout({ nav: layout.nav === "full" ? "hidden" : "full" });
   }, [layout.nav, navMode, setLayout]);
-  // Daily or Code: follows the page; Settings belongs to both, so it keeps the one it was opened from.
-  // Each side remembers its last page, so switching back lands where the user was.
-  const pageMode: Mode | null = current?.group === "dev" ? "dev" : current?.group === "system" ? null : current ? "daily" : null;
+  // Daily or Code: follows the page. 今天 is above both and Settings belongs to both, so each keeps the sidebar it was
+  // opened from. Each side remembers its last page, so switching back lands where the user was.
+  const pageMode: Mode | null = current?.group === "dev" ? "dev" : current?.group === "system" || current?.group === "alfred" ? null : current ? "daily" : null;
   const lastMode = useRef<Mode>("daily");
   const lastPage = useRef<Record<Mode, string>>({ daily: "", dev: "" });
   if (pageMode && current) { lastMode.current = pageMode; lastPage.current[pageMode] = current.key; }
@@ -526,7 +526,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     <div className="workspace" data-nav={phone ? undefined : navMode} data-alfred={alfredMode} data-phone={phone || undefined}
       data-sheet={sheet ?? undefined} style={{ "--nav-px": `${size.nav}px`, "--alf-px": `${size.alf}px` } as CSSProperties}>
       {!phone && <Topbar navOpen={navMode === "full"} onNav={toggleNav} mode={mode} onMode={hasDev ? switchMode : undefined} onLanguage={switchLanguage}
-        heading={current && alfredMode !== "wide" ? { title: current.title, icon: current.icon, k: current.k, summary: bare || welcoming ? undefined : current.summary?.(state.modules[moduleOf(current)], state) } : undefined}
+        heading={current && alfredMode !== "wide" ? { title: current.title, icon: current.icon, k: current.k, summary: bare || welcoming ? undefined : current.topline?.(state) ?? current.summary?.(state.modules[moduleOf(current)], state) } : undefined}
         system={pages.filter((page) => page.group === "system")} page={current?.key ?? ""} onPage={goPage} />}
       <div className="sidebar" data-visible={navVisible || undefined}>
         {navVisible && (
@@ -553,7 +553,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
             {!bare && phone && (
               <header className="page-head">
                 <h1><Icon name={current.icon} />{current.title}</h1>
-                {!welcoming && current.summary && <p className="page-sub">{current.summary(state.modules[moduleOf(current)], state)}</p>}
+                {!welcoming && (current.topline || current.summary) && <p className="page-sub">{current.topline?.(state) ?? current.summary?.(state.modules[moduleOf(current)], state)}</p>}
               </header>
             )}
             <div className="page-body">{current.render({

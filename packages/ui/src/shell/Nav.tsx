@@ -131,6 +131,15 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, co
         </div>
       )}
 
+      {/* 今天 is above the workspaces: alone at the top, whichever workspace the sidebar is showing. */}
+      <div className="nav-group nav-above">
+        {pages.filter((item) => item.group === "alfred").map((item) => (
+          <button type="button" key={item.key} className="nav-item" data-k={item.k} data-page={item.key} aria-current={page === item.key ? "page" : undefined} onClick={() => onPage(item.key)}>
+            <Icon name={item.icon} /><span className="label">{item.title}</span>
+          </button>
+        ))}
+      </div>
+
       {groups.map(([label, items]) => items.length > 0 && (
         <div className="nav-group" key={label}>
           <div className="nav-section-head"><p className="nav-label">{label}</p>

@@ -1,0 +1,387 @@
+<!doctype html>
+<!--
+  Alfred: the place above the workspaces (今天, rethought). A prototype: no build step, sample data, nothing is sent
+  anywhere. It answers what was wrong with the first 今天 page (packages/ui/src/Today.tsx): seven sections sorted by
+  where a thing comes from, each with its own heading, its own link and its own kind of row, the empty ones included.
+
+  Here the page is four things, each a closer look than the one before:
+    一句    what is next and how long until it, with its door (the meeting link, the document)
+    一条线  the day in order, every row the same shape: when · what kind · what, and why · the door.
+            What waits on you sits at "now"; what has no hour sits under 今天之内; tomorrow follows on the same line.
+    一行    everything else as counts (mail, in progress, just finished, overdue); a count opens in place.
+  Nothing empty is shown.
+
+  Where it lives: first in the top bar's switch, before 日常 and 开发. It has no sidebar: it is not a workspace, it
+  is the note Alfred writes about all of them.
+
+  The strip switches the place, the time of day, the language and light/dark. Also by URL:
+  ?place=alfred|daily &s=morning|afternoon|evening|quiet &lang=zh|en &scheme=light|dark
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Alfred：最上面的那一页</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+  --ease: cubic-bezier(.23, 1, .32, 1);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
+h1, h2, p, ol, ul { margin: 0; padding: 0; }
+ol, ul { list-style: none; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+
+/* ── The prototype's own strip ── */
+.proto { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; }
+.proto .lab { flex: none; padding: 0 4px 0 10px; opacity: .6; }
+.proto button { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; }
+.proto button:hover { opacity: 1; }
+.proto button[aria-pressed="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+@media (max-width: 700px) { .proto .lab { display: none; } }
+
+/* ── The shell ── */
+.app { flex: 1; min-height: 0; display: grid; grid-template: 52px minmax(0, 1fr) / auto minmax(0, 1fr); }
+.topbar { grid-column: 1 / -1; display: flex; background: var(--paper); border-bottom: 1px solid var(--line-soft); }
+.lead { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-right: 1px solid var(--line-soft); }
+.app[data-place="daily"] .lead { width: 232px; }
+.icon-btn { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); }
+.icon-btn:hover { background: var(--wash); color: var(--ink); }
+.switch { display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--wash); margin-left: auto; }
+.switch button { width: 32px; height: 26px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); }
+.switch button:hover { color: var(--ink); }
+.switch button[aria-pressed="true"] { background: var(--raise); color: var(--ink); box-shadow: 0 1px 2px oklch(0 0 0 / .08); }
+.switch button[data-place="alfred"][aria-pressed="true"] { color: var(--alf); }
+.main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 18px; }
+.title { font-size: .9375rem; font-weight: 650; white-space: nowrap; }
+.sub { min-width: 0; color: var(--muted); font-size: .8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room { flex: 1; }
+.side { width: 232px; padding: 12px 8px; background: var(--paper); border-right: 1px solid var(--line-soft); overflow: auto; }
+.side .k { padding: 6px 10px 4px; color: var(--muted); font-size: .6875rem; }
+.side li { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 8px; font-size: .875rem; }
+.side li[aria-current] { background: var(--wash); font-weight: 600; }
+.side li svg { color: var(--k-solid, var(--muted)); }
+.side li i { margin-left: auto; color: var(--muted); font: normal .75rem var(--sans); }
+.page { grid-column: 1 / -1; min-width: 0; overflow: auto; container: page / inline-size; }
+.side + .page { grid-column: 2; }
+.place-note { max-width: 520px; margin: 18vh auto 0; padding: 0 24px; color: var(--muted); text-align: center; text-wrap: balance; }
+
+/* ── Alfred's page: one column ── */
+.col { max-width: 680px; margin: 0 auto; padding: clamp(28px, 9vh, 88px) 24px 120px; }
+
+/* 一句: the one thing, and its door */
+.hello { color: var(--muted); font-size: .875rem; }
+/* the app's own type (docs/design/style.md): system sans, weight and colour carry the emphasis, no serif */
+.next { margin-top: 4px; color: var(--muted); font: 400 1.375rem/1.45 var(--sans); letter-spacing: -.01em; text-wrap: pretty; overflow-wrap: anywhere; }
+.next b { color: var(--ink); font-weight: 600; }
+.doors { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 16px; }
+.door { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--raise); font-size: .875rem; font-weight: 550; white-space: nowrap; }
+.door:hover { border-color: var(--muted); }
+.door.main-door { border-color: transparent; background: var(--alf-solid); color: var(--on-alf); }
+.door.main-door:hover { filter: brightness(1.08); }
+.door svg { width: 13px; height: 13px; }
+.doors .where { color: var(--muted); font-size: .8125rem; }
+
+/* 一条线: the day. One shape of row: when · kind · what (and why) · the door. */
+.line { margin-top: clamp(28px, 6vh, 48px); }
+.row { display: grid; grid-template-columns: 64px 16px minmax(0, 1fr) auto; align-items: baseline; column-gap: 12px; padding: 8px 10px; margin: 0 -10px; border-radius: 10px; width: calc(100% + 20px); }
+button.row:hover, .row.open { background: var(--paper); }
+.when { min-width: 0; color: var(--muted); font-size: .8125rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.when.guess { text-decoration: underline dashed; text-underline-offset: 4px; text-decoration-color: var(--line); }
+.row[data-wait] .when { color: var(--k-text); font-weight: 600; }
+.kind { align-self: start; margin-top: 4px; color: var(--k-solid, var(--muted)); }
+.kind.tick { width: 16px; height: 16px; border-radius: 50%; border: 1.6px solid var(--k-solid, var(--muted)); }
+.kind.tick:hover { background: var(--k-fill); }
+.what { min-width: 0; overflow-wrap: anywhere; }
+.what b { font-weight: 500; }
+.what span { color: var(--muted); font-size: .875rem; }
+.what b + span::before { content: "  "; white-space: pre; }
+.go { color: var(--muted); font-size: .8125rem; white-space: nowrap; }
+button.row:hover .go, .go.ext { color: var(--alf); }
+.row.past { opacity: .5; }
+.row.done .what b { text-decoration: line-through; color: var(--muted); font-weight: 400; }
+.row.done .kind.tick { background: var(--k-solid); }
+
+/* a mark on the line: now, 今天之内, tomorrow */
+.mark { display: flex; align-items: center; gap: 10px; margin: 14px 0 4px; color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.mark::after { content: ""; flex: 1; height: 1px; background: var(--line-soft); }
+.mark.now { color: var(--now); font-weight: 600; }
+.mark.now::after { background: color-mix(in oklch, var(--now) 45%, transparent); }
+.mark:first-child { margin-top: 0; }
+.fold { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; color: var(--muted); font-size: .8125rem; }
+.fold:hover { color: var(--ink); }
+.fold svg { width: 12px; height: 12px; transition: transform 160ms var(--ease); }
+.fold[aria-expanded="true"] svg { transform: rotate(90deg); }
+
+/* a waiting thing opened in place: Alfred's reason, what it will do, the answer */
+.decide { margin: 0 -10px 6px; padding: 4px 10px 12px 102px; border-radius: 0 0 10px 10px; background: var(--paper); }
+.row.open { border-radius: 10px 10px 0 0; }
+.decide p { color: var(--copy); font-size: .875rem; }
+.decide blockquote { margin: 8px 0 0; padding: 8px 12px; border-left: 2px solid var(--line); color: var(--copy); font-size: .875rem; white-space: pre-line; }
+.decide .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.decide .door { height: 30px; padding: 0 12px; }
+
+/* 一行: the rest, as counts */
+.rest { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; margin-top: clamp(28px, 6vh, 48px); padding-top: 14px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: .8125rem; }
+.count { padding: 3px 8px; margin-left: -8px; border-radius: 8px; }
+.count:hover, .count[aria-expanded="true"] { background: var(--wash); color: var(--ink); }
+.count b { color: var(--ink); font-weight: 600; }
+.count.late b { color: var(--now); }
+.rest .wrote { margin-left: auto; white-space: nowrap; }
+.rest .wrote button { color: var(--alf); }
+.more { margin-top: 8px; }
+
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 8px 14px; border-radius: 10px; background: var(--ink); color: var(--bg); font-size: .8125rem; box-shadow: var(--shadow); z-index: 5; }
+
+@container page (max-width: 560px) {
+  .col { padding: 28px 16px 120px; }
+  .next { font-size: 1.1875rem; }
+  .row { grid-template-columns: 56px 16px minmax(0, 1fr); column-gap: 10px; }
+  .what span { display: block; }
+  .what b + span::before { content: none; }
+  .go { display: none; }
+  .go.ext, .go.act { display: block; grid-column: 3; justify-self: start; }
+  .decide { padding-left: 92px; }
+  .rest .wrote { margin-left: 0; width: 100%; }
+}
+@media (max-width: 700px) {
+  .app[data-place="daily"] .lead { width: auto; }
+  .side, .rail-btn { display: none; }
+  .side + .page { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<nav class="proto" id="proto"></nav>
+<div class="app" id="app"></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const S = {
+  place: params.get("place") === "daily" ? "daily" : "alfred",
+  scene: ["morning", "afternoon", "evening", "quiet"].includes(params.get("s")) ? params.get("s") : "morning",
+  lang: params.get("lang") === "en" ? "en" : "zh",
+  past: false, open: null, count: null, gone: {}, ticked: {}, placed: {},
+};
+if (params.get("scheme") === "dark") document.documentElement.dataset.scheme = "dark";
+
+const L = (pair) => (typeof pair === "string" ? pair : pair?.[S.lang] ?? "");
+const ICON = {
+  alf: '<path d="M10 2.5 16.5 6v8L10 17.5 3.5 14V6z"/><path d="M3.5 6 10 9.5 16.5 6M10 9.5v8"/>',
+  home: '<path d="M3.5 9 10 3.5 16.5 9v7.5h-13z"/><path d="M8 16.5v-4.5h4v4.5"/>',
+  code: '<path d="m7 6-4 4 4 4M13 6l4 4-4 4"/>',
+  rail: '<rect x="3" y="4" width="14" height="12" rx="2.5"/><path d="M8 4v12"/>',
+  gear: '<circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/>',
+  cal: '<rect x="3" y="4.5" width="14" height="12" rx="2.5"/><path d="M3 8.5h14M7 2.8v3M13 2.8v3"/>',
+  mail: '<rect x="2.8" y="4.5" width="14.4" height="11" rx="2.5"/><path d="m3.5 6 6.5 5 6.5-5"/>',
+  book: '<path d="M4 4.5h5a1.5 1.5 0 0 1 1.5 1.5v10A1.5 1.5 0 0 0 9 14.5H4zM16 4.5h-4A1.5 1.5 0 0 0 10.5 6v10a1.5 1.5 0 0 1 1.5-1.5H16z"/>',
+  wait: '<path d="M10 3.2 17 15.8H3z"/><path d="M10 8.2v3.6M10 13.6v.2"/>',
+  run: '<circle cx="10" cy="10" r="6.5"/><path d="M10 6.5V10l2.4 1.6"/>',
+  check: '<path d="m4.5 10.5 3.5 3.5 7.5-8"/>',
+  inbox: '<path d="M3 11.5 5 4.5h10l2 7v4H3z"/><path d="M3 11.5h4l1 2h4l1-2h4"/>',
+  out: '<path d="M8 4.5h7.5V12M15 5 5.5 14.5"/>',
+  chev: '<path d="m7.5 4.5 5.5 5.5-5.5 5.5"/>',
+};
+const icon = (name, cls = "") => `<svg class="i ${cls}" viewBox="0 0 20 20" aria-hidden="true">${ICON[name]}</svg>`;
+
+const T = {
+  zh: {
+    places: { alfred: "Alfred", daily: "日常", dev: "开发" }, strip: { place: "地方", scene: "时候", lang: "语言", scheme: "明暗" },
+    scenes: { morning: "早上", afternoon: "下午", evening: "晚上", quiet: "清闲" },
+    title: "今天", date: "11月20日 周五", now: "现在", wait: "等你", within: "今天之内", tomorrow: "明天 · 周六",
+    past: (n) => `已经过去的 ${n} 件`, wrote: "07:30 写的", refresh: "更新", went: (where) => `去「${where}」`, done: "办了", undo: "撤销", placed: "已放进日历",
+    daily: "这里是「日常」，没有变：通知、日历、待办、邮件各自一页。「今天」不在这一列里了，它在上面那个开关的第一格。",
+  },
+  en: {
+    places: { alfred: "Alfred", daily: "Daily", dev: "Code" }, strip: { place: "Place", scene: "Time", lang: "Language", scheme: "Scheme" },
+    scenes: { morning: "Morning", afternoon: "Afternoon", evening: "Evening", quiet: "Quiet" },
+    title: "Today", date: "Fri, Nov 20", now: "Now", wait: "Waiting", within: "Sometime today", tomorrow: "Tomorrow · Sat",
+    past: (n) => `${n} already over`, wrote: "Written 07:30", refresh: "Update", went: (where) => `Goes to ${where}`, done: "Done", undo: "Undo", placed: "On the calendar",
+    daily: "This is Daily, unchanged: Inbox, Calendar, Todos and Mail, a page each. Today is no longer in this list. It is the first place in the switch above.",
+  },
+};
+const t = () => T[S.lang];
+
+/* ── Sample data. A row: id, when, kind, k (hue), what, why, go (the door's word), ext (leaves the app), to (where it leads). ── */
+const R = {
+  standup: { id: "standup", when: "09:00", kind: "cal", k: "blue", what: { zh: "和导师对齐本周计划", en: "Weekly plan with advisor" }, to: { zh: "日历", en: "Calendar" } },
+  inboxZero: { id: "inboxZero", when: "09:20", kind: "tick", k: "green", what: { zh: "清一遍收件箱", en: "Clear the mailbox" }, to: { zh: "待办", en: "Todos" } },
+  leo: { id: "leo", wait: true, kind: "wait", k: "warm", what: { zh: "回 Leo：周五前签合同？", en: "Reply to Leo: sign by Friday?" }, why: { zh: "你让我写的回信，写好了", en: "the reply you asked for is ready" }, go: { zh: "决定", en: "Decide" },
+    reason: { zh: "Leo 问第二版周五前能不能签。你日历上周四下午空着，我按「周四下午签」写的。", en: "Leo asks whether version two can be signed by Friday. Your Thursday afternoon is free, so I wrote “Thursday afternoon”." },
+    draft: { zh: "Leo，\n第二版我看过了，周四下午可以签。\nBruce", en: "Leo,\nI have read version two. Thursday afternoon works for signing.\nBruce" },
+    acts: [{ zh: "发送", en: "Send" }, { zh: "改一下", en: "Change" }, { zh: "不发", en: "Don't send" }] },
+  ticket: { id: "ticket", wait: true, kind: "wait", k: "warm", what: { zh: "去杭州的票：换哪一班？", en: "Hangzhou ticket: which train?" }, why: { zh: "订票卡了 40 分钟", en: "booking stuck 40 min" }, go: { zh: "决定", en: "Decide" },
+    reason: { zh: "你要的 G7311 没票了。最近的两班是 08:12（早 50 分钟）和 10:05（晚 1 小时）。你周六上午没有安排，我建议 08:12。", en: "G7311 is sold out. The nearest are 08:12 (50 min earlier) and 10:05 (an hour later). Your Saturday morning is free, so I suggest 08:12." },
+    acts: [{ zh: "订 08:12", en: "Book 08:12" }, { zh: "订 10:05", en: "Book 10:05" }, { zh: "先不订", en: "Not now" }] },
+  group: { id: "group", when: "10:00", kind: "cal", k: "blue", what: { zh: "组会", en: "Group meeting" }, why: { zh: "304 会议室", en: "Room 304" }, go: "Meet", ext: true },
+  report: { id: "report", when: "11:30", guess: true, kind: "tick", k: "green", what: { zh: "写周报", en: "Write the weekly report" }, why: { zh: "组会后有 1 小时空档", en: "an hour free after the meeting" }, go: { zh: "放进日历", en: "Put on calendar" }, place: true },
+  contract: { id: "contract", when: "14:30", kind: "cal", k: "orange", what: { zh: "和 Leo 过合同", en: "Contract review with Leo" }, why: { zh: "到 15:30", en: "until 15:30" }, go: { zh: "合同第二版", en: "Version two" }, ext: true },
+  dentistToday: { id: "dentistToday", when: "17:00", kind: "cal", k: "teal", what: { zh: "取体检报告", en: "Pick up the check-up report" }, why: { zh: "仁爱诊所，18:00 关门", en: "Ren'ai Clinic, closes 18:00" }, to: { zh: "日历", en: "Calendar" } },
+  zhou: { id: "zhou", kind: "mail", k: "violet", what: { zh: "周老师：周四能不能开会？", en: "Prof. Zhou: can we meet Thursday?" }, why: { zh: "可能要回，她在等你的时间", en: "may need a reply: she is waiting for a time" }, go: { zh: "看信", en: "Open" }, to: { zh: "邮件里的这封信", en: "this letter in Mail" } },
+  finance: { id: "finance", kind: "mail", k: "violet", what: { zh: "财务处：报销 11/25 截止", en: "Finance: claims due Nov 25" }, why: { zh: "有截止日，还没进待办", en: "has a deadline, not yet a todo" }, go: { zh: "看信", en: "Open" }, to: { zh: "邮件里的这封信", en: "this letter in Mail" } },
+  passport: { id: "passport", kind: "tick", k: "green", what: { zh: "预约续签护照", en: "Book the passport renewal" }, to: { zh: "待办", en: "Todos" } },
+  study: { id: "study", kind: "book", k: "pink", what: { zh: "线性代数 第 3 章", en: "Linear algebra, chapter 3" }, why: { zh: "这周的学习，上次到 3.2", en: "this week's study, left at 3.2" }, go: { zh: "接着读", en: "Continue" }, ext: true },
+  hangzhou: { id: "hangzhou", when: { zh: "全天", en: "All day" }, kind: "cal", k: "teal", what: { zh: "周末去杭州", en: "Weekend in Hangzhou" }, to: { zh: "日历", en: "Calendar" } },
+  dentist: { id: "dentist", when: "16:00", kind: "cal", k: "teal", what: { zh: "牙医", en: "Dentist" }, why: { zh: "仁爱诊所", en: "Ren'ai Clinic" }, to: { zh: "日历", en: "Calendar" } },
+  mailA: { id: "mailA", when: "08:41", kind: "mail", k: "violet", what: { zh: "周老师：周四能不能开会？", en: "Prof. Zhou: can we meet Thursday?" }, go: { zh: "看信", en: "Open" }, to: { zh: "邮件", en: "Mail" } },
+  mailB: { id: "mailB", when: "08:02", kind: "mail", k: "violet", what: { zh: "财务处：报销 11/25 截止", en: "Finance: claims due Nov 25" }, go: { zh: "看信", en: "Open" }, to: { zh: "邮件", en: "Mail" } },
+  mailC: { id: "mailC", when: "07:15", kind: "mail", k: "violet", what: { zh: "Leo：合同第二版", en: "Leo: contract, version two" }, go: { zh: "看信", en: "Open" }, to: { zh: "邮件", en: "Mail" } },
+  running: { id: "running", when: { zh: "12 分钟", en: "12 min" }, kind: "run", k: "blue", what: { zh: "整理上周的会议记录", en: "Tidying last week's meeting notes" }, go: { zh: "看进度", en: "Watch" }, to: { zh: "这条对话", en: "this conversation" } },
+  doneA: { id: "doneA", when: "08:50", kind: "check", k: "green", what: { zh: "alfred-harness：修好了日历同步", en: "alfred-harness: calendar sync fixed" }, why: { zh: "有改动没提交", en: "uncommitted changes" }, go: { zh: "看会话", en: "Open session" }, to: { zh: "这个开发会话", en: "this coding session" } },
+  doneB: { id: "doneB", when: "08:10", kind: "check", k: "green", what: { zh: "三家牙科的对比", en: "Three dental clinics compared" }, go: { zh: "读报告", en: "Read" }, to: { zh: "这份报告", en: "this report" } },
+  doneC: { id: "doneC", when: { zh: "昨天", en: "Thu" }, kind: "check", k: "green", what: { zh: "退订了 14 个邮件列表", en: "Unsubscribed from 14 mailing lists" }, go: { zh: "看清单", en: "See list" }, to: { zh: "这条对话", en: "this conversation" } },
+};
+const pick = (...ids) => ids.map((id) => R[id]);
+const mailCount = { key: "mail", n: 12, label: { zh: (n) => `今天来了 <b>${n}</b> 封信`, en: (n) => `<b>${n}</b> letters today` }, rows: pick("mailA", "mailB", "mailC"), all: { zh: "其余 9 封是通知和订阅 · 去邮件", en: "The other 9 are notices and newsletters · Mail" } };
+const runCount = { key: "run", n: 1, label: { zh: (n) => `<b>${n}</b> 件在办`, en: (n) => `<b>${n}</b> in progress` }, rows: pick("running") };
+const doneCount = { key: "done", n: 3, label: { zh: (n) => `<b>${n}</b> 件刚办完`, en: (n) => `<b>${n}</b> just finished` }, rows: pick("doneA", "doneB", "doneC") };
+const lateCount = { key: "late", n: 6, late: true, label: { zh: (n) => `<b>${n}</b> 件逾期`, en: (n) => `<b>${n}</b> overdue` }, to: { zh: "待办", en: "Todos" } };
+
+const SCENES = {
+  morning: {
+    clock: "09:35", hello: { zh: "早上好，Bruce。", en: "Good morning, Bruce." },
+    next: { zh: "下一件是 <b>10:00 的组会</b>，还有 25 分钟。", en: "Next is <b>the group meeting at 10:00</b>, in 25 minutes." },
+    doors: [{ label: { zh: "进 Meet", en: "Join Meet" }, main: true }, { label: { zh: "议程", en: "Agenda" } }], where: { zh: "304 会议室 · 周老师、Leo", en: "Room 304 · Prof. Zhou, Leo" },
+    past: pick("standup", "inboxZero"), wait: pick("ticket", "leo"), ahead: pick("group", "report", "contract", "dentistToday"), within: pick("zhou", "finance", "passport", "study"), tomorrow: pick("hangzhou"),
+    counts: [mailCount, runCount, doneCount, lateCount],
+  },
+  afternoon: {
+    clock: "15:10", hello: { zh: "下午好，Bruce。", en: "Good afternoon, Bruce." },
+    next: { zh: "<b>和 Leo 过合同</b>正在进行，到 15:30。之后是 17:00 取体检报告。", en: "<b>The contract review with Leo</b> is on until 15:30. After it, the check-up report at 17:00." },
+    doors: [{ label: { zh: "合同第二版", en: "Version two" }, main: true }], where: { zh: "还有 20 分钟", en: "20 minutes left" },
+    past: pick("standup", "inboxZero", "group", "report"), wait: pick("leo"), ahead: pick("dentistToday"), within: pick("zhou", "passport", "study"), tomorrow: pick("hangzhou"),
+    counts: [{ ...mailCount, n: 19 }, doneCount, lateCount],
+  },
+  evening: {
+    clock: "20:24", hello: { zh: "晚上好，Bruce。", en: "Good evening, Bruce." },
+    next: { zh: "今天的 5 件都过去了。<b>明天第一件是 16:00 的牙医。</b>", en: "Today's 5 are over. <b>Tomorrow starts with the dentist at 16:00.</b>" },
+    doors: [], where: null,
+    past: pick("standup", "inboxZero", "group", "contract", "dentistToday"), wait: pick("leo"), ahead: [], within: pick("passport"), tomorrow: pick("hangzhou", "dentist"),
+    counts: [{ ...mailCount, n: 23 }, lateCount],
+  },
+  quiet: {
+    clock: "10:40", hello: { zh: "上午好，Bruce。", en: "Good morning, Bruce." },
+    next: { zh: "<b>今天没有安排</b>，也没有事在等你。", en: "<b>Nothing is scheduled today</b>, and nothing is waiting on you." },
+    doors: [], where: null, past: [], wait: [], ahead: [], within: pick("passport", "study"), tomorrow: pick("hangzhou", "dentist"), counts: [{ ...mailCount, n: 4, rows: pick("mailC"), all: { zh: "其余 3 封是通知 · 去邮件", en: "The other 3 are notices · Mail" } }],
+  },
+};
+
+/* ── Drawing ── */
+function row(item, extra = "") {
+  const done = S.ticked[item.id] || S.gone[item.id], placed = S.placed[item.id];
+  const when = item.wait ? t().wait : L(item.when) || "";
+  const kind = item.kind === "tick" ? `<span class="kind tick" data-tick="${item.id}" role="checkbox" aria-checked="${!!S.ticked[item.id]}"></span>` : icon(item.kind, "kind");
+  const go = S.gone[item.id] ? `${t().done} · <u data-undo="${item.id}">${t().undo}</u>` : item.place && placed ? t().placed : L(item.go) || "";
+  return `<li><button class="row ${extra} ${done ? "done" : ""} ${S.open === item.id ? "open" : ""}" data-row="${item.id}" data-k="${item.k}" ${item.wait ? "data-wait" : ""} ${item.wait ? `aria-expanded="${S.open === item.id}"` : ""}>
+    <span class="when ${item.guess && !placed ? "guess" : ""}">${when}</span>${kind}
+    <span class="what"><b>${L(item.what)}</b>${item.why ? `<span>${L(item.why)}</span>` : ""}</span>
+    <span class="go ${item.ext ? "ext" : ""} ${S.gone[item.id] || (item.place && !placed) ? "act" : ""}">${go}${item.ext ? " ↗" : ""}</span>
+  </button>${S.open === item.id && item.wait && !S.gone[item.id] ? decide(item) : ""}</li>`;
+}
+function decide(item) {
+  return `<div class="decide"><p>${L(item.reason)}</p>${item.draft ? `<blockquote>${L(item.draft)}</blockquote>` : ""}
+    <div class="acts">${item.acts.map((act, index) => `<button class="door ${index === 0 ? "main-door" : ""}" data-act="${item.id}">${L(act)}</button>`).join("")}</div></div>`;
+}
+const mark = (text, cls = "") => `<li class="mark ${cls}">${text}</li>`;
+
+function alfredPage() {
+  const scene = SCENES[S.scene], out = [];
+  if (scene.past.length) {
+    out.push(`<li><button class="fold" data-past aria-expanded="${S.past}">${icon("chev")}${t().past(scene.past.length)}</button></li>`);
+    if (S.past) out.push(...scene.past.map((item) => row(item, "past")));
+  }
+  if (scene.past.length || scene.wait.length || scene.ahead.length) out.push(mark(`${t().now} ${scene.clock}`, "now"));
+  out.push(...scene.wait.map((item) => row(item)), ...scene.ahead.map((item) => row(item)));
+  if (scene.within.length) out.push(mark(t().within), ...scene.within.map((item) => row(item)));
+  if (scene.tomorrow.length) out.push(mark(t().tomorrow), ...scene.tomorrow.map((item) => row(item)));
+  const open = scene.counts.find((count) => count.key === S.count);
+  return `<div class="col">
+    <p class="hello">${L(scene.hello)}</p>
+    <h2 class="next">${L(scene.next)}</h2>
+    ${scene.doors.length || scene.where ? `<div class="doors">${scene.doors.map((door) => `<button class="door ${door.main ? "main-door" : ""}" data-door>${L(door.label)}${icon("out")}</button>`).join("")}${scene.where ? `<span class="where">${L(scene.where)}</span>` : ""}</div>` : ""}
+    <ol class="line">${out.join("")}</ol>
+    <div class="rest">
+      ${scene.counts.map((count) => `<button class="count ${count.late ? "late" : ""}" data-count="${count.key}" ${count.rows ? `aria-expanded="${S.count === count.key}"` : ""}>${count.label[S.lang](count.n)}</button>`).join("")}
+      <span class="wrote">${t().wrote} · <button data-refresh>${t().refresh}</button></span>
+    </div>
+    ${open?.rows ? `<ol class="more">${open.rows.map((item) => row(item)).join("")}${open.all ? `<li><button class="fold" data-all>${L(open.all)}</button></li>` : ""}</ol>` : ""}
+  </div>`;
+}
+
+function render() {
+  document.documentElement.lang = S.lang === "zh" ? "zh-CN" : "en";
+  const strip = (label, key, options) => `<span class="lab">${label}</span>${options.map(([value, text]) => `<button data-set="${key}" data-value="${value}" aria-pressed="${S[key] === value}">${text}</button>`).join("")}`;
+  document.getElementById("proto").innerHTML =
+    strip(t().strip.place, "place", [["alfred", "Alfred"], ["daily", t().places.daily]]) +
+    strip(t().strip.scene, "scene", Object.entries(t().scenes)) +
+    strip(t().strip.lang, "lang", [["zh", "中文"], ["en", "EN"]]) +
+    `<span class="lab">${t().strip.scheme}</span><button data-scheme>◐</button>`;
+  const here = S.place === "alfred";
+  document.getElementById("app").dataset.place = S.place;
+  document.getElementById("app").innerHTML = `
+    <header class="topbar">
+      <div class="lead">
+        ${here ? "" : `<button class="icon-btn rail-btn" aria-label="sidebar">${icon("rail")}</button>`}
+        <div class="switch" role="group">
+          ${[["alfred", "alf"], ["daily", "home"], ["dev", "code"]].map(([place, glyph]) => `<button data-place="${place}" aria-pressed="${S.place === place}" title="${t().places[place]}" aria-label="${t().places[place]}">${icon(glyph)}</button>`).join("")}
+        </div>
+      </div>
+      <div class="main">
+        <h1 class="title">${here ? t().title : S.lang === "zh" ? "通知" : "Inbox"}</h1>
+        <p class="sub">${here ? t().date : S.lang === "zh" ? "2 件等你" : "2 need you"}</p>
+        <span class="room"></span>
+        <button class="icon-btn" aria-label="settings">${icon("gear")}</button>
+      </div>
+    </header>
+    ${here ? "" : `<aside class="side"><p class="k">${S.lang === "zh" ? "日常" : "Daily"}</p><ul>
+      <li aria-current="page" data-k="warm">${icon("inbox")}${S.lang === "zh" ? "通知" : "Inbox"}<i>2</i></li>
+      <li data-k="blue">${icon("cal")}${S.lang === "zh" ? "日历" : "Calendar"}</li>
+      <li data-k="green">${icon("check")}${S.lang === "zh" ? "待办" : "Todos"}<i>11</i></li>
+      <li data-k="violet">${icon("mail")}${S.lang === "zh" ? "邮件" : "Mail"}<i>2</i></li></ul></aside>`}
+    <main class="page">${here ? alfredPage() : `<p class="place-note">${t().daily}</p>`}</main>`;
+}
+
+let toastTimer;
+function toast(text) {
+  const el = document.getElementById("toast");
+  el.textContent = text; el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 1800);
+}
+
+document.addEventListener("click", (event) => {
+  const el = event.target.closest?.("[data-set],[data-scheme],[data-place],[data-undo],[data-tick],[data-act],[data-past],[data-count],[data-refresh],[data-door],[data-all],[data-row]");
+  if (!el) return;
+  if (el.dataset.set) { S[el.dataset.set] = el.dataset.value; if (el.dataset.set === "scene") Object.assign(S, { past: false, open: null, count: null }); return render(); }
+  if (el.hasAttribute("data-scheme")) { const root = document.documentElement; root.dataset.scheme = root.dataset.scheme === "dark" ? "light" : "dark"; return; }
+  if (el.dataset.place && el.closest(".switch")) { S.place = el.dataset.place === "alfred" ? "alfred" : "daily"; return render(); }
+  if (el.dataset.undo) { delete S.gone[el.dataset.undo]; return render(); }
+  if (el.dataset.tick) { S.ticked[el.dataset.tick] = !S.ticked[el.dataset.tick]; return render(); }
+  if (el.dataset.act) { S.gone[el.dataset.act] = true; S.open = null; return render(); }
+  if (el.hasAttribute("data-past")) { S.past = !S.past; return render(); }
+  if (el.dataset.count) {
+    const count = SCENES[S.scene].counts.find((one) => one.key === el.dataset.count);
+    if (!count.rows) return toast(t().went(L(count.to)));
+    S.count = S.count === count.key ? null : count.key; return render();
+  }
+  if (el.hasAttribute("data-refresh")) return toast(S.lang === "zh" ? "重新写一遍判断（原型里不做）" : "Writes the judgement again (not in the prototype)");
+  if (el.hasAttribute("data-door")) return toast(S.lang === "zh" ? "在浏览器里打开" : "Opens in the browser");
+  if (el.hasAttribute("data-all")) return toast(t().went(S.lang === "zh" ? "邮件" : "Mail"));
+  const item = R[el.dataset.row];
+  if (item.wait) { if (S.gone[item.id]) return; S.open = S.open === item.id ? null : item.id; return render(); }
+  if (item.place && !S.placed[item.id]) { S.placed[item.id] = true; return render(); }
+  toast(item.ext ? (S.lang === "zh" ? "在浏览器里打开" : "Opens in the browser") : t().went(L(item.to)));
+});
+
+render();
+</script>
+</body>
+</html>

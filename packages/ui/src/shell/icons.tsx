@@ -1,8 +1,21 @@
+import { markSegments } from "../entity/tesseract.js";
+
+/** Alfred's own mark as an icon: the resting tesseract, from the figure's geometry (so the two cannot drift apart),
+ * fitted to the 20 × 20 grid. All 32 edges: without the eight that join its two cubes it is only a cube in a cube. */
+const MARK = (() => {
+  const edges = markSegments(), points = edges.flatMap(([from, to]) => [from, to]);
+  const xs = points.map(([x]) => x), ys = points.map(([, y]) => y);
+  const left = Math.min(...xs), top = Math.min(...ys), wide = Math.max(...xs) - left, tall = Math.max(...ys) - top;
+  const scale = 17 / Math.max(wide, tall), dx = (20 - wide * scale) / 2, dy = (20 - tall * scale) / 2;
+  const at = ([x, y]: [number, number]) => `${((x - left) * scale + dx).toFixed(2)} ${((y - top) * scale + dy).toFixed(2)}`;
+  return edges.map(([from, to]) => `M${at(from)}L${at(to)}`).join("");
+})();
+
 /** Line icons on a 20 × 20 grid, drawn with the page's stroke style (styles.css: svg). */
 const PATHS = {
   todo: "M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM7 10.2l2 2 4-4.4",
   inbox: "M3.5 11.5 5.5 5h9l2 6.5V15.5h-13zM3.5 11.5H8l1 2h2l1-2h4.5",
-  today: "M10 2.5l6.5 3.75v7.5L10 17.5l-6.5-3.75v-7.5zM10 10l6.5-3.75M10 10v7.5M10 10 3.5 6.25",
+  alfred: MARK,
   chat: "M4 5.5h12v8H9l-3.5 3v-3H4z",
   sendMail: "m3 9 13.5-5.5-4.8 13-2.9-5.4L3 9zm5.8 2.1 7.7-7.6",
   trash: "M4.5 6h11M8 6V4.2h4V6M6 6l.7 10h6.6L14 6M8.7 8.5v5M11.3 8.5v5",
@@ -47,7 +60,7 @@ export type IconName = keyof typeof PATHS;
 
 export function Icon({ name, label }: { name: IconName; label?: string }) {
   return (
-    <svg viewBox="0 0 20 20" aria-hidden={label ? undefined : true} aria-label={label} role={label ? "img" : undefined}>
+    <svg viewBox="0 0 20 20" data-icon={name} aria-hidden={label ? undefined : true} aria-label={label} role={label ? "img" : undefined}>
       <path d={PATHS[name]} />
     </svg>
   );

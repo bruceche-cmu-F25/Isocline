@@ -63,6 +63,13 @@ function fakeGmail(state: { inbox: string[]; unread: string[]; messages: Record<
   };
 }
 
+test("a snippet is read out as text: Gmail sends it HTML-escaped", async () => {
+  const w = world();
+  const escaped = { ...message("m1"), snippet: "If you didn&#39;t ask, tell us &amp; we&#39;ll look. &amp;lt; stays" };
+  await syncMail(w, { google: fakeGmail({ inbox: ["m1"], unread: [], messages: { m1: escaped } }) });
+  assert.equal((mailModule.snapshot!(w) as MailSnapshot).messages[0].snippet, "If you didn't ask, tell us & we'll look. &lt; stays");
+});
+
 test("a sync mirrors the inbox: new mail read once in full, read and archived mail followed, changes recorded", async () => {
   const w = world();
   const messages = { m1: message("m1", { at: 3 }), m2: message("m2", { labels: ["CATEGORY_PROMOTIONS"], at: 2 }), m3: message("m3", { at: 1 }), m4: message("m4", { at: 4 }) };

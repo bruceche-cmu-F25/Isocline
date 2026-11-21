@@ -19,11 +19,11 @@ import { Links } from "../Links.tsx";
 import { Settings } from "../Settings.tsx";
 import { Today } from "../Today.tsx";
 import { Todos } from "../Todos.tsx";
-import { t, type Key } from "../i18n/index.ts";
+import { intlLocale, t, type Key } from "../i18n/index.ts";
 import type { PageLine } from "./about.ts";
 import { inboxItems, waitingCount } from "./inbox.ts";
 import type { IconName } from "./icons.tsx";
-import { todaySummary } from "./today.ts";
+import { todayModel, todaySummary } from "./today.ts";
 
 export interface PageProps extends NamePreference {
   snapshot: unknown;
@@ -55,14 +55,18 @@ export interface PageDef {
   icon: IconName;
   /** Category colour slot (tokens.css `data-k`). */
   k: string;
-  /** Sidebar group: the daily workspace, the other modules, coding, or the app itself (settings). */
-  group: "work" | "modules" | "dev" | "system";
+  /** Where it lives: above the workspaces (今天: Alfred's note about all of them, alone at the top of the sidebar,
+   * whichever workspace is in it), the daily workspace, the other modules, coding, or the app itself (settings). */
+  group: "alfred" | "work" | "modules" | "dev" | "system";
   /** The page draws its own top (no title and summary above it), and Alfred's panel steps aside for it. */
   bare?: boolean;
   /** A number for the sidebar, or nothing. */
   badge?(snapshot: unknown, state: StateResponse): number | undefined;
   /** One plain line under the page title: the facts. It also tells Alfred what you were looking at when you ask. */
   summary?(snapshot: unknown, state: StateResponse): string;
+  /** What the quiet line beside the page's name says when it is not the summary: 今天 shows the date, since its
+   * facts are the page itself. */
+  topline?(state: StateResponse): string;
   /** Alfred's line about the page, shown under its name while nothing is going on. A few words: how many things,
    * not a sentence about them. */
   headline?(snapshot: unknown, state: StateResponse): string;
@@ -117,8 +121,12 @@ function todoCounts(snapshot: unknown) {
 const PAGES: PageDef[] = [
   // First, so it is where the app opens: what is next and where to go in (docs/design/today-and-inbox.md).
   {
-    key: "core.today", get title() { return t("page.today"); }, icon: "today", k: "alfred", group: "work",
+    key: "core.today", get title() { return t("page.today"); }, icon: "alfred", k: "alfred", group: "alfred",
     summary: (_, state) => todaySummary(state),
+    topline: (state) => {
+      const [y, m, d] = todayModel(state).date.split("-").map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString(intlLocale(), { month: "long", day: "numeric", weekday: "short" });
+    },
     headline: (_, state) => todaySummary(state),
     render: ({ state, name, go, openConversation }) => <Today state={state} name={name} go={go} onOpenConversation={openConversation} />,
   },

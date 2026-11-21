@@ -49,13 +49,17 @@ export function parseAddress(value: string): { name: string; email: string } {
 
 const decode = (data: string) => Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
 
+/** The few character references Gmail writes into text: in a body's HTML, and in every snippet. */
+export const unescapeHtml = (text: string): string =>
+  text.replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+
 export function stripHtml(html: string): string {
-  return html
+  const text = html
     .replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<br\s*\/?>|<\/(p|div|li|tr|h[1-6])>/gi, "\n")
     .replace(/<a\b[^>]*href\s*=\s*["'](https?:[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, href: string, label: string) => `${label} (${href})`)
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;/g, "'")
+    .replace(/<[^>]+>/g, " ");
+  return unescapeHtml(text)
     .replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
 }
 

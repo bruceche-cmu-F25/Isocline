@@ -22,6 +22,8 @@ button:disabled { cursor: default; opacity: .5; }
 p, h2, h3, ul, ol { margin: 0; padding: 0; }
 ul, ol { list-style: none; }
 svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+/* Alfred's mark has 32 edges where another icon has a handful: drawn finer, wherever it is, so its inner cube stays open. */
+svg[data-icon="alfred"]:not(.figure) { stroke-width: 1.15; }
 /* Other companies' marks (brand/Logo.tsx): filled drawings, not line icons. One-colour marks take the text colour. */
 .logo { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; }
 .logo svg { width: 100%; height: 100%; fill: currentColor; stroke: none; }

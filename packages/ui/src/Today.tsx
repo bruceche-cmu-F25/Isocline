@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { StateResponse } from "@alfred/protocol";
-import { Icon } from "./shell/icons.tsx";
-import { kindColour } from "./shell/inbox.ts";
-import { when } from "./shell/Nav.tsx";
-import { todayModel, untilText, type TodayEvent, type TodayModel, type TodayRow } from "./shell/today.ts";
+import { api } from "./api.ts";
+import { Icon, type IconName } from "./shell/icons.tsx";
+import { when as ago } from "./shell/Nav.tsx";
+import { todayLine, todayModel, untilText, type LineRow, type TodayEvent, type TodayModel } from "./shell/today.ts";
 import { intlLocale, t } from "./i18n/index.ts";
 import "./today.css";
 
@@ -15,7 +15,7 @@ export interface TodayProps {
   onOpenConversation(conversationId: string, runId?: string): void;
 }
 
-/** The time, so that "in 1h 50m" and the line of now move by themselves. */
+/** The time, so that "in 1h 50m" and the mark of now move by themselves. */
 function useNow(everyMs = 30_000): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -29,42 +29,53 @@ function useNow(everyMs = 30_000): number {
 
 /** A link out of Alfred drawn as a button: an event's call, or the event in its calendar. */
 function Out({ href, children, solid }: { href: string; children: ReactNode; solid?: boolean }) {
-  return <a className="today-btn" data-solid={solid || undefined} href={href} target="_blank" rel="noreferrer noopener" onClick={(event) => event.stopPropagation()}>{children}</a>;
+  return <a className="today-btn" data-solid={solid || undefined} href={href} target="_blank" rel="noreferrer noopener">{children}</a>;
 }
 
-function Head({ title, note, to, onTo, count }: { title: string; note?: string; to?: string; onTo?: () => void; count?: number }) {
-  return (
-    <h2 className="today-h">
-      <b>{title}</b>
-      {count ? <span className="today-n" data-k="warm">{count}</span> : null}
-      {note && <span className="today-note">{note}</span>}
-      {to && onTo && <button type="button" className="today-more" onClick={onTo}>{to}<Icon name="down" /></button>}
-    </h2>
-  );
+/** An event's place is often a web address (a problem list, a form, a room's page): then it is a way in, named by
+ * its site, not a line of text to copy. */
+function placeLink(location?: string): { href: string; site: string } | null {
+  const text = location?.trim() ?? "";
+  if (!/^https?:\/\/\S+$/i.test(text)) return null;
+  try { return { href: text, site: new URL(text).hostname.replace(/^www\./, "") }; } catch { return null; }
 }
 
-/** The first line: a greeting and what is next, with the way in under it. */
+/** 一句: a greeting, then the one thing that is next, with the way in under it. */
 function Lede({ model, name, now, go }: { model: TodayModel; name: string | null; now: number; go: TodayProps["go"] }) {
   const hello = t(`today.hi.${model.part}`) + (name ? t("today.hi.name", { name }) : "") + t("today.stop");
   const lead: TodayEvent | undefined = model.current ?? model.next;
+  const place = placeLink(lead?.event.location);
   let said: ReactNode;
   if (model.current) {
-    said = <><b>{t("today.now", { title: model.current.event.title })}</b><span>{t("today.now.until", { until: model.current.until })}</span></>;
+    said = <>
+      <b>{t("today.now", { title: model.current.event.title })}</b><span>{t("today.now.until", { until: model.current.until })}</span>
+      {model.next && <span> {t("today.then", { at: model.next.at, title: model.next.event.title })}{t("today.stop")}</span>}
+    </>;
   } else if (model.next) {
     said = <><b>{t("today.next", { at: model.next.at, title: model.next.event.title })}</b><span>{t("today.next.in", { left: untilText(model.next.startMs - now) })}</span></>;
   } else if (model.calendar === "none") {
     said = <><b>{t("today.noCalendar")}</b><span>{t("today.noCalendar.hint")}</span></>;
+  } else if (model.turned) {
+    // Evening, and today is over: the sentence is about tomorrow.
+    said = <>
+      <b>{model.tomorrow ? t("today.tomorrow.first", { at: model.tomorrow.at, title: model.tomorrow.event.title }) : t("today.tomorrow.none")}</b>
+      <span>{t("today.stop")}{model.passed > 0 && ` ${t("today.passed", { n: model.passed })}`}</span>
+    </>;
+  } else if (model.tomorrow) {
+    said = <><span>{t("today.free")}{t("today.stop")}</span> <b>{t("today.tomorrow.first", { at: model.tomorrow.at, title: model.tomorrow.event.title })}</b><span>{t("today.stop")}</span></>;
   } else {
-    said = <><b>{t("today.free")}</b><span>{model.tomorrow ? t("today.free.tomorrow", { at: model.tomorrow.at, title: model.tomorrow.event.title }) : t("today.stop")}</span></>;
+    said = <><b>{t("today.free")}</b><span>{t("today.stop")}</span></>;
   }
   return (
     <section className="today-lede">
-      <p className="today-hello">{hello} {said}</p>
-      {model.current && model.next && <p className="today-then">{t("today.then", { at: model.next.at, title: model.next.event.title })}</p>}
+      <p className="today-hi">{hello}</p>
+      <h2 className="today-next">{said}</h2>
       {lead ? (
         <div className="today-way">
-          {lead.event.meeting ? <Out href={lead.event.meeting} solid>{t("today.join")}</Out> : lead.event.link ? <Out href={lead.event.link}>{t("today.openEvent")}</Out> : null}
-          {lead.event.location && <span className="today-where">{lead.event.location}</span>}
+          {lead.event.meeting ? <Out href={lead.event.meeting} solid>{t("today.join")}</Out>
+            : place ? <Out href={place.href} solid>{place.site}</Out>
+            : lead.event.link ? <Out href={lead.event.link}>{t("today.openEvent")}</Out> : null}
+          {lead.event.location && !place && <span className="today-where">{lead.event.location}</span>}
         </div>
       ) : model.calendar === "none" ? (
         <div className="today-way"><button type="button" className="today-btn" onClick={() => go("calendar.week")}>{t("page.calendar")}</button></div>
@@ -74,155 +85,159 @@ function Lede({ model, name, now, go }: { model: TodayModel; name: string | null
   );
 }
 
-function DayRow({ row, go }: { row: TodayRow; go: TodayProps["go"] }) {
-  if (row.kind === "event") {
-    const { event } = row;
-    return (
-      <li className="today-row" data-past={row.past || undefined} data-now={row.now || undefined}>
-        <button type="button" className="today-line" onClick={() => go("calendar.week")}>
-          <span className="today-at">{row.at}<small>{row.until}</small></span>
-          <span className="today-mk"><i data-k={event.k} /></span>
-          <span className="today-body"><span className="today-title">{event.title}</span>{event.location && <span className="today-meta">{event.location}</span>}</span>
-        </button>
-        {event.meeting && !row.past && <Out href={event.meeting}>{t("today.join")}</Out>}
-      </li>
-    );
-  }
+interface RowProps {
+  when?: string;
+  /** How the hour reads: something waits on the user, the hour has gone by, or it is going on now. */
+  tone?: "wait" | "late" | "now";
+  /** What kind of thing, said by the icon of the page it lives on, in that thing's colour. */
+  icon?: IconName;
+  k?: string | null;
+  /** A todo: its ring ticks it off. */
+  onTick?: () => void;
+  ticked?: boolean;
+  /** Still going. */
+  pulse?: boolean;
+  what: string;
+  why?: string;
+  /** A way in that leaves Alfred: a call, a site. */
+  out?: { href: string; label: string };
+  past?: boolean;
+  /** A line that only says there is more. */
+  quiet?: boolean;
+  onOpen(): void;
+}
+
+/** The one shape of row on this page: when · what kind · what it is, and a word of why · the way in. The whole row
+ * opens the thing (the button's ::before covers it); the ring and the link out sit above that. */
+function Row({ when, tone, icon, k, onTick, ticked, pulse, what, why, out, past, quiet, onOpen }: RowProps) {
   return (
-    <li className="today-row" data-late={row.past || undefined}>
-      <button type="button" className="today-line" onClick={() => go("todo.list")}>
-        <span className="today-at">{row.at}</span>
-        <span className="today-mk"><i className="today-ring" data-k={row.k ?? undefined} /></span>
-        <span className="today-body"><span className="today-title">{row.todo.title}</span><span className="today-meta"><span className="today-due">{t("today.due", { at: row.at })}</span></span></span>
-      </button>
+    <li className="today-row" data-k={k ?? undefined} data-tone={tone} data-past={past || undefined} data-quiet={quiet || undefined} data-done={ticked || undefined}>
+      <span className="today-when">{when}</span>
+      {onTick
+        ? <button type="button" className="today-kind today-tick" role="checkbox" aria-checked={!!ticked} aria-label={t("today.tick", { title: what })} disabled={ticked} onClick={onTick} />
+        : <span className="today-kind">{pulse ? <i className="today-pulse" /> : icon ? <Icon name={icon} /> : null}</span>}
+      <button type="button" className="today-what" onClick={onOpen}><span className="today-text"><b>{what}</b>{why && <span>{why}</span>}</span></button>
+      {out && <a className="today-go" href={out.href} target="_blank" rel="noreferrer noopener">{out.label}<span aria-hidden="true"> ↗</span></a>}
     </li>
   );
 }
 
-/** The day on one line of time, with a line where now is. */
-function Day({ model, now, go }: { model: TodayModel; now: number; go: TodayProps["go"] }) {
-  const date = new Date(now);
-  const minute = date.getHours() * 60 + date.getMinutes();
-  const clock = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-  const firstAhead = model.rows.findIndex((row) => row.minute > minute && !(row.kind === "event" && row.now));
-  const nowLine = <li className="today-nowline" key="now" aria-hidden="true"><span className="today-at">{clock}</span><hr /></li>;
-  const empty = !model.rows.length && !model.loose.length && !model.allDay.length && !model.late;
-  const [y, m, d] = model.date.split("-").map(Number);
-  const dateText = new Date(y, m - 1, d).toLocaleDateString(intlLocale(), { month: "long", day: "numeric", weekday: "short" });
-  return (
-    <section>
-      <Head title={t("today.day")} note={dateText} to={t("page.calendar")} onTo={() => go("calendar.week")} />
-      {model.allDay.length > 0 && <p className="today-allday"><span>{t("cal.allDay")}</span>{model.allDay.map((event) => event.title).join(" · ")}</p>}
-      {model.rows.length > 0 && (
-        <ol className="today-tl">
-          {model.rows.flatMap((row, index) => [
-            ...(index === firstAhead ? [nowLine] : []),
-            <DayRow key={row.kind === "event" ? `e:${row.event.account}:${row.event.id}` : `t:${row.todo.id}`} row={row} go={go} />,
-          ])}
-          {firstAhead < 0 && nowLine}
-        </ol>
-      )}
-      {model.loose.length > 0 && (
-        <>
-          <h3 className="today-sub">{t("today.loose")}</h3>
-          <ul className="today-rows">
-            {model.loose.map(({ todo, k }) => (
-              <li key={todo.id}><button type="button" className="today-item" onClick={() => go("todo.list")}>
-                <span className="today-ld"><i className="today-ring" data-k={k ?? undefined} /></span><span className="today-t">{todo.title}</span>
-              </button></li>
-            ))}
-          </ul>
-        </>
-      )}
-      {model.late > 0 && <button type="button" className="today-late" data-k="now" onClick={() => go("todo.list")}><i className="mark" />{t("today.late", { n: model.late })}</button>}
-      {empty && <p className="today-none">{t("today.nothing")}</p>}
-    </section>
-  );
+function Rows({ rows, go, ticked, onTick }: { rows: LineRow[]; go: TodayProps["go"]; ticked: ReadonlySet<string>; onTick(id: string): void }) {
+  return <>{rows.map((row) => {
+    if (row.kind === "wait") {
+      return <Row key={row.key} when={t("today.wait")} tone="wait" icon="inbox" k="warm" what={row.item.title} why={row.item.summary} onOpen={() => go("core.inbox", row.item.id)} />;
+    }
+    if (row.kind === "event") {
+      const { event } = row;
+      const place = placeLink(event.location);
+      const out = event.meeting && !row.past ? { href: event.meeting, label: t("today.join") } : place ? { href: place.href, label: place.site } : undefined;
+      const why = [row.now && row.until ? t("today.until", { until: row.until }) : "", place ? "" : event.location ?? ""].filter(Boolean).join(" · ");
+      return <Row key={row.key} when={row.at ?? t("cal.allDay")} tone={row.now ? "now" : undefined} icon="cal" k={event.k} what={event.title} why={why} out={out} past={row.past} onOpen={() => go("calendar.week")} />;
+    }
+    if (row.kind === "todo") {
+      return <Row key={row.key} when={row.at} tone={row.late ? "late" : undefined} k={row.k} what={row.todo.title} why={row.late ? t("today.overdue") : undefined}
+        ticked={ticked.has(row.todo.id)} onTick={() => onTick(row.todo.id)} onOpen={() => go("todo.list")} />;
+    }
+    const { message } = row;
+    return <Row key={row.key} icon="mail" k="teal" what={message.from} why={message.subject} onOpen={() => go("mail.inbox", `${message.account}|${message.id}`)} />;
+  })}</>;
 }
 
-/** 今天: what is next and where to go in, written from the home node's state. One column, read top to bottom. */
+/** A count in words, its number in ink. */
+const Counted = ({ text }: { text: string }) => <>{text.split(/(\d+)/).map((part, index) => (index % 2 ? <b key={index}>{part}</b> : part))}</>;
+
+type Rest = "mail" | "doing" | "done";
+
+/** 今天: the note Alfred writes about everything (docs/design/today-and-inbox.md, 3.1b). One sentence on what is
+ * next; the day on one line, every row the same shape; the rest as counts that open in place. Nothing empty is shown. */
 export function Today({ state, name, go, onOpenConversation }: TodayProps) {
   const now = useNow();
   const model = useMemo(() => todayModel(state, now), [state, now]);
-  const { waiting, mail, doing, done } = model;
-  const moreWaiting = waiting.count - waiting.top.length;
+  const line = useMemo(() => todayLine(model), [model]);
+  const [pastOpen, setPastOpen] = useState(false);
+  const [rest, setRest] = useState<Rest | null>(null);
+  // A todo ticked here is struck through at once; the home node's next state takes it off the line.
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+  const tick = (id: string) => {
+    setTicked((current) => new Set(current).add(id));
+    api.op("todo.complete", { id }).catch(() => setTicked((current) => { const next = new Set(current); next.delete(id); return next; }));
+  };
+  const rows = (list: LineRow[]) => <Rows rows={list} go={go} ticked={ticked} onTick={tick} />;
+
+  const date = new Date(now);
+  const clock = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const [y, m, d] = model.ahead.date.split("-").map(Number);
+  const tomorrowDay = new Date(y, m - 1, d).toLocaleDateString(intlLocale(), { weekday: "short" });
+  const atNow = line.past.length + line.wait.length + line.ahead.length > 0;
+  const hasLine = atNow || line.within.length > 0 || line.tomorrow.length > 0;
+
+  const { mail, doing, done } = model;
+  const mailShown = mail.state === "ok" && mail.today > 0;
+  const mailLeft = mail.unread - mail.machine - mail.rows.length;
+  const mailOpens = mail.rows.length > 0 || mail.machine > 0;
+  const hasRest = mailShown || mail.state === "error" || doing.length > 0 || done.length > 0 || model.late > 0;
+  const count = (key: Rest, text: string) => (
+    <button type="button" className="today-count" aria-expanded={rest === key} onClick={() => setRest(rest === key ? null : key)}><Counted text={text} /></button>
+  );
+
   return (
     <div className="today">
       <div className="today-col">
         <Lede model={model} name={name} now={now} go={go} />
 
-        {waiting.count > 0 && (
-          <section>
-            <Head title={t("today.waiting")} count={waiting.count} to={moreWaiting > 0 ? t("today.more", { n: moreWaiting }) : t("page.inbox")} onTo={() => go("core.inbox")} />
-            <ul className="today-wait">
-              {waiting.top.map((item) => (
-                <li key={item.id}><button type="button" className="today-card" onClick={() => go("core.inbox", item.id)}>
-                  <i className="mark" data-k={kindColour(item.kind)} />
-                  <span className="today-t"><b>{item.title}</b>{item.summary && <span>{item.summary}</span>}</span>
-                  <time dateTime={item.at}>{when(item.at)}</time>
-                </button></li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        <Day model={model} now={now} go={go} />
-
-        {mail.state !== "none" && mail.state !== "sendOnly" && (
-          <section>
-            <Head title={t("page.mail")} to={t("page.mail")} onTo={() => go("mail.inbox")}
-              note={mail.state === "error" ? t("today.mail.error") : !mail.today ? t("today.mail.none") : mail.unread ? t("today.mail.sum", { n: mail.today, unread: mail.unread }) : t("today.mail.read", { n: mail.today })} />
-            {mail.rows.length > 0 && (
-              <ul className="today-rows">
-                {mail.rows.map((message) => (
-                  <li key={`${message.account}|${message.id}`}><button type="button" className="today-item" onClick={() => go("mail.inbox", `${message.account}|${message.id}`)}>
-                    <span className="today-ld"><Icon name="mail" /></span>
-                    <span className="today-t"><b>{message.from}</b><span>{message.subject}</span></span>
-                    <time dateTime={message.receivedAt}>{when(message.receivedAt)}</time>
-                    {message.snippet && <span className="today-s">{message.snippet}</span>}
-                  </button></li>
-                ))}
-              </ul>
+        {hasLine && (
+          <ol className="today-line">
+            {line.past.length > 0 && (
+              <li><button type="button" className="today-fold" aria-expanded={pastOpen} onClick={() => setPastOpen(!pastOpen)}><Icon name="down" />{t("today.over", { n: line.past.length })}</button></li>
             )}
-            {mail.unread > mail.rows.length && <button type="button" className="today-more today-under" onClick={() => go("mail.inbox")}>{t("today.mail.more", { n: mail.unread - mail.rows.length })}<Icon name="down" /></button>}
-          </section>
+            {pastOpen && rows(line.past)}
+            {atNow && <li className="today-mark" data-now>{t("today.mark.now", { at: clock })}</li>}
+            {rows(line.wait)}
+            {line.moreWaiting > 0 && <Row quiet what={t("today.wait.more", { n: line.moreWaiting })} onOpen={() => go("core.inbox")} />}
+            {rows(line.ahead)}
+            {line.within.length > 0 && <li className="today-mark">{t("today.mark.within")}</li>}
+            {rows(line.within)}
+            {line.tomorrow.length > 0 && <li className="today-mark">{t("today.tomorrow")} · {tomorrowDay}</li>}
+            {rows(line.tomorrow)}
+            {line.moreTomorrow > 0 && <Row quiet what={t("today.tomorrow.more", { n: line.moreTomorrow })} onOpen={() => go("calendar.week")} />}
+          </ol>
         )}
 
-        <section>
-          <Head title={t("today.doing")} />
-          <ul className="today-rows">
+        {hasRest && (
+          <div className="today-rest">
+            {mailShown && (mailOpens
+              ? count("mail", mail.unread ? t("today.c.mailUnread", { n: mail.today, unread: mail.unread }) : t("today.c.mail", { n: mail.today }))
+              : <button type="button" className="today-count" onClick={() => go("mail.inbox")}><Counted text={t("today.c.mail", { n: mail.today })} /></button>)}
+            {mail.state === "error" && <button type="button" className="today-count" data-k="now" onClick={() => go("mail.inbox")}><b>{t("today.mail.error")}</b></button>}
+            {doing.length > 0 && count("doing", t("today.c.doing", { n: doing.length }))}
+            {done.length > 0 && count("done", t("today.c.done", { n: done.length }))}
+            {model.late > 0 && <button type="button" className="today-count" data-k="now" onClick={() => go("todo.list")}><Counted text={t("today.late", { n: model.late })} /></button>}
+          </div>
+        )}
+        {rest === "mail" && mailShown && (
+          <ol className="today-more">
+            {mail.rows.map((message) => (
+              <Row key={`${message.account}|${message.id}`} when={ago(message.receivedAt)} icon="mail" k="teal" what={message.from} why={message.subject} onOpen={() => go("mail.inbox", `${message.account}|${message.id}`)} />
+            ))}
+            {mailLeft > 0 && <Row quiet what={t("today.mail.more", { n: mailLeft })} onOpen={() => go("mail.inbox")} />}
+            {mail.machine > 0 && <Row quiet what={t("today.mail.machine", { n: mail.machine })} onOpen={() => go("mail.inbox")} />}
+          </ol>
+        )}
+        {rest === "doing" && doing.length > 0 && (
+          <ol className="today-more">
             {doing.map(({ run, title, sub, session }) => (
-              <li key={run.id}><button type="button" className="today-item" onClick={() => onOpenConversation(run.conversationId, run.id)}>
-                <span className="today-ld"><i className="today-pulse" /></span>
-                <span className="today-t">{title}</span>
-                {session && <span className="today-tag"><Icon name="code" />{t("today.session")}</span>}
-                {sub && <span className="today-s">{sub}</span>}
-              </button></li>
+              <Row key={run.id} pulse what={title} why={[session ? t("today.session") : "", sub].filter(Boolean).join(" · ")} onOpen={() => onOpenConversation(run.conversationId, run.id)} />
             ))}
-            {!doing.length && <li className="today-none">{t("today.doing.none")}</li>}
-            {model.upcoming && (
-              <li><button type="button" className="today-item" data-quiet onClick={() => go("core.automations")}>
-                <span className="today-ld"><Icon name="clock" /></span><span className="today-t">{model.upcoming.name}</span><time>{model.upcoming.when}</time>
-              </button></li>
-            )}
-          </ul>
-        </section>
-
-        <section>
-          <Head title={t("today.done")} note={done.length ? t("today.done.unseen", { n: done.length }) : undefined} />
-          <ul className="today-rows">
+          </ol>
+        )}
+        {rest === "done" && done.length > 0 && (
+          <ol className="today-more">
             {done.map((item) => (
-              <li key={item.key}><button type="button" className="today-item" data-unseen onClick={() => (item.inbox ? go("core.inbox", item.inbox) : onOpenConversation(item.conversationId!))}>
-                <span className="today-ld"><i className="mark" data-k="alfred" /></span>
-                <span className="today-t">{item.title}</span>
-                {item.session && <span className="today-tag"><Icon name="code" />{t("today.session")}</span>}
-                <time dateTime={item.at}>{when(item.at)}</time>
-                {item.sub && <span className="today-s">{item.sub}</span>}
-              </button></li>
+              <Row key={item.key} when={ago(item.at)} icon="check" k="green" what={item.title} why={[item.session ? t("today.session") : "", item.sub].filter(Boolean).join(" · ")}
+                onOpen={() => (item.inbox ? go("core.inbox", item.inbox) : onOpenConversation(item.conversationId!))} />
             ))}
-            {!done.length && <li className="today-none">{t("today.done.none")}</li>}
-          </ul>
-        </section>
+          </ol>
+        )}
       </div>
     </div>
   );
