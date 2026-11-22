@@ -6,9 +6,10 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { addProject, CORE_MIGRATIONS, deviceForToken, listDevices, listEvents, openWorld, pairDevice, revokeDevice, startSession, submitRun, trustProject, type EnginePort } from "@alfred/core";
+import { addProject, CORE_MIGRATIONS, deviceForToken, fileStore, listDevices, listEvents, openWorld, pairDevice, revokeDevice, startSession, submitRun, trustProject, type EnginePort } from "@alfred/core";
+import { createCredentialStore, ModelAccounts } from "@alfred/engine-pi";
 import { todoModule } from "@alfred/module-todo";
-import type { ArchivedConversation, OutletsResponse, PairingCode, RemoteResponse, StateResponse, SubmitRunResponse } from "@alfred/protocol";
+import type { ArchivedConversation, ModelUsageResponse, OutletsResponse, PairingCode, RemoteResponse, StateResponse, SubmitRunResponse } from "@alfred/protocol";
 import { createHttpServer, createIngressServer, openHome, PushService, RemoteAccess, Tailscale, type Home, type Runner } from "../src/index.ts";
 
 const DNS = "mini.tail1234.ts.net";
@@ -54,7 +55,7 @@ async function listen(server: Server): Promise<number> {
   return (server.address() as AddressInfo).port;
 }
 
-async function setUp(served?: Record<string, string>) {
+async function setUp(served?: Record<string, string>, models?: ModelAccounts) {
   const dataDir = mkdtempSync(join(tmpdir(), "alfred-"));
   const home: Home = openHome({ dataDir, engine, modules: [todoModule] });
   const tailscale = fakeTailscale(served);
@@ -65,13 +66,13 @@ async function setUp(served?: Record<string, string>) {
     dataDir, world: home.world, send: async (subscription, payload) => { pushed.push(`${subscription.endpoint} ${payload}`); },
     secrets: { kind: "file", get: async (name) => secrets.get(name), set: async (name, value) => { secrets.set(name, value); }, delete: async (name) => { secrets.delete(name); } },
   });
-  const options = { port: 0, uiDir: "/nonexistent", remote: undefined as unknown as RemoteAccess, push };
+  const options = { port: 0, uiDir: "/nonexistent", remote: undefined as unknown as RemoteAccess, push, models };
   const ingressServer = createIngressServer(home, options);
   const ingress = await listen(ingressServer);
   const remote = new RemoteAccess({ dataDir, world: home.world, tailscale: new Tailscale(tailscale.run), ingressPort: ingress });
   options.remote = remote;
   remote.events.on("revoked", (id) => push.unsubscribe(id));
-  const localServer = createHttpServer(home, { port: 0, uiDir: "/nonexistent", remote, push });
+  const localServer = createHttpServer(home, { port: 0, uiDir: "/nonexistent", remote, push, models });
   const local = await listen(localServer);
   await remote.restore();
   const close = () => {
@@ -195,6 +196,41 @@ test("a device pairs with a one-time code, then reaches everything but credentia
     assert.equal(await stream, "ended");
     assert.equal((await ask(ingress, "/api/state", { headers: as })).status, 401);
   } finally { close(); }
+});
+
+test("a paired phone reads and refreshes subscription usage while model accounts stay on the home node", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alfred-phone-usage-"));
+  const store = createCredentialStore({ secrets: fileStore(join(dataDir, "secrets.json")), lockDir: dataDir });
+  await store.modify("anthropic", async () => ({ type: "oauth", access: "test-access", refresh: "test-refresh", expires: Date.now() + 3_600_000 }));
+  let utilization = 20;
+  const models = new ModelAccounts({ dataDir, piAgentDir: join(dataDir, "pi"), store,
+    fetch: async () => Response.json({ five_hour: { utilization } }),
+  });
+  const { home, local, ingress, close } = await setUp(undefined, models);
+  try {
+    const usage = "/api/connections/models/usage";
+    assert.equal((await ask(ingress, usage, { headers: viaServe() })).status, 401);
+    const token = "p".repeat(43);
+    pairDevice(home.world, { name: "Phone", kind: "phone", token });
+    const headers = viaServe({ Cookie: `alfred_device=${token}` });
+    const first = await ask(ingress, usage, { headers });
+    assert.equal(first.status, 200);
+    const [item] = (first.body as unknown as ModelUsageResponse).usage;
+    assert.equal(item.provider, "anthropic");
+    assert.deepEqual(item.windows, [{ id: "five_hour", minutes: 300, used: 20 }]);
+    assert.doesNotMatch(JSON.stringify(first.body), /test-access|test-refresh/);
+    utilization = 35;
+    assert.deepEqual((await ask(ingress, usage, { headers })).body, first.body);
+    const fresh = await ask(ingress, usage + "?fresh=1", { headers });
+    assert.equal(fresh.status, 200);
+    assert.equal((fresh.body as unknown as ModelUsageResponse).usage[0].windows[0].used, 35);
+    assert.deepEqual((await ask(local, usage)).body, fresh.body);
+    for (const [path, method] of [[usage, "POST"], ["/api/connections/models", "GET"], ["/api/connections/models/anthropic/logout", "POST"]]) {
+      const reply = await ask(ingress, path, { headers, method });
+      assert.equal(reply.status, 403, path);
+      assert.equal(reply.body.code, "local_only", path);
+    }
+  } finally { close(); models.close(); }
 });
 
 test("an outlet's report is filed under the device it came from, and is not an event; an outlet in use says the user is here", async () => {

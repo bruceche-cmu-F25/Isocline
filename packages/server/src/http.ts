@@ -30,7 +30,7 @@ import { PROTOCOL_VERSION } from "@alfred/protocol";
 import type { Home } from "./home.ts";
 import { DEVELOPER_PROFILE } from "./profiles.ts";
 import { command, profileFor, sessionWrites } from "./commands.ts";
-import { handleConnections } from "./connections-http.ts";
+import { handleConnections, MODEL_USAGE_PATH } from "./connections-http.ts";
 import { handleSkills } from "./skills-http.ts";
 import { reviewCommit } from "./commit-review.ts";
 import { branchState, pullRequest, workspaceChanges, workspaceDiff } from "./workspace.ts";
@@ -650,7 +650,8 @@ function dispatch(home: Home, options: ServeOptions, peer: Peer, req: IncomingMe
     if (await remoteRoute(home, options, peer, req, res, path)) return;
     if (!peer.local) {
       if (!peer.device) throw new HttpError(401, "This device is not paired with Alfred yet", "unpaired");
-      if (path.startsWith("/api/connections")) throw new HttpError(403, LOCAL_ONLY, "local_only");
+      const readingUsage = path === MODEL_USAGE_PATH && req.method === "GET";
+      if (path.startsWith("/api/connections") && !readingUsage) throw new HttpError(403, LOCAL_ONLY, "local_only");
       // Skills are files on the home node's machine, and adding one reads its other folders.
       if (path === "/api/skills" || path.startsWith("/api/skills/")) throw new HttpError(403, LOCAL_ONLY, "local_only");
       // A folder path means something only on the home node's machine, and trusting one lets Alfred read it.

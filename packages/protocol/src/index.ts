@@ -573,7 +573,7 @@ export interface NewAutomationRequest { requestId: string; name: string; goal: s
 export interface UpdateAutomationRequest { requestId: string; patch: { name?: string; goal?: string; schedule?: Schedule; enabled?: boolean } }
 
 /** Models: who Alfred can think with, and signing in to them (docs/design/settings-and-connections.md §3.2).
- * Sign-in runs on the home node through Pi; a device shows each step and answers its questions.
+ * Sign-in runs on the home node through Pi. Paired devices can read subscription usage.
  * No secret ever appears in a response.
  *
  *   GET  /api/connections/models                     ModelAccountsResponse
@@ -654,7 +654,7 @@ export interface ModelSignIn {
 }
 
 /** Connectors: the MCP servers Alfred's runs can use (docs/design/settings-and-connections.md §3.3). Only on the home
- * node's machine, like every `/api/connections` route. No secret ever appears in a response.
+ * node's machine. No secret ever appears in a response.
  *
  *   GET  /api/connections/mcp                        McpConnectorsResponse (a server not looked at lately is `checking`: ask again)
  *   POST /api/connections/mcp                        NewMcpConnector -> McpConnector (from the catalog, or the user's own)

@@ -1,5 +1,5 @@
 /** `/api/connections/*`: connected accounts and model sign-in (see @alfred/protocol). The host and
- * origin checks of http.ts have already run, and only this machine reaches these routes. Nothing here
+ * origin checks of http.ts have already run. Paired devices can read subscription usage. Nothing here
  * returns a secret. Errors are thrown; the listener says a GoogleError, ModelSignInError or McpConnectorError as its
  * status (wire.ts).
  */
@@ -13,6 +13,7 @@ const ACCOUNT = /^\/api\/connections\/google\/([^/]{3,200})\/(disable|disconnect
 const FLOW = /^\/api\/connections\/flows\/([A-Za-z0-9_-]{1,32})(\/cancel)?$/;
 const MODEL_PROVIDER = /^\/api\/connections\/models\/([a-z0-9][a-z0-9._-]{0,63})\/(login|logout)$/;
 const MODEL_FLOW = /^\/api\/connections\/models\/flows\/([A-Za-z0-9_-]{1,32})(?:\/(answer|cancel))?$/;
+export const MODEL_USAGE_PATH = "/api/connections/models/usage";
 
 const MCP_FLOW = /^\/api\/connections\/mcp\/flows\/([A-Za-z0-9_-]{1,32})(\/cancel)?$/;
 const MCP_SERVER = /^\/api\/connections\/mcp\/([A-Za-z0-9_-]{1,64})\/(login|logout|enable|disable|check|remove)$/;
@@ -63,7 +64,7 @@ async function mcpRoutes(mcp: McpConnectors, req: IncomingMessage, res: ServerRe
 async function modelRoutes(models: ModelAccounts, req: IncomingMessage, res: ServerResponse, path: string, url: URL): Promise<boolean> {
   const method = req.method ?? "GET";
   if (method === "GET" && path === "/api/connections/models") return send(res, 200, await models.describe()), true;
-  if (method === "GET" && path === "/api/connections/models/usage") return send(res, 200, await models.usage(url.searchParams.get("fresh") === "1")), true;
+  if (method === "GET" && path === MODEL_USAGE_PATH) return send(res, 200, await models.usage(url.searchParams.get("fresh") === "1")), true;
   if (method === "POST" && path === "/api/connections/models/import") {
     const body = await readJson(req);
     const providers = Array.isArray(body.providers) ? body.providers.filter((item): item is string => typeof item === "string") : [];
