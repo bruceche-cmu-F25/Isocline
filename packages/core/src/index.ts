@@ -8,7 +8,7 @@ export { withCoreContext, withDefaultActor, coreContext, type Actor, type CoreCo
 export { newId } from "./ids.ts";
 export { AREAS, AREA_IDS, isArea, areaName, type Area } from "./areas.ts";
 export {
-  recordDomainEvent, changedFields, listEvents, latestEventSeq, onEvents, lastChanges, listRunReceipts, listRunActivity, RunLeaseLostError,
+  recordDomainEvent, changedFields, listEvents, latestEventSeq, onEvents, lastChanges, lastChangesOf, listRunReceipts, listRunActivity, RunLeaseLostError,
   type CoreEvent, type EventInput, type EventQuery,
 } from "./events.ts";
 export {
@@ -52,6 +52,7 @@ export {
 } from "./files.ts";
 export { simpleCommand, commandAllowed, normalizeCommand, listCommandGrants, grantCommand, revokeCommand, type CommandGrant } from "./shell.ts";
 export { defaultSecretStore, fileStore, keychainStore, type SecretStore } from "./secrets.ts";
+export { tidyWorld, OUTPUT_DAYS, COMMAND_DAYS, type Upkeep } from "./upkeep.ts";
 export {
   enqueueOutbound, claimOutbound, finishOutbound, retryOutbound, interruptOutbound, getOutbound, listOutbound, OUTBOUND_STATES, OUTBOUND_MAX_ATTEMPTS,
   type Outbound, type OutboundState,

@@ -1,4 +1,4 @@
-import { AREAS, areaName, lastChanges, localDate, userLocale, type World } from "@alfred/core";
+import { AREAS, areaName, lastChangesOf, localDate, userLocale, type World } from "@alfred/core";
 import { defineModule, defineOp, defineTool, Type } from "@alfred/module-kit";
 import {
   acceptTodo, addTodo, completeTodo, deleteTodo, formatTodo, getTodoSettings, listTodos, MIGRATIONS, resolveTodo, setTodoSettings, suggestTodo, todoRevision,
@@ -58,11 +58,12 @@ const AreaField = Type.Optional(Type.String({
 
 function snapshot(world: World): TodoSnapshot {
   // Provenance from the log: Alfred's own latest change to a todo is shown as such.
-  const changes = lastChanges(world, "todo:");
+  const todos = listTodos(world, { includeDone: true });
+  const changes = lastChangesOf(world, todos.map((todo) => `todo:${todo.id}`));
   return {
     today: localDate(),
     settings: getTodoSettings(world),
-    todos: listTodos(world, { includeDone: true }).map((todo) => {
+    todos: todos.map((todo) => {
       const last = changes.get(`todo:${todo.id}`);
       return { ...todo, revision: todoRevision(todo), ...(last?.actor === "alfred" ? { changedBy: { actor: "alfred" as const, kind: last.kind, at: last.at } } : {}) };
     }),

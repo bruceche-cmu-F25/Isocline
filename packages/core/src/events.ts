@@ -109,10 +109,20 @@ export function listEvents(world: World, query: EventQuery = {}): { events: Core
 }
 
 /** Who last changed each subject that starts with `prefix` (e.g. `todo:`), from the event log: provenance is read
- * from what happened, not stored as a label. */
+ * from what happened, not stored as a label. It reads every event there ever was under the prefix; where the
+ * subjects are known, `lastChangesOf` does not. */
 export function lastChanges(world: World, prefix: string): Map<string, { actor: Actor | null; kind: string; at: string }> {
   const rows = world.db.prepare(`SELECT subject, actor, kind, at FROM core_events WHERE seq IN (
     SELECT MAX(seq) FROM core_events WHERE subject >= ? AND subject < ? GROUP BY subject)`).all(prefix, `${prefix}\uffff`);
+  return new Map(rows.map((row) => [row.subject as string, { actor: row.actor as Actor | null, kind: row.kind as string, at: row.at as string }]));
+}
+
+/** Who last changed each of these subjects (`todo:abc`…). Each is looked up by itself through the log's index, so
+ * it costs the same however long the log has grown: for a snapshot, which knows the things it shows. */
+export function lastChangesOf(world: World, subjects: readonly string[]): Map<string, { actor: Actor | null; kind: string; at: string }> {
+  if (!subjects.length) return new Map();
+  const rows = world.db.prepare(`SELECT e.subject, e.actor, e.kind, e.at FROM json_each(?) s
+    JOIN core_events e ON e.seq = (SELECT MAX(seq) FROM core_events WHERE subject = s.value)`).all(JSON.stringify(subjects));
   return new Map(rows.map((row) => [row.subject as string, { actor: row.actor as Actor | null, kind: row.kind as string, at: row.at as string }]));
 }
 

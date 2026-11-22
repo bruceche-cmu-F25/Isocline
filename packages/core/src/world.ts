@@ -7,7 +7,7 @@
  */
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 
 export interface Migration {
   /** `<owner>:<n>`, for example `core:1` or `todo:1`. Applied once, in the order given. */
@@ -38,9 +38,33 @@ function synchronous<T>(value: T): T {
   return value;
 }
 
+/** How many prepared statements a world keeps. Its SQL is a few hundred fixed texts; the bound is for the few that
+ * are built (a list of placeholders), which would otherwise be kept in every length ever asked for. */
+const STATEMENTS_KEPT = 512;
+
+/** Makes `db.prepare` hand back the statement it made the last time for the same SQL. Everything here prepares where
+ * it runs (`db.prepare(sql).get(…)`), which compiled the SQL again on every call: reading the state is some forty of
+ * them. A statement is run to its end before anything else runs (`get`, `all` and `run` are synchronous, and nothing
+ * iterates one), so one statement per SQL text is enough. */
+function keepStatements(db: DatabaseSync): void {
+  const prepare = db.prepare.bind(db);
+  const kept = new Map<string, StatementSync>();
+  db.prepare = (sql: string) => {
+    let statement = kept.get(sql);
+    if (!statement) {
+      statement = prepare(sql);
+      kept.set(sql, statement);
+      // The oldest goes; whoever still holds it can go on using it.
+      if (kept.size > STATEMENTS_KEPT) kept.delete(kept.keys().next().value!);
+    }
+    return statement;
+  };
+}
+
 export function openWorld(path: string, migrations: readonly Migration[]): World {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
+  keepStatements(db);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
   let depth = 0;
   let savepoints = 0;

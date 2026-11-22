@@ -367,4 +367,14 @@ CREATE TABLE core_web_lock (
 ) STRICT;
 INSERT INTO core_web_lock (id) VALUES (1);
 `,
+}, {
+  // Where the upkeep of the log has got to (upkeep.ts): events up to this one have had their bulk dropped.
+  id: "core:26",
+  sql: `
+CREATE TABLE core_upkeep (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  trimmed_seq INTEGER NOT NULL DEFAULT 0
+) STRICT;
+INSERT INTO core_upkeep (id) VALUES (1);
+`,
 }];

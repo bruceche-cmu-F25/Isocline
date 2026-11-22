@@ -6,7 +6,7 @@ import { EventEmitter } from "node:events";
 import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import {
-  CORE_MIGRATIONS, createRunDrain, expireProposals, interruptOutbound, ensureTemplates, fireDueAutomations, interruptOrphanedRuns, openWorld,
+  CORE_MIGRATIONS, createRunDrain, expireProposals, interruptOutbound, ensureTemplates, fireDueAutomations, interruptOrphanedRuns, openWorld, tidyWorld,
   type AttentionPolicy, type EngineModel, type EnginePort, type LiveUpdate, type PresenceOptions, type Run, type World,
 } from "@alfred/core";
 import { moduleMigrations, type AlfredModule, type ModuleServices } from "@alfred/module-kit";
@@ -21,6 +21,8 @@ import { AUTOMATION_PROFILE, profiles } from "./profiles.ts";
 
 /** How often the home node's clock looks for automations that are due and proposals past their time. */
 const CLOCK_MS = 30_000;
+const TIDY_AFTER_MS = 60_000;
+const TIDY_EVERY_MS = 24 * 3600_000;
 
 export interface HomeOptions {
   dataDir: string;
@@ -164,6 +166,18 @@ export function openHome(options: HomeOptions): Home {
     try { expireProposals(world); } catch (error) { options.log?.(`proposals: ${error instanceof Error ? error.message : String(error)}`); }
   }, CLOCK_MS);
   clock.unref();
+  // Upkeep of the log (core upkeep.ts): a minute after starting, so it is not in the way of opening, then daily.
+  const tidy = () => {
+    if (!world.db.isOpen) return;
+    try {
+      const done = tidyWorld(world);
+      if (done.outputs || done.commands) options.log?.(`upkeep: dropped what ${done.outputs} old command(s) printed and ${done.commands} old command record(s)`);
+    } catch (error) { options.log?.(`upkeep: ${error instanceof Error ? error.message : String(error)}`); }
+  };
+  const firstTidy = setTimeout(tidy, TIDY_AFTER_MS);
+  const tidying = setInterval(tidy, TIDY_EVERY_MS);
+  firstTidy.unref();
+  tidying.unref();
 
   const passes = modulePasses({ world, modules: options.modules, services: options.services, log: options.log });
   // Who tells the user about a notice, where and when: decided here, once, for every device.
@@ -196,6 +210,8 @@ export function openHome(options: HomeOptions): Home {
     idle: () => current,
     close() {
       clearInterval(clock);
+      clearTimeout(firstTidy);
+      clearInterval(tidying);
       archives.close();
       passes.close();
       files.close();
