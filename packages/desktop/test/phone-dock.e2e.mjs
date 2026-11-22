@@ -122,3 +122,79 @@ test("Coding, dock and desktop figures vary at rest and yield to a real status o
   snapshot.notices = [{ kind: "run_interrupted", class: "needs_you" }];
   await checkStatus("notice");
 });
+
+test("quick capture retries uncertain writes once and reports a refused undo", async (t) => {
+  const browser = await chromium.launch({ channel: "chrome" });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const state = await serveBuild(page);
+  state.modules.calendar = { events: [], sources: [{ account: "fixture", canWrite: true, calendars: [{ id: "one", writable: true }] }] };
+  const writes = [], deletes = [];
+  await page.route("**/api/ops/*", (route) => {
+    const op = new URL(route.request().url()).pathname.split("/").at(-1);
+    const { requestId } = route.request().postDataJSON();
+    if (op.endsWith(".delete")) {
+      deletes.push(op);
+      const refused = op === "calendar.delete" && deletes.filter((name) => name === op).length === 1;
+      return route.fulfill({ json: { result: refused ? { error: "no_write" } : { queued: "delete" } } });
+    }
+    // The home recorded the event but the intermediary dropped the response. A retry must use the same key.
+    writes.push([op, requestId]);
+    if (op === "calendar.create" && writes.length === 2) return route.fulfill({ status: 503, json: { error: "Response lost" } });
+    return route.fulfill({ json: { result: { id: op }, replayed: writes.filter(([, key]) => key === requestId).length > 1 } });
+  });
+  await page.goto("https://alfred.test/");
+  await page.locator(".dock-alfred").click();
+  const field = page.locator(".ask-form [role=combobox]");
+  await field.fill("Groceries tomorrow, meeting tomorrow at 3pm");
+  await field.press("Enter");
+  await page.getByRole("alert").filter({ hasText: "Response lost" }).waitFor();
+  await field.press("Enter");
+  await page.getByText("2 added", { exact: true }).waitFor();
+  assert.deepEqual(writes.map(([op]) => op), ["todo.add", "calendar.create", "calendar.create"]);
+  assert.equal(writes[1][1], writes[2][1]);
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  await undo.click();
+  await page.getByRole("alert").filter({ hasText: "This calendar can’t be changed" }).waitFor();
+  assert.equal(await page.getByText("Undone", { exact: true }).count(), 0);
+  await undo.click();
+  await page.getByText("Undone", { exact: true }).waitFor();
+  assert.deepEqual(deletes.sort(), ["calendar.delete", "calendar.delete", "todo.delete"]);
+});
+
+test("a file stays with a dated question in the phone ask bar", async (t) => {
+  const browser = await chromium.launch({ channel: "chrome" });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await serveBuild(page);
+  const uploading = Promise.withResolvers();
+  await page.route("**/api/files?*", async (route) => {
+    await uploading.promise;
+    await route.fulfill({ json: { id: "file-1", name: "notes.txt", kind: "text", size: 5 } });
+  });
+  const asked = Promise.withResolvers();
+  await page.route("**/api/runs", (route) => {
+    asked.resolve(route.request().postDataJSON());
+    return route.fulfill({ json: { run: { conversationId: "new-conversation" } } });
+  });
+  const quickWrites = [];
+  page.on("request", (request) => { if (request.url().includes("/api/ops/")) quickWrites.push(request.url()); });
+  await page.goto("https://alfred.test/");
+  await page.locator(".dock-alfred").click();
+  const form = page.locator(".ask-form");
+  const field = form.getByRole("combobox");
+  await field.fill("Review tomorrow");
+  await form.locator('input[type="file"]').setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("notes") });
+  await page.locator(".attach-chip[data-state=uploading]").waitFor();
+  await field.press("Enter");
+  assert.equal(await field.getAttribute("aria-expanded"), "false");
+  assert.deepEqual(quickWrites, []);
+  uploading.resolve();
+  await page.locator(".attach-chip[data-state=ready]").waitFor();
+  await field.press("Enter");
+  const request = await asked.promise;
+  assert.equal(request.goal, "Review tomorrow");
+  assert.deepEqual(request.attachments, ["file-1"]);
+  assert.deepEqual(quickWrites, []);
+  await page.locator(".attach-chip").waitFor({ state: "detached" });
+});

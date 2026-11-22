@@ -11,12 +11,17 @@
  * change. The thing sits in the bar before the field, the words go to it, and what comes of them shows on the page
  * where the thing is, so the card stays down for that turn unless it has something the page cannot show.
  *
+ * And a line that plainly says something to put down, with its day or its hour ("周五前交报告", "明天下午3点开会"),
+ * is read as it is typed (shell/read.ts): what it will become shows above the bar, and Enter puts it on the todo
+ * list or in the calendar at once, with a way to take it back. Nothing is asked and nothing answers. The row under
+ * it still sends the same words to Alfred.
+ *
  * The bar is a row of the page, not something floating over it, so nothing on the page is ever under it. Only the
  * card, the suggestions and what was found sit over the page, and only for a while.
  */
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { CoreEvent, Proposal, Run, StateResponse } from "@alfred/protocol";
-import { api } from "../api.ts";
+import { api, newRequestId } from "../api.ts";
 import { Request } from "../Conversation.tsx";
 import type { FigureState } from "../entity/tesseract.js";
 import { useLiveText } from "../live.ts";
@@ -35,12 +40,16 @@ import { defaultPick, findItems, type FindSources } from "./find.ts";
 import { Figure } from "./Figure.tsx";
 import { Icon } from "./icons.tsx";
 import { MOD } from "./Nav.tsx";
+import { readLine, type Reading } from "./read.ts";
+import { calendarTarget, dayChoices, localToday, put, PutRefused, whenText, type Put } from "./take.ts";
 import "./ask.css";
 
 /** How many found things are listed above the bar; typing more narrows them. */
 const FOUND = 6;
 /** A card that only confirms something done folds away by itself after this long (never under the pointer). */
 const FOLD_MS = 8000;
+/** How long "added" and its undo stay above the bar. */
+const LANDED_MS = 9000;
 
 const editable = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
@@ -236,7 +245,90 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
   // On a phone the bar appears because Alfred was tapped: the cursor goes straight in.
   useEffect(() => { if (dock) field.current?.focus(); }, [dock]);
 
+  // What the line says to put down, and what each will be: a reading can be turned from a todo into an event and
+  // back, and with no calendar to write to everything is a todo.
   const attachments = useAttachments();
+  const textOnly = !about && attachments.items.length === 0;
+  const today = localToday();
+  const target = useMemo(() => calendarTarget(state.modules.calendar), [state.modules.calendar]);
+  const read = useMemo(() => (textOnly ? readLine(draft, today) : []), [draft, textOnly, today]);
+  const [flips, setFlips] = useState<Record<number, Reading["kind"]>>({});
+  // A day picked from a reading's own menu stands in for the one it read (null: no day, for a todo).
+  const [days, setDays] = useState<Record<number, string | null>>({});
+  const [dayMenu, setDayMenu] = useState<number | null>(null);
+  useEffect(() => { setFlips({}); setDays({}); setDayMenu(null); }, [read.length]);
+  const reads = useMemo(() => read.map((item, n) => (n in days ? { ...item, day: days[n] } : item)), [read, days]);
+  const kindOf = (item: Reading, n: number): Reading["kind"] => (target ? flips[n] ?? item.kind : "todo");
+  const [landed, setLanded] = useState<{ text: string; page?: string; puts: Put[] } | null>(null);
+  useEffect(() => {
+    if (!landed) return;
+    let timer = 0;
+    const fold = () => { if (hovered.current) timer = window.setTimeout(fold, 2000); else setLanded(null); };
+    timer = window.setTimeout(fold, landed.puts.length ? LANDED_MS : 2500);
+    return () => window.clearTimeout(timer);
+  }, [landed]);
+  // Keep successful items and uncertain request IDs across retries of a partly saved line.
+  const retry = useRef(new Map<string, { requestId: string; saved?: Put }>());
+  useEffect(() => { if (!draft.trim()) retry.current.clear(); }, [draft]);
+  /** Puts down what was read, in order; what was put down before something failed stays, and can be taken back. */
+  const land = async () => {
+    if (!reads.length || sending) return;
+    setSending(true);
+    setError(null);
+    const puts: Put[] = [];
+    try {
+      const attempts = retry.current;
+      const occurrences = new Map<string, number>();
+      for (const [n, item] of reads.entries()) {
+        const kind = kindOf(item, n);
+        const command = JSON.stringify([kind, item.title, item.day ?? (item.start || kind === "event" ? today : null),
+          item.start, kind === "event" ? item.end : null, kind === "event" ? target : null]);
+        const occurrence = occurrences.get(command) ?? 0;
+        occurrences.set(command, occurrence + 1);
+        const key = `${occurrence}:${command}`;
+        const attempt = attempts.get(key) ?? { requestId: newRequestId() };
+        attempts.set(key, attempt);
+        if (!attempt.saved) {
+          try {
+            const saved = await put(item, kind, target, today, attempt.requestId);
+            attempt.saved = { ...saved, undo: async () => { await saved.undo(); attempts.delete(key); } };
+          } catch (reason) {
+            if (reason instanceof PutRefused) attempts.delete(key);
+            throw reason;
+          }
+        }
+        puts.push(attempt.saved);
+      }
+      retry.current = new Map();
+      setDraft((current) => current === draft ? "" : current);
+      setPicked(null);
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setSending(false);
+    }
+    if (!puts.length) return;
+    const text = puts.length === 1
+      ? t(puts[0].kind === "event" ? "take.did.event" : "take.did.todo", { what: whenText(reads[0], puts[0].kind, today) })
+      : t("take.did.n", { n: puts.length });
+    setCard(false);
+    setLanded({ text, page: puts.every((one) => one.page === puts[0].page) ? puts[0].page : undefined, puts });
+  };
+  const undo = () => {
+    if (!landed || sending) return;
+    const { puts } = landed;
+    setLanded(null);
+    setError(null);
+    void Promise.allSettled(puts.map((one) => one.undo())).then((results) => {
+      const failed = results.find((result) => result.status === "rejected");
+      if (failed) {
+        setError(String(failed.reason instanceof Error ? failed.reason.message : failed.reason));
+        setLanded({ text: t("take.did.n", { n: results.filter((result) => result.status === "rejected").length }),
+          puts: puts.filter((_, index) => results[index].status === "rejected") });
+      } else setLanded({ text: t("take.undone"), puts: [] });
+    });
+  };
+
   const send = (event?: FormEvent, text = draft) => {
     event?.preventDefault();
     // Files alone are a message too; words about a picked thing take no files.
@@ -262,11 +354,14 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
   };
   // What the words name, listed above the bar with "ask Alfred" last, next to the field. Enter takes the row that is
   // lit: a page or a command the words name, else asking.
-  const found = focused && draft.trim() && !about ? findItems(draft, find).slice(0, FOUND) : [];
-  const asking = found.length;
-  const lit = found.length ? picked ?? (defaultPick(found) < 0 ? asking : defaultPick(found)) : asking;
+  const found = focused && draft.trim() && textOnly ? findItems(draft, find).slice(0, FOUND) : [];
+  // What was read is the first row and the one Enter takes; the last row says the same words to Alfred instead.
+  const take = focused && reads.length > 0 ? 1 : 0;
+  const asking = take + found.length;
+  const lit = take || found.length ? picked ?? (take ? 0 : defaultPick(found) < 0 ? asking : defaultPick(found)) : asking;
   const go = (index: number) => {
-    const item = found[index];
+    if (take && index === 0) { void land(); return; }
+    const item = found[index - take];
     if (!item) { send(); return; }
     setDraft("");
     setPicked(null);
@@ -277,7 +372,7 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
   const onKey = (event: KeyboardEvent<HTMLInputElement>) => {
     // Enter that confirms an IME's candidate is not Enter that sends.
     if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) { event.preventDefault(); return; }
-    if (found.length && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+    if (asking > 0 && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       event.preventDefault();
       setPicked(Math.max(0, Math.min(asking, lit + (event.key === "ArrowUp" ? -1 : 1))));
       return;
@@ -292,10 +387,10 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
 
   const showCard = card && !!run;
   const chips = about ? about.chips ?? [] : suggestions;
-  const offer = focused && !draft.trim() && !sending && (about ? true : !showCard && where !== "busy") && chips.length > 0;
+  const offer = focused && !draft.trim() && !sending && !landed && (about ? true : !showCard && where !== "busy") && chips.length > 0;
   return (
     <div className="ask" ref={root} data-dock={dock || undefined}>
-      {((showCard && !about) || offer || error || found.length > 0 || (attachments.items.length > 0 && !about)) && (
+      {((showCard && !about) || offer || error || asking > 0 || landed || (attachments.items.length > 0 && !about)) && (
         <div className="ask-over">
           {!about && attachments.items.length > 0 && <div className="ask-files"><AttachChips attachments={attachments} /></div>}
           {showCard && !about && (
@@ -309,21 +404,62 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
               {chips.map((text) => <button type="button" key={text} className="suggestion" onMouseDown={(event) => event.preventDefault()} onClick={() => send(undefined, text)}>{text}</button>)}
             </div>
           )}
-          {found.length > 0 && (
+          {landed && (
+            <p className="ask-landed" role="status" onPointerEnter={() => { hovered.current = true; }} onPointerLeave={() => { hovered.current = false; }}>
+              <span>{landed.text}</span>
+              {landed.page && landed.page !== page && <button type="button" onClick={() => { find.onPage(landed.page!); setLanded(null); }}>{t("take.show")}</button>}
+              {landed.puts.length > 0 && <button type="button" onClick={undo}>{t("take.undo")}</button>}
+            </p>
+          )}
+          {asking > 0 && (
             <ul className="ask-found" id="ask-found" role="listbox" aria-label={t("pal.label")}>
-              {[...found, { id: "ask", label: t("pal.ask", { text: draft.trim() }), icon: "chat" as const, hint: undefined, unread: false }].map((item, n) => (
-                <li key={item.id}>
-                  <button type="button" id={`ask-found-${n}`} role="option" aria-selected={n === lit} onMouseDown={(event) => event.preventDefault()} onMouseMove={() => setPicked(n)} onClick={() => go(n)}>
-                    <Icon name={item.icon} /><span>{item.label}</span>{item.unread && <i className="mark" data-k="alfred" role="img" aria-label={t("nav.unreadReply")} />}<kbd>{n === lit ? "↵" : item.hint}</kbd>
-                  </button>
+              {take > 0 && (
+                <li>
+                  {/* Not a button: each reading has one of its own, to turn it into the other kind. */}
+                  <div className="ask-take" id="ask-found-0" role="option" aria-selected={lit === 0} aria-label={t("take.label")} onMouseDown={(event) => event.preventDefault()} onMouseMove={() => setPicked(0)} onClick={() => go(0)}>
+                    <ol>
+                      {reads.map((item, n) => {
+                        const kind = kindOf(item, n), other = kind === "event" ? "todo" : "event";
+                        return (
+                          <li key={n}>
+                            <button type="button" className="take-kind" data-k={kind === "event" ? "now" : "blue"} disabled={!target} title={target ? t("take.flip", { kind: t(`take.${other}`) }) : undefined}
+                              onClick={(event) => { event.stopPropagation(); setFlips((now) => ({ ...now, [n]: other })); }}>
+                              {t(`take.${kind}`)}{target && <i aria-hidden="true">⇄</i>}
+                            </button>
+                            <button type="button" className="take-when" aria-expanded={dayMenu === n} title={t("take.day")} onClick={(event) => { event.stopPropagation(); setDayMenu(dayMenu === n ? null : n); }}>{whenText(item, kind, today)}</button>
+                            <span className="take-title">{item.title}</span>
+                            {dayMenu === n && (
+                              <span className="take-days" role="group" aria-label={t("take.day")}>
+                                {[...dayChoices(today), ...(kind === "todo" && !item.start ? [{ day: null, label: t("todo.noDate") }] : [])].map((choice) => (
+                                  <button type="button" key={choice.label} className="suggestion" aria-pressed={(item.day ?? (kind === "event" ? today : null)) === choice.day}
+                                    onClick={(event) => { event.stopPropagation(); setDays((now) => ({ ...now, [n]: choice.day })); setDayMenu(null); }}>{choice.label}</button>
+                                ))}
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    <kbd>{lit === 0 ? "↵" : ""}</kbd>
+                  </div>
                 </li>
-              ))}
+              )}
+              {[...found, { id: "ask", label: t("pal.ask", { text: draft.trim() }), icon: "chat" as const, hint: undefined, unread: false }].map((item, at) => {
+                const n = at + take;
+                return (
+                  <li key={item.id}>
+                    <button type="button" id={`ask-found-${n}`} role="option" aria-selected={n === lit} onMouseDown={(event) => event.preventDefault()} onMouseMove={() => setPicked(n)} onClick={() => go(n)}>
+                      <Icon name={item.icon} /><span>{item.label}</span>{item.unread && <i className="mark" data-k="alfred" role="img" aria-label={t("nav.unreadReply")} />}<kbd>{n === lit ? "↵" : item.hint}</kbd>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
           {error && <p className="problem small ask-error" role="alert">{error}</p>}
         </div>
       )}
-      <form className="ask-form" onSubmit={send} onPaste={about ? undefined : attachments.onPaste} onDrop={about ? undefined : attachments.onDrop} onDragOver={about ? undefined : attachments.onDragOver}>
+      <form className="ask-form" onSubmit={(event) => { event.preventDefault(); go(lit); }} onPaste={about ? undefined : attachments.onPaste} onDrop={about ? undefined : attachments.onDrop} onDragOver={about ? undefined : attachments.onDragOver}>
         {dock
           ? <button type="button" className="icon-btn" onClick={onBack} aria-label={t("ask.back")} title={t("ask.back")}><Icon name="down" /></button>
           : <button type="button" className="ask-figure" onClick={onOpen} aria-label={t("fab.open", { key: `${MOD}.` })} title={t("fab.open", { key: `${MOD}.` })}><Figure state={figure} size={28} anchor /></button>}
@@ -334,14 +470,16 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
           </span>
         )}
         <input
-          ref={field} value={draft} onChange={(event) => { setDraft(event.target.value); setPicked(null); }} onKeyDown={onKey} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+          ref={field} value={draft} onChange={(event) => { setDraft(event.target.value); setPicked(null); setError(null); }} onKeyDown={onKey} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           placeholder={about ? about.placeholder : t(where === "busy" ? "composer.working" : "ask.placeholder")} aria-label={about ? about.label : t("pal.label")} maxLength={8000} autoComplete="off" enterKeyHint="send"
-          role="combobox" aria-expanded={found.length > 0} aria-controls="ask-found" aria-activedescendant={found.length ? `ask-found-${lit}` : undefined}
+          role="combobox" aria-expanded={asking > 0} aria-controls="ask-found" aria-activedescendant={asking > 0 ? `ask-found-${lit}` : undefined}
         />
         {!dock && !draft && !focused && !about && <kbd aria-hidden="true">{MOD}K</kbd>}
         {!about && <AttachButton attachments={attachments} />}
         <MicButton onText={(text) => { setDraft((now) => appendDictation(now, text)); field.current?.focus(); }} />
-        <button type="submit" className="send" disabled={(!draft.trim() && !(attachments.ids.length && !about)) || sending || attachments.busy} aria-label={t("composer.send")}>
+        <button type="submit" className="send" disabled={(!draft.trim() && !(attachments.ids.length && !about)) || sending || attachments.busy} aria-label={t("composer.send")}
+          // The cursor stays in the field, so the button does what Enter would: the row that is lit.
+          onMouseDown={(event) => event.preventDefault()}>
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
         </button>
       </form>
