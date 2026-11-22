@@ -12,7 +12,7 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import webpush from "web-push";
-import { listDevices, userLocale, type Outlet, type World } from "@alfred/core";
+import { isSession, listDevices, userLocale, type DeviceScope, type Outlet, type World } from "@alfred/core";
 import { translate, type Key } from "@alfred/ui/i18n";
 import { inboxTarget, inboxUrl } from "@alfred/ui/notice";
 import { plainText } from "@alfred/ui/markdown";
@@ -115,6 +115,8 @@ export interface PushOptions {
   world: World;
   secrets: SecretStore;
   send?: PushSender;
+  /** With the web lock on, notifications can arrive on a locked screen or sit in a delivery queue. */
+  hidePreviews?: () => boolean;
   log?: (message: string) => void;
 }
 
@@ -163,17 +165,21 @@ export class PushService {
   }
 
   /** To the given devices (default: every paired device that subscribed). Gone subscriptions are dropped. */
-  async sendTo(message: PushMessage, deviceIds?: string[]): Promise<PushResult> {
-    const paired = new Set(listDevices(this.#options.world).map((device) => device.id));
-    const targets = Object.keys(this.#subscriptions).filter((id) => paired.has(id) && (!deviceIds || deviceIds.includes(id)));
+  async sendTo(message: PushMessage, deviceIds?: string[], requiredScope?: DeviceScope): Promise<PushResult> {
+    const targets = Object.keys(this.#subscriptions).filter((id) => !deviceIds || deviceIds.includes(id));
     const result: PushResult = { accepted: 0, failed: 0, expired: 0 };
     if (!targets.length) return result;
     const keys = await this.keys();
-    const payload = JSON.stringify(message);
     for (const id of targets) {
+      // Check again at delivery time: other sends may have been waiting on the network.
+      const device = listDevices(this.#options.world).find((candidate) => candidate.id === id);
       const subscription = this.#subscriptions[id];
+      if (!device || !subscription || (requiredScope && !device.scopes.includes(requiredScope))) continue;
+      const payload = this.#options.hidePreviews?.()
+        ? { title: "Alfred", body: translate(userLocale(this.#options.world), "push.privateBody"), url: "/#p=core.inbox", tag: "alfred-inbox" }
+        : message;
       try {
-        await this.#send(subscription, payload, keys);
+        await this.#send(subscription, JSON.stringify(payload), keys);
         result.accepted++;
       } catch (error) {
         const status = (error as { statusCode?: number }).statusCode;
@@ -190,7 +196,13 @@ export class PushService {
     if (!Object.keys(this.#subscriptions).length) return [];
     return [{
       outlet: PUSH_OUTLET,
-      send: async (notice) => (await this.sendTo(noticeMessage(notice, userLocale(this.#options.world)))).accepted > 0,
+      send: async (notice) => {
+        const { world } = this.#options;
+        const conversation = notice.payload.conversationId;
+        const dev = typeof conversation === "string" && isSession(world, conversation);
+        const result = await this.sendTo(noticeMessage(notice, userLocale(world)), undefined, dev ? "dev" : undefined);
+        return result.accepted > 0;
+      },
     }];
   }
 

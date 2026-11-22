@@ -444,3 +444,66 @@ test("a paired device requests development access for itself and the decision ta
     assert.equal(await outstanding(), undefined);
   } finally { close(); }
 });
+
+test("the host controls the web lock and paired clients need their own unlock session for every private route", async () => {
+  const { home, local, ingress, close } = await setUp();
+  try {
+    const device = pairDevice(home.world, { name: "Existing phone", kind: "phone", token: "p".repeat(43) });
+    pairDevice(home.world, { name: "Other browser", kind: "browser", token: "b".repeat(43) });
+    const paired = "alfred_device=" + "p".repeat(43);
+    const phone = viaServe({ Cookie: paired });
+    const localStatus = await ask(local, "/api/device/web-lock");
+    assert.deepEqual(localStatus.body, { enabled: false, locked: false, expiresAt: null });
+    assert.equal((await ask(ingress, "/api/state", { headers: phone })).status, 200);
+    const password = "test-only password for this run";
+    const config = (enabled: boolean, value?: string) => ask(local, "/api/remote/web-lock", { body: { enabled, password: value } });
+    assert.equal((await config(true, "short")).status, 400);
+    const enabled = await config(true, password);
+    assert.equal(enabled.status, 200);
+    assert.equal(enabled.body.webLockEnabled, true);
+    assert.ok(!JSON.stringify(enabled.body).includes(password));
+    assert.equal((await ask(ingress, "/api/device/unlock", { headers: viaServe(), body: { password } })).body.code, "unpaired");
+    const status = () => ask(ingress, "/api/device/web-lock", { headers: phone });
+    assert.equal((await status()).body.locked, true);
+    for (const [path, body] of [
+      ["/api/state"], ["/api/events"], ["/api/remote"], ["/api/files/example"], ["/api/modules/mail/files/example"],
+      ["/api/push"], ["/api/outlets"], ["/api/connections/models/usage"], ["/api/device/activity", {}], ["/api/queries/mail.body", {}],
+      ["/api/ops/todo.add", {}], ["/api/runs", {}],
+    ] as const) {
+      const response = await ask(ingress, path, { headers: phone, body });
+      assert.equal(response.status, 423, path);
+      assert.equal(response.body.code, "web_locked", path);
+    }
+    const unlock = (value: string) => ask(ingress, "/api/device/unlock", { headers: phone, body: { password: value } });
+    assert.equal((await unlock("incorrect-password")).body.code, "wrong_password");
+    const ok = await unlock(password);
+    assert.equal(ok.status, 200);
+    const raw = ok.headers["set-cookie"]![0];
+    for (const flag of ["HttpOnly", "Secure", "SameSite=Strict", "Path=/"]) assert.ok(raw.includes(flag));
+    const cookie = raw.split(";")[0];
+    const opened = viaServe({ Cookie: paired + "; " + cookie });
+    assert.equal((await status()).body.locked, true);
+    assert.equal((await ask(ingress, "/api/state", { headers: opened })).status, 200);
+    assert.equal((await ask(ingress, "/api/remote/web-lock", { headers: opened, body: { enabled: false } })).status, 403);
+    assert.equal((await ask(ingress, "/api/state", { headers: viaServe({ Cookie: "alfred_device=" + "b".repeat(43) + "; " + cookie }) })).status, 423);
+    assert.equal((await ask(ingress, "/api/device/web-lock", { headers: opened })).body.expiresAt, ok.body.expiresAt);
+    const activity = await ask(ingress, "/api/device/activity", { headers: opened, body: {} });
+    assert.ok(Number(activity.body.expiresAt) >= Number(ok.body.expiresAt));
+
+    const response = await new Promise<IncomingMessage>((resolve, reject) => {
+      const request = httpGet({ host: "127.0.0.1", port: ingress, path: "/api/events", headers: opened }, resolve);
+      request.on("error", reject);
+    });
+    assert.equal(response.statusCode, 200);
+    const ended = once(response, "end");
+    response.resume();
+    await config(true, password + " new");
+    await ended;
+    assert.equal((await ask(ingress, "/api/state", { headers: opened })).status, 423);
+    assert.equal((await unlock(password)).body.code, "wrong_password");
+    await config(false);
+    assert.equal((await ask(ingress, "/api/state", { headers: phone })).status, 200);
+    await ask(local, `/api/devices/${device.id}/revoke`, { body: {} });
+    assert.equal((await status()).body.code, "unpaired");
+  } finally { close(); }
+});

@@ -11,6 +11,7 @@ import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { listDevices, pairDevice, revokeDevice, setDeviceScope, type Device, type DeviceKind, type DeviceScope, type World } from "@alfred/core";
 import type { PairingCode, RemoteResponse, TailscaleStatus } from "@alfred/protocol";
+import { WebLock } from "./web-lock.ts";
 import type { Tailscale } from "./tailscale.ts";
 
 /** Not 443 or 8443: those are often taken by other things already served on the same machine. */
@@ -47,7 +48,8 @@ export const normalizeCode = (code: string) => code.toUpperCase().replace(/[^A-Z
 
 export class RemoteAccess {
   /** Refresh a device's open streams when its permissions change. Revoking also removes its push subscription. */
-  readonly events = new EventEmitter<{ revoked: [string]; scopeChanged: [string] }>();
+  readonly events = new EventEmitter<{ revoked: [string]; scopeChanged: [string]; lockChanged: [string | null] }>();
+  readonly webLock: WebLock;
   readonly #options: RemoteOptions;
   readonly #file: string;
   #config: Config;
@@ -59,6 +61,7 @@ export class RemoteAccess {
 
   constructor(options: RemoteOptions) {
     this.#options = options;
+    this.webLock = new WebLock(options.world, (id) => this.events.emit("lockChanged", id));
     this.#file = join(options.dataDir, "remote.json");
     this.#config = { enabled: false, port: DEFAULT_SERVE_PORT };
     try {
@@ -96,7 +99,7 @@ export class RemoteAccess {
     if (this.#config.enabled && tailscale.running) await this.#check();
     else this.#serving = false;
     return {
-      local: true, enabled: this.#config.enabled, serving: this.#serving, url: this.url, port: this.#config.port, tailscale,
+      local: true, enabled: this.#config.enabled, webLockEnabled: this.webLock.enabled, serving: this.#serving, url: this.url, port: this.#config.port, tailscale,
       devices: listDevices(this.#options.world), ...(this.#error ? { error: this.#error } : {}),
     };
   }
@@ -156,6 +159,7 @@ export class RemoteAccess {
 
   revoke(id: string): Device {
     const device = revokeDevice(this.#options.world, id);
+    this.webLock.revoke(id);
     this.events.emit("revoked", id);
     this.#options.log?.(`revoked ${device.name}`);
     return device;

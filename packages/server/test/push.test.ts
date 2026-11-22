@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { ATTENTION, claimNotice, CORE_MIGRATIONS, createNotice, listNotices, openWorld, pairDevice, recordDomainEvent, revokeDevice, type World } from "@alfred/core";
+import { ATTENTION, addProject, claimNotice, CORE_MIGRATIONS, createNotice, listNotices, openWorld, pairDevice, recordDomainEvent, revokeDevice, setDeviceScope, startSession, trustProject, type World } from "@alfred/core";
 import { checkSubscription, noticeMessage, PushService, watchAttention, type PushSender } from "../src/index.ts";
 import type { SecretStore } from "../src/secrets.ts";
 
@@ -28,11 +28,11 @@ function notice(world: World, kind = "run_result", payload: Record<string, unkno
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function setUp(send: PushSender) {
+function setUp(send: PushSender, hidePreviews?: () => boolean) {
   const dataDir = mkdtempSync(join(tmpdir(), "alfred-push-"));
   const world = openWorld(":memory:", CORE_MIGRATIONS);
   const secrets = memorySecrets();
-  const push = new PushService({ dataDir, world, secrets, send });
+  const push = new PushService({ dataDir, world, secrets, send, hidePreviews });
   const phone = pairDevice(world, { token: "p".repeat(43), name: "iPhone", kind: "phone" });
   // The home node's attention hands notices to push; here with a short wait before a notice is the phone's.
   let attention: { close(): void } | null = null;
@@ -131,4 +131,42 @@ test("a revoked device gets nothing", async () => {
     assert.deepEqual(result, { accepted: 0, failed: 0, expired: 0 });
     assert.deepEqual(sent, []);
   } finally { close(); world.close(); }
+});
+
+test("protected web notifications contain no work content, even with the app in the foreground", async () => {
+  let protectedBrowser = true;
+  const sent: string[] = [];
+  const { push, phone, world } = setUp(async (_sub, payload) => { sent.push(payload); }, () => protectedBrowser);
+  try {
+    push.subscribe(phone.id, APPLE);
+    const message = { title: "Private title", body: "Private text", tag: "sensitive", url: "/#c=private", notice: "private-id", ack: true };
+    await push.sendTo(message);
+    const hidden = JSON.parse(sent[0]);
+    assert.equal(hidden.title, "Alfred");
+    assert.ok(hidden.body.length > 0);
+    assert.equal(hidden.url, "/#p=core.inbox");
+    assert.doesNotMatch(sent[0], /private|sensitive|"ack"|"notice"/i);
+    protectedBrowser = false;
+    await push.sendTo(message);
+    assert.deepEqual(JSON.parse(sent[1]), message);
+  } finally { world.close(); }
+});
+
+test("only devices with development access receive development conversation notifications", async () => {
+  const sent: string[] = [];
+  const { push, phone, world, dataDir } = setUp(async (_sub, payload) => { sent.push(payload); });
+  try {
+    push.subscribe(phone.id, APPLE);
+    const project = trustProject(world, addProject(world, { path: dataDir, name: "Example" }).id);
+    const session = startSession(world, { projectId: project.id, title: "Example" });
+    const update = notice(world, "run_request", { conversationId: session.id, question: "Private development question" });
+    const outlet = push.reaches()[0];
+    assert.equal(await outlet.send(update), false);
+    assert.equal(sent.length, 0);
+    setDeviceScope(world, phone.id, "dev", true);
+    assert.equal(await outlet.send(update), true);
+    assert.match(sent[0], /Private development question/);
+    setDeviceScope(world, phone.id, "dev", false);
+    assert.equal(await outlet.send(update), false);
+  } finally { world.close(); }
 });

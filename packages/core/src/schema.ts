@@ -354,4 +354,17 @@ CREATE TABLE core_run_replies (
   sql: `
 ALTER TABLE core_devices ADD COLUMN dev_access_requested INTEGER NOT NULL DEFAULT 0 CHECK (dev_access_requested IN (0, 1));
 `,
+}, {
+  // A salted web-unlock verifier. Keep it separate from settings, which every device can read.
+  id: "core:25",
+  sql: `
+CREATE TABLE core_web_lock (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  salt BLOB,
+  verifier BLOB,
+  CHECK ((salt IS NULL AND verifier IS NULL)
+    OR (salt IS NOT NULL AND length(salt) = 16 AND verifier IS NOT NULL AND length(verifier) = 32))
+) STRICT;
+INSERT INTO core_web_lock (id) VALUES (1);
+`,
 }];

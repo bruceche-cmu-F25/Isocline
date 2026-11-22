@@ -475,6 +475,10 @@ export type ConnectFlow =
  *
  *   GET  /api/remote                    RemoteResponse (local: the switch, the address, the devices; a device: itself)
  *   POST /api/remote                    { enabled } -> RemoteResponse            (local only)
+ *   POST /api/remote/web-lock           { enabled, password? } -> RemoteResponse (local only)
+ *   GET  /api/device/web-lock           -> WebLockStatus (never extends the session)
+ *   POST /api/device/unlock             { password } -> WebLockStatus and a separate session cookie
+ *   POST /api/device/activity           {} -> WebLockStatus (extends an unlocked session)
  *   POST /api/remote/pairing            -> PairingCode (one code at a time)      (local only)
  *   POST /api/devices/:id/revoke        -> RemoteResponse                         (local only)
  *   POST /api/devices/:id/scope         DeviceScopeRequest -> RemoteResponse      (local only)
@@ -521,11 +525,18 @@ export interface TailscaleStatus {
   owner: string | null;
   error?: string;
 }
+export interface WebLockStatus {
+  enabled: boolean;
+  locked: boolean;
+  /** The home node's idle deadline in milliseconds since the Unix epoch, when unlocked. */
+  expiresAt: number | null;
+}
 export type RemoteResponse =
   | {
     local: true;
     /** The user turned remote access on. */
     enabled: boolean;
+    webLockEnabled: boolean;
     /** Serve is set up and points at Alfred: devices can connect. */
     serving: boolean;
     /** Where devices open Alfred, when serving. */

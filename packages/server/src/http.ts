@@ -37,6 +37,7 @@ import { branchState, pullRequest, workspaceChanges, workspaceDiff } from "./wor
 import type { GoogleConnections } from "./google.ts";
 import type { McpConnectors, ModelAccounts, Skills } from "@alfred/engine-pi";
 import { DEVICE_COOKIE, type RemoteAccess } from "./remote.ts";
+import { WEB_SESSION_COOKIE, type WebLock } from "./web-lock.ts";
 import type { PushService } from "./push.ts";
 import { MAX_VOICE_BYTES, type Transcriber } from "./voice.ts";
 import { MAX_FILE_BYTES } from "./files.ts";
@@ -69,10 +70,10 @@ function ingressHostAllowed(req: IncomingMessage, port: number, dnsName: string 
   return LOOPBACK_HOSTS.has(match[1]) && Number(match[2] ?? 80) === port;
 }
 
-function cookieToken(req: IncomingMessage): string {
+function cookieToken(req: IncomingMessage, cookie: string): string {
   for (const part of (req.headers.cookie ?? "").split(";")) {
     const [name, ...value] = part.trim().split("=");
-    if (name === DEVICE_COOKIE) return value.join("=");
+    if (name === cookie) return value.join("=");
   }
   return "";
 }
@@ -142,7 +143,7 @@ function conversationDetail(home: Home, id: string, query: URLSearchParams): Con
 /** Server-Sent Events: replay after the cursor, then follow commits. Live
  * updates (a reply being written) go out as they happen and are never replayed.
  */
-function events(home: Home, peer: Peer, req: IncomingMessage, res: ServerResponse, url: URL): void {
+function events(home: Home, peer: Peer, req: IncomingMessage, res: ServerResponse, url: URL, canStream: () => boolean): void {
   // A device without `dev` still hears that something happened in a development session (so its lists stay right),
   // but not what: such an event goes out with an empty payload, and what a session is writing does not go out.
   const open = mayDev(peer);
@@ -152,6 +153,7 @@ function events(home: Home, peer: Peer, req: IncomingMessage, res: ServerRespons
   res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store", Connection: "keep-alive", "X-Accel-Buffering": "no" });
   res.write(`retry: 2000\n\n`);
   const flush = () => {
+    if (!canStream()) { res.end(); return; }
     for (;;) {
       const page = listEvents(home.world, { after: cursor, limit: 500 });
       for (const event of page.events as CoreEvent[]) {
@@ -166,7 +168,7 @@ function events(home: Home, peer: Peer, req: IncomingMessage, res: ServerRespons
   flush();
   const unsubscribe = home.world.onCommit(() => setImmediate(() => { if (!res.writableEnded) flush(); }));
   const onLive = (update: LiveUpdate) => {
-    if (res.writableEnded || (!open && isSession(home.world, update.conversationId))) return;
+    if (res.writableEnded || !canStream() || (!open && isSession(home.world, update.conversationId))) return;
     res.write(`event: live\ndata: ${JSON.stringify(update)}\n\n`);
   };
   home.live.on("update", onLive);
@@ -269,6 +271,12 @@ async function remoteRoute(home: Home, options: ServeOptions, peer: Peer, req: I
     if (typeof body.enabled !== "boolean") throw new HttpError(400, "enabled must be true or false");
     return send(res, 200, withPush(await remote.setEnabled(body.enabled), options.push) satisfies RemoteResponse), true;
   }
+  if (method === "POST" && path === "/api/remote/web-lock") {
+    const body = await readJson<{ enabled?: unknown; password?: unknown }>(req, 2048);
+    if (typeof body.enabled !== "boolean") throw new HttpError(400, "enabled must be true or false");
+    await remote.webLock.configure(body.enabled, body.password);
+    return send(res, 200, withPush(await remote.describe(), options.push)), true;
+  }
   if (method === "POST" && path === "/api/remote/pairing") {
     await readJson(req);
     await remote.describe();
@@ -295,7 +303,6 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
   const method = req.method ?? "GET";
   const path = url.pathname;
   if (method === "GET" && path === "/api/state") return send(res, 200, state(home, peer));
-  if (method === "GET" && path === "/api/events") return events(home, peer, req, res, url);
   /** Development sessions are for this machine and the devices the user let in (4.7). */
   const dev = mayDev(peer);
   const needDev = (session: boolean) => { if (session && !dev) throw new HttpError(403, NEEDS_DEV, "needs_dev"); };
@@ -329,7 +336,7 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     // handed over as a download; neither may load or run anything.
     res.writeHead(200, {
       "Content-Type": found.kind === "image" ? found.type : found.kind === "pdf" ? "application/pdf" : "text/plain; charset=utf-8",
-      "Content-Length": bytes.byteLength, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff",
+      "Content-Length": bytes.byteLength, "Cache-Control": peer.local ? "private, max-age=86400" : "no-store", "X-Content-Type-Options": "nosniff",
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
       ...(found.kind === "image" ? {} : { "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(found.name)}` }),
     });
@@ -504,7 +511,7 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     const found = home.modules.find((module) => module.id === file[1])?.file?.(home.world, file[2]);
     if (!found || !/^image\/(png|jpeg|gif|webp|x-icon|svg\+xml)$/.test(found.type)) throw new HttpError(404, "Not found");
     res.writeHead(200, {
-      "Content-Type": found.type, "Content-Length": found.bytes.byteLength, "Cache-Control": "private, max-age=86400",
+      "Content-Type": found.type, "Content-Length": found.bytes.byteLength, "Cache-Control": peer.local ? "private, max-age=86400" : "no-store",
       "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
     });
     res.end(Buffer.from(found.bytes));
@@ -644,9 +651,34 @@ async function voiceRoute(voice: Transcriber | undefined, req: IncomingMessage, 
   throw new HttpError(404, "Not found");
 }
 
+async function authorizeBrowser(lock: WebLock, device: Device, req: IncomingMessage, res: ServerResponse, path: string): Promise<boolean> {
+  const id = device.id;
+  const token = cookieToken(req, WEB_SESSION_COOKIE);
+  if (req.method === "GET" && path === "/api/device/web-lock") return send(res, 200, lock.status(id, token)), true;
+  if (req.method === "POST" && path === "/api/device/unlock") {
+    const body = await readJson<{ password?: unknown }>(req, 2048);
+    const fresh = await lock.unlock(id, body.password);
+    if (fresh) res.setHeader("Set-Cookie", `${WEB_SESSION_COOKIE}=${fresh}; Path=/; HttpOnly; Secure; SameSite=Strict`);
+    return send(res, 200, lock.status(id, fresh ?? "")), true;
+  }
+  if (req.method === "POST" && path === "/api/device/activity") {
+    await readJson(req, 256);
+    return send(res, 200, lock.activity(id, token)), true;
+  }
+  if (lock.status(id, token).locked) throw new HttpError(423, "Unlock this browser to use Alfred.", "web_locked");
+  return false;
+}
+
 function dispatch(home: Home, options: ServeOptions, peer: Peer, req: IncomingMessage, res: ServerResponse, url: URL): void {
   const path = url.pathname;
   const answer = async () => {
+    if (peer.local && req.method === "GET" && path === "/api/device/web-lock") {
+      return send(res, 200, { enabled: false, locked: false, expiresAt: null });
+    }
+    if (!peer.local && !(req.method === "POST" && path === "/api/pair")) {
+      if (!peer.device) throw new HttpError(401, "This device is not paired with Alfred yet", "unpaired");
+      if (await authorizeBrowser(options.remote!.webLock, peer.device, req, res, path)) return;
+    }
     if (await remoteRoute(home, options, peer, req, res, path)) return;
     if (!peer.local) {
       if (!peer.device) throw new HttpError(401, "This device is not paired with Alfred yet", "unpaired");
@@ -656,16 +688,25 @@ function dispatch(home: Home, options: ServeOptions, peer: Peer, req: IncomingMe
       if (path === "/api/skills" || path.startsWith("/api/skills/")) throw new HttpError(403, LOCAL_ONLY, "local_only");
       // A folder path means something only on the home node's machine, and trusting one lets Alfred read it.
       if (path.startsWith("/api/projects") && req.method === "POST") throw new HttpError(403, LOCAL_ONLY, "local_only");
-      if (path === "/api/events" && options.remote) {
+      if (path === "/api/events" && req.method === "GET" && options.remote) {
         // The reconnect checks the device's current scopes and rejects a revoked device.
         const id = peer.device.id;
         const remote = options.remote;
-        const endStream = (changed: string) => { if (changed === id) res.end(); };
+        const token = cookieToken(req, WEB_SESSION_COOKIE);
+        const unlocked = () => !remote.webLock.status(id, token).locked;
+        const endStream = (changed: string | null) => { if (changed === null || changed === id) res.end(); };
         remote.events.on("revoked", endStream);
         remote.events.on("scopeChanged", endStream);
-        req.on("close", () => { remote.events.off("revoked", endStream); remote.events.off("scopeChanged", endStream); });
+        remote.events.on("lockChanged", endStream);
+        req.on("close", () => {
+          remote.events.off("revoked", endStream);
+          remote.events.off("scopeChanged", endStream);
+          remote.events.off("lockChanged", endStream);
+        });
+        return events(home, peer, req, res, url, unlocked);
       }
     }
+    if (peer.local && path === "/api/events" && req.method === "GET") return events(home, peer, req, res, url, () => true);
     if (path === "/api/voice" || path.startsWith("/api/voice/")) return voiceRoute(options.voice, req, res, path);
     if (path.startsWith("/api/connections") && (options.google || options.models || options.mcp)
       && await handleConnections({ google: options.google, models: options.models, mcp: options.mcp }, req, res, url)) return;
@@ -710,7 +751,7 @@ export function createIngressServer(home: Home, options: ServeOptions & { remote
     if (login && options.remote.owner && login !== options.remote.owner) return send(res, 403, { error: "This Alfred belongs to another Tailscale account", code: "other_account" });
     const url = new URL(req.url ?? "/", "http://localhost");
     if (serveUi(options, req, res, url)) return;
-    const device = deviceForToken(home.world, cookieToken(req));
+    const device = deviceForToken(home.world, cookieToken(req, DEVICE_COOKIE));
     dispatch(home, options, { local: false, device, login }, req, res, url);
   });
   return server;

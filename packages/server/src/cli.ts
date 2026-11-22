@@ -84,7 +84,7 @@ if (command === "serve") {
   const tailscaleBinary = findTailscale();
   const remote = new RemoteAccess({ dataDir, world: home.world, tailscale: new Tailscale(tailscaleBinary ? cliRunner(tailscaleBinary) : null), ingressPort, log });
   // Notices nobody took within seconds go to the devices that turned notifications on.
-  const push = new PushService({ dataDir, world: home.world, secrets: defaultSecretStore(dataDir), log });
+  const push = new PushService({ dataDir, world: home.world, secrets: defaultSecretStore(dataDir), hidePreviews: () => remote.webLock.enabled, log });
   remote.events.on("revoked", (id) => { push.unsubscribe(id); home.outlets.forget(id); });
   // The phones' notifications: one more outlet the home node's attention can hand a notice to.
   home.reach(() => push.reaches());

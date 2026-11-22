@@ -492,6 +492,7 @@ export const zh = {
   "push.title": "推送通知",
   "push.note": "你不在 Mac 前时，Alfred 办完事、要你回答或有提议，推到这台设备。",
   "push.on": "推送已开",
+  "push.privateBody": "打开 Alfred 查看更新。",
   "push.homeScreen": "iPhone 上要先把 Alfred 加到主屏幕（Safari 分享 → 添加到主屏幕），再从主屏幕打开，才能收推送。",
   "push.unsupported": "这个浏览器收不了推送。",
   "push.denied": "通知权限被拒绝了。到系统设置里给 Alfred 打开通知，再回来。",

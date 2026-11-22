@@ -493,6 +493,7 @@ export const en: Record<keyof typeof zh, string> = {
   "push.title": "Notifications",
   "push.note": "When you are away from the Mac, Alfred's results, questions and proposals come here.",
   "push.on": "notifications on",
+  "push.privateBody": "Open Alfred to see what’s new.",
   "push.homeScreen": "On iPhone, add Alfred to the home screen first (Safari Share → Add to Home Screen), then open it from there to get notifications.",
   "push.unsupported": "This browser cannot receive notifications.",
   "push.denied": "Notifications are blocked. Allow them for Alfred in system settings, then come back.",
