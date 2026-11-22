@@ -125,6 +125,49 @@ test("answering an invitation: only the user's own answer changes, and the organ
   assert.equal(listOutbound(w)[0].state, "done");
 });
 
+test("an event with only a start is proposed as one hour; moving one still needs both ends", async () => {
+  const w = world();
+  await syncCalendar(w, { google: fakeGoogle().google });
+  updateSettings(w, { locale: "zh" });
+  const add = calendarModule.tools.find((tool) => tool.name === "calendar_add")!;
+  const pinned = add.pin!(w, { title: "Final", start: local(at(3, 16)) } as never) as { preview: string; input: { when: { start: string; end: string } } };
+  assert.match(pinned.preview, /16:00–17:00$/);
+  assert.equal(Date.parse(pinned.input.when.end) - Date.parse(pinned.input.when.start), 60 * 60_000);
+  assert.match(String((add.pin!(w, { title: "Final", end: local(at(3, 17)) } as never) as { error: string }).error), /Give start and end/);
+
+  const move = calendarModule.tools.find((tool) => tool.name === "calendar_move")!;
+  assert.match(String((move.pin!(w, { event: event(w, "Standup").id, start: local(at(3, 16)) } as never) as { error: string }).error), /Give start and end/);
+});
+
+test("a proposed event is the user's to move before they say yes: the step takes the new time, and accepting adds it there", async () => {
+  const w = world();
+  const { google, sent } = fakeGoogle({ answers: [{ status: 200, body: {} }] });
+  await syncCalendar(w, { google });
+  updateSettings(w, { locale: "zh" });
+  const propose = assistantTools(w, [calendarModule]).find((tool) => tool.name === "propose")!;
+  await propose.execute({ title: "把考试加入日历？", summary: "12月2日 16:00 考试。", calls: [{ tool: "calendar_add", params: { title: "Final", start: local(at(3, 16)), end: local(at(3, 17)) } }] }, signal);
+  const [proposal] = listOpenProposals(w);
+  const when = { start: at(4, 9).toISOString(), end: at(4, 10, 30).toISOString() };
+
+  assert.deepEqual(byHand(w, "calendar.retime", { proposal: proposal.id, step: 0, when }), { ok: true });
+  assert.deepEqual(byHand(w, "calendar.retime", { proposal: proposal.id, step: 0, when }), { ok: true }, "moved twice: one note, not two");
+  const [moved] = listOpenProposals(w);
+  assert.equal(moved.id, proposal.id, "still the same proposal, still waiting");
+  assert.deepEqual((moved.steps[0].input as { when: unknown }).when, when);
+  assert.match(moved.steps[0].preview, /^在「Me」加「Final」：.* 09:00–10:30$/);
+  assert.match(moved.summary, /^12月2日 16:00 考试。\n↪ 你把「Final」改到了 .* 09:00–10:30$/);
+  assert.equal(moved.stale, false, "their own change does not make it stale");
+
+  assert.deepEqual(byHand(w, "calendar.retime", { proposal: proposal.id, step: 0, when: { start: when.end, end: when.start } }), { error: "bad_time" });
+  assert.deepEqual(byHand(w, "calendar.retime", { proposal: proposal.id, step: 3, when }), { error: "gone" });
+  assert.deepEqual(byHand(w, "calendar.retime", { proposal: "nope", step: 0, when }), { error: "gone" });
+
+  assert.equal(acceptProposal(w, proposal.id, (step) => { applyStep(w, [calendarModule], step); }).state, "executed");
+  await deliverQueued(w, calendarModule, { google }, signal);
+  assert.deepEqual((sent[0].body as { start: unknown; end: unknown }).start, { dateTime: when.start });
+  assert.deepEqual(byHand(w, "calendar.retime", { proposal: proposal.id, step: 0, when }), { error: "gone" }, "decided: nothing left to move");
+});
+
 test("without the user's permission to change the calendar: nothing is proposed, and nothing is sent", async () => {
   const w = world();
   const readOnly = fakeGoogle({ capabilities: ["calRead"] });

@@ -8,9 +8,12 @@
  * one they organize (`calendar.edit`) or delete it (`calendar.delete`, which only they can do: a run has no tool for
  * it), and saving, or confirming the delete, is the yes. Those go out the same way, quietly: the page shows them
  * on their way (`pendingChanges`), and only one that fails is told.
+ *
+ * And a proposal that waits is theirs to adjust: an event Alfred proposed, drawn on the page where it would land, can
+ * be dragged to another time before they say yes (`calendar.retime`). The proposal stays a proposal.
  */
 import { randomInt } from "node:crypto";
-import { enqueueOutbound, listOutbound, localeOf, userLocale, type Locale, type Outbound, type World } from "@alfred/core";
+import { amendProposal, enqueueOutbound, getProposal, listOutbound, localeOf, ProposalStateError, userLocale, type Locale, type Outbound, type Proposal, type World } from "@alfred/core";
 import { defineOp, defineQuery, defineTool, Type, type Delivered, type GoogleSession, type ModuleServices } from "@alfred/module-kit";
 import { addDays, mapEvent, type GoogleEvent } from "./google.ts";
 import { colourOf, colourSeries, putEvent } from "./mirror.ts";
@@ -107,6 +110,34 @@ export const calendarOps = [
     input: Type.Object({ ...Ids, eventId: Type.String({ maxLength: 1024 }), title: Type.String({ maxLength: 300 }),
       response: Type.Union(RESPONSES.map((response) => Type.Literal(response))), at: Type.String({ maxLength: 60 }) }),
     run: (world, input) => queue(world, "respond", input as RespondInput),
+  }),
+  // A proposed event, moved by the user's own hand while the proposal waits (dragged on the calendar page): the step
+  // keeps what it adds or moves and takes the new time, its preview is written again, and the summary says so,
+  // since Alfred's own words there may name the old time.
+  defineOp({
+    name: "calendar.retime",
+    input: Type.Object({ proposal: Type.String({ minLength: 1, maxLength: 64 }), step: Type.Integer({ minimum: 0, maximum: 19 }), when: WhenSchema }),
+    run(world, input): { ok: true } | { error: DirectRefusal } {
+      let proposal: Proposal;
+      try { proposal = getProposal(world, input.proposal); } catch { return { error: "gone" }; }
+      const step = proposal.steps[input.step];
+      if (proposal.state !== "open" || !step || (step.op !== "calendar.add" && step.op !== "calendar.move")) return { error: "gone" };
+      if (checkWhen(input.when as When)) return { error: "bad_time" };
+      const locale = userLocale(world);
+      const next = { ...(step.input as AddInput | MoveInput), when: input.when as When };
+      const preview = step.op === "calendar.add" ? SAY[locale].add(next as AddInput) : SAY[locale].move(next as MoveInput);
+      // One line per event the user moved, the newest in place of an older one.
+      const lead = locale === "zh" ? `↪ 你把「${next.title}」` : `↪ You moved “${next.title}”`;
+      const note = `${lead}${locale === "zh" ? "改到了 " : " to "}${format(next.when, locale)}`;
+      const summary = [...proposal.summary.split("\n").filter((line) => !line.startsWith(lead)), note].filter(Boolean).join("\n");
+      try {
+        amendProposal(world, proposal.id, input.step, { ...step, input: next, preview }, summary);
+      } catch (error) {
+        if (error instanceof ProposalStateError) return { error: "gone" };
+        throw error;
+      }
+      return { ok: true };
+    },
   }),
   // The user's own hand, from the calendar page. What they may change is checked against the mirror here, not taken
   // from the device; a refusal is a code the page has words for.
@@ -229,10 +260,15 @@ function localInstant(value: string): string | null {
   return new Date(y, m - 1, d, h, min).toISOString();
 }
 
-function whenFrom(params: { start?: string; end?: string; date?: string; end_date?: string }): When | { error: string } {
+/** How long a new event lasts when only its start was given: the user corrects it on the proposal, not in a question. */
+const DEFAULT_MINUTES = 60;
+
+/** `lasting`: minutes an event with a start and no end is given (a new event); without it, both are needed. */
+function whenFrom(params: { start?: string; end?: string; date?: string; end_date?: string }, lasting?: number): When | { error: string } {
   if (params.date) return { date: params.date, endDate: params.end_date ?? params.date };
   const start = params.start ? localInstant(params.start) : null;
-  const end = params.end ? localInstant(params.end) : null;
+  const end = params.end ? localInstant(params.end)
+    : start && lasting && params.end === undefined ? new Date(Date.parse(start) + lasting * 60_000).toISOString() : null;
   if (!start || !end) return { error: "Give start and end as YYYY-MM-DDTHH:MM (local time), or date (and end_date) for whole days." };
   return { start, end };
 }
@@ -270,6 +306,7 @@ export const calendarWriteTools = [
     level: "external",
     parameters: Type.Object({
       title: Type.String({ maxLength: 300 }), ...Times,
+      end: Type.Optional(Type.String({ description: "End, YYYY-MM-DDTHH:MM. Unknown: leave it out (one hour is assumed) and say so in the proposal's summary; do not ask." })),
       location: Type.Optional(Type.String({ maxLength: 300 })),
       notes: Type.Optional(Type.String({ maxLength: 4000, description: "Description" })),
       calendar: Type.Optional(Type.String({ description: "Calendar name, if not their main one" })),
@@ -277,7 +314,7 @@ export const calendarWriteTools = [
     describe: (_world, params) => params.title,
     execute: () => PROPOSE_ONLY,
     pin(world, params) {
-      const when = whenFrom(params);
+      const when = whenFrom(params, DEFAULT_MINUTES);
       if ("error" in when) return when;
       const accounts = world.db.prepare("SELECT account FROM calendar_sources WHERE can_write = 1 ORDER BY account").all().map((row) => row.account as string);
       if (!accounts.length) return { error: NO_WRITE };

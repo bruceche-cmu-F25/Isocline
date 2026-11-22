@@ -300,9 +300,9 @@ export function askUserTool(): RunTool {
   return {
     name: "ask_user",
     label: "Ask",
-    description: "Ask the user a short question when you cannot go on without their choice. Offer 2–4 short options when you can. Returns their answer. Use it only when a wrong guess would matter.",
+    description: "Ask the user a short question when you cannot go on without their choice. A last resort: use it only when there is nothing sensible to guess and a wrong guess could not be put right afterwards; otherwise act on your best guess and say what you assumed. Ask about one thing, and offer 2–4 short options that each answer the whole question. Returns their answer.",
     parameters: Type.Object({
-      question: Type.String({ description: "One short question, in the user's language" }),
+      question: Type.String({ description: "One short question about one thing, in the user's language" }),
       options: Type.Optional(Type.Array(Type.String(), { maxItems: 6, description: "Suggested answers" })),
     }) as unknown as Record<string, unknown>,
     describe: (params) => String(params.question ?? "").slice(0, 120),

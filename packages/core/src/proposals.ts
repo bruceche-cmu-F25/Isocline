@@ -1,8 +1,9 @@
 /** Proposals: changes Alfred has prepared that wait for the user's yes.
  *
  * A run proposes and may then finish; the proposal waits (up to a week) in the user's inbox. The user accepts,
- * declines, or asks for a change (which opens a new run and supersedes this one). Accepting runs exactly the steps
- * that were previewed, once, in one transaction. If anything they touch has changed since the proposal was made
+ * declines, or asks for a change (which opens a new run and supersedes this one). The user may also change a step
+ * by their own hand before deciding (amendProposal: a proposed event dragged to another hour); what the step then
+ * previews is what will run. Accepting runs exactly the steps that were previewed, once, in one transaction. If anything they touch has changed since the proposal was made
  * (read from the event log), it is stale and runs nothing. Only the user decides: the decision is a device command,
  * never a run's.
  */
@@ -202,6 +203,25 @@ export function declineProposal(world: World, id: string, now: number = Date.now
     setState(db, id, "declined", now, { decided: true });
     event(world, proposal, "proposal.decided", { decision: "declined" }, now);
     closeNotices(db, id, now);
+    return load(db, id);
+  });
+}
+
+/** The user changes one step by hand while it waits: the same operation, with what they set (a proposed event's time).
+ * The caller makes the step whole again (input and preview agree); `summary` says so where Alfred's words no longer
+ * hold. Never a run's to do: a run that wants another proposal proposes again. */
+export function amendProposal(world: World, id: string, index: number, step: ProposalStep, summary?: string, now: number = Date.now()): Proposal {
+  if (coreContext()?.run) throw new Error("Only the user changes a proposal that waits for them");
+  return world.tx((db) => {
+    const proposal = load(db, id);
+    if (proposal.state !== "open") throw new ProposalStateError(proposal.state);
+    if (Date.parse(proposal.expiresAt) <= now) { expire(world, db, proposal, now); throw new ProposalStateError("expired"); }
+    const was = proposal.steps[index];
+    if (!was || was.op !== step.op) throw new Error("No such step in this proposal");
+    const steps = proposal.steps.map((each, n) => (n === index ? step : each));
+    db.prepare("UPDATE core_proposals SET steps = ?, summary = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(steps), (summary ?? proposal.summary).trim().slice(0, 2000), iso(now), id);
+    event(world, proposal, "proposal.amended", { step: index, was: was.preview.slice(0, 200), preview: step.preview.slice(0, 200) }, now);
     return load(db, id);
   });
 }
