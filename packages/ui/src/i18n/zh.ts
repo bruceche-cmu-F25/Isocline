@@ -181,7 +181,7 @@ export const zh = {
   "err.timeout": "等太久，停下了。",
   "err.unknown_profile": "这个请求没有对应的能力档。",
   "err.lease_lost": "执行权过期了，后面的改动没有写入。",
-  "err.engine_crashed": "模型进程意外退出了。已经做了的改动都在回执里，没有自动重做。",
+  "err.engine_crashed": "模型意外退出",
 
   // Pages
   "page.inbox": "通知",
@@ -1115,6 +1115,12 @@ export const zh = {
   "ask.open": "展开对话",
   "ask.back": "回到标签",
   "ask.about.clear": "不说这个了",
+  "say.open": "说一句…",
+  "say.placeholder": "改这件事：明天、下午3点…",
+  "say.done": "做完了",
+  "say.later": "晚1小时",
+  "say.goal.todo": "关于待办「{title}」：{text}",
+  "say.goal.event": "关于日程「{title}」（{when}）：{text}",
   // 今天 (Today.tsx, shell/today.ts): what is next, the day on one line of time, what waits, what is going on
   "page.today": "今天",
   "today.sum.events": "今天 {n} 件日程",

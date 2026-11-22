@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { createFigure, type Figure as Live, type FigureState } from "../entity/tesseract.js";
 
 const isDark = () => document.documentElement.dataset.scheme === "dark";
@@ -9,8 +9,9 @@ let entered: object | null = null;
 
 /** Alfred's figure at a given size. Its far lines fade toward whatever it sits on, and it follows light and dark.
  * Touching it makes it flinch and wobble (a poke). `anchor`: Alfred speaks from this one (shell/Says.tsx); it is
- * wrapped so the drawing can hop while the wrapper stays still to measure. */
-export function Figure({ state, size, className, anchor, centered }: { state: FigureState; size: number; className?: string; anchor?: boolean; centered?: boolean }) {
+ * wrapped so the drawing can hop while the wrapper stays still to measure. `enter`: it comes in growing whether or
+ * not it is the first. */
+export function Figure({ state, size, className, anchor, centered, enter }: { state: FigureState; size: number; className?: string; anchor?: boolean; centered?: boolean; enter?: boolean }) {
   const svg = useRef<SVGSVGElement>(null);
   const live = useRef<Live | null>(null);
 
@@ -18,7 +19,10 @@ export function Figure({ state, size, className, anchor, centered }: { state: Fi
     if (!svg.current) return;
     const first = !entered;
     // Thicker lines at small sizes; below 48 px the tesseract drops the edges joining its two cubes.
-    const figure = createFigure(svg.current, { width: size >= 100 ? 4 : size >= 48 ? 4.6 : 5.6, small: size < 48, centered, dark: isDark(), enter: first ? "grow" : null });
+    const figure = createFigure(svg.current, {
+      width: size >= 100 ? 4 : size >= 48 ? 4.6 : 5.6, small: size < 48, centered,
+      dark: isDark(), enter: first || enter ? "grow" : null, ambient: true,
+    });
     const born = performance.now();
     if (first) entered = figure;
     live.current = figure;
@@ -28,7 +32,7 @@ export function Figure({ state, size, className, anchor, centered }: { state: Fi
       scheme.disconnect(); figure.destroy(); live.current = null;
       if (entered === figure && performance.now() - born < 300) entered = null;
     };
-  }, [size, centered]);
+  }, [size, centered, enter]);
 
   useEffect(() => { live.current?.setState(state); }, [state]);
   // Moving between places (panel, floating button) changes what it sits on.
@@ -41,20 +45,4 @@ export function Figure({ state, size, className, anchor, centered }: { state: Fi
     />
   );
   return anchor ? <span className="figure-anchor" data-alfred-anchor="">{drawing}</span> : drawing;
-}
-
-
-/** The calm states, in turn: the body, then each shape it takes while working, ending done. Amber (notice) and red
- * (error) are left out, since they mean something needs you. */
-const TOUR: FigureState[] = ["rest", "listen", "think", "speak", "work", "done", "sleep"];
-
-/** Alfred going through its shapes on an empty page ("All clear"). Holds the body when motion is reduced. */
-export function FigureTour({ size, every = 3200 }: { size: number; every?: number }) {
-  const [at, setAt] = useState(0);
-  useEffect(() => {
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = setInterval(() => setAt((i) => (i + 1) % TOUR.length), every);
-    return () => clearInterval(timer);
-  }, [every]);
-  return <Figure state={TOUR[at]} size={size} className="figure-tour" />;
 }

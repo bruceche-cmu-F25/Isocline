@@ -499,12 +499,12 @@ function placeFigs() {
   document.querySelectorAll("span[data-fig]").forEach((slot) => { const f = FIG[slot.dataset.fig]; slot.replaceWith(f.svg); f.fig.setDark(isDark()); });
   syncFig();
 }
-/* What the figure shows: a moment (greeting, listening, thinking, speaking), else the open conversation's state. */
+/* Greeting, listening, thinking or showing a reply, then the open conversation's state. */
 function figState() {
   if (S.greeting) return "hello";
   if (S.listening) return "listen";
   if (S.busy) return "think";
-  if (S.speaking) return "speak";
+  if (S.speaking) return "flow";
   const c = conv();
   return c.state === "working" ? "work" : c.state === "needs" ? "notice" : "rest";
 }

@@ -588,7 +588,7 @@ document.querySelectorAll("span[data-fig]").forEach((slot) => {
 });
 function syncFigure() {
   const turn = last();
-  const state = turn?.state === "thinking" ? "think" : turn?.state === "speaking" ? "speak" : turn?.state === "waiting" ? "notice"
+  const state = turn?.state === "thinking" ? "think" : turn?.state === "speaking" ? "flow" : turn?.state === "waiting" ? "notice"
     : figures.mood ?? (S.focus && light() && !S.expanded ? "listen" : "rest");
   for (const figure of figures.all) { figure.setState(state); figure.refresh(); }
 }

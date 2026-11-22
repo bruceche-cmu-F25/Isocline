@@ -873,7 +873,7 @@ function renderOb() {
     el.innerHTML = `<div class="tour"><div class="spot" id="spot"></div><div class="say" id="say" role="dialog"><svg id="ob-fig" viewBox="0 0 120 120" role="img" aria-label="Alfred"></svg>
       <div><b>${stop.title}</b><p>${stop.text}</p><div class="acts"><button type="button" class="skip" data-ob-act="end">${t("跳过", "Skip")}</button>
         <button type="button" class="btn solid small" data-ob-act="stop">${last ? t("开始用", "Start") : t("下一站", "Next")}${icon("arrow")}</button></div></div></div></div>`;
-    createFigure(document.getElementById("ob-fig"), { state: "speak", width: 5, dark: document.documentElement.dataset.scheme === "dark" });
+    createFigure(document.getElementById("ob-fig"), { state: "rest", width: 5, dark: document.documentElement.dataset.scheme === "dark" });
     placeTour();
     return;
   }

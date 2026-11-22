@@ -71,7 +71,7 @@ function Presence() {
   useEffect(() => {
     if (!svg.current) return;
     const dark = () => document.documentElement.dataset.scheme === "dark";
-    const live = createFigure(svg.current, { width: 4.6, dark: dark(), enter: "grow" });
+    const live = createFigure(svg.current, { width: 4.6, dark: dark(), enter: "grow", ambient: true });
     figure.current = live;
     // public/scheme.js keeps data-scheme right: the system's appearance, or the one chosen in the app.
     const follow = new MutationObserver(() => live.setDark(dark()));
@@ -153,17 +153,16 @@ function Presence() {
 
   const working = state?.runs.some((run) => BUSY.has(run.state)) ?? false;
   const waiting = !!state && waitingCount(state) > 0;
-  // Talking: its words' look. Touched: it looks up at you. Otherwise amber when something waits, turning while it works.
+  // Show the notice’s state throughout its text reveal. Touch greets, waiting is amber, and work turns.
   const mood: FigureState = speech.mood ?? (dragging || pointing ? "hello" : waiting ? "notice" : working ? "work" : "rest");
   useEffect(() => { figure.current?.setState(mood); }, [mood]);
-  // The welcome said, it introduces itself: opens into its net of eight cubes and folds back. (While the words come
-  // out it is the speaking rings; it is the body again once they are all out.)
+  // Once the welcome text is fully visible, the tesseract unfolds into its net of eight cubes.
   const unfolded = useRef<string | null>(null);
   useEffect(() => {
-    if (mood !== "hello" || phase !== "speak" || current?.kind !== "welcome" || unfolded.current === current.id) return;
+    if (mood !== "hello" || phase !== "speak" || !speech.complete || current?.kind !== "welcome" || unfolded.current === current.id) return;
     unfolded.current = current.id;
     figure.current?.play("unfold");
-  }, [mood, phase, current]);
+  }, [mood, phase, speech.complete, current]);
 
   const label = working ? t("presence.working") : waiting ? t("presence.waiting") : "Alfred";
   const speaking = phase === "idle" || phase === "next" ? undefined : phase;

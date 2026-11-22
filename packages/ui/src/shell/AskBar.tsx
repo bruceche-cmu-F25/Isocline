@@ -24,7 +24,8 @@ import { t } from "../i18n/index.ts";
 import { outcomeText } from "../Inbox.tsx";
 import { ConversationReply } from "../ConversationReply.tsx";
 import { Markdown } from "../Markdown.tsx";
-import { describeReceipt, errorText } from "../receipts.ts";
+import { describeReceipt } from "../receipts.ts";
+import { RunFailure } from "../RunFailure.tsx";
 import { MicButton } from "../voice/MicButton.tsx";
 import { AttachButton, AttachChips, useAttachments } from "../attach.tsx";
 import { appendDictation } from "../voice/wav.ts";
@@ -102,7 +103,7 @@ function AskCard({ run, unread, live, doing, receipts, proposal, decided, onOpen
         {where === "busy" && !live && <p className="working" role="status"><span className="working-label">{doing ?? t(run.state === "queued" ? "run.queued" : "run.thinking")}</span></p>}
         {live && !outcome && <Markdown className="reply-text live" text={live} />}
         {outcome?.reply && <ConversationReply text={outcome.reply} conversationId={run.conversationId} runId={run.id} unread={unread} />}
-        {run.state === "failed" && <p className="problem">{t("run.failed")} {errorText(outcome?.error)}</p>}
+        <RunFailure run={run} />
         {run.state === "cancelled" && <p className="quiet">{t("run.cancelled")}</p>}
         {run.state === "interrupted" && <p className="problem">{t("run.interrupted")}</p>}
         {proposal && <Decide proposal={proposal} onLook={() => onProposal(proposal.id)} onDecided={onDecided} />}

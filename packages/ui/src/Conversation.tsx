@@ -5,7 +5,8 @@ import { useLiveText } from "./live.ts";
 import { ApiError, api } from "./api.ts";
 import { Logo, modelMark } from "./brand/Logo.tsx";
 import { intlLocale, t, type Key } from "./i18n/index.ts";
-import { describeReceipt, errorText } from "./receipts.ts";
+import { describeReceipt } from "./receipts.ts";
+import { RunFailure } from "./RunFailure.tsx";
 import { Diff } from "./Diff.tsx";
 import { Linked } from "./Linked.tsx";
 import { ConversationReply } from "./ConversationReply.tsx";
@@ -224,7 +225,7 @@ const Turn = memo(function Turn({ run, receipts, activity, files, highlighted, a
             )}
             {live && !outcome && <Markdown className="reply-text live" text={live} />}
             {outcome?.reply && <ConversationReply text={outcome.reply} conversationId={run.conversationId} runId={run.id} unread={unread} />}
-            {run.state === "failed" && <p className="problem">{t("run.failed")} {errorText(outcome?.error)}</p>}
+            <RunFailure run={run} />
             {run.state === "cancelled" && <p className="quiet">{t("run.cancelled")}</p>}
             {run.state === "interrupted" && <p className="problem">{t("run.interrupted")}</p>}
             {receipts.length > 0 && (

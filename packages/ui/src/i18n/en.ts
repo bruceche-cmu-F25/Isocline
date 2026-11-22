@@ -182,7 +182,7 @@ export const en: Record<keyof typeof zh, string> = {
   "err.timeout": "It took too long, so it stopped.",
   "err.unknown_profile": "There is no capability profile for this request.",
   "err.lease_lost": "Its turn to work ran out; later changes were not written.",
-  "err.engine_crashed": "The model process quit unexpectedly. Changes already made are in the receipts; nothing was redone.",
+  "err.engine_crashed": "The model stopped unexpectedly",
 
   // Pages
   "page.inbox": "Inbox",
@@ -1116,6 +1116,12 @@ export const en: Record<keyof typeof zh, string> = {
   "ask.open": "Open the conversation",
   "ask.back": "Back to the tabs",
   "ask.about.clear": "Never mind this",
+  "say.open": "Say it…",
+  "say.placeholder": "Change this: tomorrow, 3pm…",
+  "say.done": "Done",
+  "say.later": "1 hour later",
+  "say.goal.todo": "About the todo “{title}”: {text}",
+  "say.goal.event": "About the event “{title}” ({when}): {text}",
   // Today (Today.tsx, shell/today.ts)
   "page.today": "Today",
   "today.sum.events": "{n} {n|event|events} today",

@@ -3,7 +3,7 @@ import type { Run, RunState } from "@alfred/protocol";
 import { api } from "./api.ts";
 import { Markdown } from "./Markdown.tsx";
 import { t, type Key } from "./i18n/index.ts";
-import { errorText } from "./receipts.ts";
+import { RunFailure } from "./RunFailure.tsx";
 
 const stateLabel: Record<RunState, Key> = {
   queued: "run.queued", running: "run.running", cancelling: "run.cancelling",
@@ -36,8 +36,9 @@ export function RunResult({ runId, run, preview, reading = false }: { runId: str
   const reply = result.outcome?.reply;
   return <div className={className}>
     {reply && <Markdown text={reply} reading={reading} />}
-    {result.state !== "completed" && <p className={result.state === "failed" || result.state === "interrupted" ? "problem" : "quiet"} role="status">
-      {result.state === "interrupted" ? t("run.interrupted") : resultStatus(result.state)} {errorText(result.outcome?.error)}
+    <RunFailure key={result.id} run={result} />
+    {result.state !== "completed" && result.state !== "failed" && <p className={result.state === "interrupted" ? "problem" : "quiet"} role="status">
+      {result.state === "interrupted" ? t("run.interrupted") : resultStatus(result.state)}
     </p>}
     {result.state === "completed" && !reply && <p className="quiet">{t("auto.emptyResult")}</p>}
   </div>;

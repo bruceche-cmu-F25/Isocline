@@ -200,6 +200,9 @@ const MOVE = {
   } },
 };
 
+/** How long a move takes, in s (0 for a name that is not a move). */
+export const moveSeconds = (move) => MOVE[move]?.dur ?? 0;
+
 /* The greeting's timing in s: still, unfold, held open, fold back (also `move`), then still again till the cycle ends. */
 const HELLO = { rest: 3, move: 2.6, hold: 1.2, cycle: 11 };
 
@@ -314,6 +317,34 @@ const family = (state) => (BODY.includes(state) ? "body" : state);
 const glides = (from, to) => family(from) === family(to) || (BODY.includes(from) && SPIN.includes(to));
 let running = false;
 
+// While the body is idle it alternates turns and gestures. Each figure starts on its own beat.
+// Use only the body here: the amber, green and red shapes, the microphone and the working shapes carry meaning.
+const IDLE_CUES = ["flow", "hop", "ponder", "unfold"];
+function pauseIdle(I, t) {
+  if (!I.idle) return;
+  I.idle.turn = null;
+  I.idle.nextAt = t + 3.5 + I.seed * 1.5;
+}
+
+function idlePose(I, t) {
+  const idle = I.idle;
+  if (t >= idle.nextAt && !I.play) {
+    const cue = IDLE_CUES[idle.index];
+    idle.index = (idle.index + 1) % IDLE_CUES.length;
+    if (SPIN.includes(cue)) {
+      idle.turn = cue;
+      idle.nextAt = t + idle.turnSeconds;
+    } else {
+      // Let the turn settle into the resting body before the gesture. The net needs more room than a button has.
+      const move = cue === "unfold" && (I.small || I.mono) ? "poke" : cue;
+      const start = t + (idle.turn ? GLIDE_S : 0);
+      I.play = { move, start, idle: true };
+      pauseIdle(I, start + MOVE[move].dur);
+    }
+  }
+  return idle.turn ?? I.state;
+}
+
 /* A figure's wires: runs of pieces that join end to start (an edge cut into pieces, a ring), ordered around the
    figure so a redraw sweeps round it. Fixed per state, so worked out once. */
 const WIRES = {};
@@ -337,8 +368,11 @@ function makeLayer() {
     line.style.display = "none"; // until the first frame places it
     return line;
   });
-  return { g, lines, order: [] };
+  // `was`: what each line and the group were last given, so a frame writes only what changed.
+  return { g, lines, order: [], was: lines.map(() => ({ hidden: true })), group: { hidden: false } };
 }
+const put = (el, was, name, value) => { if (was[name] !== value) { was[name] = value; el.setAttribute(name, value); } };
+const hide = (el, was, hidden) => { if (was.hidden !== hidden) { was.hidden = hidden; el.style.display = hidden ? "none" : ""; } };
 
 /* A figure inside a button turns around the button's centre. Perspective can move the bounds of even a
    symmetric shape. Use the whole pose so a wire being drawn or erased does not pull the rest of it along. */
@@ -388,25 +422,47 @@ function paint(I, layer, state, frame, span, fade) {
   const order = Array.from({ length: NSEG }, (_, i) => i).sort((a, b) => depth(a) - depth(b));
   if (order.some((n, k) => n !== layer.order[k])) { for (const n of order) layer.g.appendChild(layer.lines[n]); layer.order = order; }
   const hideW = (I.mono || I.small) && WHOLE.includes(state);
+  const opacity = fade < 0.98 ? fade.toFixed(2) : "1";
   for (let i = 0; i < NSEG; i++) {
-    const line = layer.lines[i], v = shown[i];
-    if (!v || (hideW && s[i][2])) { line.style.display = "none"; continue; }
-    line.style.display = "";
-    line.setAttribute("x1", v[0].toFixed(2)); line.setAttribute("y1", v[1].toFixed(2));
-    line.setAttribute("x2", v[2].toFixed(2)); line.setAttribute("y2", v[3].toFixed(2));
-    line.setAttribute("stroke", base ? rgbHex(mix(base, bg, (1 - depth(i)) * shade)) : "currentColor");
-    line.setAttribute("opacity", fade < 0.98 ? fade.toFixed(2) : "1");
+    const line = layer.lines[i], v = shown[i], was = layer.was[i];
+    if (!v || (hideW && s[i][2])) { hide(line, was, true); continue; }
+    hide(line, was, false);
+    put(line, was, "x1", v[0].toFixed(2)); put(line, was, "y1", v[1].toFixed(2));
+    put(line, was, "x2", v[2].toFixed(2)); put(line, was, "y2", v[3].toFixed(2));
+    put(line, was, "stroke", base ? rgbHex(mix(base, bg, (1 - depth(i)) * shade)) : "currentColor");
+    put(line, was, "opacity", opacity);
   }
   const [dx, dy] = I.centered ? centeredOffset(s) : [frame.dx || 0, frame.dy || 0];
-  layer.g.setAttribute("transform", `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
-  if (frame.sw && frame.sw !== 1) layer.g.setAttribute("stroke-width", (I.width * frame.sw).toFixed(2));
-  else layer.g.removeAttribute("stroke-width");
-  layer.g.style.display = "";
+  put(layer.g, layer.group, "transform", `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
+  const sw = frame.sw && frame.sw !== 1 ? (I.width * frame.sw).toFixed(2) : null;
+  if (layer.group["stroke-width"] !== sw) {
+    layer.group["stroke-width"] = sw;
+    if (sw) layer.g.setAttribute("stroke-width", sw); else layer.g.removeAttribute("stroke-width");
+  }
+  hide(layer.g, layer.group, false);
+}
+
+/** A settled frame for recorded states. It uses the live pose and depth shading without joining the animation loop. */
+export function drawFigurePose(svg, state, { width = 4, dark = false } = {}) {
+  const layer = makeLayer();
+  layer.g.setAttribute("stroke-linecap", "round");
+  svg.replaceChildren(layer.g);
+  const frame = STATE[state](0.6, 0, CTX0);
+  paint({ width, dark, bg: resolveBg(svg, "auto") }, layer, state, frame, null, 1);
+  layer.g.setAttribute("stroke-width", String(width * (frame.sw ?? 1)));
+  svg.dataset.state = state;
 }
 
 function step(I, t, still) {
+  if (still !== I.still) {
+    // Reduced motion uses a fixed clock. Restart elapsed times when switching between the two clocks.
+    I.still = still; I.entered = t; I.asked = t; I.mode = null; I.play = null;
+    pauseIdle(I, t);
+  }
   // Thinking for a while: the octahedron gives way to the body turning in two planes.
-  const want = !still && I.state === "think" && t - I.asked > PONDER_AFTER ? "ponder" : I.state;
+  let want = I.state;
+  if (!still && I.idle && BODY.includes(want)) want = idlePose(I, t);
+  else if (!still && want === "think" && t - I.asked > PONDER_AFTER) want = "ponder";
   if (want !== I.now) {
     const from = I.now;
     I.now = want;
@@ -415,7 +471,7 @@ function step(I, t, still) {
     if (still) I.mode = null;
     else if (I.mode === "redraw" && t - I.changed < REDRAW_S && family(want) === family(from)) {
       // Mid-redraw to another pose of the same figure: keep drawing, with the new pose.
-    } else if (glides(from, want) && I.mode !== "redraw") {
+    } else if ((glides(from, want) || (I.idle && SPIN.includes(from) && BODY.includes(want))) && I.mode !== "redraw") {
       I.mode = "glide"; I.changed = t; I.glideFrom = I.pose.map((piece) => [[...piece[0]], [...piece[1]]]);
     } else {
       // What was being drawn (perhaps half drawn) leaves from where it had got to.
@@ -432,7 +488,7 @@ function step(I, t, still) {
   if (I.mode === "redraw" && I.out && since < OUT_S) {
     const left = I.out.drawn * (1 - easeIn(since / OUT_S));
     paint(I, I.layers.out, I.out.state, STATE[I.out.state](t, 0, { since: t - I.entered, seed: I.seed }), (_, __, total) => [total * (1 - left) / 2, total * (1 + left) / 2], 0.35 + 0.65 * left);
-  } else I.layers.out.g.style.display = "none";
+  } else hide(I.layers.out.g, I.layers.out.group, true);
 
   // A move over the body, once anything being drawn is in place (a move asked for mid-redraw waits for it). A move
   // that never got its turn is let go.
@@ -454,7 +510,13 @@ function step(I, t, still) {
   // The arriving figure: drawn wire by wire, sweeping round, turning into place as it forms.
   if (!frame) {
     const spin = I.mode === "redraw" ? (1 - easeOut((t - I.changed) / REDRAW_S)) * ENTRY_SPIN : 0;
-    frame = STATE[I.now](t, spin, { since: t - I.entered, seed: I.seed });
+    let since = t - I.entered;
+    if (I.idle?.turn === I.now) {
+      // Roll out and back along the same path so the next gesture starts with the cubes already back in place.
+      const duration = I.idle.turnSeconds;
+      since = duration * (1 - Cs(2 * PI * clamp(since / duration, 0, 1))) / 2;
+    }
+    frame = STATE[I.now](t, spin, { since, seed: I.seed });
     if (I.mode === "glide") {
       const w = easeInOut((t - I.changed) / GLIDE_S);
       frame = { ...frame, s: frame.s.map((piece, i) => {
@@ -467,16 +529,56 @@ function step(I, t, still) {
   const span = I.mode === "redraw"
     ? (n, count, total) => [0, total * easeOut((t - I.changed - IN_AT - (n / count) * SWEEP_S) / IN_S)]
     : null;
+  // The same every frame but the one a state or a move changes on.
+  const move = I.play?.started != null ? I.play.move : null, loud = I.mono && LOUD.includes(I.now);
+  if (I.said.state !== I.now) { I.said.state = I.now; I.svg.dataset.state = I.now; }
+  if (I.said.move !== move) { I.said.move = move; if (move) I.svg.dataset.move = move; else delete I.svg.dataset.move; }
+  if (I.said.loud !== loud) { I.said.loud = loud; I.svg.classList.toggle("loud", loud); }
+  // Settled in one figure (nothing arriving or leaving, no move), the pose only drifts: a breath, a slow sway. A
+  // frame no corner of which is a quarter of a screen pixel from where it was last drawn would look the same, so it
+  // is not drawn: at rest that is most of them, and a small figure's breath is a few frames in all. What is on
+  // screen is never further than that from the true pose, and anything quicker is drawn the moment it shows.
+  const offset = I.centered ? centeredOffset(frame.s) : [frame.dx || 0, frame.dy || 0];
+  const settled = !I.mode && !I.play && I.layers.out.group.hidden && !I.fresh && I.drawn?.state === I.now;
+  if (settled && drift(I.drawn, frame.s, offset) < I.fine) return;
+  I.fresh = false;
+  I.drawn = { state: I.now, s: frame.s, offset };
   paint(I, I.layers.in, I.now, frame, span, frame.op ?? 1);
-  I.svg.dataset.state = I.now;
-  if (I.play?.started != null) I.svg.dataset.move = I.play.move; else delete I.svg.dataset.move;
-  I.svg.classList.toggle("loud", I.mono && LOUD.includes(I.now));
 }
+
+/* How far the pose is from the one last drawn, in the 120 box: the corner that moved most, and the whole figure's
+   own shift (a breath lifts it). */
+function drift(drawn, s, offset) {
+  let most = 0;
+  for (let i = 0; i < s.length; i++) {
+    for (let end = 0; end < 2; end++) {
+      const dx = s[i][end][0] - drawn.s[i][end][0], dy = s[i][end][1] - drawn.s[i][end][1], d = dx * dx + dy * dy;
+      if (d > most) most = d;
+    }
+  }
+  return Math.sqrt(most) + Math.hypot(offset[0] - drawn.offset[0], offset[1] - drawn.offset[1]);
+}
+/* A quarter of a screen pixel, in the 120 box, for a figure drawn `px` wide. */
+const fineOf = (px) => (px > 0 ? (0.25 * 120) / (px * (typeof devicePixelRatio === "number" ? devicePixelRatio : 1)) : 0.05);
+
+/* How long a figure can go before its next frame, in ms. Slow motion (the body breathing, a shape turning) reads the
+   same at 30 frames a second as at 60 and costs half; a change between figures, a move and the shake of an error
+   keep every frame. With motion reduced nothing moves, so it is only looked at now and then; a change asked of it
+   (setState, play…) is drawn on the next frame whatever this says. */
+const QUICK = ["error"];
+const SLOW_MS = 1000 / 30, STILL_MS = 500;
+const frameGap = (I, still) => (still ? STILL_MS : I.mode || I.play || QUICK.includes(I.now) ? 0 : SLOW_MS);
 
 function frameAll(now) {
   if (!figures.size) { running = false; return; }
   const still = reduced(), t = still ? 0.6 : now / 1000;
-  for (const I of figures) if (I.svg.isConnected) step(I, t, still);
+  for (const I of figures) {
+    // Not on the page, or out of view (scrolled away, in something folded shut): nothing to draw.
+    if (!I.svg.isConnected || !I.seen || now < I.due) continue;
+    step(I, t, still);
+    // A little under the gap, so a frame that comes a touch early is not put off by a whole one.
+    I.due = now + frameGap(I, still) - 6;
+  }
   requestAnimationFrame(frameAll);
 }
 const clockNow = () => (reduced() ? 0.6 : (typeof performance === "object" ? performance.now() : Date.now()) / 1000);
@@ -488,7 +590,7 @@ const clockNow = () => (reduced() ? 0.6 : (typeof performance === "object" ? per
  * background: "auto" (nearest ancestor's background), a CSS colour, or null (no depth shading).
  * enter: a move to come in with ("grow": from a point), when the figure starts as the body.
  */
-export function createFigure(svg, { state = "rest", width = 4, mono = false, small = false, centered = false, dark = false, background = "auto", enter = null } = {}) {
+export function createFigure(svg, { state = "rest", width = 4, mono = false, small = false, centered = false, dark = false, background = "auto", enter = null, ambient = false } = {}) {
   const first = STATES.includes(state) ? state : "rest";
   const root = document.createElementNS(SVGNS, "g");
   root.setAttribute("stroke-width", String(width));
@@ -497,14 +599,30 @@ export function createFigure(svg, { state = "rest", width = 4, mono = false, sma
   root.append(layers.out.g, layers.in.g);
   svg.replaceChildren(root);
   const t0 = clockNow();
+  const seed = Math.random();
   const I = {
     svg, layers, mono, small, centered, dark, width, state: first, now: first, mode: null, changed: -Infinity, out: null, asked: t0, entered: t0,
-    seed: Math.random(), play: null, pose: STATE[first](0, 0, CTX0).s, glideFrom: null, bg: resolveBg(svg, background),
+    seed, still: reduced(),
+    idle: ambient ? { index: Math.floor(seed * IDLE_CUES.length), turn: null, turnSeconds: 5 + seed, nextAt: t0 } : null,
+    play: null, pose: STATE[first](0, 0, CTX0).s, glideFrom: null, bg: resolveBg(svg, background),
+    due: 0, seen: true, said: {}, drawn: null, fresh: true, fine: fineOf(svg.getBoundingClientRect?.().width ?? 0),
   };
+  // How finely it has to be drawn follows the size it is shown at.
+  const sized = typeof ResizeObserver === "function"
+    ? new ResizeObserver((entries) => { I.fine = fineOf(entries[entries.length - 1].contentRect.width); I.fresh = true; }) : null;
+  sized?.observe(svg);
+  // Out of view it is not drawn (frameAll); the clock goes on, so it comes back where it would have been.
+  const watch = typeof IntersectionObserver === "function"
+    ? new IntersectionObserver((entries) => { I.seen = entries[entries.length - 1].isIntersecting; I.due = 0; }) : null;
+  watch?.observe(svg);
+  pauseIdle(I, t0);
   const play = (move) => {
     if (!MOVE[move] || reduced() || !BODY.includes(I.state)) return false;
     if (move === "unfold" && (I.mono || I.small)) return false; // the net needs room; at small sizes it is a tangle
-    I.play = { move, start: clockNow() };
+    const start = clockNow() + (I.idle?.turn ? GLIDE_S : 0);
+    pauseIdle(I, start + MOVE[move].dur);
+    I.play = { move, start };
+    I.due = 0;
     return true;
   };
   if (enter && BODY.includes(first)) play(enter);
@@ -512,13 +630,22 @@ export function createFigure(svg, { state = "rest", width = 4, mono = false, sma
   if (!running) { running = true; requestAnimationFrame(frameAll); }
   return {
     get state() { return I.state; },
-    setState(next) { if (STATES.includes(next) && next !== I.state) { I.state = next; I.asked = clockNow(); } },
+    setState(next) {
+      if (!STATES.includes(next) || next === I.state) return;
+      I.state = next; I.asked = clockNow(); I.due = 0;
+      if (I.play?.idle) I.play = null;
+      pauseIdle(I, I.asked);
+    },
     /** Plays a one-shot move over the body (rest or hello). Returns false when it cannot: another figure is showing,
      * motion is reduced, or (unfold) the figure is too small. */
     play,
-    setDark(next) { I.dark = !!next; I.bg = resolveBg(svg, background); },
+    setDark(next) { I.dark = !!next; I.bg = resolveBg(svg, background); I.due = 0; I.fresh = true; },
     /** Re-reads the background colour, e.g. after a theme change. */
-    refresh() { I.bg = resolveBg(svg, background); },
-    destroy() { figures.delete(I); svg.replaceChildren(); },
+    refresh() {
+      const bg = resolveBg(svg, background);
+      if (String(bg) === String(I.bg)) return;
+      I.bg = bg; I.due = 0; I.fresh = true;
+    },
+    destroy() { figures.delete(I); watch?.disconnect(); sized?.disconnect(); svg.replaceChildren(); },
   };
 }

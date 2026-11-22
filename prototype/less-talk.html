@@ -832,7 +832,7 @@ async function talk(text) {
   if (!S.turns.includes(turn)) return;
   Object.assign(turn, answer(turn.asked));
   // Not a full redraw: the next sentence may already be on its way.
-  mood("speak"); renderUp(); renderTurns();
+  mood("flow"); renderUp(); renderTurns();
 }
 /** What an answer offered to do, once it is pressed. */
 function run(what) {

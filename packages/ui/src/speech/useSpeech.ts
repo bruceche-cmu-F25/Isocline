@@ -1,5 +1,5 @@
-/** Alfred telling the user things, one at a time: the figure hops, a card comes out of it and its words are typed
- * as it speaks, then the card folds back in. Shared by the Mac app's figure window and the app's own pages.
+/** Alfred telling the user things, one at a time: the figure hops, the card reveals its text,
+ * then folds back in. Shared by the Mac app's figure window and the app's own pages.
  *
  *   idle → hop → speak ⇄ fold → next → (speak | idle | sink → idle)
  *
@@ -26,18 +26,21 @@ export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)"
 /** Reveals `text` a few characters at a time, as if spoken. Returns how much is out, and whether it is all out. */
 function useSpoken(text: string, key: string | null): [number, boolean] {
   const length = Array.from(text).length;
-  const [out, setOut] = useState(length);
+  const [reveal, setReveal] = useState({ key, count: 0 });
   useEffect(() => {
-    if (!key || reducedMotion()) { setOut(length); return; }
-    setOut(0);
+    if (!key || reducedMotion()) { setReveal({ key, count: length }); return; }
+    let count = 0;
+    setReveal({ key, count });
     const step = Math.max(1, Math.ceil(length / TYPE_TICKS));
-    const timer = window.setInterval(() => setOut((now) => {
-      const next = Math.min(length, now + step);
-      if (next >= length) window.clearInterval(timer);
-      return next;
-    }), TYPE_TICK_MS);
+    const timer = window.setInterval(() => {
+      count = Math.min(length, count + step);
+      setReveal({ key, count });
+      if (count >= length) window.clearInterval(timer);
+    }, TYPE_TICK_MS);
     return () => window.clearInterval(timer);
   }, [key, length]);
+  // A newly opened card hasn't revealed any of its own text yet.
+  const out = !key ? length : reveal.key === key ? Math.min(reveal.count, length) : 0;
   return [out, out >= length];
 }
 
@@ -68,7 +71,7 @@ export interface Speech<T> {
   /** Characters of the body out so far, and whether all are. */
   out: number;
   complete: boolean;
-  /** The figure's state while it talks (null when it is not talking). */
+  /** The state conveyed by the visible notification. */
   mood: FigureState | null;
   /** Counts the moves to a next card, for a small nod between them. */
   nod: number;
@@ -133,7 +136,7 @@ export function useSpeech<T>(options: SpeechOptions<T>): Speech<T> {
     return () => window.clearTimeout(timer);
   }, [current, phase, complete, hovered, brief]);
 
-  const talking = phase === "hop" || phase === "speak" || phase === "fold";
-  const mood: FigureState | null = talking && said ? (phase === "speak" && !complete ? "speak" : said.mood) : null;
+  const presenting = phase === "hop" || phase === "speak" || phase === "fold";
+  const mood = presenting && said ? said.mood : null;
   return { current, said, phase, out, complete, mood, nod, finish, setHovered };
 }

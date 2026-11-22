@@ -4,6 +4,8 @@ export type FigureMove = "hop" | "poke" | "grow" | "unfold";
 
 export const STATES: FigureState[];
 export const MOVES: FigureMove[];
+/** How long a move takes, in seconds. */
+export function moveSeconds(move: FigureMove): number;
 export const LOUD: FigureState[];
 export const PALETTES: Record<"light" | "dark", Record<"ind" | "light" | "amber" | "ok" | "now", string>>;
 
@@ -22,6 +24,8 @@ export interface FigureOptions {
   background?: "auto" | string | null;
   /** A move to come in with, when the figure starts as the body ("grow": from a point). */
   enter?: FigureMove | null;
+  /** Cycle through the body's turns and gestures while the requested state stays at rest or hello. */
+  ambient?: boolean;
 }
 
 export interface Figure {
@@ -37,6 +41,9 @@ export interface Figure {
 
 /** Animates Alfred's figure in an <svg viewBox="0 0 120 120">. */
 export function createFigure(svg: SVGSVGElement, options?: FigureOptions): Figure;
+
+/** Draws a single settled frame without starting an animation. */
+export function drawFigurePose(svg: SVGSVGElement, state: FigureState, options?: { width?: number; dark?: boolean }): void;
 
 /** Draws the static mark into an <svg viewBox="0 0 120 120">. */
 export function drawMark(svg: SVGSVGElement, options?: { width?: number; dark?: boolean; background?: "auto" | string | null; mono?: boolean }): void;
