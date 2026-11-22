@@ -49,7 +49,8 @@ function reviewLink(payload: Record<string, unknown>, mail?: MailSnapshot) {
     : { href: `https://calendar.google.com/calendar/?authuser=${id}`, label: t("inbox.openCalendar") };
 }
 
-function Detail({ item, onDone, onOpenConversation, conversationTitle, line, mail }: {
+/** One thing, in full, with what can be done about it. Also what a waiting row on 今天 opens into (Today.tsx). */
+export function Detail({ item, onDone, onOpenConversation, conversationTitle, line, mail }: {
   item: InboxItem; mail?: MailSnapshot; onDone(message?: string): void; onOpenConversation(conversationId: string, runId?: string): void; conversationTitle?: string; line: PageLine;
 }) {
   const [busy, setBusy] = useState(false);

@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { CalendarSnapshot } from "@alfred/module-calendar/types";
+import type { MailSnapshot } from "@alfred/module-mail/types";
+import type { Todo } from "@alfred/module-todo/types";
 import type { StateResponse } from "@alfred/protocol";
 import { api } from "./api.ts";
+import { Detail } from "./Inbox.tsx";
+import type { PageLine } from "./shell/about.ts";
 import { Icon, type IconName } from "./shell/icons.tsx";
 import { when as ago } from "./shell/Nav.tsx";
-import { todayLine, todayModel, untilText, type LineRow, type TodayEvent, type TodayModel } from "./shell/today.ts";
-import { intlLocale, t } from "./i18n/index.ts";
+import { LEARN, todayLine, todayModel, untilText, type LineRow, type TodayEvent, type TodayModel } from "./shell/today.ts";
+import { intlLocale, t, type Key } from "./i18n/index.ts";
 import "./today.css";
 
 export interface TodayProps {
@@ -13,6 +18,8 @@ export interface TodayProps {
   /** To another page, and to one thing on it (an Inbox item, a letter). */
   go(page: string, item?: string): void;
   onOpenConversation(conversationId: string, runId?: string): void;
+  /** The bar under the page: changing a proposal is said there. */
+  line: PageLine;
 }
 
 /** The time, so that "in 1h 50m" and the mark of now move by themselves. */
@@ -41,7 +48,7 @@ function placeLink(location?: string): { href: string; site: string } | null {
 }
 
 /** 一句: a greeting, then the one thing that is next, with the way in under it. */
-function Lede({ model, name, now, go }: { model: TodayModel; name: string | null; now: number; go: TodayProps["go"] }) {
+function Lede({ model, over, name, now, go }: { model: TodayModel; over: number; name: string | null; now: number; go: TodayProps["go"] }) {
   const hello = t(`today.hi.${model.part}`) + (name ? t("today.hi.name", { name }) : "") + t("today.stop");
   const lead: TodayEvent | undefined = model.current ?? model.next;
   const place = placeLink(lead?.event.location);
@@ -59,7 +66,7 @@ function Lede({ model, name, now, go }: { model: TodayModel; name: string | null
     // Evening, and today is over: the sentence is about tomorrow.
     said = <>
       <b>{model.tomorrow ? t("today.tomorrow.first", { at: model.tomorrow.at, title: model.tomorrow.event.title }) : t("today.tomorrow.none")}</b>
-      <span>{t("today.stop")}{model.passed > 0 && ` ${t("today.passed", { n: model.passed })}`}</span>
+      <span>{t("today.stop")}{over > 0 && ` ${t("today.passed", { n: over })}`}</span>
     </>;
   } else if (model.tomorrow) {
     said = <><span>{t("today.free")}{t("today.stop")}</span> <b>{t("today.tomorrow.first", { at: model.tomorrow.at, title: model.tomorrow.event.title })}</b><span>{t("today.stop")}</span></>;
@@ -87,8 +94,9 @@ function Lede({ model, name, now, go }: { model: TodayModel; name: string | null
 
 interface RowProps {
   when?: string;
-  /** How the hour reads: something waits on the user, the hour has gone by, or it is going on now. */
-  tone?: "wait" | "late" | "now";
+  /** How the hour reads: something waits on the user, the hour has gone by, it is going on now, or the hour is
+   * only suggested. */
+  tone?: "wait" | "late" | "now" | "guess";
   /** What kind of thing, said by the icon of the page it lives on, in that thing's colour. */
   icon?: IconName;
   k?: string | null;
@@ -104,39 +112,89 @@ interface RowProps {
   past?: boolean;
   /** A line that only says there is more. */
   quiet?: boolean;
+  /** It is open: what it opens into follows it. */
+  open?: boolean;
+  /** One thing done from the row itself. */
+  act?: { label: string; onAct(): void };
   onOpen(): void;
 }
 
 /** The one shape of row on this page: when · what kind · what it is, and a word of why · the way in. The whole row
  * opens the thing (the button's ::before covers it); the ring and the link out sit above that. */
-function Row({ when, tone, icon, k, onTick, ticked, pulse, what, why, out, past, quiet, onOpen }: RowProps) {
+function Row({ when, tone, icon, k, onTick, ticked, pulse, what, why, out, past, quiet, open, act, onOpen }: RowProps) {
   return (
-    <li className="today-row" data-k={k ?? undefined} data-tone={tone} data-past={past || undefined} data-quiet={quiet || undefined} data-done={ticked || undefined}>
+    <li className="today-row" data-k={k ?? undefined} data-tone={tone} data-past={past || undefined} data-quiet={quiet || undefined} data-done={ticked || undefined} data-open={open || undefined}>
       <span className="today-when">{when}</span>
       {onTick
         ? <button type="button" className="today-kind today-tick" role="checkbox" aria-checked={!!ticked} aria-label={t("today.tick", { title: what })} disabled={ticked} onClick={onTick} />
         : <span className="today-kind">{pulse ? <i className="today-pulse" /> : icon ? <Icon name={icon} /> : null}</span>}
-      <button type="button" className="today-what" onClick={onOpen}><span className="today-text"><b>{what}</b>{why && <span>{why}</span>}</span></button>
+      <button type="button" className="today-what" aria-expanded={open} onClick={onOpen}><span className="today-text"><b>{what}</b>{why && <span>{why}</span>}</span></button>
+      {act && <button type="button" className="today-go today-act" onClick={act.onAct}>{act.label}</button>}
       {out && <a className="today-go" href={out.href} target="_blank" rel="noreferrer noopener">{out.label}<span aria-hidden="true"> ↗</span></a>}
     </li>
   );
 }
 
-function Rows({ rows, go, ticked, onTick }: { rows: LineRow[]; go: TodayProps["go"]; ticked: ReadonlySet<string>; onTick(id: string): void }) {
+/** The last day of something that runs on: its weekday while that is within the week, else its date. */
+function dayName(date: string): string {
+  const [y, m, d] = date.split("-").map(Number), day = new Date(y, m - 1, d);
+  const near = day.getTime() - Date.now() < 6 * 86_400_000;
+  return day.toLocaleDateString(intlLocale(), near ? { weekday: "short" } : { month: "numeric", day: "numeric" });
+}
+
+/** What the rows need from the page: where things lead, and the three things done in place. */
+interface Doing {
+  go: TodayProps["go"];
+  ticked: ReadonlySet<string>;
+  onTick(id: string): void;
+  /** The waiting thing that is open, and its card. */
+  open: string | null;
+  onOpen(id: string | null): void;
+  card(row: Extract<LineRow, { kind: "wait" }>): ReactNode;
+  /** Suggested hours the user has taken, by todo; and taking one, where a calendar can be written to. */
+  placed: ReadonlyMap<string, string>;
+  onPlace?: (todo: Todo, hour: string) => void;
+}
+
+function Rows({ rows, doing }: { rows: LineRow[]; doing: Doing }) {
+  const { go } = doing;
   return <>{rows.map((row) => {
     if (row.kind === "wait") {
-      return <Row key={row.key} when={t("today.wait")} tone="wait" icon="inbox" k="warm" what={row.item.title} why={row.item.summary} onOpen={() => go("core.inbox", row.item.id)} />;
+      // Decided here: the row opens into the same card the Inbox shows, without its heading.
+      const open = doing.open === row.item.id;
+      return [
+        <Row key={row.key} when={t("today.wait")} tone="wait" icon="inbox" k="warm" what={row.item.title} why={open ? undefined : row.item.summary} open={open} onOpen={() => doing.onOpen(open ? null : row.item.id)} />,
+        open && <li key={`${row.key}:card`} className="today-decide">{doing.card(row)}</li>,
+      ];
     }
     if (row.kind === "event") {
       const { event } = row;
       const place = placeLink(event.location);
       const out = event.meeting && !row.past ? { href: event.meeting, label: t("today.join") } : place ? { href: place.href, label: place.site } : undefined;
-      const why = [row.now && row.until ? t("today.until", { until: row.until }) : "", place ? "" : event.location ?? ""].filter(Boolean).join(" · ");
+      const why = [row.now && row.until ? t("today.until", { until: row.until }) : "", row.through ? t("today.through", { day: dayName(row.through) }) : "", place ? "" : event.location ?? ""].filter(Boolean).join(" · ");
       return <Row key={row.key} when={row.at ?? t("cal.allDay")} tone={row.now ? "now" : undefined} icon="cal" k={event.k} what={event.title} why={why} out={out} past={row.past} onOpen={() => go("calendar.week")} />;
     }
     if (row.kind === "todo") {
-      return <Row key={row.key} when={row.at} tone={row.late ? "late" : undefined} k={row.k} what={row.todo.title} why={row.late ? t("today.overdue") : undefined}
-        ticked={ticked.has(row.todo.id)} onTick={() => onTick(row.todo.id)} onOpen={() => go("todo.list")} />;
+      const { todo } = row;
+      const tick = { ticked: doing.ticked.has(todo.id), onTick: () => doing.onTick(todo.id) };
+      const study = todo.area === LEARN ? t("today.study") : "";
+      if (row.block) {
+        // Its hour is an event of the same name: one row, the todo's ring and the event's way in.
+        const place = placeLink(row.block.location);
+        const out = row.block.meeting ? { href: row.block.meeting, label: t("today.join") } : place ? { href: place.href, label: place.site } : undefined;
+        return <Row key={row.key} when={row.at} k={row.k} what={todo.title} why={[study, place ? "" : row.block.location ?? ""].filter(Boolean).join(" · ")} out={out} {...tick} onOpen={() => go("calendar.week")} />;
+      }
+      const taken = doing.placed.get(todo.id);
+      if (taken ?? row.guess) {
+        const hour = (taken ?? row.guess)!;
+        const why = taken ? t("today.placed") : row.after ? t("today.guess.after", { title: row.after }) : t("today.guess.free");
+        return <Row key={row.key} when={hour} tone={taken ? undefined : "guess"} k={row.k} what={todo.title} why={[study, why].filter(Boolean).join(" · ")} {...tick}
+          act={!taken && doing.onPlace ? { label: t("today.place"), onAct: () => doing.onPlace!(todo, hour) } : undefined} onOpen={() => go("todo.list")} />;
+      }
+      return <Row key={row.key} when={row.at} tone={row.late ? "late" : undefined} k={row.k} what={todo.title} why={[study, row.late ? t("today.overdue") : ""].filter(Boolean).join(" · ")} {...tick} onOpen={() => go("todo.list")} />;
+    }
+    if (row.kind === "link") {
+      return <Row key={row.key} icon="link" k="violet" what={row.clip.title} why={`${t("today.study")} · ${row.clip.site}`} out={{ href: row.clip.url, label: t("today.open") }} onOpen={() => go("link.list")} />;
     }
     const { message } = row;
     return <Row key={row.key} icon="mail" k="teal" what={message.from} why={message.subject} onOpen={() => go("mail.inbox", `${message.account}|${message.id}`)} />;
@@ -150,7 +208,7 @@ type Rest = "mail" | "doing" | "done";
 
 /** 今天: the note Alfred writes about everything (docs/design/today-and-inbox.md, 3.1b). One sentence on what is
  * next; the day on one line, every row the same shape; the rest as counts that open in place. Nothing empty is shown. */
-export function Today({ state, name, go, onOpenConversation }: TodayProps) {
+export function Today({ state, name, go, onOpenConversation, line: bar }: TodayProps) {
   const now = useNow();
   const model = useMemo(() => todayModel(state, now), [state, now]);
   const line = useMemo(() => todayLine(model), [model]);
@@ -162,7 +220,40 @@ export function Today({ state, name, go, onOpenConversation }: TodayProps) {
     setTicked((current) => new Set(current).add(id));
     api.op("todo.complete", { id }).catch(() => setTicked((current) => { const next = new Set(current); next.delete(id); return next; }));
   };
-  const rows = (list: LineRow[]) => <Rows rows={list} go={go} ticked={ticked} onTick={tick} />;
+  // What a thing done here answered with ("Sent", or why it could not be), until the next one.
+  const [said, setSaid] = useState<{ text: string; problem?: boolean } | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  // A suggested hour is taken by putting half an hour on the calendar. The event reaches this page with the next
+  // sync, so until then the page remembers that it was taken.
+  const [placed, setPlaced] = useState<ReadonlyMap<string, string>>(new Map());
+  const target = useMemo(() => {
+    for (const source of (state.modules.calendar as CalendarSnapshot | undefined)?.sources ?? []) {
+      const calendar = source.canWrite ? source.calendars.find((one) => one.writable && one.varied) ?? source.calendars.find((one) => one.writable) : undefined;
+      if (calendar) return { account: source.account, calendarId: calendar.id };
+    }
+    return null;
+  }, [state.modules.calendar]);
+  const place = (todo: Todo, hour: string) => {
+    const [h, m] = hour.split(":").map(Number), [y, mo, d] = model.date.split("-").map(Number);
+    const start = new Date(y, mo - 1, d, h, m);
+    setPlaced((current) => new Map(current).set(todo.id, hour));
+    const undo = () => setPlaced((current) => { const next = new Map(current); next.delete(todo.id); return next; });
+    api.op("calendar.create", { ...target, title: todo.title, when: { start: start.toISOString(), end: new Date(start.getTime() + 30 * 60_000).toISOString() } }).then((response) => {
+      const error = (response.result as { error?: string } | null)?.error;
+      if (!error) return setSaid(null);
+      undo();
+      setSaid({ text: t(`cal.err.${error}` as Key), problem: true });
+    }).catch((reason: Error) => { undo(); setSaid({ text: reason.message, problem: true }); });
+  };
+  const inPlace: Doing = {
+    go, ticked, onTick: tick, open, onOpen: (id) => { setOpen(id); setSaid(null); }, placed, onPlace: target ? place : undefined,
+    card: ({ item }) => (
+      <Detail item={item} mail={state.modules.mail as MailSnapshot | undefined} line={bar} onOpenConversation={onOpenConversation}
+        conversationTitle={state.conversations.find((conversation) => conversation.id === item.conversationId)?.title}
+        onDone={(message) => { setOpen(null); setSaid(message ? { text: message } : null); }} />
+    ),
+  };
+  const rows = (list: LineRow[]) => <Rows rows={list} doing={inPlace} />;
 
   const date = new Date(now);
   const clock = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
@@ -183,7 +274,8 @@ export function Today({ state, name, go, onOpenConversation }: TodayProps) {
   return (
     <div className="today">
       <div className="today-col">
-        <Lede model={model} name={name} now={now} go={go} />
+        {/* The count the sentence gives is the count folded away just under it. */}
+        <Lede model={model} over={line.past.length} name={name} now={now} go={go} />
 
         {hasLine && (
           <ol className="today-line">
@@ -192,6 +284,7 @@ export function Today({ state, name, go, onOpenConversation }: TodayProps) {
             )}
             {pastOpen && rows(line.past)}
             {atNow && <li className="today-mark" data-now>{t("today.mark.now", { at: clock })}</li>}
+            {said && <li className="today-said" data-problem={said.problem || undefined} role="status">{said.text}</li>}
             {rows(line.wait)}
             {line.moreWaiting > 0 && <Row quiet what={t("today.wait.more", { n: line.moreWaiting })} onOpen={() => go("core.inbox")} />}
             {rows(line.ahead)}

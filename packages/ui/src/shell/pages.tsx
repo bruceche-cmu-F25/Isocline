@@ -131,7 +131,7 @@ const PAGES: PageDef[] = [
       return new Date(y, m - 1, d).toLocaleDateString(intlLocale(), { month: "long", day: "numeric", weekday: "short" });
     },
     headline: (_, state) => todaySummary(state),
-    render: ({ state, name, go, openConversation }) => <Today state={state} name={name} go={go} onOpenConversation={openConversation} />,
+    render: ({ state, name, go, openConversation, line }) => <Today state={state} name={name} go={go} onOpenConversation={openConversation} line={line} />,
   },
   {
     key: "core.inbox", get title() { return t("page.inbox"); }, icon: "inbox", k: "warm", group: "work",
@@ -169,7 +169,7 @@ const PAGES: PageDef[] = [
       return t(counts.today ? "head.cal.doneToday" : "head.cal.free", { n: counts.tomorrow });
     },
     suggestions: (snapshot) => calendarCounts(snapshot).sources.length ? ["sug.cal.afternoon", "sug.cal.freeDay", "sug.cal.tomorrow"] : [],
-    render: ({ snapshot }) => <Calendar snapshot={snapshot as CalendarSnapshot | undefined} />,
+    render: ({ snapshot, line, state }) => <Calendar snapshot={snapshot as CalendarSnapshot | undefined} line={line} proposals={state.proposals} />,
   },
   {
     key: "todo.list", get title() { return t("page.todos"); }, icon: "todo", k: "blue", group: "work",
@@ -189,7 +189,7 @@ const PAGES: PageDef[] = [
       if (!open) return [];
       return late ? ["sug.todos.first", "sug.todos.late", "sug.todos.week"] : ["sug.todos.first", "sug.todos.week"];
     },
-    render: ({ snapshot, fresh, areas, state }) => <Todos snapshot={snapshot as TodoSnapshot} fresh={fresh} areas={areas} automations={state.automations} calendar={state.modules.calendar as CalendarSnapshot | undefined} />,
+    render: ({ snapshot, fresh, areas, state, line }) => <Todos snapshot={snapshot as TodoSnapshot} fresh={fresh} areas={areas} automations={state.automations} calendar={state.modules.calendar as CalendarSnapshot | undefined} line={line} />,
   },
   {
     key: "mail.inbox", get title() { return t("page.mail"); }, icon: "mail", k: "teal", group: "modules",

@@ -12,6 +12,7 @@
  * `todayLine` lays these out as the page draws them: one line of rows in order of time.
  */
 import type { CalendarEvent, CalendarSnapshot } from "@alfred/module-calendar/types";
+import type { Clip, LinksSnapshot } from "@alfred/module-links/types";
 import type { MailMessage, MailSnapshot } from "@alfred/module-mail/types";
 import type { Todo, TodoSnapshot } from "@alfred/module-todo/types";
 import type { Run, StateResponse } from "@alfred/protocol";
@@ -60,6 +61,8 @@ export interface TodayDay {
 }
 
 export interface TodayModel {
+  /** The instant this was worked out for. */
+  now: number;
   /** The home node's local date. */
   date: string;
   part: "morning" | "afternoon" | "evening";
@@ -87,10 +90,15 @@ export interface TodayModel {
   doing: Array<{ run: Run; title: string; sub: string; session: boolean }>;
   upcoming?: { name: string; when: string };
   done: TodayDone[];
+  /** Saved links filed under a topic in the 学习 area and not yet looked at, newest first. Not the Learning Hub
+   * (that is still in Robin): only what Alfred already keeps. */
+  study: Clip[];
 }
 
 const GOING = new Set(["queued", "running", "cancelling"]);
-const TOP = 3, MAIL_ROWS = 4, DONE_ROWS = 6;
+const TOP = 3, MAIL_ROWS = 4, DONE_ROWS = 6, STUDY_ROWS = 2;
+/** The shared area for learning (packages/core/src/areas.ts). */
+export const LEARN = "learn";
 
 /** A letter no person wrote and nobody answers: a one-time code, a sign-in or security notice, a no-reply sender.
  * Plain rules on the sender and the first words, so it is a fact about the letter, not a judgement of its worth. */
@@ -109,6 +117,8 @@ export function todayModel(state: StateResponse, now: number = Date.now()): Toda
   const calendar = state.modules.calendar as CalendarSnapshot | undefined;
   const todos = state.modules.todo as TodoSnapshot | undefined;
   const mail = state.modules.mail as MailSnapshot | undefined;
+  const links = state.modules.link as LinksSnapshot | undefined;
+  const learning = new Set((links?.topics ?? []).filter((topic) => topic.area === LEARN).map((topic) => topic.id));
   const date = calendar?.today ?? todos?.today ?? localDate(now);
   const hour = new Date(now).getHours();
   const areaK = (id?: string) => state.areas?.find((area) => area.id === id)?.k ?? null;
@@ -156,7 +166,7 @@ export function todayModel(state: StateResponse, now: number = Date.now()): Toda
   const distinct = waiting.filter((item) => { const words = `${item.title}\n${item.summary}`; return !said.has(words) && !!said.add(words); });
 
   const sources = mail?.sources ?? [];
-  const arrived = (mail?.messages ?? []).filter((message) => localDate(Date.parse(message.receivedAt)) === date);
+  const arrived = (mail?.messages ?? []).filter((message) => message.inInbox !== false && localDate(Date.parse(message.receivedAt)) === date);
   const unread = arrived.filter((message) => message.unread && message.category === "primary")
     .sort((a, b) => Number(b.important) - Number(a.important) || b.receivedAt.localeCompare(a.receivedAt));
   const written = unread.filter((message) => !machineMail(message));
@@ -182,7 +192,8 @@ export function todayModel(state: StateResponse, now: number = Date.now()): Toda
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, DONE_ROWS);
 
   return {
-    date, part,
+    now, date, part,
+    study: (links?.clips ?? []).filter((clip) => clip.state !== "seen" && !!clip.topicId && learning.has(clip.topicId)).slice(0, STUDY_ROWS),
     calendar: !calendar?.sources?.length ? "none" : calendar.sources.some((source) => source.error) ? "error" : "ok",
     current, next, tomorrow,
     allDay: today.day.allDay,
@@ -205,34 +216,44 @@ export function todayModel(state: StateResponse, now: number = Date.now()): Toda
 /** One row of the day's line. Whatever it is, it is drawn the same way: when · what kind · what it is · the way in. */
 export type LineRow =
   | { key: string; kind: "wait"; item: InboxItem }
-  /** `at` absent: it covers the whole day. */
-  | { key: string; kind: "event"; event: CalendarEvent; at?: string; until?: string; past: boolean; now: boolean }
-  /** `late`: due at an hour that has gone by, and still open. */
-  | { key: string; kind: "todo"; todo: Todo; k: string | null; at?: string; late: boolean }
-  | { key: string; kind: "mail"; message: MailMessage };
+  /** `at` absent: it covers the whole day. `through`: and goes on past that day, to this date. */
+  | { key: string; kind: "event"; event: CalendarEvent; at?: string; until?: string; through?: string; past: boolean; now: boolean }
+  /** `late`: due at an hour that has gone by, and still open. `guess`: it has no hour, and this one is free
+   * (`after`: right after this event); nothing is written until the user says so. `block`: the user's calendar
+   * already holds an hour for it, an event of the same name, and the two are one row. */
+  | { key: string; kind: "todo"; todo: Todo; k: string | null; at?: string; late: boolean; guess?: string; after?: string; block?: CalendarEvent }
+  | { key: string; kind: "mail"; message: MailMessage }
+  | { key: string; kind: "link"; clip: Clip };
 
 /** The day in order (docs/design/today-and-inbox.md, 3.1b): one list, three marks on it (now, sometime today,
  * tomorrow), and no section for where a thing comes from. */
 export interface TodayLine {
-  /** Today's events that are over: folded into one line. */
+  /** Today's events that are over: folded into one line. Once the evening has turned to tomorrow, that includes
+   * what covered the whole of today and ends with it. */
   past: LineRow[];
   /** At "now": the first few things waiting on the user (`moreWaiting` more are in the Inbox)… */
   wait: LineRow[];
   moreWaiting: number;
   /** …then what is on or still to come today, a todo past its hour included. */
   ahead: LineRow[];
-  /** Today, at no hour: todos, and unread letters marked important. */
+  /** Today, at no hour: todos, unread letters marked important, and links saved for study. */
   within: LineRow[];
-  /** Tomorrow: all of it once the evening has turned to it, else its first few (`moreTomorrow` beyond them). */
+  /** Tomorrow: all of it once the evening has turned to it, else its first few (`moreTomorrow` beyond them).
+   * Something that runs over both days is said once: under today by day, under tomorrow once today is over. */
   tomorrow: LineRow[];
   moreTomorrow: number;
 }
 
 const LINE_MAIL = 3, LINE_TOMORROW = 3;
+/** Suggested hours: for the first few todos without one, half an hour each, between these hours of the day. */
+const GUESSES = 3, SLOT = 30, GUESS_FROM = 9 * 60, GUESS_TO = 21 * 60;
+const hourText = (minute: number) => `${pad(Math.floor(minute / 60))}:${pad(minute % 60)}`;
+const named = (title: string) => title.trim().toLowerCase();
 
 export function todayLine(model: TodayModel): TodayLine {
   const rowsOf = (day: Pick<TodayDay, "date" | "allDay" | "rows" | "loose">) => ({
-    allDay: day.allDay.map((event): LineRow => ({ key: `${day.date}:e:${event.account}:${event.id}`, kind: "event", event, past: false, now: false })),
+    allDay: day.allDay.map((event): LineRow => ({ key: `${day.date}:e:${event.account}:${event.id}`, kind: "event", event, past: false, now: false,
+      ...(event.endDate > day.date ? { through: event.endDate } : {}) })),
     timed: day.rows.map((row): LineRow => row.kind === "event"
       ? { key: `${day.date}:e:${row.event.account}:${row.event.id}`, kind: "event", event: row.event, at: row.at, until: row.until, past: row.past, now: row.now }
       : { key: `${day.date}:t:${row.todo.id}`, kind: "todo", todo: row.todo, k: row.k, at: row.at, late: row.past }),
@@ -240,16 +261,52 @@ export function todayLine(model: TodayModel): TodayLine {
   });
   const over = (row: LineRow) => row.kind === "event" && row.past;
   const today = rowsOf(model), next = rowsOf(model.ahead);
-  const tomorrow = [...next.allDay, ...next.timed, ...next.loose];
+  const same = (a: LineRow, b: LineRow) => a.kind === "event" && b.kind === "event" && a.event.account === b.event.account && a.event.id === b.event.id;
+  /** Covers today and tomorrow both. */
+  const goesOn = (row: LineRow) => next.allDay.some((other) => same(row, other));
+  const wholeDay = model.turned ? [] : today.allDay;
+
+  // A todo without an hour whose name is an event still to come today: the calendar already says when. One row.
+  const coming = today.timed.filter((row) => row.kind === "event" && !row.past);
+  const blocked = new Set<LineRow>();
+  const loose = today.loose.map((row): LineRow => {
+    const block = row.kind === "todo" ? coming.find((other) => other.kind === "event" && !blocked.has(other) && named(other.event.title) === named(row.todo.title)) : undefined;
+    if (row.kind !== "todo" || block?.kind !== "event") return row;
+    blocked.add(block);
+    return { ...row, at: block.at, block: block.event };
+  });
+  // The rest get an hour suggested while the day has room: the first free half hours from now on.
+  const minuteOfRow = (row: LineRow) => (row.kind === "event" || row.kind === "todo") && row.at ? toMinute(row.at) : -1;
+  const busy: Array<[number, number]> = coming.flatMap((row): Array<[number, number]> => (row.kind === "event" && row.at ? [[toMinute(row.at), row.until && row.until > row.at ? toMinute(row.until) : 24 * 60]] : []));
+  for (const row of today.timed) if (row.kind === "todo" && row.at) busy.push([toMinute(row.at), toMinute(row.at) + SLOT]);
+  let from = Math.max(GUESS_FROM, Math.ceil((minuteOf(model.now) + 10) / SLOT) * SLOT), guesses = 0;
+  const placed = loose.map((row): LineRow => {
+    if (model.turned || row.kind !== "todo" || row.at || guesses >= GUESSES) return row;
+    for (let start = from; start + SLOT <= GUESS_TO; start += SLOT) {
+      if (busy.some(([a, b]) => start < b && start + SLOT > a)) continue;
+      busy.push([start, start + SLOT]);
+      from = start + SLOT;
+      guesses++;
+      const before = coming.find((other) => other.kind === "event" && other.until === hourText(start));
+      return { ...row, guess: hourText(start), ...(before?.kind === "event" ? { after: before.event.title } : {}) };
+    }
+    return row;
+  });
+  const hasHour = (row: LineRow) => row.kind === "todo" && !!(row.at ?? row.guess);
+  const timed = [...today.timed.filter((row) => !over(row) && !blocked.has(row)), ...placed.filter(hasHour)]
+    .map((row, index) => ({ row, index, minute: row.kind === "todo" && row.guess ? toMinute(row.guess) : minuteOfRow(row) }))
+    .sort((a, b) => a.minute - b.minute || a.index - b.index).map(({ row }) => row);
+  const tomorrow = [...next.allDay.filter((row) => !wholeDay.some((other) => same(row, other))), ...next.timed, ...next.loose];
   const shown = model.turned ? tomorrow : tomorrow.slice(0, LINE_TOMORROW);
   return {
-    past: today.timed.filter(over),
+    past: [...(model.turned ? today.allDay.flatMap((row): LineRow[] => (row.kind === "event" && !goesOn(row) ? [{ ...row, past: true }] : [])) : []), ...today.timed.filter(over)],
     wait: model.waiting.top.map((item): LineRow => ({ key: `w:${item.id}`, kind: "wait", item })),
     moreWaiting: model.waiting.count - model.waiting.top.length,
-    ahead: [...today.allDay, ...today.timed.filter((row) => !over(row))],
+    ahead: [...wholeDay, ...timed],
     within: [
-      ...today.loose,
+      ...placed.filter((row) => !hasHour(row)),
       ...model.mail.rows.filter((message) => message.important).slice(0, LINE_MAIL).map((message): LineRow => ({ key: `m:${message.account}|${message.id}`, kind: "mail", message })),
+      ...model.study.map((clip): LineRow => ({ key: `l:${clip.id}`, kind: "link", clip })),
     ],
     tomorrow: shown,
     moreTomorrow: tomorrow.length - shown.length,

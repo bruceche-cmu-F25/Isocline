@@ -38,7 +38,7 @@ function state(more: { events?: CalendarEvent[]; todos?: TodoSnapshot["todos"]; 
   const mailbox: MailSnapshot | undefined = mail && { messages: mail, sent: [], sources: [{ ...source, canRead: true, canSend: false }] };
   return {
     protocol: PROTOCOL_VERSION, cursor: 0, conversations: [], runs: [], receipts: {}, notices: [], views: {}, proposals: [], automations: [], projects: [],
-    areas: [{ id: "learn", name: { zh: "学习", en: "Learning" }, k: "violet" }], settings: { locale: "en", preferredName: null, model: null, thinking: null },
+    areas: [{ id: "learn", name: { zh: "学习", en: "Learning" }, k: "violet" }], settings: { locale: "en", preferredName: null, model: null, thinking: null, firstRunAt: null },
     modules: { ...(calendar ? { calendar } : {}), ...(todos ? { todo: { today: DAY, todos } } : {}), ...(mailbox ? { mail: mailbox } : {}) },
     ...rest,
   } as StateResponse;
@@ -139,7 +139,7 @@ test("what waits is counted, and a task stuck on an answer comes before a propos
 test("mail says how many letters came today and lists the unread ones, important first", () => {
   const day = state({ mail: [
     letter("old", 9, { receivedAt: iso(9, 0, 19) }), letter("read", 7, { unread: false }), letter("promo", 7, { category: "promotions" }),
-    letter("plain", 8), letter("key", 6, { important: true }),
+    letter("plain", 8), letter("key", 6, { important: true }), letter("archived", 7, { inInbox: false, starred: true }),
   ] });
   const model = todayModel(day, at(8, 10));
   assert.equal(model.mail.state, "ok");
@@ -191,9 +191,11 @@ test("the line: what is over folds away, what waits sits at now, then the day in
   assert.deepEqual(said(line.past), ["Standup"], "only an event that has ended is over");
   assert.deepEqual(said(line.wait), ["Reply to Leo"]);
   assert.equal(line.moreWaiting, 0);
-  assert.deepEqual(said(line.ahead), ["Conference", "Send the form", "Group meeting", "Class", "Call the bank"], "the whole-day event first; a todo past its hour stays, marked late");
-  assert.deepEqual(line.ahead.map((row) => (row.kind === "todo" ? row.late : row.kind === "event" && row.now)), [false, true, true, false, false]);
-  assert.deepEqual(said(line.within), ["Renew passport", "m1"], "letters: unread, important, written by a person");
+  assert.deepEqual(said(line.ahead), ["Conference", "Send the form", "Group meeting", "Renew passport", "Class", "Call the bank"], "the whole-day event first; a todo past its hour stays, marked late");
+  assert.deepEqual(line.ahead.map((row) => (row.kind === "todo" ? row.late : row.kind === "event" && row.now)), [false, true, true, false, false, false]);
+  const passport = line.ahead[3];
+  assert.deepEqual(passport.kind === "todo" && [passport.guess, passport.after, passport.at], ["11:00", "Group meeting", undefined], "a todo with no hour is offered the first free half hour; its own hour is not set");
+  assert.deepEqual(said(line.within), ["m1"], "letters: unread, important, written by a person");
   assert.deepEqual(said(line.tomorrow), ["Dentist", "Pack"]);
   assert.equal(line.moreTomorrow, 0);
   const all = [...line.past, ...line.wait, ...line.ahead, ...line.within, ...line.tomorrow];
@@ -209,4 +211,42 @@ test("the line shows tomorrow's first few rows by day, and all of them once the 
   const night = todayLine(todayModel(day, at(21)));
   assert.equal(night.tomorrow.length, 5);
   assert.equal(night.moreTomorrow, 0);
+});
+
+test("the line says once what runs over today and tomorrow; in the evening what covered only today is over", () => {
+  const whole = (id: string, title: string, from: number, to: number) => event(id, title, 0, 0, { allDay: true, start: undefined, end: undefined, startDate: `2026-11-${from}`, endDate: `2026-11-${to}` });
+  const day = state({ events: [event("a", "Standup", 9, 10), whole("trip", "Conference", 20, 22), whole("habit1", "Watch a lecture", 20, 20), whole("habit2", "Watch a lecture", 21, 21)] });
+  const titles = (rows: ReturnType<typeof todayLine>["past"]) => rows.map((row) => (row.kind === "event" ? row.event.title : ""));
+
+  const noon = todayLine(todayModel(day, at(12)));
+  assert.deepEqual(titles(noon.ahead), ["Conference", "Watch a lecture"]);
+  assert.equal(noon.ahead[0].kind === "event" && noon.ahead[0].through, "2026-11-22", "it says how long it runs");
+  assert.deepEqual(titles(noon.tomorrow), ["Watch a lecture"], "tomorrow's own event is there; the one already said under today is not said again");
+
+  const night = todayLine(todayModel(day, at(23, 30)));
+  assert.deepEqual(titles(night.ahead), [], "nothing of today is still to come");
+  assert.deepEqual(titles(night.past), ["Watch a lecture", "Standup"], "what covered only today is over with it");
+  assert.deepEqual(titles(night.tomorrow), ["Conference", "Watch a lecture"]);
+});
+
+test("suggested hours: the first free half hours from now, three at most, none in the evening's turn; a todo named like an event takes that event's hour", () => {
+  const todos = ["A", "B", "C", "D"].map((title) => todo(title, title, { due: DAY }));
+  const day = state({ events: [event("m", "Meeting", 10, 12), event("w", "Write report", 15, 16, { meeting: "https://meet.example/w" })], todos: [...todos, todo("r", "write report ", { due: DAY })] });
+  const line = todayLine(todayModel(day, at(9, 55)));
+  const hours = (rows: typeof line.ahead) => rows.map((row) => (row.kind === "todo" ? `${row.todo.title.trim()} ${row.guess ?? row.at ?? "-"}${row.block ? " block" : ""}` : row.kind === "event" ? `${row.event.title} ${row.at}` : ""));
+  assert.deepEqual(hours(line.ahead), ["Meeting 10:00", "A 12:00", "B 12:30", "C 13:00", "write report 15:00 block"], "nothing is offered inside the meeting; the event that is a todo's hour is drawn as that todo");
+  assert.deepEqual(hours(line.within), ["D -"], "beyond three, a todo keeps no hour");
+  assert.equal(line.ahead[1].kind === "todo" && line.ahead[1].after, "Meeting");
+
+  const late = todayLine(todayModel(day, at(20, 45)));
+  assert.deepEqual(hours(late.ahead), [], "after nine in the evening there is no half hour left to offer");
+  const night = todayLine(todayModel(state({ events: [event("m", "Meeting", 10, 12)], todos }), at(19)));
+  assert.equal(night.ahead.some((row) => row.kind === "todo" && !!row.guess), false, "once the page has turned to tomorrow nothing is offered for today");
+});
+
+test("study: links saved under a topic in the learning area and not yet looked at are on the line", () => {
+  const clip = (id: string, topicId: string | undefined, seen = false) => ({ id, url: `https://example.com/${id}`, title: `Clip ${id}`, titleSource: "page", platform: "web", type: "article", site: "example.com", state: seen ? "seen" : "unread", savedAt: iso(8), fetch: "done", ...(topicId ? { topicId } : {}) });
+  const day = state({ modules: { link: { places: [], clips: [clip("a", "t1"), clip("b", "t2"), clip("c", "t1", true), clip("d", undefined), clip("e", "t1"), clip("f", "t1")], topics: [{ id: "t1", name: "Algorithms", area: "learn" }, { id: "t2", name: "Travel", area: "life" }] } } });
+  const line = todayLine(todayModel(day, at(10)));
+  assert.deepEqual(line.within.map((row) => (row.kind === "link" ? row.clip.id : "")), ["a", "e"], "two at most, newest first; not other areas, not ones already seen");
 });

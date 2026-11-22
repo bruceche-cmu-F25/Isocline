@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import type { Proposal } from "@alfred/protocol";
 import type { CalendarEvent, CalendarPending, CalendarSnapshot, CalendarSource, CalendarWhen } from "@alfred/module-calendar/types";
 import { api } from "./api.ts";
 import { Linked, OutLink } from "./Linked.tsx";
 import { SourceBar } from "./SourceBar.tsx";
 import { intlLocale, t, type Key } from "./i18n/index.ts";
+import type { PageLine } from "./shell/about.ts";
 import { Icon } from "./shell/icons.tsx";
+import { Select } from "./shell/Select.tsx";
+import { PHONE, useMedia } from "./shell/layout.ts";
+import { eventChange } from "./shell/say.ts";
 
 const HOUR = 48;
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -26,7 +31,22 @@ const dayDiff = (from: string, to: string) => Math.round((parse(to).getTime() - 
 const instant = (day: string, time: string) => { const date = parse(day); date.setHours(0, minutesIn(time)); return date; };
 
 /** An event as the page draws it: one of the mirror's, one on its way to Google, or the one being typed. */
-type Shown = CalendarEvent & { pending?: boolean; draft?: boolean };
+type Shown = CalendarEvent & { pending?: boolean; draft?: boolean; proposed?: { id: string; step: number; steps: number } };
+
+/** What Alfred proposes to add or move, drawn where it would land: an open proposal's calendar steps as events of
+ * their own, dashed until the user says yes (on the event itself, or in the inbox). */
+function proposedEvents(proposals: readonly Proposal[], sources: CalendarSource[]): Shown[] {
+  return proposals.flatMap((proposal) => proposal.state !== "open" || proposal.stale ? [] : proposal.steps.flatMap((step, n): Shown[] => {
+    if (step.op !== "calendar.add" && step.op !== "calendar.move") return [];
+    const input = step.input as { account?: string; calendarId?: string; calendar?: string; title?: string; when?: CalendarWhen };
+    if (!input?.account || !input.calendarId || !input.title || !input.when) return [];
+    const calendar = sources.find((source) => source.account === input.account)?.calendars.find((candidate) => candidate.id === input.calendarId);
+    return [{
+      id: `proposal:${proposal.id}:${n}`, account: input.account, calendarId: input.calendarId, calendar: input.calendar ?? calendar?.name ?? "", title: input.title,
+      attendees: 0, k: calendar?.k ?? "gray", editable: false, invited: false, ...whenFields(input.when), proposed: { id: proposal.id, step: n, steps: proposal.steps.length },
+    }];
+  }));
+}
 
 /** When an event is, as the fields of an event. */
 const whenFields = (when: CalendarWhen) => "date" in when
@@ -99,6 +119,13 @@ const sameWhen = (a: CalendarWhen, b: CalendarWhen) => "date" in a
 
 /** A calendar the user may add to. */
 interface Target { account: string; id: string; name: string; k: string }
+
+/** An event that can be picked up and put down at another time on the week's grid: one made here in Alfred (by the
+ * user or by Alfred: its id says so, modules/calendar newEventId), or one Alfred proposes and the user has not
+ * answered yet; with a time, within one day, and settled. One that came from Google keeps to its editor, where
+ * moving it says who will be told. */
+const movable = (event: Shown) => !event.pending && !event.draft && !event.allDay && !!event.start && !!event.end && event.startDate === event.endDate
+  && (!!event.proposed || (event.editable && !event.recurring && event.attendees <= 1 && event.id.slice(event.calendarId.length + 1).startsWith("alfred")));
 /** In the grid: a timed event within one day. The rest (all-day, across midnight) go in the row above it. */
 const inGrid = (event: CalendarEvent) => !event.allDay && !!event.start && event.startDate === event.endDate;
 
@@ -146,8 +173,17 @@ function Pop({ onClose, children }: { onClose(): void; children: ReactNode }) {
   );
 }
 
-function EventCard({ event, onClose, onEdit, onDelete }: { event: Shown; onClose(): void; onEdit?: () => void; onDelete?: () => void }) {
+function EventCard({ event, onClose, onEdit, onDelete, onSay }: { event: Shown; onClose(): void; onEdit?: () => void; onDelete?: () => void; onSay?: () => void }) {
   const when = whenText(event);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  /** Yes or no to Alfred's proposal, from where it would land. */
+  const decide = (yes: boolean) => {
+    if (!event.proposed) return;
+    setBusy(true);
+    setError(null);
+    (yes ? api.accept(event.proposed.id) : api.decline(event.proposed.id)).then(onClose, (reason: Error) => { setError(reason.message); setBusy(false); });
+  };
   return (
     <div className="ev-edit ev-view" data-k={event.k} role="dialog" aria-modal="true" aria-label={event.title}>
       <div className="ev-card-head">
@@ -164,11 +200,23 @@ function EventCard({ event, onClose, onEdit, onDelete }: { event: Shown; onClose
       </p>
       <p className="ev-card-links">
         {onEdit && <button type="button" className="link" onClick={onEdit}>{t("cal.edit")}</button>}
+        {/* Words about it go in the line under the page: the card steps aside. */}
+        {onSay && <button type="button" className="link" onClick={onSay}>{t("say.open")}</button>}
         {onDelete && <button type="button" className="link ev-delete" onClick={onDelete}>{t("cal.delete")}</button>}
         {event.meeting && <OutLink href={event.meeting}>{t("cal.join")}</OutLink>}
         {event.link && <OutLink href={event.link}>{t("cal.open")}</OutLink>}
         {event.pending && <span className="quiet">{t("cal.pending")}</span>}
       </p>
+      {event.proposed && (
+        <>
+          <p className="quiet">{t("cal.proposed")}</p>
+          <div className="ev-foot">
+            <span className={error ? "ev-error" : undefined} role={error ? "alert" : undefined}>{error}</span>
+            <button type="button" className="ghost" disabled={busy} onClick={() => decide(false)}>{t("common.no")}</button>
+            <button type="button" disabled={busy} onClick={() => decide(true)}>{event.proposed.steps > 1 ? t("inbox.acceptN", { n: event.proposed.steps }) : t("inbox.accept")}</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -277,10 +325,9 @@ function EventEditor({ draft, targets, k, range, onChange, onClose, onSaved, onD
         <label className="ev-allday"><input type="checkbox" aria-label={t("cal.allDay")} checked={draft.allDay} onChange={(change) => set({ allDay: change.target.checked, span: 0, endDate: draft.endDate >= draft.date ? draft.endDate : draft.date })} />{t("cal.allDay")}</label>
       </div>
       {!event && targets.length > 1 && (
-        <select className="ev-field" value={`${draft.account}|${draft.calendarId}`} aria-label={t("cal.calendar")}
-          onChange={(change) => { const target = targets.find((candidate) => key({ account: candidate.account, calendarId: candidate.id }) === change.target.value); if (target) set({ account: target.account, calendarId: target.id }); }}>
-          {targets.map((target) => <option key={`${target.account}|${target.id}`} value={`${target.account}|${target.id}`}>{target.name}{targets.some((other) => other.account !== target.account) ? ` · ${target.account}` : ""}</option>)}
-        </select>
+        <Select className="ev-field field-select" value={`${draft.account}|${draft.calendarId}`} label={t("cal.calendar")}
+          onChange={(next) => { const target = targets.find((candidate) => key({ account: candidate.account, calendarId: candidate.id }) === next); if (target) set({ account: target.account, calendarId: target.id }); }}
+          options={targets.map((target) => ({ value: `${target.account}|${target.id}`, label: `${target.name}${targets.some((other) => other.account !== target.account) ? ` · ${target.account}` : ""}` }))} />
       )}
       <input className="ev-field" value={draft.location} onChange={(change) => set({ location: change.target.value })} placeholder={t("cal.location")} aria-label={t("cal.location")} maxLength={300} />
       <textarea className="ev-field" rows={2} value={draft.notes ?? ""} disabled={draft.notes === null} onChange={(change) => set({ notes: change.target.value })} placeholder={t("cal.notes")} aria-label={t("cal.notes")} maxLength={4000} />
@@ -354,11 +401,55 @@ function CalendarPicker({ sources, hidden, onToggle }: { sources: CalendarSource
   );
 }
 
-/** The page shows a week (its hours) or a month (its days); which, this device remembers. */
-type View = "week" | "month";
+type View = "today" | "week" | "month";
 const VIEW_KEY = "alfred.calendar.view";
 function savedView(): View {
-  try { return localStorage.getItem(VIEW_KEY) === "month" ? "month" : "week"; } catch { return "week"; }
+  try {
+    const saved = localStorage.getItem(VIEW_KEY);
+    if (saved === "today" || saved === "week" || saved === "month") return saved;
+  } catch { /* use the device default */ }
+  return window.matchMedia(PHONE).matches ? "today" : "week";
+}
+
+function AgendaEvent({ event, time, past, status, onOpen }: {
+  event: Shown; time: string; past?: boolean; status?: "current" | "next"; onOpen(event: Shown): void;
+}) {
+  return (
+    <button type="button" className="agenda-ev" data-k={event.k} data-declined={event.response === "declined" || undefined}
+      data-pending={event.pending || undefined} data-draft={event.draft || undefined} data-proposed={!!event.proposed || undefined}
+      data-past={past || undefined} data-status={status} onClick={() => onOpen(event)}>
+      <span className="mark" data-k={event.k} /><time>{time}</time>
+      <span className="agenda-title">{event.title}</span>
+      {status && <small className="agenda-status">{t(`cal.status.${status}`)}</small>}
+    </button>
+  );
+}
+
+function timeOnDay(event: Shown, day: string) {
+  if (event.allDay || !event.start || !event.end) return t("cal.allDay");
+  const start = event.startDate < day ? "00:00" : hhmm(event.start);
+  const end = event.endDate > day || hhmm(event.end) === "00:00" ? "24:00" : hhmm(event.end);
+  return `${start}–${end}`;
+}
+
+function TodayAgenda({ events, today, now, onOpen }: { events: Shown[]; today: string; now: number; onOpen(event: Shown): void }) {
+  const sorted = [...events].sort((a, b) => Number(b.allDay) - Number(a.allDay)
+    || (a.start && b.start ? Date.parse(a.start) - Date.parse(b.start) : a.title.localeCompare(b.title)));
+  const scheduled = sorted.filter((event) => !event.allDay && event.start && event.end && event.response !== "declined" && !event.draft && !event.proposed);
+  const current = new Set(scheduled.filter((event) => Date.parse(event.start!) <= now && now < Date.parse(event.end!)));
+  const next = current.size === 0 ? scheduled.find((event) => Date.parse(event.start!) > now) : undefined;
+  return (
+    <ol className="agenda agenda-today">
+      {sorted.map((event) => {
+        return (
+          <li key={`${event.account}|${event.id}`}>
+            <AgendaEvent event={event} time={timeOnDay(event, today)} past={!event.draft && !!event.end && Date.parse(event.end) <= now}
+              status={current.has(event) ? "current" : event === next ? "next" : undefined} onOpen={onOpen} />
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 /** How tall a day's number and one of its events are in the month, for working out how many events a day has room for. */
@@ -404,12 +495,12 @@ function MonthGrid({ days, month, today, events, known, canAdd, onOpen, onAdd, o
               <button type="button" className="mo-day" onClick={() => onDay(day)} aria-label={t("cal.openDay", { day: whole })}>{day.endsWith("-01") ? whole : parse(day).getDate()}</button>
               {todays.slice(0, fits).map((event) => inGrid(event) ? (
                 <button type="button" key={event.id} className="mo-ev" data-k={event.k} data-declined={event.response === "declined" || undefined}
-                  data-pending={event.pending || undefined} data-draft={event.draft || undefined} onClick={() => onOpen(event)}>
+                  data-pending={event.pending || undefined} data-draft={event.draft || undefined} data-proposed={!!event.proposed || undefined} onClick={() => onOpen(event)}>
                   <span className="mark" data-k={event.k} /><time>{hhmm(event.start!)}</time><span>{event.title}</span>
                 </button>
               ) : (
                 <button type="button" key={event.id} className="ev ev-chip" data-k={event.k} data-declined={event.response === "declined" || undefined}
-                  data-pending={event.pending || undefined} data-draft={event.draft || undefined} onClick={() => onOpen(event)}>{event.title}</button>
+                  data-pending={event.pending || undefined} data-draft={event.draft || undefined} data-proposed={!!event.proposed || undefined} onClick={() => onOpen(event)}>{event.title}</button>
               ))}
               {todays.length > fits && <button type="button" className="mo-more" onClick={() => onDay(day)}>{t("cal.more", { n: todays.length - fits })}</button>}
               <span className="mo-dots" aria-hidden="true">{[...new Set(todays.map((event) => event.k))].slice(0, 4).map((k) => <span key={k} className="mark" data-k={k} />)}</span>
@@ -421,9 +512,10 @@ function MonthGrid({ days, month, today, events, known, canAdd, onOpen, onAdd, o
   );
 }
 
-/** The calendar page: the user's Google Calendar, a week or a month at a time. */
-export function Calendar({ snapshot }: { snapshot: CalendarSnapshot | undefined }) {
+/** The calendar page: today's agenda, a week of hours, or a month of days. */
+export function Calendar({ snapshot, line, proposals }: { snapshot: CalendarSnapshot | undefined; line?: PageLine; proposals?: readonly Proposal[] }) {
   const today = snapshot?.today ?? ymd(new Date());
+  const phone = useMedia(PHONE);
   const [view, setView] = useState<View>(savedView);
   const [week, setWeek] = useState(() => mondayOf(today));
   /** The month shown, as its first day. */
@@ -439,6 +531,15 @@ export function Calendar({ snapshot }: { snapshot: CalendarSnapshot | undefined 
   /** While a new event is being dragged out on the grid: its day and minutes. */
   const [stretch, setStretch] = useState<{ day: string; from: number; to: number } | null>(null);
   const press = useRef<{ day: string; at: number; byMouse: boolean } | null>(null);
+  /** While an event is being carried across the grid: where it would be put down. */
+  const [carry, setCarry] = useState<{ event: Shown; day: string; start: number } | null>(null);
+  const grip = useRef<{ event: Shown; x: number; y: number; was: number; moved: boolean } | null>(null);
+  /** The click that ends a carry is not a click on the event. */
+  const carried = useRef(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  /** Where proposed events were just put down, drawn there until the proposals come back with it. */
+  const [retimed, setRetimed] = useState<Record<string, CalendarWhen>>({});
+  useEffect(() => setRetimed({}), [proposals]);
   const scroller = useRef<HTMLDivElement>(null);
   const now = useNow();
   const sources = snapshot?.sources ?? [];
@@ -453,7 +554,7 @@ export function Calendar({ snapshot }: { snapshot: CalendarSnapshot | undefined 
     return Array.from({ length: weeks * 7 }, (_, index) => addDays(start, index));
   }, [month]);
   /** The days on the page. */
-  const visible = view === "month" ? monthDays : days;
+  const visible = view === "today" ? [today] : view === "month" ? monthDays : days;
   const first = visible[0], last = visible[visible.length - 1];
   /** Where a new event may go: the calendars the user may change, their main one first. And when: the days the mirror
    * holds, since an event outside them would not be seen again here. */
@@ -462,7 +563,10 @@ export function Calendar({ snapshot }: { snapshot: CalendarSnapshot | undefined 
   const inRange = (day: string) => day >= range.from && day <= range.to;
   const outside = first > range.to || last < range.from;
 
-  const events = useMemo(() => withPending(snapshot?.events ?? [], [...(snapshot?.pending ?? []), ...sent], sources), [snapshot, sent]);
+  const events = useMemo(() => [
+    ...withPending(snapshot?.events ?? [], [...(snapshot?.pending ?? []), ...sent], sources),
+    ...proposedEvents(proposals ?? [], sources).map((event) => (retimed[event.id] ? { ...event, ...whenFields(retimed[event.id]) } : event)),
+  ], [snapshot, sent, proposals, retimed]);
   const pickedEvent = picked ? events.find((event) => same(event, picked)) ?? null : null;
   const draftWhenNow = draft ? draftWhen(draft) : null;
   const draftTarget = draft && targets.find((target) => target.account === draft.account && target.id === draft.calendarId);
@@ -473,20 +577,25 @@ export function Calendar({ snapshot }: { snapshot: CalendarSnapshot | undefined 
         title: draft.title.trim() || t("cal.newEvent"), location: draft.location.trim() || undefined, ...whenFields(draftWhenNow), draft: true,
       }]
     : events;
-  const shown = drawn.filter((event) => (event.draft || !hidden.has(key(event))) && event.endDate >= first && event.startDate <= last)
+  const shown = drawn.filter((event) => (event.draft || event.proposed || !hidden.has(key(event))) && event.endDate >= first && event.startDate <= last)
     .sort((a, b) => a.startDate.localeCompare(b.startDate) || Number(inGrid(a)) - Number(inGrid(b)) || (a.start ?? "").localeCompare(b.start ?? ""));
-  const timed = shown.filter(inGrid);
-  const banner = shown.filter((event) => !inGrid(event));
-  // The hours shown: 8 to 20, stretched to what this week holds.
-  const from = Math.min(8, ...timed.map((event) => Math.floor(minutesOf(event.start!) / 60)));
-  const to = Math.max(20, ...timed.map((event) => Math.ceil((minutesOf(event.end!) || 24 * 60) / 60)));
+  const dayGrid = phone && view === "today" && !outside && (sources.length > 0 || shown.length > 0);
+  // On a single day, timed events that cross midnight occupy just the hours they cover today.
+  const onTimeline = dayGrid ? (event: Shown) => !event.allDay && !!event.start && !!event.end : inGrid;
+  const timed = shown.filter(onTimeline);
+  const banner = shown.filter((event) => !onTimeline(event));
+  const startMinute = (event: Shown) => event.startDate < first ? 0 : minutesOf(event.start!);
+  const endMinute = (event: Shown) => event.endDate > last ? 1440 : minutesOf(event.end!) || 1440;
+  const nowDate = new Date(now);
+  const from = Math.min(8, dayGrid ? nowDate.getHours() : 8, ...timed.map((event) => Math.floor(startMinute(event) / 60)));
+  const to = Math.max(20, dayGrid ? nowDate.getHours() + 1 : 20, ...timed.map((event) => Math.ceil(endMinute(event) / 60)));
   const hours = Array.from({ length: to - from }, (_, index) => from + index);
 
   // Open on the morning, or on now when it is later.
   useEffect(() => {
-    const at = week === mondayOf(today) ? Math.max(from, new Date().getHours() - 1) : Math.max(from, 8);
+    const at = dayGrid || week === mondayOf(today) ? Math.max(from, new Date().getHours() - 1) : Math.max(from, 8);
     if (scroller.current) scroller.current.scrollTop = (at - from) * HOUR;
-  }, [week, from, today, view]);
+  }, [week, from, today, view, dayGrid]);
 
   const label = (day: string, options: Intl.DateTimeFormatOptions) => parse(day).toLocaleDateString(intlLocale(), options);
   const toggle = (calendar: string) => setHidden((current) => {
@@ -495,14 +604,14 @@ export function Calendar({ snapshot }: { snapshot: CalendarSnapshot | undefined 
     try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next])); } catch { /* this view only */ }
     return next;
   });
-  const nowDate = new Date(now);
   const nowTop = ((nowDate.getHours() - from) * 60 + nowDate.getMinutes()) / 60 * HOUR;
 
   const show = (next: View, day?: string) => {
-    // Going over to the other view stays where the user is: today's week or month if it is on the page.
+    // Today always opens on the snapshot's date. Week and month share the current browsing position.
+    if (next === view && !day) return;
     const here = today >= first && today <= last;
     if (next === "month") setMonth(firstOf(day ?? (here ? today : addDays(week, 3))));
-    else setWeek(mondayOf(day ?? (here ? today : month)));
+    if (next === "week") setWeek(mondayOf(day ?? (here ? today : month)));
     setView(next);
     try { localStorage.setItem(VIEW_KEY, next); } catch { /* this view only */ }
   };
@@ -512,6 +621,24 @@ export function Calendar({ snapshot }: { snapshot: CalendarSnapshot | undefined 
   const edit = (event: CalendarEvent) => { setPicked(null); setDraft(draftOf(event)); };
   const askDelete = (event: CalendarEvent) => { setDraft(null); setRemoving(event); };
   const sentOne = (change: CalendarPending) => setSent((current) => [...current, change]);
+  /** Puts an event in the line under the page: a day, an hour or "an hour later" moves it at once (shell/say.ts),
+   * as saving it in the editor would; words that say more go to Alfred with the event. */
+  const say = (event: Shown) => {
+    if (!line) return;
+    setPicked(null);
+    const nextMonday = addDays(mondayOf(today), 7);
+    line.attach({
+      key: `cal:say:${event.account}|${event.id}`, label: event.title.length > 24 ? `${event.title.slice(0, 23)}…` : event.title, placeholder: t("say.placeholder"),
+      chips: [...(event.allDay ? [] : [t("say.later")]), t("todo.tomorrow"), t("todo.nextWeekday", { day: t("todo.weekdays").split(",")[parse(nextMonday).getDay()] })],
+      send: async (words) => {
+        const when = eventChange(words, today, event);
+        if (!when) { await line.ask(t("say.goal.event", { title: event.title, when: whenText(event), text: words }), { id: `calendar:${event.id}`, title: event.title.slice(0, 200) }); return; }
+        const result = (await api.op("calendar.edit", { account: event.account, id: event.id, when })).result as { error?: string };
+        if (result.error && result.error !== "nothing") throw new Error(t(`cal.err.${result.error}` as Key));
+        if (!result.error) sentOne({ id: event.id, account: event.account, calendarId: event.calendarId, added: false, when });
+      },
+    });
+  };
   /** A new event on `day` from minute `at` to `until`. One already being typed is put there instead: placing it is
    * part of typing it. An event being changed stays where its fields say. */
   const place = (day: string, at: number, until: number) => {
@@ -569,60 +696,119 @@ export function Calendar({ snapshot }: { snapshot: CalendarSnapshot | undefined 
     onPointerCancel() { press.current = null; setStretch(null); },
   });
 
+  // On the grid, with a mouse: an event made in Alfred is carried to another hour or day and put down there. It keeps
+  // its length, moves by quarter hours, and goes to Google as a change saved in the editor would. One Alfred only
+  // proposes is moved the same way and stays a proposal, at its new time (calendar.retime).
+  const carrier = (event: Shown) => !movable(event) ? {} : {
+    onPointerDown(down: ReactPointerEvent<HTMLButtonElement>) {
+      if (down.button !== 0 || down.pointerType !== "mouse") return;
+      grip.current = { event, x: down.clientX, y: down.clientY, was: minutesOf(event.start!), moved: false };
+      down.currentTarget.setPointerCapture(down.pointerId);
+    },
+    onPointerMove(move: ReactPointerEvent<HTMLButtonElement>) {
+      const held = grip.current;
+      if (!held || !move.currentTarget.hasPointerCapture(move.pointerId)) return;
+      if (!held.moved && Math.hypot(move.clientX - held.x, move.clientY - held.y) < 5) return;
+      held.moved = true;
+      const length = (Date.parse(event.end!) - Date.parse(event.start!)) / 60_000;
+      const start = Math.max(0, Math.min(24 * 60 - length, snap(held.was + (move.clientY - held.y) / HOUR * 60)));
+      // The day whose column the pointer is over; outside the grid, the day it was last over.
+      const columns = [...(move.currentTarget.closest(".wk-body")?.querySelectorAll<HTMLElement>(".wk-col") ?? [])];
+      const over = columns.findIndex((column) => { const box = column.getBoundingClientRect(); return move.clientX >= box.left && move.clientX < box.right; });
+      const day = over >= 0 && inRange(visible[over]) ? visible[over] : carry?.day ?? event.startDate;
+      setMoveError(null);
+      setCarry({ event, day, start });
+    },
+    onPointerUp() {
+      const held = grip.current, put = carry;
+      grip.current = null;
+      setCarry(null);
+      if (!held?.moved) return;
+      // The click that may follow this release is the carry's end; any later click is a click again.
+      carried.current = true;
+      window.setTimeout(() => { carried.current = false; }, 80);
+      if (!put || (put.day === event.startDate && put.start === held.was)) return;
+      const length = Date.parse(event.end!) - Date.parse(event.start!);
+      const start = instant(put.day, clock(put.start));
+      const when = { start: start.toISOString(), end: new Date(start.getTime() + length).toISOString() };
+      const refused = (response: { result: unknown }) => {
+        const result = response.result as { error?: string };
+        if (result.error && result.error !== "nothing") throw new Error(t(`cal.err.${result.error}` as Key));
+      };
+      if (event.proposed) {
+        const forget = () => setRetimed(({ [event.id]: _, ...rest }) => rest);
+        setRetimed((current) => ({ ...current, [event.id]: when }));
+        api.op("calendar.retime", { proposal: event.proposed.id, step: event.proposed.step, when }).then(refused).catch((reason: Error) => { forget(); setMoveError(reason.message); });
+        return;
+      }
+      // Drawn there at once, as one on its way; taken back if it is refused.
+      const change: CalendarPending = { id: event.id, account: event.account, calendarId: event.calendarId, added: false, when };
+      sentOne(change);
+      api.op("calendar.edit", { account: event.account, id: event.id, when }).then(refused).catch((reason: Error) => { setSent((current) => current.filter((one) => one !== change)); setMoveError(reason.message); });
+    },
+    onPointerCancel() { grip.current = null; setCarry(null); },
+  };
+
   return (
     <section className="calendar" aria-label={t("page.calendar")}>
       <SourceBar module="calendar" mark="google-calendar" sources={sources} notConnected={t("src.notConnected.cal")}>
         {calendarCount > 1 && <CalendarPicker sources={sources} hidden={hidden} onToggle={toggle} />}
       </SourceBar>
       <div className="cal-bar">
-        <div className="cal-nav">
+        {view !== "today" && <div className="cal-nav">
           <button type="button" className="icon-btn" onClick={() => step(-1)} aria-label={t(view === "month" ? "cal.prevMonth" : "cal.prev")}>‹</button>
           <button type="button" className="ghost small" disabled={atNow} onClick={() => (view === "month" ? setMonth(firstOf(today)) : setWeek(mondayOf(today)))}>{t(view === "month" ? "cal.thisMonth" : "cal.thisWeek")}</button>
           <button type="button" className="icon-btn" onClick={() => step(1)} aria-label={t(view === "month" ? "cal.nextMonth" : "cal.next")}>›</button>
-          <b>{view === "month" ? label(month, { year: "numeric", month: "long" }) : t("cal.week", { from: label(week, { month: "short", day: "numeric" }), to: label(days[6], { month: "short", day: "numeric" }) })}</b>
-        </div>
+        </div>}
+        <b className="cal-period">{view === "today" ? label(today, { weekday: "short", month: "short", day: "numeric" })
+          : view === "month" ? label(month, { year: "numeric", month: "long" })
+          : t("cal.week", { from: label(week, { month: "short", day: "numeric" }), to: label(days[6], { month: "short", day: "numeric" }) })}</b>
         <div className="cal-tools">
           <div className="mode-switch cal-view" role="group" aria-label={t("cal.view")}>
-            {(["week", "month"] as const).map((each) => <button type="button" key={each} aria-pressed={view === each} onClick={() => show(each)}>{t(`cal.view.${each}`)}</button>)}
+            {(["today", "week", "month"] as const).map((each) => <button type="button" key={each} aria-pressed={view === each} onClick={() => show(each)}>{t(`cal.view.${each}`)}</button>)}
           </div>
           {sources.length > 0 && <button type="button" className="cal-add" disabled={outside || !!draft?.event} onClick={() => add()} aria-label={t("cal.newEvent")}><Icon name="plus" /><span>{t("cal.new")}</span></button>}
         </div>
       </div>
       {noWrite && !targets.length && <p className="cal-note"><span>{t("cal.noWrite")}</span><a href="#p=core.settings">{t("cal.noWrite.go")}</a></p>}
+      {moveError && <p className="cal-note" role="alert"><span>{moveError}</span></p>}
       {(removing || draft || pickedEvent) && (
         <Pop onClose={() => (removing ? setRemoving(null) : draft ? setDraft(null) : setPicked(null))}>
           {removing ? <DeleteAsk event={removing} onClose={() => setRemoving(null)} onDeleted={(change) => { sentOne(change); setPicked(null); }} />
             : draft ? <EventEditor draft={draft} targets={targets} k={draftK} range={range} onChange={setDraft} onClose={() => setDraft(null)} onSaved={sentOne}
                 onDelete={draft.event ? () => askDelete(draft.event!) : undefined} />
             : pickedEvent && <EventCard event={pickedEvent} onClose={() => setPicked(null)}
+                onSay={line && pickedEvent.editable && !pickedEvent.pending ? () => say(pickedEvent) : undefined}
                 onEdit={pickedEvent.editable && !pickedEvent.pending ? () => edit(pickedEvent) : undefined} onDelete={pickedEvent.editable && !pickedEvent.pending ? () => askDelete(pickedEvent) : undefined} />}
         </Pop>
       )}
 
+      {view === "today" && !dayGrid && shown.length > 0 && <TodayAgenda events={shown} today={today} now={now} onOpen={open} />}
       {view === "month" && sources.length > 0 && !visible.every(inRange) && <p className="cal-note quiet">{t("cal.unread")}</p>}
       {view === "month" && (
         <MonthGrid days={monthDays} month={month} today={today} events={shown} known={inRange} canAdd={(day) => targets.length > 0 && inRange(day) && !draft?.event}
           onOpen={open} onAdd={add} onDay={(day) => show("week", day)} />
       )}
-      {view === "week" && <>
-      <div className="week-grid" ref={scroller}>
+      {(view === "week" || dayGrid) && (
+      <div className="week-grid" data-single-day={dayGrid || undefined} ref={scroller}>
         <div className="wk-top">
-        <div className="wk-head">
+        {view === "week" && <div className="wk-head">
           <span />
           {days.map((day) => (
             <div key={day} className="wk-day" data-today={day === today || undefined} data-weekend={parse(day).getDay() % 6 === 0 || undefined}>
               {label(day, { weekday: "short" })}<b>{parse(day).getDate()}</b>
             </div>
           ))}
-        </div>
+        </div>}
+        {dayGrid && shown.length === 0 && <p className="cal-note quiet">{t("cal.emptyToday")}</p>}
         {banner.length > 0 && (
           <div className="wk-allday">
             <span>{t("cal.allDay")}</span>
-            {days.map((day) => (
+            {visible.map((day) => (
               <div key={day}>
                 {banner.filter((event) => event.startDate <= day && event.endDate >= day).map((event) => (
-                  <button type="button" key={event.id} className="ev ev-chip" data-k={event.k} data-declined={event.response === "declined" || undefined}
-                    data-pending={event.pending || undefined} data-draft={event.draft || undefined} onClick={() => open(event)}>{event.title}</button>
+                  <button type="button" key={`${event.account}|${event.id}`} className="ev ev-chip" data-k={event.k} data-declined={event.response === "declined" || undefined}
+                    data-pending={event.pending || undefined} data-draft={event.draft || undefined} data-proposed={!!event.proposed || undefined} onClick={() => open(event)}>{event.title}</button>
                 ))}
               </div>
             ))}
@@ -631,21 +817,30 @@ export function Calendar({ snapshot }: { snapshot: CalendarSnapshot | undefined 
         </div>
         <div className="wk-body" style={{ height: hours.length * HOUR }}>
           <div className="wk-gutter">{hours.map((hour) => <div key={hour}>{pad(hour)}:00</div>)}</div>
-          {days.map((day) => (
+          {visible.map((day) => (
             <div key={day} className="wk-col" data-today={day === today || undefined} data-weekend={parse(day).getDay() % 6 === 0 || undefined}
               data-open={(targets.length > 0 && inRange(day) && !draft?.event) || undefined} {...grid(day)}>
-              {lanes(timed.filter((event) => event.startDate === day)).map(({ event, lane, of }) => {
-                const top = (minutesOf(event.start!) - from * 60) / 60 * HOUR;
-                const height = Math.max(18, (Date.parse(event.end!) - Date.parse(event.start!)) / 3_600_000 * HOUR - 2);
+              {lanes(dayGrid ? timed : timed.filter((event) => event.startDate === day)).map(({ event, lane, of }) => {
+                const start = startMinute(event), end = endMinute(event);
+                const top = (start - from * 60) / 60 * HOUR;
+                const length = dayGrid ? end - start : (Date.parse(event.end!) - Date.parse(event.start!)) / 60_000;
+                const height = Math.max(18, length / 60 * HOUR - 2);
+                const time = dayGrid || event.draft ? timeOnDay(event, day) : hhmm(event.start!);
                 return (
-                  <button type="button" key={event.id} className="ev" data-k={event.k} data-past={(!event.draft && Date.parse(event.end!) < now) || undefined}
-                    data-declined={event.response === "declined" || undefined} data-pending={event.pending || undefined} data-draft={event.draft || undefined}
-                    title={event.pending ? t("cal.pending") : undefined} onClick={() => open(event)}
+                  <button type="button" key={`${event.account}|${event.id}`} className="ev" data-k={event.k} data-past={(!event.draft && Date.parse(event.end!) < now) || undefined}
+                    data-declined={event.response === "declined" || undefined} data-pending={event.pending || undefined} data-draft={event.draft || undefined} data-proposed={!!event.proposed || undefined}
+                    data-movable={movable(event) || undefined} data-carried={(carry && same(carry.event, event)) || undefined} {...carrier(event)}
+                    title={event.pending ? t("cal.pending") : undefined} onClick={() => { if (carried.current) { carried.current = false; return; } open(event); }}
                     style={{ top, height, left: `calc(${(lane / of) * 100}% + 2px)`, width: `calc(${100 / of}% - 4px)` }}>
-                    {event.title}<small>{hhmm(event.start!)}{event.draft ? `–${hhmm(event.end!)}` : event.location ? ` · ${event.location}` : ""}</small>
+                    {event.title}<small>{time}{!event.draft && event.location && ` · ${event.location}`}</small>
                   </button>
                 );
               })}
+              {carry?.day === day && (
+                <div className="ev ev-carry" data-k={carry.event.k} data-proposed={!!carry.event.proposed || undefined} style={{ top: (carry.start - from * 60) / 60 * HOUR, height: Math.max(18, (Date.parse(carry.event.end!) - Date.parse(carry.event.start!)) / 3_600_000 * HOUR - 2), left: 2, right: 2 }}>
+                  {carry.event.title}<small>{clock(carry.start)}–{clock(carry.start + (Date.parse(carry.event.end!) - Date.parse(carry.event.start!)) / 60_000)}</small>
+                </div>
+              )}
               {stretch?.day === day && (
                 <div className="ev ev-stretch" style={{ top: (stretch.from - from * 60) / 60 * HOUR, height: Math.max(10, (stretch.to - stretch.from) / 60 * HOUR - 2), left: 2, right: 2 }}>
                   <small>{clock(stretch.from)}–{clock(stretch.to)}</small>
@@ -656,9 +851,10 @@ export function Calendar({ snapshot }: { snapshot: CalendarSnapshot | undefined 
           ))}
         </div>
       </div>
+      )}
 
       {/* Narrow screens: the week as a list of days. */}
-      <ol className="agenda">
+      {view === "week" && <ol className="agenda">
         {days.map((day) => {
           const todays = shown.filter((event) => event.startDate <= day && event.endDate >= day);
           return (
@@ -668,19 +864,13 @@ export function Calendar({ snapshot }: { snapshot: CalendarSnapshot | undefined 
                 {targets.length > 0 && inRange(day) && !draft?.event && <button type="button" className="icon-btn" onClick={() => add(day)} aria-label={t("cal.addOn", { day: label(day, { month: "short", day: "numeric" }) })}><Icon name="plus" /></button>}
               </h3>
               {todays.length === 0 ? <p className="quiet small">—</p> : todays.map((event) => (
-                <button type="button" key={event.id} className="agenda-ev" data-k={event.k} data-declined={event.response === "declined" || undefined}
-                  data-pending={event.pending || undefined} data-draft={event.draft || undefined} onClick={() => open(event)}>
-                  <span className="mark" data-k={event.k} />
-                  <time>{inGrid(event) ? hhmm(event.start!) : t("cal.allDay")}</time>
-                  <span>{event.title}</span>
-                </button>
+                <AgendaEvent key={`${event.account}|${event.id}`} event={event} time={inGrid(event) ? hhmm(event.start!) : t("cal.allDay")} onOpen={open} />
               ))}
             </li>
           );
         })}
-      </ol>
-      </>}
-      {sources.length > 0 && view === "week" && shown.length === 0 && <p className="quiet empty-list">{t(outside ? "cal.outside" : "cal.empty")}</p>}
+      </ol>}
+      {!dayGrid && sources.length > 0 && view !== "month" && shown.length === 0 && <p className="quiet empty-list">{t(outside ? "cal.outside" : view === "today" ? "cal.emptyToday" : "cal.empty")}</p>}
     </section>
   );
 }

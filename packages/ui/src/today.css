@@ -27,6 +27,8 @@
 .today-when { min-width: 0; color: var(--muted); font-size: .8125rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .today-row[data-tone="wait"] .today-when { color: var(--k-text); font-weight: 600; }
 .today-row[data-tone="late"] .today-when, .today-row[data-tone="now"] .today-when { color: var(--now); font-weight: 600; }
+/* An hour Alfred only suggests: dashed, as a suggested todo is on its own page. */
+.today-row[data-tone="guess"] .today-when { text-decoration: underline dashed var(--line); text-underline-offset: 4px; }
 .today-kind { align-self: start; width: 16px; height: 16px; margin-top: 4px; display: grid; place-items: center; color: var(--k-solid, var(--muted)); }
 .today-kind svg { width: 16px; height: 16px; }
 /* The whole row opens the thing; the ring and the link out are above that. */
@@ -46,6 +48,16 @@
 .today-text b + span::before { content: "  "; white-space: pre; }
 .today-go { color: var(--alf); font-size: .8125rem; white-space: nowrap; text-decoration: none; }
 .today-go:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* A waiting thing, open: the Inbox's own card under its row, without the heading the row already is. */
+.today-row[data-open] { background: var(--wash); border-radius: 10px 10px 0 0; }
+.today-decide { margin: 0 -10px 6px; padding: 4px 14px 16px 102px; border-radius: 0 0 10px 10px; background: var(--wash); }
+.today-decide .inbox-detail { width: 100%; margin: 0; gap: 12px; }
+.today-decide .inbox-detail-head { display: none; }
+.today-decide .inbox-summary { font-size: .875rem; }
+/* What a thing done here answered with. */
+.today-said { padding: 2px 0 6px; color: var(--copy); font-size: .8125rem; }
+.today-said[data-problem] { color: var(--now); }
 .today-row[data-past] { opacity: .5; }
 .today-row[data-quiet] .today-text b { color: var(--muted); font-size: .8125rem; font-weight: 400; }
 .today-row[data-quiet]:hover .today-text b { color: var(--ink); }
@@ -79,4 +91,5 @@
   .today-text span { display: block; }
   .today-text b + span::before { content: none; }
   .today-go { grid-column: 3; justify-self: start; }
+  .today-decide { padding-left: 14px; }
 }

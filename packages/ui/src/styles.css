@@ -432,8 +432,8 @@ button.ghost, .notice-actions button.ghost { background: none; color: var(--copy
 .todo-sources { position: relative; flex: none; }
 .todo-sources > .chip[aria-expanded="true"] { background: var(--wash); color: var(--ink); }
 .todo-sources-pop { position: absolute; right: 0; top: 36px; z-index: 6; width: 280px; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--raise); box-shadow: 0 12px 36px oklch(0 0 0 / .14), inset 0 0 0 1px var(--line-soft); color: var(--copy); font-size: .8125rem; }
-/* A native select dressed as a tag. */
-select.area-pick { appearance: none; -webkit-appearance: none; height: 26px; padding: 0 10px; border: 0; border-radius: 8px; cursor: pointer; font-family: inherit; field-sizing: content; }
+/* A choice dressed as a tag. */
+.area-pick { height: 26px; padding: 0 8px 0 10px; border-radius: 8px; background: var(--wash); color: var(--copy); font-size: .75rem; }
 .todo-sources-pop label, .todo-pick { display: flex; align-items: center; gap: 8px; justify-content: space-between; min-width: 0; }
 .todo-sources-pop .grow { flex: 1; }
 .todo-sources-pop .switch { transform: scale(.8); }
@@ -582,8 +582,8 @@ select.area-pick { appearance: none; -webkit-appearance: none; height: 26px; pad
 .add-pill:has(:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
 .add-pill > svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .add-pill[data-set] { background: var(--k-fill, var(--accent-soft)); color: var(--k-text, var(--accent)); font-weight: 500; }
-/* The native picker lies over the pill, unseen: a click on the pill is a click on it. */
-.add-pill > select, .add-pill > input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; font-size: 16px; }
+/* The picker lies over the pill, unseen: a click on the pill is a click on it. */
+.add-pill > .choice-cover, .add-pill > input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; font-size: 16px; }
 .add-pill-clear { position: relative; z-index: 1; width: 16px; height: 16px; display: grid; place-items: center; margin-right: -4px; border-radius: 50%; color: inherit; opacity: .7; }
 .add-pill-clear:hover { opacity: 1; background: color-mix(in oklch, currentColor 14%, transparent); }
 .add-pill-clear svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
@@ -1023,9 +1023,9 @@ html.desktop .dev-drag { display: block; position: absolute; inset: 0 0 auto; he
 .source-bar > span { min-width: 0; }
 
 .calendar { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 24px 0 20px; }
-.cal-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 10px; }
+.cal-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
 .cal-nav { display: flex; align-items: center; gap: 4px; }
-.cal-nav b { margin-left: 8px; color: var(--ink); font-weight: 500; }
+.cal-period { min-width: 0; color: var(--ink); font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
 .cal-nav .small { min-height: 28px; padding: 0 10px; border-radius: 999px; font-size: .75rem; }
 .cal-nav .icon-btn { font-size: 1.25rem; line-height: 1; }
 /* Which calendars are shown (Calendar.tsx CalendarPicker): a small button at the end of the source's row, and under
@@ -1099,6 +1099,12 @@ textarea.ev-field:disabled { opacity: .5; }
 .ev-ask .ev-foot { margin-top: 10px; }
 .week-grid { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 40px; }
 .wk-head, .wk-allday, .wk-body { display: grid; grid-template-columns: 52px repeat(7, minmax(0, 1fr)); }
+.week-grid[data-single-day] :is(.wk-allday, .wk-body) { grid-template-columns: 44px minmax(0, 1fr); }
+.week-grid[data-single-day] .wk-allday { max-height: 30dvh; overflow-y: auto; }
+.week-grid[data-single-day] .ev { font-size: .875rem; }
+.week-grid[data-single-day] .ev small { font-size: .6875rem; }
+.week-grid[data-single-day] .ev-chip { min-height: 26px; }
+.week-grid[data-single-day] .wk-gutter div:first-child { transform: none; }
 .wk-top { position: sticky; top: 0; z-index: 4; background: var(--bg); }
 .wk-day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 8px; color: var(--muted); font-size: .75rem; }
 .wk-day b { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; color: var(--ink); font-size: 1rem; font-weight: 500; }
@@ -1120,6 +1126,15 @@ textarea.ev-field:disabled { opacity: .5; }
 .ev:hover { filter: brightness(.97); }
 /* On its way to Google: there, but not settled. Being typed: lifted, with its outline. Being dragged out: only the hours. */
 .ev[data-pending], .agenda-ev[data-pending] { opacity: .6; }
+/* Proposed by Alfred: where it would land, dashed in Alfred's colour until the user says yes. */
+.ev[data-proposed], .mo-ev[data-proposed], .agenda-ev[data-proposed] { background: var(--alf-soft); color: var(--alf); box-shadow: none; outline: 1.5px dashed var(--alf); outline-offset: -1.5px; }
+.ev[data-proposed] small { color: var(--alf); }
+/* Made in Alfred: it can be carried to another hour or day. While it is, it stays faint where it was, and where it
+   would be put down is drawn lifted, with its new hours. */
+.ev[data-movable] { cursor: grab; }
+.ev[data-carried] { opacity: .35; cursor: grabbing; }
+.ev-carry { z-index: 4; pointer-events: none; box-shadow: inset 3px 0 0 var(--k-solid), 0 0 0 1.5px var(--k-solid), 0 6px 18px oklch(0 0 0 / .16); }
+.ev-carry[data-proposed] { box-shadow: 0 6px 18px oklch(0 0 0 / .16); }
 .ev[data-draft] { z-index: 3; box-shadow: inset 3px 0 0 var(--k-solid), 0 0 0 1.5px var(--k-solid), 0 6px 18px oklch(0 0 0 / .12); cursor: default; }
 .ev.ev-stretch { z-index: 3; background: color-mix(in oklch, var(--accent) 12%, transparent); box-shadow: inset 0 0 0 1.5px var(--accent); pointer-events: none; }
 .ev.ev-stretch small { color: var(--accent); opacity: 1; }
@@ -1129,7 +1144,19 @@ textarea.ev-field:disabled { opacity: .5; }
 .wk-now { position: absolute; left: -1px; right: 0; z-index: 2; height: 2px; background: var(--now); pointer-events: none; }
 .wk-now::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--now); }
 .agenda { display: none; }
-/* The week or the month: the switch sits with the New button, at the bar's far end. */
+.agenda-today { display: block; min-height: 0; overflow-y: auto; padding-bottom: 40px; }
+.agenda-ev { width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-radius: 8px; color: var(--copy); text-align: left; }
+.agenda-ev time { flex: none; width: 3.6em; color: var(--muted); font: .75rem var(--mono); }
+.agenda-title { min-width: 0; overflow-wrap: anywhere; }
+.agenda-ev[data-declined] .agenda-title { text-decoration: line-through; opacity: .6; }
+.agenda-today .agenda-ev { min-height: 44px; display: grid; grid-template-columns: 8px auto minmax(0, 1fr) auto; gap: 2px 10px; padding: 9px 10px; }
+.agenda-today time { width: 11.5ch; font-variant-numeric: tabular-nums; }
+.agenda-today .agenda-ev[data-past] { color: var(--muted); }
+.agenda-today .agenda-ev[data-status] .agenda-title { font-weight: 600; }
+.agenda-today .agenda-ev[data-status]:not([data-proposed]), .agenda-today .agenda-ev:not([data-proposed]):hover { background: var(--wash); }
+.agenda-today .agenda-ev:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.agenda-status { color: var(--accent); font-size: .75rem; font-weight: 500; }
+/* The view switch sits with the New button at the end of the calendar toolbar. */
 .cal-tools { flex: none; display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .cal-view button { width: auto; min-width: 34px; padding: 0 10px; font-size: .75rem; white-space: nowrap; }
 /* The month: weeks of day boxes, as tall as the page lets them be. A day holds as many events as fit (Calendar.tsx
@@ -1323,9 +1350,17 @@ textarea.ev-field:disabled { opacity: .5; }
 /* A week of seven columns needs room: in a narrow page the days are a list. */
 @container page (max-width: 640px) {
   .calendar { padding: 0 16px; }
-  .week-grid { display: none; }
+  .cal-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .cal-period { grid-area: 1 / 1; }
+  .cal-tools { grid-area: 1 / 2; }
+  .cal-nav { grid-area: 2 / 1 / auto / -1; }
+  .cal-view button { height: 32px; padding: 0 8px; }
+  .agenda-status { grid-column: 3 / -1; }
+  .agenda-today .agenda-ev { grid-template-columns: 8px auto minmax(0, 1fr); }
+  .week-grid:not([data-single-day]) { display: none; }
   /* The list runs to the page's edges, so what scrolls it is at the edge of the screen. */
   .agenda { display: flex; flex-direction: column; gap: 14px; margin: 0 -16px; padding: 0 16px 80px; overflow-y: auto; }
+  .agenda-today { gap: 2px; }
   /* The month in a narrow page: a day is its number over a dot per colour, and tapping it opens its week. */
   .month-grid { margin: 0 -16px; padding: 0 8px 80px; }
   .mo-body { grid-auto-rows: minmax(54px, 1fr); }

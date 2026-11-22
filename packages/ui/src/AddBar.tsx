@@ -27,7 +27,7 @@ const ICONS = {
   clear: <path d="M6.5 6.5l7 7M13.5 6.5l-7 7" />,
 };
 
-/** A pill that holds a native picker under it: a select, or a date or time field (opened with its own picker). */
+/** A pill with a picker lying unseen over it: our Select, or a date or time field (opened with the system's own picker). */
 export function Pill({ icon, text, set, k, label, onClear, children }: {
   icon: keyof typeof ICONS; text: string; set: boolean; k?: string; label: string; onClear?: () => void; children: ReactNode;
 }) {

@@ -7,6 +7,9 @@ import { api } from "./api.ts";
 import { AddBar, Pill, PickerPill } from "./AddBar.tsx";
 import { Linked, OutLink } from "./Linked.tsx";
 import { getLocale, t, type Key } from "./i18n/index.ts";
+import type { PageLine } from "./shell/about.ts";
+import { todoChange } from "./shell/say.ts";
+import { Select } from "./shell/Select.tsx";
 
 type Item = TodoSnapshot["todos"][number];
 type View = "list" | "board" | "week";
@@ -228,7 +231,7 @@ function Pop({ onClose, children }: { onClose(): void; children: ReactNode }) {
   );
 }
 
-function TodoCard({ todo, today, all, areas, now, onClose, onError }: { todo: Item; today: string; all: Item[]; areas: Area[]; now: number; onClose(): void; onError: OnError }) {
+function TodoCard({ todo, today, all, areas, now, onClose, onError, onSay }: { todo: Item; today: string; all: Item[]; areas: Area[]; now: number; onClose(): void; onError: OnError; onSay?: () => void }) {
   const { busy, run } = useRun(onError);
   const [title, setTitle] = useState(todo.title);
   const [confirming, setConfirming] = useState(false);
@@ -319,6 +322,8 @@ function TodoCard({ todo, today, all, areas, now, onClose, onError }: { todo: It
           {todo.suggested
             ? <KeepDrop todo={todo} onError={onError} />
             : !todo.done && <button type="button" className="mini" aria-pressed={todo.status === "doing"} disabled={busy} onClick={() => patch({ status: todo.status === "doing" ? "todo" : "doing" })}>{t("todo.doing")}</button>}
+          {/* Words about it go in the line under the page: the card steps aside. */}
+          {onSay && !todo.suggested && !todo.done && <button type="button" className="mini" disabled={busy} onClick={onSay}>{t("say.open")}</button>}
           <span className="grow" />
           {!todo.suggested && (
             <button type="button" className={confirming ? "mini danger" : "mini quiet-danger"} disabled={busy}
@@ -610,7 +615,7 @@ function Sources({ mode, picking, onError }: { mode: CalendarMode; picking?: Aut
   };
   useEffect(() => {
     if (!open) return;
-    const away = (event: MouseEvent) => { if (!(event.target as Element).closest?.(".todo-sources")) setOpen(false); };
+    const away = (event: MouseEvent) => { if (!(event.target as Element).closest?.(".todo-sources, .choice-menu")) setOpen(false); };
     const escape = (press: KeyboardEvent) => { if (press.key === "Escape") setOpen(false); };
     document.addEventListener("mousedown", away);
     document.addEventListener("keydown", escape);
@@ -624,13 +629,12 @@ function Sources({ mode, picking, onError }: { mode: CalendarMode; picking?: Aut
       </button>
       {open && (
         <div className="todo-sources-pop" role="group" aria-label={t("todo.sources")}>
-          <label>
+          <span className="todo-pick">
             <span>{t("todo.src.calendar")}</span>
-            <select className="tag area-pick" value={mode} disabled={busy} aria-label={t("todo.src.calendarWhich")}
-              onChange={(event) => act(() => api.op("todo.sources", { fromCalendar: event.target.value }))}>
-              {MODES.map((candidate) => <option key={candidate} value={candidate}>{t(`todo.src.cal.${candidate}` as Key)}</option>)}
-            </select>
-          </label>
+            <Select className="tag area-pick" value={mode} disabled={busy} label={t("todo.src.calendarWhich")}
+              onChange={(next) => act(() => api.op("todo.sources", { fromCalendar: next }))}
+              options={MODES.map((candidate) => ({ value: candidate, label: t(`todo.src.cal.${candidate}` as Key) }))} />
+          </span>
           {picking && (
             <span className="todo-pick">
               <span>{t("todo.src.mail")}</span>
@@ -656,7 +660,7 @@ const savedView = (): View => { try { const view = localStorage.getItem(VIEW_KEY
 
 /** The todo page: what is open, day by day with today beside it, or as a board, or what repeats as a week (the
  * user picks; the device keeps it). */
-export function Todos({ snapshot, fresh, areas, automations, calendar }: { snapshot: TodoSnapshot; fresh: ReadonlySet<string>; areas: Area[]; automations?: Automation[]; calendar?: CalendarSnapshot }) {
+export function Todos({ snapshot, fresh, areas, automations, calendar, line }: { snapshot: TodoSnapshot; fresh: ReadonlySet<string>; areas: Area[]; automations?: Automation[]; calendar?: CalendarSnapshot; line?: PageLine }) {
   const [title, setTitle] = useState("");
   const [due, setDue] = useState("");
   const [at, setAt] = useState("");
@@ -669,6 +673,26 @@ export function Todos({ snapshot, fresh, areas, automations, calendar }: { snaps
   const { busy: adding, run } = useRun(setError);
   const now = useNow();
   const { today, todos } = snapshot;
+  /** Puts a todo in the line under the page: a day, an hour or "done" changes it at once (shell/say.ts); words that
+   * say more go to Alfred with the todo. */
+  const say = (todo: Item) => {
+    if (!line) return;
+    setOpened(null);
+    const nextMonday = addDays(today, toSunday(today) + 1);
+    line.attach({
+      key: `todo:say:${todo.id}`, label: todo.title.length > 24 ? `${todo.title.slice(0, 23)}…` : todo.title, placeholder: t("say.placeholder"),
+      chips: [t("todo.today"), t("todo.tomorrow"), t("todo.nextWeekday", { day: weekdayName(nextMonday) }), t("say.done")],
+      send: async (words) => {
+        const change = todoChange(words, today, todo);
+        if (!change) { await line.ask(t("say.goal.todo", { title: todo.title, text: words }), { id: `todo:${todo.id}`, title: todo.title.slice(0, 200) }); return; }
+        const response = "done" in change
+          ? await api.op("todo.complete", { id: todo.id })
+          : await api.op("todo.update", { id: todo.id, patch: { ...change.patch, startDate: "" } });
+        const result = response.result as { error?: string } | null;
+        if (result && typeof result.error === "string") throw new Error(result.error);
+      },
+    });
+  };
 
   // A suggestion is not a todo until it is kept: it is drawn apart and counted nowhere.
   const shown = (todo: Item) => filter === "all" || (filter === "none" ? !todo.area : todo.area === filter);
@@ -732,10 +756,8 @@ export function Todos({ snapshot, fresh, areas, automations, calendar }: { snaps
           text={due ? dayWord(due, today) : undefined} label={t("todo.due")} />
         {due && <PickerPill type="time" icon="hour" value={at} onChange={setAt} empty={t("todo.pickHour")} label={t("todo.at")} />}
         <Pill icon="tag" text={addArea ? addArea.name[getLocale()] : t("todo.pickArea")} set={!!addArea} k={addArea?.k} label={t("todo.newArea")} onClear={() => setNewArea("")}>
-          <select value={newArea} onChange={(event) => setNewArea(event.target.value)} aria-label={t("todo.newArea")}>
-            <option value="">{t("todo.noArea")}</option>
-            {areas.map((area) => <option key={area.id} value={area.id}>{area.name[getLocale()]}</option>)}
-          </select>
+          <Select cover value={newArea} onChange={setNewArea} label={t("todo.newArea")}
+            options={[{ value: "", label: t("todo.noArea") }, ...areas.map((area) => ({ value: area.id, label: area.name[getLocale()] }))]} />
         </Pill>
       </AddBar>
       {error && <p className="problem small" role="alert">{error}</p>}
@@ -773,7 +795,7 @@ export function Todos({ snapshot, fresh, areas, automations, calendar }: { snaps
           </div>
         )}
       </div>
-      {openedTodo && <TodoCard todo={openedTodo} today={today} all={todos} areas={areas} now={now} onClose={() => setOpened(null)} onError={setError} />}
+      {openedTodo && <TodoCard todo={openedTodo} today={today} all={todos} areas={areas} now={now} onClose={() => setOpened(null)} onError={setError} onSay={line && !openedTodo.source?.repeat ? () => say(openedTodo) : undefined} />}
     </section>
   );
 }
