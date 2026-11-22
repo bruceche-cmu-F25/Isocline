@@ -9,11 +9,11 @@ export const TEMPLATE_TEXT: Record<AutomationTemplate, Record<Locale, { name: st
   brief: {
     zh: {
       name: "早报",
-      goal: "写今天的早报：今天的日程，需要我回的邮件，今天到期和已经逾期的待办，在等我决定的事，以及你建议我先做哪一件。几行就好，不要替我做决定。",
+      goal: "写今天的早报。查今天的日历、今天到期或已逾期的待办，以及需要回复的邮件和等我决定的事。用 Markdown 小标题「日程」「到期事项」「邮件与决定」「建议先做」分组，每个事件、待办或独立事项单列一行。「邮件与决定」里每一行开头标一个类型：[风险]（账号安全、异常扣款这类要马上确认的）、[等你]（要我回复或决定）、[期限 YYYY-MM-DD]（只是一个要知道的日期）、[告知]（知道就行）；行末写上那封邮件的 id，写成 (mail:ID)。「建议先做」说的如果是某封邮件，句末同样写 (mail:ID)。区分已记录的待办、邮件里提到的期限和可选事项，只写有依据的时间。给一句先做什么的建议和理由。保持简短，不替我做决定。",
     },
     en: {
       name: "Morning brief",
-      goal: "Write today's morning brief: today's schedule, mail that needs my reply, todos due today or overdue, anything waiting for my decision, and which one you suggest I start with. A few lines; don't decide anything for me.",
+      goal: "Write today's morning brief. Check today's calendar, todos due today or overdue, mail needing my reply, and anything waiting for my decision. Use the Markdown headings Schedule, Due today, Mail / decisions, and Suggested start. Use one bullet per event, task, or independent mail item. Under Mail / decisions, start each bullet with one tag: [Risk] (account security or an unexpected charge, to check now), [Decide] (needs my reply or decision), [Due YYYY-MM-DD] (only a date to know), or [FYI]; end it with that message's id, written (mail:ID). If Suggested start is about a message, end it with (mail:ID) too. Distinguish saved todos from deadlines mentioned in mail and optional items. Only give times supported by the source. Suggest one thing to start with and why. Keep it short and leave decisions to me.",
     },
   },
   // Todos picked out of mail (the todo module's todo_suggest): what it finds waits on the Todos page as suggestions.

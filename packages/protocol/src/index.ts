@@ -24,6 +24,7 @@
  *                                           for a day unless a message takes it (SubmitRunRequest.attachments)
  *   GET  /api/files/:id                     the file's bytes (an image shows; anything else downloads)
  *   POST /api/runs                          SubmitRunRequest -> SubmitRunResponse (202); no conversationId starts one
+ *   GET  /api/runs/:id/morning-brief        { evidence: MorningBriefEvidence | null }
  *   GET  /api/runs/:id                      RunDetail
  *   POST /api/runs/:id/cancel               -> Run
  *   POST /api/runs/:id/resume               -> Run
@@ -417,6 +418,21 @@ export interface SubmitRunRequest {
   attachments?: string[];
 }
 export interface SubmitRunResponse { run: Run; replayed: boolean }
+/** Sources consulted during this edition. Null means there is no attributable successful read of that source.
+ * `k` and `cited` are not part of that record: they say where a thing is today, and are absent once it is gone. */
+export interface MorningBriefEvidence {
+  date: string;
+  timezone: string;
+  /** `k`: the event's colour slot in the calendar now (tokens.css `data-k`). */
+  calendar: Array<{ id: string; title: string; start: string | null; end: string | null; allDay: boolean; k?: string }> | null;
+  todos: Array<{ id: string; title: string; due: string; overdue: boolean; at?: string; area?: Area }> | null;
+  /** Messages opened in full, without their body. Reading one makes no claim that it needs a reply. */
+  mail: Array<{ id: string; subject: string; from: string }> | null;
+  /** Messages the edition's words point at by id and that are still in the mailbox: who sent each, and its key
+   * on the Mail page (`<account>|<id>`). */
+  cited?: Array<{ id: string; from: string; subject: string; key: string }>;
+}
+
 export interface RunDetail { run: Run; events: CoreEvent[] }
 
 export interface OpRequest { requestId: string; input: unknown }

@@ -34,6 +34,7 @@ import { DEVELOPER_PROFILE } from "./profiles.ts";
 import { command, profileFor, sessionWrites } from "./commands.ts";
 import { handleConnections, MODEL_USAGE_PATH } from "./connections-http.ts";
 import { handleSkills } from "./skills-http.ts";
+import { briefToday, morningBriefEvidence } from "./morning-brief.ts";
 import { reviewCommit } from "./commit-review.ts";
 import { branchState, pullRequest, workspaceChanges, workspaceDiff } from "./workspace.ts";
 import type { GoogleConnections } from "./google.ts";
@@ -531,9 +532,15 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     return send(res, 200, { models: await home.models() } satisfies ModelsResponse);
   }
 
-  const run = /^\/api\/runs\/([A-Za-z0-9_-]+)(?:\/(cancel|resume|respond|steer))?$/.exec(path);
+  const run = /^\/api\/runs\/([A-Za-z0-9_-]+)(?:\/(cancel|resume|respond|steer|morning-brief))?$/.exec(path);
   if (run) needDev(runInSession(home.world, run[1]));
   if (run && method === "GET" && !run[2]) return send(res, 200, getRun(home.world, run[1]));
+  if (run && method === "GET" && run[2] === "morning-brief") {
+    const detail = getRun(home.world, run[1]);
+    const evidence = await morningBriefEvidence(home.world, detail.run);
+    const now = (id: string) => home.modules.find((module) => module.id === id)?.snapshot?.(home.world) as Parameters<typeof briefToday>[2] | undefined;
+    return send(res, 200, { evidence: evidence && briefToday(evidence, detail.run.outcome?.reply ?? "", { events: now("calendar")?.events, messages: now("mail")?.messages }) });
+  }
   if (run && method === "POST" && run[2] === "steer") {
     const body = await readJson<SteerRequest>(req);
     if (typeof body.text !== "string" || !body.text.trim()) throw new HttpError(400, "text is required");
