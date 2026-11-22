@@ -17,6 +17,7 @@ import type { NamePreference } from "../InboxEntry.tsx";
 import { Inbox } from "../Inbox.tsx";
 import { Links } from "../Links.tsx";
 import { Settings } from "../Settings.tsx";
+import { LibrarySwitcher, SampleLinks, type useLinkSample } from "../LinkSample.tsx";
 import { Today } from "../Today.tsx";
 import { Todos } from "../Todos.tsx";
 import { intlLocale, t, type Key } from "../i18n/index.ts";
@@ -26,6 +27,7 @@ import type { IconName } from "./icons.tsx";
 import { todayModel, todaySummary } from "./today.ts";
 
 export interface PageProps extends NamePreference {
+  linkSample: ReturnType<typeof useLinkSample>;
   snapshot: unknown;
   /** Reload the current snapshot after a user action. */
   refresh(): void;
@@ -220,7 +222,7 @@ const PAGES: PageDef[] = [
       const unread = clips.filter((clip) => clip.state === "unread").length;
       return unread ? t("head.links.unread", { n: unread }) : t("head.links.clear");
     },
-    render: ({ snapshot, fresh, areas }) => <Links snapshot={snapshot as LinksSnapshot | undefined} fresh={fresh} areas={areas} />,
+    render: ({ snapshot, fresh, areas, item, onItem }) => <Links libraryControls={<LibrarySwitcher />} snapshot={snapshot as LinksSnapshot | undefined} fresh={fresh} areas={areas} focus={item} onFocused={onItem} />,
   },
   {
     key: "core.automations", get title() { return t("page.automations"); }, icon: "clock", k: "green", group: "modules",
@@ -252,6 +254,11 @@ const PAGES: PageDef[] = [
     render: ({ name, saveName, dev }) => <Settings name={name} saveName={saveName} onEvent={dev.onEvent} />,
   },
 ];
+
+export const linkSamplePage: PageDef = {
+  key: "link.sample", get title() { return t("links.sample.title"); }, icon: "link", k: "violet", group: "modules",
+  render: ({ linkSample, item, onItem }) => <SampleLinks model={linkSample} focus={item} onFocused={onItem} />,
+};
 
 /** The pages this home node actually has, in registry order: the core's, then each module view it offers. */
 export function availablePages(state: StateResponse): PageDef[] {

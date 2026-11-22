@@ -39,3 +39,27 @@ test("chat search skips a brief-only transcript and finds a brief with a follow-
   const found = findItems("Morning brief", { ...sources, conversations: chats });
   assert.deepEqual(found.map((item) => item.id), ["conv:discussed"]);
 });
+
+test("a place inside a folder is reachable by name, address, or folder from global search", () => {
+  const calls: string[] = [];
+  const find: FindSources = {
+    ...sources,
+    links: {
+      folders: [{ id: "work", title: "工作", position: 0 }],
+      places: [{ id: "gmail", url: "https://mail.google.com/", title: "Gmail", folderId: "work", position: 0 }],
+    },
+    onFolder: (id) => calls.push(id),
+    onPlace: (url) => calls.push(url),
+  };
+  const group = findItems("工作", find);
+  assert.deepEqual(group.map((row) => row.kind), ["folder", "place"]);
+  group[defaultPick(group)].run();
+  for (const q of ["GMAIL", "mail.google.com", "工作 gmail"]) {
+    const found = findItems(q, find);
+    assert.equal(found[0].id, "place:gmail");
+    assert.ok(found[0].label.endsWith(" › 工作"));
+    found[defaultPick(found)].run();
+  }
+  assert.deepEqual(calls, ["work", ...Array(3).fill("https://mail.google.com/")]);
+  assert.ok(findItems("", find).every((row) => row.kind !== "place" && row.kind !== "folder"));
+});

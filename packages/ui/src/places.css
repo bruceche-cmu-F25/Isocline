@@ -1,0 +1,54 @@
+.lk-places.lk-organizer { flex-wrap: wrap; gap: 0; overflow: visible; }
+.lk-organizer .lk-place { width: 80px; position: relative; }
+.lk-organizer[data-organizing] .lk-place { touch-action: none; user-select: none; cursor: grab; }
+.lk-organizer[data-organizing] .lk-tile { animation: lk-wiggle 270ms ease-in-out 4 alternate; }
+.lk-edit-tile { position: relative; }
+.lk-edit-tile:nth-child(even) .lk-tile { animation-direction: alternate-reverse; }
+.lk-minus { display: grid; place-items: center; position: absolute; top: -3px; left: 3px; width: 28px; height: 28px; color: var(--ink); }
+.lk-minus span { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); font: 600 15px/1 var(--sans); }
+.lk-minus:hover span, .lk-minus:focus-visible span { color: var(--bad); }
+@keyframes lk-wiggle { from { transform: rotate(-1.8deg); } to { transform: rotate(1.8deg); } }
+.lk-organizer .lk-place[data-dragging] { z-index: 2; cursor: grabbing; }
+.lk-organizer .lk-place[data-dragging] .lk-tile { pointer-events: none; animation: none; transform: translate(var(--place-dx),var(--place-dy)) rotate(3deg) scale(1.04); opacity: .85; }
+.lk-organizer .lk-place[data-dragging] .lk-place-name { opacity: .4; }
+.lk-organizer .lk-place[data-selected] .lk-tile,
+.lk-organizer .lk-place[data-drop="center"] .lk-tile { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lk-organizer .lk-place[data-drop="before"]::before, .lk-organizer .lk-place[data-drop="after"]::after { content: ""; position: absolute; top: 6px; height: 46px; width: 2px; border-radius: 2px; background: var(--accent); }
+.lk-organizer .lk-place[data-drop="before"]::before { left: 0; }
+.lk-organizer .lk-place[data-drop="after"]::after { right: 0; }
+.lk-tile.lk-folder-preview { padding: 6px; gap: 2px; grid-template: repeat(3, minmax(0, 1fr)) / repeat(3, minmax(0, 1fr)); background: linear-gradient(145deg, color-mix(in srgb, var(--copy) 15%, transparent), color-mix(in srgb, var(--copy) 7%, transparent)); }
+.lk-mini { width: 100%; height: 100%; display: grid; place-items: center; overflow: hidden; font-size: 6px; border-radius: 2px; background: var(--raise); }
+.lk-folder-preview .lk-mini .lk-icon { width: 100%; height: 100%; border-radius: 1px; }
+.lk-root-drop { align-self: center; padding: 12px; margin-left: 4px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: .75rem; }
+.lk-root-drop[data-over] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.lk-folder-panel { margin-top: 6px; padding: 10px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); border-radius: 14px; }
+.lk-folder-panel header { display: flex; align-items: center; gap: 6px; padding: 0 4px; font-size: .8125rem; }
+.lk-folder-panel header strong { min-width: 0; overflow-wrap: anywhere; }
+.lk-place-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.lk-place-editor input { min-width: 0; width: min(152px, 100%); height: 32px; padding: 0 10px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); border: 0; border-radius: 8px; }
+.lk-place-editor button:disabled { opacity: .4; }
+.lk-organize-tip { margin: 4px; font-size: .75rem; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .lk-organizer[data-organizing] .lk-tile { animation: none; } }
+@media (pointer: coarse) { .lk-place-editor button, .lk-place-band .lk-edit { min-width: 44px; min-height: 44px; } }
+@media (pointer: coarse) { .lk-minus { width: 40px; height: 40px; top: -9px; left: -3px; } }
+
+@container page (max-width: 600px) {
+  .lk-places.lk-organizer {
+    --place-tile-size: 56px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .lk-organizer .lk-place { width: 100%; min-width: 0; }
+  .lk-organizer .lk-tile {
+    width: min(100%, var(--place-tile-size));
+    height: auto;
+    aspect-ratio: 1;
+    border-radius: 14px;
+    font-size: 1.0625rem;
+  }
+  .lk-organizer .lk-tile > .lk-icon { width: 32px; height: 32px; }
+  .lk-organizer .lk-place.add .lk-tile { font-size: 1.5rem; }
+  .lk-organizer .lk-place-name { font-size: .8125rem; }
+  .lk-organizer .lk-minus { left: calc(50% - var(--place-tile-size) / 2 + 4px); transform: translateX(-50%); }
+  .lk-organizer .lk-root-drop { grid-column: 1 / -1; justify-self: start; }
+}

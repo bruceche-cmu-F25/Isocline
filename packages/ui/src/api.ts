@@ -6,7 +6,10 @@ import type {
   Conversation, ConversationDetail, CoreEvent, DeviceInfo, FileInfo, DeviceKind, DeviceScopeRequest, LiveUpdate, ModelsResponse, Notice, OpResponse, PairingCode, ProposalResponse,
   Project, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, ViewContext, WebLockStatus,
 } from "@alfred/protocol";
+import type { LinksSnapshot } from "@alfred/module-links/types";
 import "./desktop.ts";
+
+export interface LinkSampleState { snapshot: LinksSnapshot; revision: number }
 import { t } from "./i18n/dict.ts";
 
 const DEVICE_KEY = "alfred.device";
@@ -114,6 +117,10 @@ export async function request<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
+  linkSample: () => call<LinkSampleState>("/api/link-sample"),
+  linkSampleOp: (op: string, input: unknown) => post<OpResponse & LinkSampleState>(
+    `/api/link-sample/ops/${encodeURIComponent(op)}`, { requestId: newRequestId(), input }),
+  restoreLinkSample: () => post<LinkSampleState>("/api/link-sample/restore", { requestId: newRequestId() }),
   /** `have`: the revisions of the module snapshots this device already holds (the last state's `revisions`); the
    * home node leaves those snapshots out when they still say the same. `have: null`: no snapshots at all. */
   state: (have?: Readonly<Record<string, string>> | null) => {

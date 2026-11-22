@@ -1,21 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import type { Conversation } from "@alfred/protocol";
 import { t } from "../i18n/index.ts";
-import { findItems, type FindCommand } from "./find.ts";
+import { findItems, type FindCommand, type FindSources } from "./find.ts";
 import { Icon } from "./icons.tsx";
 import { MicButton } from "../voice/MicButton.tsx";
 import { appendDictation } from "../voice/wav.ts";
-import type { PageDef } from "./pages.tsx";
 
 type Item = FindCommand & { unread?: boolean };
 
 export interface PaletteProps {
-  pages: PageDef[];
-  conversations: Conversation[];
-  /** Extra commands, e.g. "new conversation", "close Alfred". */
-  actions: FindCommand[];
-  onPage(key: string): void;
-  onSelect(id: string): void;
+  find: FindSources;
   /** Ask Alfred in words: the text becomes a message in the open conversation (or a new one). */
   onAsk(text: string): void;
   onClose(): void;
@@ -23,7 +16,7 @@ export interface PaletteProps {
 
 /** ⌘K where the ask bar is not on screen (Alfred's panel is open, or the page is Code): go anywhere, run a command,
  * or just say it to Alfred. Where the bar is, ⌘K goes to the bar, which finds the same things (shell/find.ts). */
-export function Palette({ pages, conversations, actions, onPage, onSelect, onAsk, onClose }: PaletteProps) {
+export function Palette({ find, onAsk, onClose }: PaletteProps) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -31,14 +24,14 @@ export function Palette({ pages, conversations, actions, onPage, onSelect, onAsk
 
   const items = useMemo(() => {
     const q = query.trim();
-    const list: Item[] = findItems(query, { pages, commands: actions, conversations, onPage, onSelect });
+    const list: Item[] = findItems(query, find);
     if (q) {
       const ask: Item = { id: "ask", label: t("pal.ask", { text: query.trim() }), icon: "chat", hint: "↵", run: () => onAsk(query.trim()) };
       // Saying it is the default when nothing else matches.
       return list.length ? [...list, ask] : [ask];
     }
     return list;
-  }, [query, pages, actions, conversations, onPage, onSelect, onAsk]);
+  }, [query, find, onAsk]);
 
   useEffect(() => { setIndex(0); }, [query]);
 

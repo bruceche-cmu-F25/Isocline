@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { Clip } from "@alfred/module-links/types";
+import { parseLinkPaste } from "@alfred/module-links/url";
+import { legacyShareClip, linkSaveFields } from "../src/linkShareCompat.ts";
+import { clipSections } from "../src/clipSections.ts";
 import { linkParts } from "../src/links.ts";
 import { startLayout } from "../src/shell/layout.ts";
 
@@ -34,4 +38,36 @@ test("the workspace always opens with Alfred's panel closed, and keeps the sideb
   assert.deepEqual(left, { nav: "hidden", navW: 250, alfW: 500, alfred: "closed" });
   assert.equal(startLayout("not json", 800).nav, "hidden");
   assert.equal(startLayout("not json", 1000).nav, "full");
+});
+
+test("a first video stays in just saved, a watch shelf never duplicates clips, and filters apply to every section", () => {
+  const now = Date.now();
+  const clip = (id: string, type: Clip["type"], state: Clip["state"] = "unread"): Clip => ({
+    id, url: "https://example.com/" + id, title: id, titleSource: "page", platform: "web", type, site: "Example",
+    state, savedAt: new Date(now).toISOString(), fetch: "done",
+  });
+  const a = clip("a", "video"), b = clip("b", "video"), post = clip("post", "post"), done = clip("done", "video", "seen");
+  assert.deepEqual(clipSections([a], "all", "all", now), { recent: [a], filed: [], shelf: [] });
+  assert.deepEqual(clipSections([a, b, post, done], "all", "all", now), { recent: [post], filed: [done], shelf: [a, b] });
+  assert.deepEqual(clipSections([a, b, post, done], "post", "all", now), { recent: [post], filed: [], shelf: [] });
+  assert.deepEqual(clipSections([a, b, post, done], "video", "seen", now), { recent: [], filed: [done], shelf: [] });
+});
+
+test("a new window can save and read platform shares on an older home without overriding editorial titles or losing notes", () => {
+  const url = "https://www.bilibili.com/video/BV1KoW16NEBf/";
+  const note = "下周讨论";
+  const draft = `【[Agent 记忆] 工作流-bilibili】 ${url} ${note}`;
+  const found = parseLinkPaste(draft)!;
+  assert.deepEqual(linkSaveFields(draft, found, true), { url, sharedTitle: "[Agent 记忆] 工作流", note });
+  const legacy = linkSaveFields(draft, found);
+  assert.deepEqual(legacy, { url, note: `【[Agent 记忆] 工作流-bilibili】 ${note}` });
+  const clip: Clip = { id: "a", url, type: "video", platform: "bilibili", site: "bilibili.com", title: "BV1KoW16NEBf",
+    note: legacy.note, titleSource: "url", state: "unread", savedAt: "", fetch: "failed" };
+  assert.deepEqual(legacyShareClip(clip), { ...clip, titleSource: "share", title: found.title, note });
+  for (const titleSource of ["given", "page"] as const) {
+    const renamed = { ...clip, title: "有意义的标题", titleSource };
+    assert.deepEqual(legacyShareClip(renamed), { ...renamed, note });
+  }
+  assert.equal(legacyShareClip({ ...clip, note: "下周讨论" }).note, note);
+  assert.equal(legacyShareClip({ ...clip, note: "【[Agent 记忆] 工作流-bilibili】" }).note, undefined);
 });

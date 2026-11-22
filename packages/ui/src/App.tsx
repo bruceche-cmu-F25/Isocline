@@ -19,7 +19,9 @@ import { DevAccessApproval } from "./DevAccessApproval.tsx";
 import { ArchiveNotice } from "./shell/ArchiveNotice.tsx";
 import { MOD, Nav } from "./shell/Nav.tsx";
 import { Topbar, type Mode } from "./shell/Topbar.tsx";
-import { availablePages, moduleOf, pageView } from "./shell/pages.tsx";
+import type { LinksSnapshot } from "@alfred/module-links/types";
+import { useLinkSample } from "./LinkSample.tsx";
+import { availablePages, linkSamplePage, moduleOf, pageView } from "./shell/pages.tsx";
 import { automationTitle } from "./automationText.ts";
 import { Palette } from "./shell/Palette.tsx";
 import { Pair } from "./Pair.tsx";
@@ -259,7 +261,9 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     api.settings({ locale: next }).catch(() => {});
   }, []);
   const pages = availablePages(state);
-  const current = pages.find((page) => page.key === route.page) ?? pages[0];
+  const sampleActive = route.page === linkSamplePage.key && pages.some((page) => page.key === "link.list");
+  const linkSample = useLinkSample(sampleActive);
+  const current = sampleActive ? linkSamplePage : pages.find((page) => page.key === route.page) ?? pages[0];
   const inInbox = current?.key === "core.inbox";
   const savedName = state.settings?.preferredName ?? null;
   const [name, setName] = useState(savedName);
@@ -519,7 +523,12 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
       ? { id: "scheme", label: t("scheme.to.light"), icon: "sun" as const, run: () => setAppearance("light") }
       : { id: "scheme", label: t("scheme.to.dark"), icon: "moon" as const, run: () => setAppearance("dark") },
   ];
-  const find: FindSources = { pages, commands, conversations: state.conversations, onPage: goPage, onSelect: select };
+  const find: FindSources = {
+    pages, commands, conversations: state.conversations, onPage: goPage, onSelect: select,
+    links: sampleActive ? linkSample.data?.snapshot : state.modules.link as LinksSnapshot | undefined,
+    onFolder: (id) => goTo(sampleActive ? linkSamplePage.key : "link.list", id),
+    onPlace: (url) => { window.open(url, "_blank", "noopener,noreferrer"); },
+  };
 
   const panel = (
     <AlfredPanel selected={selected} figure={figure} wide={alfredMode === "wide"} phone={phone}
@@ -563,7 +572,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
               </header>
             )}
             <div className="page-body">{current.render({
-              snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName, refresh: alfred.refresh,
+              linkSample, snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName, refresh: alfred.refresh,
               onEnterInbox: welcoming ? () => setInboxOpen(true) : undefined, focus: inboxFocus, onFocused, openConversation, line,
               go: goTo, item: route.item, onItem: clearItem,
               dev: { session: route.session, onSession: openSession, refresh: alfred.refresh, highlighted, onEvent, pageTitle, automationTitle: automationOf },
@@ -606,7 +615,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
       )}
 
       {palette && (
-        <Palette pages={pages} conversations={state.conversations} onPage={goPage} onSelect={select} onAsk={askAnywhere} onClose={() => setPalette(false)} actions={commands} />
+        <Palette find={find} onAsk={askAnywhere} onClose={() => setPalette(false)} />
       )}
 
       {!welcoming && <Says<Notice>

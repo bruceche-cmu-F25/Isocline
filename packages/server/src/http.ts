@@ -555,6 +555,20 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
   }
   if (run && method === "POST" && run[2]) return send(res, 200, (await ask(`run.${run[2]}`, { id: run[1] })).result);
 
+  if (method === "GET" && path === "/api/link-sample") {
+    const sample = home.linkSample;
+    if (!sample) throw new HttpError(404, "Links is unavailable");
+    return send(res, 200, sample.read());
+  }
+  const sampleOp = /^\/api\/link-sample\/ops\/(link\.[a-z][a-z_]*)$/.exec(path);
+  if (method === "POST" && (sampleOp || path === "/api/link-sample/restore")) {
+    const body = await readJson<OpRequest>(req);
+    if (typeof body.requestId !== "string") throw new HttpError(400, "requestId is required");
+    const sample = home.linkSample;
+    if (!sample) throw new HttpError(404, "Links is unavailable");
+    return send(res, 200, sampleOp ? sample.op(sampleOp[1], body.requestId, body.input) : sample.restore(body.requestId));
+  }
+
   const op = /^\/api\/ops\/([a-z][a-z0-9]*\.[a-z][a-z_]*)$/.exec(path);
   if (op && method === "POST") {
     const body = await readJson<OpRequest>(req);
@@ -574,8 +588,11 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
   // A small image a module keeps (a site's icon). It came from the web, so it is served as an image and nothing
   // else: its type is one of a few, never sniffed by the browser, and it may load and run nothing.
   const file = /^\/api\/modules\/([a-z][a-z0-9]*)\/files\/([A-Za-z0-9._-]{1,255})$/.exec(path);
-  if (file && method === "GET") {
-    const found = home.modules.find((module) => module.id === file[1])?.file?.(home.world, file[2]);
+  const sampleFile = /^\/api\/link-sample\/files\/([A-Za-z0-9._-]{1,255})$/.exec(path);
+  if (method === "GET" && (file || sampleFile)) {
+    const found = file
+      ? home.modules.find((module) => module.id === file[1])?.file?.(home.world, file[2])
+      : home.linkSample?.file(sampleFile![1]);
     if (!found || !/^image\/(png|jpeg|gif|webp|x-icon|svg\+xml)$/.test(found.type)) throw new HttpError(404, "Not found");
     res.writeHead(200, {
       "Content-Type": found.type, "Content-Length": found.bytes.byteLength, "Cache-Control": peer.local ? "private, max-age=86400" : "no-store",
