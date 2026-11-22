@@ -1,4 +1,4 @@
-/** What this device prefers: the size of the text, and which key sends. Kept in localStorage like the colour scheme
+/** What this device prefers: the text size, send key and phone dock shortcut. Kept in localStorage like the colour scheme
  * (scheme.ts), so a phone and the Mac can differ; public/scheme.js applies the text size before the first paint.
  */
 import { useSyncExternalStore } from "react";
@@ -11,6 +11,8 @@ export const SEND_KEYS: SendKey[] = ["enter", "mod"];
 
 const SIZE_KEY = "alfred.textSize";
 const SEND_KEY = "alfred.sendKey";
+const DOCK_KEY = "alfred.dockShortcut";
+const DEFAULT_DOCK_SHORTCUT = "todo.list";
 const root = document.documentElement;
 
 const read = (key: string): string | null => { try { return localStorage.getItem(key); } catch { return null; } };
@@ -19,6 +21,8 @@ function write(key: string, value: string | null): void {
 }
 
 let size: TextSize = (() => { const value = read(SIZE_KEY); return value === "small" || value === "large" ? value : "normal"; })();
+// Only an absent preference uses the default. An empty saved string leaves the shortcut out.
+let dockShortcut = read(DOCK_KEY) ?? DEFAULT_DOCK_SHORTCUT;
 let send: SendKey = read(SEND_KEY) === "mod" ? "mod" : "enter";
 
 const listeners = new Set<() => void>();
@@ -31,9 +35,10 @@ function applySize(): void {
 applySize();
 // Another window of this device (the Mac app's presence window, a second tab) changed one.
 addEventListener("storage", (event) => {
-  if (event.key !== SIZE_KEY && event.key !== SEND_KEY && event.key !== null) return;
+  if (event.key !== SIZE_KEY && event.key !== SEND_KEY && event.key !== DOCK_KEY && event.key !== null) return;
   const nextSize = read(SIZE_KEY), nextSend = read(SEND_KEY);
   size = nextSize === "small" || nextSize === "large" ? nextSize : "normal";
+  dockShortcut = read(DOCK_KEY) ?? DEFAULT_DOCK_SHORTCUT;
   send = nextSend === "mod" ? "mod" : "enter";
   applySize();
   emit();
@@ -51,6 +56,13 @@ export const useSendKey = (): SendKey => useSyncExternalStore(subscribe, () => s
 export function setSendKey(next: SendKey): void {
   send = next;
   write(SEND_KEY, next === "enter" ? null : next);
+  emit();
+}
+
+export const useDockShortcut = (): string => useSyncExternalStore(subscribe, () => dockShortcut);
+export function setDockShortcut(next: string): void {
+  dockShortcut = next;
+  write(DOCK_KEY, next === DEFAULT_DOCK_SHORTCUT ? null : next);
   emit();
 }
 

@@ -251,7 +251,7 @@ const PAGES: PageDef[] = [
   {
     key: "core.settings", get title() { return t("page.settings"); }, icon: "gear", k: "gray", group: "system",
     summary: () => t("page.settings.summary"),
-    render: ({ name, saveName, dev }) => <Settings name={name} saveName={saveName} onEvent={dev.onEvent} />,
+    render: ({ name, saveName, dev, state }) => <Settings name={name} saveName={saveName} onEvent={dev.onEvent} dockOptions={dockPages(availablePages(state)).options} />,
   },
 ];
 
@@ -264,6 +264,12 @@ export const linkSamplePage: PageDef = {
 export function availablePages(state: StateResponse): PageDef[] {
   const offered = new Set(Object.entries(state.views).flatMap(([module, views]) => views.map((view) => `${module}.${view.id}`)));
   return PAGES.filter((page) => page.key.startsWith("core.") || offered.has(page.key));
+}
+
+/** Keep the first three daily pages in the dock and offer the remaining pages for the extra shortcut. */
+export function dockPages(pages: PageDef[]) {
+  const fixed = pages.filter((page) => page.group === "alfred" || page.group === "work").slice(0, 3);
+  return { fixed, options: pages.filter((page) => !fixed.includes(page)) };
 }
 
 export const moduleOf = (page: PageDef) => page.key.split(".")[0];

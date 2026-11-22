@@ -1,13 +1,21 @@
 /** Settings → General: the name and language (shared by every device), and what this device prefers:
- * light or dark, the size of the text, and which key sends (after pi-web's Settings › General,
+ * light or dark, text size, send key and the phone dock shortcut (after pi-web's Settings › General,
  * github.com/agegr/pi-web, MIT).
  */
 import { useState, type FormEvent } from "react";
-import type { NamePreference } from "./InboxEntry.tsx";
 import { api } from "./api.ts";
 import { setLocale, t, useLocale, type Key, type Locale } from "./i18n/index.ts";
-import { SEND_KEYS, setSendKey, setTextSize, TEXT_SIZES, useSendKey, useTextSize } from "./prefs.ts";
+import { SEND_KEYS, setDockShortcut, setSendKey, setTextSize, TEXT_SIZES, useDockShortcut, useSendKey, useTextSize } from "./prefs.ts";
 import { origin, setAppearance, useAppearance, type Appearance } from "./scheme.ts";
+import { PHONE, useMedia } from "./shell/layout.ts";
+import { Select } from "./shell/Select.tsx";
+import { SHOW_FIRST_RUN } from "./firstRunEvent.ts";
+
+export interface NamePreference { name: string | null; saveName(name: string): Promise<void> }
+export interface GeneralProps extends NamePreference {
+  dockOptions: ReadonlyArray<{ key: string; title: string }>;
+}
+export { SHOW_FIRST_RUN };
 
 /** Each language named in itself. */
 const LANGUAGES: Array<[Locale, string]> = [["zh", "中文"], ["en", "English"]];
@@ -15,7 +23,9 @@ const APPEARANCES: Appearance[] = ["system", "light", "dark"];
 /** ⌘ on a Mac or an iPhone, Ctrl elsewhere. */
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
 
-export function General({ name: savedName, saveName }: NamePreference) {
+export function General({ name: savedName, saveName, dockOptions }: GeneralProps) {
+  const phone = useMedia(PHONE);
+  const dockShortcut = useDockShortcut();
   const locale = useLocale();
   const appearance = useAppearance();
   const textSize = useTextSize();
@@ -64,6 +74,13 @@ export function General({ name: savedName, saveName }: NamePreference) {
           </div>
         </form>
         <div className="set-row">
+          <span className="set-name">{t("settings.firstRun")}</span>
+          <span className="set-note">{t("settings.firstRun.note")}</span>
+          <span className="set-end">
+            <button type="button" className="set-button ghost" onClick={() => window.dispatchEvent(new Event(SHOW_FIRST_RUN))}>{t("settings.firstRun.again")}</button>
+          </span>
+        </div>
+        <div className="set-row">
           <span className="set-name">{t("settings.language")}</span>
           <span className="set-note">{t("settings.language.note")}</span>
           <span className="set-end">
@@ -99,6 +116,18 @@ export function General({ name: savedName, saveName }: NamePreference) {
             </span>
           </span>
         </div>
+        {phone && <div className="set-row set-dock-shortcut">
+          <label className="set-name" htmlFor="dock-shortcut">{t("settings.dockShortcut")}</label>
+          <span className="set-note">{t("settings.thisDevice")}</span>
+          <span className="set-end">
+            <Select className="model-select field-select" id="dock-shortcut" label={t("settings.dockShortcut")} value={dockShortcut} onChange={setDockShortcut}
+              options={[
+                { value: "", label: t("settings.dockShortcut.none") },
+                ...(dockShortcut && !dockOptions.some((page) => page.key === dockShortcut) ? [{ value: dockShortcut, label: t("settings.dockShortcut.unavailable"), disabled: true }] : []),
+                ...dockOptions.map((page) => ({ value: page.key, label: page.title })),
+              ]} />
+          </span>
+        </div>}
         <div className="set-row">
           <span className="set-name">{t("settings.sendKey")}</span>
           <span className="set-note">{t(sendKey === "enter" ? "settings.sendKey.enter.note" : "settings.sendKey.mod.note", { mod: MOD })}</span>

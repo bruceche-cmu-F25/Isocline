@@ -22,6 +22,138 @@ async function serveBuild(page) {
   return state;
 }
 
+test("a paired phone can open Models and refresh its subscription usage", async (t) => {
+  const browser = await chromium.launch({ channel: "chrome" });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true });
+  await serveBuild(page);
+  let identifyPhone = Promise.resolve();
+  await page.route("**/api/remote", async (route) => {
+    await identifyPhone;
+    await route.fulfill({ json: { local: false, device: { id: "phone-1", name: "Phone", kind: "phone" } } });
+  });
+  const managementRequests = [];
+  page.on("request", (request) => {
+    const { pathname } = new URL(request.url());
+    if (pathname.startsWith("/api/connections/") && pathname !== "/api/connections/models/usage") managementRequests.push(pathname);
+  });
+  let result = "ready";
+  await page.route("**/api/connections/models/usage*", (route) => {
+    if (result === "error") return route.fulfill({ status: 503, json: { error: "Unavailable" } });
+    const fresh = new URL(route.request().url()).searchParams.get("fresh") === "1";
+    const now = Date.now();
+    return route.fulfill({ json: { usage: result === "empty" ? [] : [{
+      provider: "openai-codex", plan: "pro", status: "ready", checkedAt: now,
+      windows: [{ id: "primary", minutes: 300, used: fresh ? 45 : 42, resetsAt: now + 3 * 60 * 60_000 }],
+    }] } });
+  });
+
+  await page.goto("https://alfred.test/");
+  await page.getByRole("button", { name: "Menu", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const models = page.getByRole("tab", { name: "Models" });
+  await models.click();
+  const pane = page.getByRole("tabpanel", { name: "Models" });
+  await pane.getByText("ChatGPT (Codex)", { exact: true }).waitFor();
+  await pane.getByText("42%", { exact: true }).waitFor();
+  const meter = pane.getByRole("meter", { name: "5 hours" });
+  assert.equal(await meter.getAttribute("aria-valuenow"), "42");
+  await pane.getByText("resets in 3 hours").waitFor();
+  assert.ok(await pane.evaluate((el) => el.scrollWidth <= el.clientWidth), "usage fits the phone");
+  await pane.getByRole("button", { name: "Refresh" }).click();
+  await pane.getByText("45%", { exact: true }).waitFor();
+  assert.equal(await meter.getAttribute("aria-valuenow"), "45");
+
+  // Restore Models before /api/remote has answered. Only usage may be requested, even during this handoff.
+  const gate = Promise.withResolvers();
+  identifyPhone = gate.promise;
+  result = "empty";
+  const identifying = page.waitForRequest("**/api/remote");
+  await page.reload();
+  await identifying;
+  gate.resolve();
+  await pane.getByText(/No subscription usage to show/).waitFor();
+  assert.equal(await models.getAttribute("aria-selected"), "true");
+  assert.equal(await pane.getByRole("meter").count(), 0);
+  assert.equal(await pane.getByText("Use an API key", { exact: true }).count(), 0);
+  result = "error";
+  await pane.getByRole("button", { name: "Refresh" }).click();
+  await pane.getByRole("alert").filter({ hasText: "Couldn't check usage" }).waitFor();
+  result = "ready";
+  await pane.getByRole("button", { name: "Refresh" }).click();
+  await pane.getByText("45%", { exact: true }).waitFor();
+  assert.deepEqual(managementRequests, []);
+});
+
+test("the phone's fourth Dock shortcut can be changed or removed in General settings", async (t) => {
+  const browser = await chromium.launch({ channel: "chrome" });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const state = await serveBuild(page);
+  state.views = {
+    calendar: [{ id: "week", title: "Calendar" }], todo: [{ id: "list", title: "Todos" }], link: [{ id: "list", title: "Links" }],
+  };
+  state.modules = {
+    calendar: { today: "2026-11-21", from: "2026-11-01", to: "2026-12-31", events: [], pending: [], sources: [] },
+    todo: { today: "2026-11-21", todos: [] }, link: { places: [], clips: [], topics: [] },
+  };
+  const dock = page.locator(".dock");
+  const tabs = dock.locator(".dock-tabs");
+  const pinnedPages = () => tabs.locator("[data-page]").evaluateAll((buttons) => buttons.map((button) => button.dataset.page));
+  const primary = ["core.today", "core.inbox", "calendar.week"];
+  const openSettings = async () => {
+    await dock.getByRole("button", { name: "Menu", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+  };
+  const setting = page.getByRole("combobox", { name: /^Dock shortcut: / });
+  const shown = () => setting.locator(".choice-value").textContent();
+  const pick = async (name) => { await setting.click(); await page.getByRole("option", { name, exact: true }).click(); };
+  await page.goto("https://alfred.test/");
+  await dock.getByRole("button", { name: "Todos" }).waitFor();
+  assert.deepEqual(await pinnedPages(), [...primary, "todo.list"]);
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    assert.ok(await dock.evaluate((nav) => {
+      const pill = nav.querySelector(".dock-tabs").getBoundingClientRect();
+      const alfred = nav.querySelector(".dock-alfred").getBoundingClientRect();
+      return pill.left >= 0 && pill.right <= alfred.left && alfred.right <= window.innerWidth &&
+        [...nav.querySelectorAll(".dock-tabs button")].every((button) => button.getBoundingClientRect().right <= pill.right);
+    }), `all dock buttons fit at ${width}px`);
+  }
+  await dock.getByRole("button", { name: "Todos" }).click();
+  await page.getByRole("heading", { name: "Todos", exact: true, level: 1 }).waitFor();
+  await openSettings();
+  assert.equal(await shown(), "Todos");
+  await setting.click();
+  await page.getByRole("option", { name: "Links", exact: true }).waitFor();
+  for (const label of ["Today", "Inbox", "Calendar"]) assert.equal(await page.getByRole("option", { name: label, exact: true }).count(), 0);
+  await setting.press("Escape");
+  await pick("Links");
+  const links = dock.getByRole("button", { name: "Links", exact: true });
+  await links.click();
+  await page.getByRole("heading", { name: "Links", exact: true, level: 1 }).waitFor();
+  assert.equal(await links.getAttribute("aria-current"), "page");
+  await page.reload();
+  await links.waitFor();
+  assert.deepEqual(await pinnedPages(), [...primary, "link.list"]);
+  await openSettings();
+  assert.equal(await shown(), "Links");
+  await pick("None");
+  await page.reload();
+  await setting.waitFor();
+  assert.equal(await shown(), "None");
+  assert.deepEqual(await pinnedPages(), primary);
+  assert.equal(await tabs.locator(":scope > *").count(), 1 + primary.length, "only the menu and primary pages occupy the pill");
+
+  // On a home without Calendar, Todos already belongs to the primary buttons.
+  await pick("Todos");
+  delete state.views.calendar;
+  delete state.modules.calendar;
+  await page.reload();
+  await setting.waitFor();
+  assert.deepEqual(await pinnedPages(), ["core.today", "core.inbox", "todo.list"]);
+});
+
 test("the wireframe animates around the centre of the phone's Alfred button", async (t) => {
   const browser = await chromium.launch({ channel: "chrome" });
   t.after(() => browser.close());

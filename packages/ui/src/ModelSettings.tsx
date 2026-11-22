@@ -5,41 +5,26 @@
  * settings, used by any conversation that has not chosen its own.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { EngineModel, ModelAccountsResponse, ModelAuthMethod, ModelProvider, ModelSignIn, ModelUsage, ModelUsageResponse, ModelUsageWindow, StateResponse, ThinkingLevel } from "@alfred/protocol";
+import type { EngineModel, ModelAccountsResponse, ModelAuthMethod, ModelProvider, ModelSignIn, StateResponse, ThinkingLevel } from "@alfred/protocol";
 import { api, request as call } from "./api.ts";
 import { Logo, providerMark } from "./brand/Logo.tsx";
 import { t } from "./i18n/index.ts";
+import { UsageMeter, useSubscriptionUsage } from "./SubscriptionUsage.tsx";
+import { Select } from "./shell/Select.tsx";
 
 /** API-key providers shown before "show all": the ones most people have. Configured ones always show. */
 const COMMON = ["anthropic", "openai", "google", "openrouter", "deepseek", "xai", "mistral", "groq", "moonshotai", "kimi-coding"];
+const SUBSCRIPTION_PRIORITY = new Map([["openai", 0], ["openai-codex", 1]]);
 const THINKING: Array<ThinkingLevel | null> = [null, "off", "low", "medium", "high", "xhigh"];
 const PI_DISMISSED = "alfred.models.piDismissed";
 
 const host = (url: string) => { try { return new URL(url).host; } catch { return url; } };
 const dismissedPi = () => { try { return localStorage.getItem(PI_DISMISSED) === "1"; } catch { return false; } };
 
-/** "5 hours", "Week", "Opus · Week": what a usage window covers. */
-function windowName(window: ModelUsageWindow): string {
-  const { minutes } = window;
-  const length = minutes === undefined ? t("models.usage.plan")
-    : minutes === 10_080 ? t("models.usage.week")
-    : minutes % 1440 === 0 ? t("models.usage.days", { n: minutes / 1440 })
-    : minutes % 60 === 0 ? t("models.usage.hours", { n: minutes / 60 })
-    : t("models.usage.minutes", { n: minutes });
-  return window.scope ? `${window.scope} · ${length}` : length;
-}
-/** "in 3 h", "4 天后": until a window resets. */
-function untilReset(at: number, now: number): string {
-  const minutes = Math.max(1, Math.round((at - now) / 60_000));
-  const span = minutes < 60 ? t("models.usage.minutes", { n: minutes })
-    : minutes < 48 * 60 ? t("models.usage.hours", { n: Math.round(minutes / 60) })
-    : t("models.usage.days", { n: Math.round(minutes / 1440) });
-  return t("models.usage.resets", { span });
-}
-
 type Said = { kind: "done" | "signedOut"; name: string } | { kind: "imported"; n: number };
 
-export function ModelSettings() {
+/** `setup`: inside the first run (shell/FirstRun.tsx), only the ways to connect; `onConfigured` hears how many are. */
+export function ModelSettings({ setup, onConfigured }: { setup?: boolean; onConfigured?(n: number): void } = {}) {
   const [data, setData] = useState<ModelAccountsResponse | null>(null);
   const [models, setModels] = useState<EngineModel[]>([]);
   const [preferred, setPreferred] = useState<{ model: string | null; thinking: ThinkingLevel | null }>({ model: null, thinking: null });
@@ -50,16 +35,9 @@ export function ModelSettings() {
   const [showAll, setShowAll] = useState(false);
   const [piHidden, setPiHidden] = useState(dismissedPi);
   const [copied, setCopied] = useState(false);
-  const [usage, setUsage] = useState<Map<string, ModelUsage>>(new Map());
-  const [checking, setChecking] = useState(false);
+  const { usage, checking, loadUsage } = useSubscriptionUsage();
   const opened = useRef(new Set<string>());
 
-  const loadUsage = useCallback((fresh = false) => {
-    setChecking(true);
-    call<ModelUsageResponse>(`/api/connections/models/usage${fresh ? "?fresh=1" : ""}`)
-      .then((response) => setUsage(new Map(response.usage.map((item) => [item.provider, item]))), () => {})
-      .finally(() => setChecking(false));
-  }, []);
   const load = useCallback(() => {
     call<ModelAccountsResponse>("/api/connections/models").then(setData, (reason: Error) => setError(reason.message));
     api.models().then((response) => setModels(response.models), () => setModels([]));
@@ -67,7 +45,7 @@ export function ModelSettings() {
   }, [loadUsage]);
   useEffect(() => {
     load();
-    call<StateResponse>("/api/state").then((state) => setPreferred({ model: state.settings.model ?? null, thinking: state.settings.thinking ?? null }), () => {});
+    call<StateResponse>("/api/state?modules=0").then((state) => setPreferred({ model: state.settings.model ?? null, thinking: state.settings.thinking ?? null }), () => {});
   }, [load]);
 
   // Follow a sign-in while it runs; open the provider's page the first time it appears (the Mac app sends it to the
@@ -95,6 +73,9 @@ export function ModelSettings() {
       if (step.kind === "open_url") { const page = window.open(url, "_blank"); if (page) page.opener = null; }
     }
   }, [flow]);
+
+  const configured = data ? data.providers.filter((provider) => provider.status.configured).length : null;
+  useEffect(() => { if (configured !== null) onConfigured?.(configured); }, [configured]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const start = (provider: ModelProvider, method: ModelAuthMethod) => {
     setError(null);
@@ -209,44 +190,12 @@ export function ModelSettings() {
     );
   };
 
-  /** How much of the plan is used, under a signed-in subscription's row. */
-  const usageOf = (provider: ModelProvider) => {
-    const item = usage.get(provider.id);
-    if (!item) return null;
-    const now = Date.now();
-    const refresh = (
-      <button type="button" className="usage-refresh" disabled={checking} onClick={() => loadUsage(true)}>
-        {checking ? t("models.usage.checking") : t("models.usage.refresh")}
-      </button>
-    );
-    if (item.status === "failed") {
-      return <div className="usage"><p className="usage-note small">{t(`models.usage.${item.error ?? "unreachable"}`)}{refresh}</p></div>;
-    }
-    return (
-      <div className="usage">
-        {item.windows.map((window) => {
-          const level = window.used >= 90 ? "high" : window.used >= 70 ? "mid" : "low";
-          return (
-            <div className="usage-row" key={window.id}>
-              <span className="usage-name">{windowName(window)}</span>
-              <span className="usage-bar" data-level={level} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(window.used)} aria-label={windowName(window)}>
-                <span style={{ width: `${window.used}%` }} />
-              </span>
-              <span className="usage-pct" data-level={level}>{Math.round(window.used)}%</span>
-              <span className="usage-reset">{window.resetsAt && window.resetsAt > now ? untilReset(window.resetsAt, now) : ""}</span>
-            </div>
-          );
-        })}
-        <p className="usage-note small">{item.plan ? t("models.usage.planName", { plan: item.plan }) : ""}{refresh}</p>
-      </div>
-    );
-  };
-
   const busy = flow?.status === "running";
   const row = (provider: ModelProvider, kind: "subscription" | "key") => {
     const ours = provider.status.configured && provider.status.source === "alfred";
     const oauthOn = ours && provider.status.method === "oauth";
     const keyOn = ours && provider.status.method === "api_key";
+    const item = !setup && kind === "subscription" && provider.status.method === "oauth" && usage.find((item) => item.provider === provider.id);
     const mark = providerMark(provider.id, kind);
     return (
       <div className="set-rows-item" key={provider.id}>
@@ -273,14 +222,19 @@ export function ModelSettings() {
             )}
           </span>
         </div>
-        {kind === "subscription" && (provider.status.method === "oauth") && usageOf(provider)}
+        {item && <UsageMeter item={item} refresh={
+          <button type="button" className="usage-refresh" disabled={checking} onClick={() => loadUsage(true)}>
+            {t(checking ? "models.usage.checking" : "models.usage.refresh")}
+          </button>
+        } />}
         {flowCard(provider)}
       </div>
     );
   };
 
   const providers = data?.providers ?? [];
-  const subscriptions = providers.filter((provider) => provider.oauth?.subscription);
+  const subscriptions = providers.filter((provider) => provider.oauth?.subscription)
+    .sort((a, b) => (SUBSCRIPTION_PRIORITY.get(a.id) ?? 2) - (SUBSCRIPTION_PRIORITY.get(b.id) ?? 2));
   const keyed = providers.filter((provider) => provider.apiKey).sort((a, b) => {
     const rank = (provider: ModelProvider) => (COMMON.includes(provider.id) ? COMMON.indexOf(provider.id) : COMMON.length);
     return rank(a) - rank(b) || a.name.localeCompare(b.name);
@@ -291,8 +245,8 @@ export function ModelSettings() {
 
   return (
     <section className="set-section">
-      <h2>{t("settings.models")}</h2>
-      <p className="quiet">{t("models.sub")}</p>
+      {!setup && <h2>{t("settings.models")}</h2>}
+      {!setup && <p className="quiet">{t("models.sub")}</p>}
       {error && <p className="problem small" role="alert">{error}</p>}
       {said && (
         <p className="set-message" role="status">
@@ -310,17 +264,18 @@ export function ModelSettings() {
         </div>
       )}
 
-      <div className="set-rows">
+      {!setup && <div className="set-rows">
         <div className="set-row">
           <span className="set-name">{t("models.default")}</span>
           <span className="set-note">{t("models.default.note")}</span>
           <span className="set-end">
             {modelOptions.length ? (
-              <select className="model-select" value={preferred.model ?? ""} onChange={(event) => choose({ model: event.target.value || null })}>
-                <option value="">{t("models.default.engine")}</option>
-                {preferred.model && !modelOptions.some((option) => option.value === preferred.model) && <option value={preferred.model}>{preferred.model}</option>}
-                {modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
+              <Select className="model-select field-select" label={t("models.default")} value={preferred.model ?? ""} onChange={(next) => choose({ model: next || null })}
+                options={[
+                  { value: "", label: t("models.default.engine") },
+                  ...(preferred.model && !modelOptions.some((option) => option.value === preferred.model) ? [{ value: preferred.model, label: preferred.model }] : []),
+                  ...modelOptions.map((option) => ({ value: option.value, label: option.label })),
+                ]} />
             ) : <span className="quiet small">{t("models.default.none")}</span>}
           </span>
         </div>
@@ -328,12 +283,11 @@ export function ModelSettings() {
           <span className="set-name">{t("models.thinking")}</span>
           <span className="set-note">{t("models.thinking.note")}</span>
           <span className="set-end">
-            <select className="model-select" value={preferred.thinking ?? ""} onChange={(event) => choose({ thinking: (event.target.value || null) as ThinkingLevel | null })}>
-              {THINKING.map((level) => <option key={level ?? "default"} value={level ?? ""}>{t(level ? `models.thinking.${level}` as Parameters<typeof t>[0] : "models.thinking.default")}</option>)}
-            </select>
+            <Select className="model-select field-select" label={t("models.thinking")} value={preferred.thinking ?? ""} onChange={(next) => choose({ thinking: (next || null) as ThinkingLevel | null })}
+              options={THINKING.map((level) => ({ value: level ?? "", label: t(level ? `models.thinking.${level}` as Parameters<typeof t>[0] : "models.thinking.default") }))} />
           </span>
         </div>
-      </div>
+      </div>}
 
       <h3 className="set-sub">{t("models.subs")}</h3>
       <p className="quiet small">{t("models.subs.note")}</p>

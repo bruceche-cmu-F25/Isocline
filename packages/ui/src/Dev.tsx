@@ -9,6 +9,7 @@ import { ConversationStatus } from "./shell/ConversationStatus.tsx";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactElement } from "react";
 import type { Conversation as ConversationRow, CoreEvent, Project, SessionChanges, SessionMode, StateResponse } from "@alfred/protocol";
 import { ApiError, api } from "./api.ts";
+import { sessionsOf } from "./sessions.ts";
 import { Conversation } from "./Conversation.tsx";
 import { desktop } from "./desktop.ts";
 import { Diff } from "./Diff.tsx";
@@ -29,6 +30,8 @@ import { ProjectPicker } from "./ProjectPicker.tsx";
 import { RequestDevAccess } from "./RequestDevAccess.tsx";
 import type { SessionProcess } from "@alfred/protocol";
 
+const CODING_FIGURE_SIZE = 48;
+
 export interface DevProps {
   state: StateResponse;
   /** The open session, or null for the new-session screen. */
@@ -41,42 +44,36 @@ export interface DevProps {
   automationTitle(id: string): string | undefined;
 }
 
-/** Development sessions, most recently active first. */
-export const sessionsOf = (state: StateResponse, projectId?: string) =>
-  state.conversations.filter((conversation) => conversation.projectId && (!projectId || conversation.projectId === projectId));
+export { sessionsOf };
 
 export function Dev(props: DevProps) {
   const { state, session } = props;
   const open = session ? state.conversations.find((conversation) => conversation.id === session) : undefined;
   const restricted = state.devAccess === "off" || state.devAccess === "pending";
-  const request = restricted ? (
-    <div className="set-flow">
-      {state.devAccess === "off" && <p>{t("dev.accessNeeded")}</p>}
-      <RequestDevAccess pending={state.devAccess === "pending"} onRequested={props.refresh} />
-    </div>
-  ) : null;
-  let content: ReactElement;
-  if (!session) {
-    content = <NewSession state={state} onSession={props.onSession} accessRequest={request} />;
-  } else if (request) {
-    content = (
-      <div className="dev-new">
-        <div className="dev-new-in">
-          <header className="dev-new-head"><h2>{open?.title || t("devices.dev")}</h2></header>
-          {request}
-          <div><button type="button" className="set-button ghost" onClick={() => props.onSession(null)}>{t("dev.back")}</button></div>
-        </div>
-      </div>
-    );
-  } else {
-    content = <Session key={session} {...props} id={session} conversation={open} />;
-  }
+  const setup = restricted ? <CodingAccessSetup pending={state.devAccess === "pending"} refresh={props.refresh} /> : null;
   return (
     <div className="dev-stage" data-in={session ? "session" : "new"}>
       <AsciiField />
       {!session && <div className="dev-drag" aria-hidden="true" />}
-      {content}
+      {session
+        ? setup ?? <Session key={session} {...props} id={session} conversation={open} />
+        : <NewSession state={state} onSession={props.onSession} setup={setup} />}
     </div>
+  );
+}
+
+function CodingAccessSetup({ pending, refresh }: { pending: boolean; refresh(): void }) {
+  return (
+    <section className="dev-new" aria-labelledby="coding-access-title">
+      <div className="dev-new-in dev-access-setup">
+        <header className="dev-new-head">
+          <Figure state="hello" size={CODING_FIGURE_SIZE} />
+          <h2 id="coding-access-title">{t("dev.accessSetup")}</h2>
+        </header>
+        <p>{t(pending ? "dev.accessApprove" : "dev.accessNeeded")}</p>
+        <RequestDevAccess pending={pending} onRequested={refresh} />
+      </div>
+    </section>
   );
 }
 
@@ -237,7 +234,7 @@ function Session({ id, conversation, state, onSession, highlighted, onEvent, pag
   );
 }
 
-function NewSession({ state, onSession, accessRequest }: { state: StateResponse; onSession(id: string): void; accessRequest: ReactElement | null }) {
+function NewSession({ state, onSession, setup }: { state: StateResponse; onSession(id: string): void; setup: ReactElement | null }) {
   const projects = state.projects ?? [];
   const [chosen, setChosen] = useState<string | null>(() => projects.find((project) => project.trustedAt)?.id ?? null);
   const [mode, setMode] = useState<SessionMode>("ask");
@@ -252,6 +249,8 @@ function NewSession({ state, onSession, accessRequest }: { state: StateResponse;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const attachments = useAttachments();
+  // Keep the draft and project choices if the Mac changes access while the user is composing.
+  if (setup) return setup;
   const fail = (reason: unknown) => setError(reason instanceof ApiError && reason.code === "local_only" ? t("dev.addLocal")
     : reason instanceof ApiError && reason.code === "needs_dev" ? t("dev.needsScope")
     : reason instanceof ApiError && (reason.code === "git_not_git" || reason.code === "git_no_commit" || reason.code === "git_subproject") ? t(`git.${reason.code.slice(4)}` as Key)
@@ -263,7 +262,7 @@ function NewSession({ state, onSession, accessRequest }: { state: StateResponse;
     event?.preventDefault();
     const files = attachments.ids;
     const text = draft.trim() || (files.length ? t("attach.look") : "");
-    if (accessRequest || !text || !project?.trustedAt || busy || attachments.busy) return;
+    if (!text || !project?.trustedAt || busy || attachments.busy) return;
     setBusy(true);
     setError(null);
     api.startSession(project.id, text, mode, worktree)
@@ -280,7 +279,7 @@ function NewSession({ state, onSession, accessRequest }: { state: StateResponse;
     <div className="dev-new">
       <div className="dev-new-in">
         <header className="dev-new-head">
-          <Figure state="hello" size={40} />
+          <Figure state="hello" size={CODING_FIGURE_SIZE} />
           <h2>{t("dev.new")}</h2>
         </header>
 
@@ -304,12 +303,11 @@ function NewSession({ state, onSession, accessRequest }: { state: StateResponse;
             <span className="grow" />
             <AttachButton attachments={attachments} disabled={!project?.trustedAt} />
             <MicButton disabled={!project?.trustedAt} onText={(words) => setDraft((now) => appendDictation(now, words))} />
-            <button type="submit" className="send" disabled={!!accessRequest || (!draft.trim() && !attachments.ids.length) || !project?.trustedAt || busy || attachments.busy} aria-label={t("composer.send")}>
+            <button type="submit" className="send" disabled={(!draft.trim() && !attachments.ids.length) || !project?.trustedAt || busy || attachments.busy} aria-label={t("composer.send")}>
               <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
             </button>
           </div>
         </form>
-        {accessRequest}
         {/* What the two choices under the composer mean, in one line. */}
         <p className="dev-note">{project && <span className="mono" title={project.path}>{project.path}</span>}<span>{worktree ? `${t("dev.worktreeHint")} · ` : ""}{t(`mode.${mode}.hint` as Key)}</span></p>
         {picking && (
