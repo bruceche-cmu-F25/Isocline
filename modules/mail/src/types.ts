@@ -14,7 +14,12 @@ export interface MailMessage {
   receivedAt: string;
   unread: boolean;
   important: boolean;
+  /** The latest star reported by Gmail. */
   starred: boolean;
+  /** Saved only in Alfred when Gmail star sync is off. */
+  localSaved?: boolean;
+  /** Within Alfred's current inbox window. Older snapshots contained only inbox mail. */
+  inInbox?: boolean;
   category: MailCategory;
   /** The message in Gmail. */
   link: string;
@@ -38,6 +43,8 @@ export interface MailSource {
   canRead?: boolean;
   /** The user let Alfred send from this account (Settings: Gmail：替你发). */
   canSend: boolean;
+  /** This account allows Alfred to change Gmail stars. */
+  canModify?: boolean;
 }
 
 /** An email to send: what the `mail.send` operation takes, and so what a draft (a proposal's step) holds. */
@@ -68,7 +75,7 @@ export interface MailSent {
 }
 
 export interface MailSnapshot {
-  /** The inbox's last two weeks, newest first (at most 100 per account). */
+  /** Recent inbox mail and retained favorites/important messages, newest first. */
   messages: MailMessage[];
   sources: MailSource[];
   /** What was sent from here in the last two weeks, oldest first (at most 30). */

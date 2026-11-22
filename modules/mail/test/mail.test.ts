@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CORE_MIGRATIONS, listEvents, openWorld, type World } from "@alfred/core";
-import { runQuery, ServiceError, type GoogleService } from "@alfred/module-kit";
-import { extractBody, mailModule, mapMessage, parseAddress, syncMail, type MailSnapshot } from "../src/index.ts";
+import { invokeOp, runQuery, ServiceError, type GoogleService } from "@alfred/module-kit";
+import { extractBody, listMail, mailModule, mapMessage, parseAddress, syncMail, type MailDetail, type MailSnapshot } from "../src/index.ts";
 
 const world = (): World => openWorld(":memory:", [...CORE_MIGRATIONS, ...mailModule.migrations]);
 const b64 = (text: string) => Buffer.from(text).toString("base64url");
@@ -37,26 +37,36 @@ test("Gmail's messages become ours: sender, labels, the plain text, attachments 
   assert.equal(extractBody({ mimeType: "multipart/encrypted", parts: [] }).incomplete, true);
 });
 
-function fakeGmail(state: { inbox: string[]; unread: string[]; messages: Record<string, unknown> }, options: { fail?: ServiceError } = {}): GoogleService & { fetched: string[] } {
-  const fetched: string[] = [];
+function fakeGmail(state: { inbox: string[]; unread: string[]; messages: Record<string, unknown> }, options: { fail?: ServiceError; mailAccounts?: string[]; pageSize?: number } = {}): GoogleService & { fetched: string[]; minimal: string[] } {
+  const fetched: string[] = [], minimal: string[] = [];
+  const mailAccounts = options.mailAccounts ?? ["me@example.com"];
   return {
-    fetched,
-    accounts: () => [{ email: "me@example.com", capabilities: ["calRead", "mailRead"] }, { email: "cal-only@example.com", capabilities: ["calRead"] }],
+    fetched, minimal,
+    accounts: () => [...mailAccounts.map((email) => ({ email, capabilities: ["calRead", "mailRead"] })), { email: "cal-only@example.com", capabilities: ["calRead"] }],
     async session(email) {
       if (options.fail) throw options.fail;
-      assert.equal(email, "me@example.com", "an account without mail access is never asked");
+      assert.ok(mailAccounts.includes(email), "an account without mail access is never asked");
       return {
         async send(): Promise<{ status: number; body: Record<string, unknown> }> { throw new Error("no writes in this test"); },
         async get(url) {
           const parsed = new URL(url);
           if (parsed.pathname.endsWith("/messages")) {
-            const ids = parsed.searchParams.get("q")!.includes("is:unread") ? state.unread : state.inbox;
-            return { messages: ids.map((id) => ({ id })) };
+            const q = parsed.searchParams.get("q")!;
+            const label = q.includes("is:starred") ? "STARRED" : q.includes("is:important") ? "IMPORTANT" : "";
+            const ids = q.includes("is:unread") ? state.unread : label
+              ? state.inbox.filter((id) => (state.messages[id] as { labelIds?: string[] })?.labelIds?.includes(label))
+              : state.inbox;
+            const start = Number(parsed.searchParams.get("pageToken"));
+            const end = start + Math.min(Number(parsed.searchParams.get("maxResults")), options.pageSize ?? 500);
+            return { messages: ids.slice(start, end).map((id) => ({ id })), nextPageToken: end < ids.length ? String(end) : undefined };
           }
           const id = decodeURIComponent(parsed.pathname.split("/messages/")[1]);
-          assert.equal(parsed.searchParams.get("format"), "full");
-          fetched.push(id);
-          return state.messages[id] as Record<string, unknown>;
+          const format = parsed.searchParams.get("format");
+          if (format === "minimal") minimal.push(id);
+          else { assert.equal(format, "full"); fetched.push(id); }
+          const raw = state.messages[id] as Record<string, unknown> | undefined;
+          if (!raw) throw new ServiceError("unavailable", "Not found", 404);
+          return format === "minimal" ? { id, labelIds: raw.labelIds } : raw;
         },
       };
     },
@@ -119,4 +129,131 @@ test("Alfred finds mail with mail_list and reads it with mail_read; a device rea
   const detail = runQuery([mailModule], w, "mail.message", { id: "m1" }) as { body: string; attachments: string[] };
   assert.deepEqual([detail.body.slice(0, 22), detail.attachments], ["Please sign by Friday.", ["invoice.pdf"]]);
   assert.deepEqual(runQuery([mailModule], w, "mail.message", { id: "nope" }), { error: "not_found" });
+});
+
+test("opening mail clears its unread mark only for that account, across syncs until Gmail marks it unread again", async () => {
+  const w = world();
+  const account = "me@example.com", other = "work@example.com";
+  const inbox = { inbox: ["m1"], unread: ["m1"], messages: { m1: message("m1") } };
+  const google = fakeGmail(inbox, { mailAccounts: [account, other] });
+  const sync = () => syncMail(w, { google });
+  const unreadAccounts = () => listMail(w, { unread: true }).map((item) => item.account).sort();
+  const input = { account, id: "m1" };
+  const detail = () => runQuery([mailModule], w, "mail.message", input) as MailDetail;
+  await sync();
+
+  assert.equal(detail().unread, true);
+  tool("mail_read").execute(w, { id: "m1" } as never);
+  assert.deepEqual(unreadAccounts(), [account, other], "reading through a query or tool has no side effect");
+
+  for (const requestId of ["read-mail", "open-mail-again"]) {
+    invokeOp(w, [mailModule], { op: "mail.mark_read", requestId, input });
+  }
+  assert.equal(detail().unread, false);
+  assert.deepEqual(unreadAccounts(), [other]);
+  assert.equal(listEvents(w).events.filter((event) => event.kind === "mail.read").length, 1);
+
+  await sync();
+  const snapshot = mailModule.snapshot!(w) as MailSnapshot;
+  assert.deepEqual(snapshot.messages.filter((item) => item.unread).map((item) => item.account), [other]);
+
+  inbox.unread = [];
+  await sync();
+  assert.deepEqual(unreadAccounts(), []);
+  inbox.unread = ["m1"];
+  await sync();
+  assert.deepEqual(unreadAccounts(), [account, other]);
+});
+
+test("the recent 500 per account are paged, filled in batches, and all available to the mail page", async () => {
+  const w = world();
+  assert.equal(mailModule.sync?.everyMs, 30 * 60_000);
+  const inbox = Array.from({ length: 530 }, (_, n) => String(n + 1));
+  const messages = Object.fromEntries(inbox.map((id, index) => [id, message(id, { at: 1000 - index })]));
+  const state = { inbox, unread: [], messages };
+  const google = fakeGmail(state, { pageSize: 170 });
+  const snapshot = () => (mailModule.snapshot!(w) as MailSnapshot).messages;
+  await syncMail(w, { google });
+  assert.equal(snapshot().length, 60);
+  for (let n = 0; n < 8; n++) await syncMail(w, { google });
+  assert.equal(google.fetched.length, 500);
+  assert.equal(new Set(google.fetched).size, 500);
+  assert.equal(snapshot().length, 500);
+  assert.deepEqual(snapshot().map((m) => m.id), inbox.slice(0, 500));
+  messages["500"].labelIds.push("STARRED");
+  state.inbox = ["501", ...inbox];
+  await syncMail(w, { google });
+  assert.equal(snapshot().length, 501, "a starred message displaced by the cap is still accessible");
+  assert.deepEqual(snapshot().filter((m) => !m.inInbox).map((m) => m.id), ["500"]);
+  assert.equal(listMail(w, { saved: true })[0].id, "500");
+  assert.equal(google.fetched.filter((id) => id === "500").length, 1);
+});
+
+test("labels follow Gmail, protected archived mail survives, and vanished or trashed messages leave the mirror", async () => {
+  const w = world();
+  const messages: Record<string, ReturnType<typeof message>> = Object.fromEntries(
+    ["star", "important", "local", "trash", "deleted", "normal"].map((id) => [id, message(id)]));
+  const state = { inbox: Object.keys(messages), unread: [], messages };
+  const google = fakeGmail(state);
+  const hour = 3_600_000;
+  const sync = (hours: number) => syncMail(w, { google }, undefined, hours * hour);
+  const snapshot = () => (mailModule.snapshot!(w) as MailSnapshot).messages;
+  await sync(1);
+  messages.star.labelIds.push("STARRED");
+  messages.important.labelIds.push("IMPORTANT");
+  await sync(2);
+  assert.deepEqual(listMail(w, { saved: true }).map((m) => m.id), ["star"]);
+  assert.deepEqual(listMail(w, { important: true }).map((m) => m.id), ["important"]);
+  w.db.prepare("UPDATE mail_messages SET local_saved = 1 WHERE id IN ('local','trash','deleted')").run();
+  for (const raw of Object.values(messages)) raw.labelIds = raw.labelIds.filter((l) => l !== "INBOX");
+  messages.trash.labelIds.push("TRASH");
+  delete messages.deleted;
+  state.inbox = [];
+  await sync(3);
+  assert.deepEqual(snapshot().map((m) => m.id).sort(), ["important", "local", "star"]);
+  assert.ok(snapshot().every((m) => m.inInbox === false));
+  assert.deepEqual(listMail(w, { everything: true }), [], "routine inbox excludes retained archived items");
+  assert.equal(listMail(w, { saved: true }).find((m) => m.id === "local")?.localSaved, true);
+  assert.match(tool("mail_list").execute(w, { important: true } as never), /Hello important/);
+  assert.match(tool("mail_read").execute(w, { id: "star" } as never), /Plain text of star/);
+  assert.deepEqual(google.minimal.toSorted(), ["deleted", "important", "local", "normal", "star", "trash"]);
+  messages.star.labelIds = [];
+  messages.important.labelIds = [];
+  await sync(4);
+  assert.equal(google.minimal.length, 6, "unchanged retained collection is checked no more than daily");
+  await sync(27);
+  assert.deepEqual(snapshot().map((m) => m.id), ["local"]);
+});
+
+test("bounded label-only verification rotates through all displaced messages without losing a newly starred one", async () => {
+  const w = world();
+  const inbox = Array.from({ length: 40 }, (_, n) => String(n + 10));
+  const messages = Object.fromEntries(inbox.map((id) => [id, message(id)]));
+  const state = { inbox, unread: [], messages };
+  const google = fakeGmail(state);
+  await syncMail(w, { google });
+  state.inbox = [];
+  messages["49"].labelIds = ["STARRED"];
+  await syncMail(w, { google });
+  assert.equal(google.minimal.length, 30);
+  await syncMail(w, { google });
+  assert.equal(google.minimal.length, 40);
+  assert.deepEqual(listMail(w, { saved: true }).map((m) => m.id), ["49"]);
+});
+
+test("temporary read failures preserve retained mail until the account is explicitly disconnected", async () => {
+  const w = world();
+  const state = { inbox: ["star"], unread: [], messages: { star: message("star", { labels: ["STARRED"] }) } };
+  await syncMail(w, { google: fakeGmail(state) });
+  const google = fakeGmail(state, { fail: new ServiceError("reconnect", "Reconnect Gmail") });
+  const accounts = google.accounts;
+  google.accounts = (includeBroken) => includeBroken ? accounts() : [];
+  await syncMail(w, { google });
+  await syncMail(w, {});
+  const page = () => mailModule.snapshot!(w) as MailSnapshot;
+  assert.equal(page().sources[0].reconnect, true);
+  assert.equal(page().messages[0].starred, true);
+  google.accounts = () => [];
+  await syncMail(w, { google });
+  assert.deepEqual([page().sources, page().messages], [[], []]);
 });

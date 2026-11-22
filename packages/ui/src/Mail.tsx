@@ -7,22 +7,81 @@
  * Nothing goes out without a press on 发送: Alfred's as it stands is the proposal accepted, anything else is the
  * user's own `mail.send`.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Proposal, Run, StateResponse } from "@alfred/protocol";
-import type { MailDetail, MailMessage, MailSent, MailSnapshot, SendInput } from "@alfred/module-mail/types";
+import type { MailCategory, MailDetail, MailMessage, MailSent, MailSnapshot, SendInput } from "@alfred/module-mail/types";
 import { api, newRequestId } from "./api.ts";
 import { NewMail } from "./NewMail.tsx";
 import { outcomeText } from "./Inbox.tsx";
 import { Linked, OutLink } from "./Linked.tsx";
 import { SourceBar } from "./SourceBar.tsx";
 import { Icon } from "./shell/icons.tsx";
+import { Select } from "./shell/Select.tsx";
+import { PHONE, useMedia } from "./shell/layout.ts";
 import type { PageLine, Picked } from "./shell/about.ts";
 import { MicButton } from "./voice/MicButton.tsx";
 import { appendDictation } from "./voice/wav.ts";
 import { intlLocale, t, type Key } from "./i18n/index.ts";
 
-type Filter = "primary" | "unread" | "all" | "drafts";
-const FILTERS: Array<[Filter, Key]> = [["primary", "mail.primary"], ["unread", "mail.unread"], ["all", "mail.all"], ["drafts", "mail.drafts"]];
+type Filter = "inbox" | "unread" | "favorites" | "important" | "drafts";
+type CategoryFilter = "all" | MailCategory;
+const FILTERS: Array<[Filter, Key]> = [
+  ["inbox", "mail.inbox"], ["unread", "mail.unread"],
+  ["favorites", "mail.favorites"], ["important", "mail.important"], ["drafts", "mail.drafts"],
+];
+
+const CATEGORIES: Array<[CategoryFilter, Key]> = [
+  ["all", "mail.allCategories"], ["primary", "mail.primary"], ["social", "mail.social"],
+  ["promotions", "mail.promotions"], ["updates", "mail.updates"], ["forums", "mail.forums"],
+];
+
+/** Size the trigger to its current label. The menu displays all choices and counts. */
+function PhoneMailSelect<T extends string>({ label, options, value, onChange, count }: {
+  label: string; options: Array<[T, Key]>; value: T; onChange(value: T): void; count?(value: T): number;
+}) {
+  const selected = options.find(([id]) => id === value)!;
+  return <span className="mail-phone-select">
+    <span aria-hidden="true">{t(value === "all" ? "common.all" : selected[1])}</span><Icon name="down" />
+    <Select cover label={label} value={value} onChange={(next) => onChange(next as T)}
+      options={options.map(([id, key]) => ({ value: id, label: count ? `${t(key)} · ${count(id)}` : t(key) }))} />
+  </span>;
+}
+
+// Open the inbox on Primary. Status views span categories until the user explicitly chooses one.
+function categoryFor(filter: Filter, selected: CategoryFilter | null): CategoryFilter {
+  return selected ?? (filter === "inbox" ? "primary" : "all");
+}
+
+const isFavorite = (message: MailMessage) => message.starred || !!message.localSaved;
+function matchesFilter(message: MailMessage, filter: Filter, selected: CategoryFilter | null) {
+  const category = categoryFor(filter, selected);
+  if (category !== "all" && message.category !== category) return false;
+  if (filter === "favorites") return isFavorite(message);
+  if (filter === "important") return message.important;
+  if (filter === "drafts" || message.inInbox === false) return false;
+  return filter === "inbox" || message.unread;
+}
+
+interface FavoriteProps {
+  message: MailMessage;
+  canModify: boolean;
+  pending: boolean;
+  onChange(message: MailMessage, starred: boolean): void;
+}
+
+/** A read-only Gmail star can be seen here; changing it needs the account's star-sync permission. */
+function FavoriteButton({ message, canModify, pending, onChange, compact = false }: FavoriteProps & { compact?: boolean }) {
+  const active = isFavorite(message);
+  const locked = message.starred && !canModify;
+  const label = locked ? t("mail.favorite.gmailOn")
+    : active ? t(message.starred ? "mail.favorite.removeGmail" : "mail.favorite.removeLocal")
+    : t(canModify ? "mail.favorite.addGmail" : "mail.favorite.addLocal");
+  const title = compact ? `${label} · ${message.subject}` : label;
+  return <button type="button" className={`mail-favorite-button${compact ? " compact" : ""}`} aria-pressed={active}
+    disabled={pending || locked} title={title} aria-label={title} onClick={() => onChange(message, !active)}>
+    <Icon name="star" />{!compact && label}
+  </button>;
+}
 
 const VIEW = "mail.inbox";
 /** What a run asked for a new email (not a reply) has picked. */
@@ -198,6 +257,7 @@ interface ReaderProps {
   writing: boolean;
   sent: MailSent[];
   canSend: boolean;
+  favorite: FavoriteProps;
   line: PageLine;
   acts: Acts;
   /** The draft has just come from Alfred, and has not been written out yet. */
@@ -218,7 +278,7 @@ function MailBack({ onBack }: { onBack: () => void }) {
   );
 }
 
-function Reader({ message, draft, writing, sent, canSend, line, acts, written, onWritten, onDraft, onOwn, onBack }: ReaderProps) {
+function Reader({ message, draft, writing, sent, canSend, favorite, line, acts, written, onWritten, onDraft, onOwn, onBack }: ReaderProps) {
   const [detail, setDetail] = useState<MailDetail | "loading" | "gone">("loading");
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -229,6 +289,17 @@ function Reader({ message, draft, writing, sent, canSend, line, acts, written, o
       .catch(() => { if (alive) setDetail("gone"); });
     return () => { alive = false; };
   }, [message.id, message.account]);
+  useEffect(() => {
+    if (typeof detail !== "object" || !detail.unread) return;
+    const markRead = () => {
+      if (document.hidden) return;
+      document.removeEventListener("visibilitychange", markRead);
+      void api.op("mail.mark_read", { account: detail.account, id: detail.id }).catch((reason: Error) => setError(reason.message));
+    };
+    document.addEventListener("visibilitychange", markRead);
+    markRead();
+    return () => document.removeEventListener("visibilitychange", markRead);
+  }, [detail]);
   const replyKey = `mail:reply:${messageKey(message)}`;
   const start = (words?: string) => { setError(null); return onDraft(words).catch((reason: Error) => { setError(reason.message); throw reason; }); };
   const inLine = () => line.attach(line.about === replyKey ? null : {
@@ -245,6 +316,12 @@ function Reader({ message, draft, writing, sent, canSend, line, acts, written, o
         {new Date(message.receivedAt).toLocaleString(intlLocale(), { dateStyle: "medium", timeStyle: "short" })}
         {typeof detail === "object" && detail.to && ` · ${t("mail.to")} ${detail.to}`}
       </p>
+      <div className="mail-favorite-actions">
+        <FavoriteButton {...favorite} />
+        {message.localSaved && !message.starred && favorite.canModify &&
+          <button type="button" className="ghost small" disabled={favorite.pending} onClick={() => favorite.onChange(message, true)}>{t("mail.favorite.sync")}</button>}
+        {!favorite.canModify && <a className="small" href="#p=core.settings">{t("mail.favorite.enable")}</a>}
+      </div>
       {detail === "loading" && <p className="quiet">{t("mail.loading")}</p>}
       {detail === "gone" && <p className="quiet">{t("mail.gone")}</p>}
       {typeof detail === "object" && (
@@ -274,15 +351,21 @@ function Reader({ message, draft, writing, sent, canSend, line, acts, written, o
   );
 }
 
-export function Mail({ snapshot, state, line, focus, onFocused }: {
+export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
   snapshot: MailSnapshot | undefined; state: StateResponse; line: PageLine;
+  refresh(): void;
   /** A letter to open (`<account>|<id>`), asked for from another page. */
   focus?: string | null; onFocused?(): void;
 }) {
-  const [filter, setFilter] = useState<Filter>("primary");
+  const phone = useMedia(PHONE);
+  const moreId = useId();
+  const [filter, setFilter] = useState<Filter>("inbox");
+  const [category, setCategory] = useState<CategoryFilter | null>(null);
   /** `<account>|<id>` for a message; `d:<draft key>` for a draft with no message here (`d:new` while one is written). */
   const [picked, setPicked] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
+  const [savingFavorites, setSavingFavorites] = useState<string[]>([]);
+  const [favoriteError, setFavoriteError] = useState<string | null>(null);
   /** Runs asked from here, by what they are about (a message's key, or COMPOSE), until the state has caught up. */
   const [follow, setFollow] = useState<Record<string, { run: string; at: number }>>({});
   const { own, put, drop } = useOwnDrafts();
@@ -293,8 +376,11 @@ export function Mail({ snapshot, state, line, focus, onFocused }: {
     if (!focus) return;
     const asked = messages.find((message) => messageKey(message) === focus);
     if (asked) {
-      // The list shows the primary letters unless told otherwise; one from elsewhere needs all of them.
-      if (asked.category !== "primary") setFilter("all");
+      if (!matchesFilter(asked, filter, category)) {
+        const view = asked.inInbox !== false ? "inbox" : isFavorite(asked) ? "favorites" : "important";
+        setFilter(view);
+        setCategory(asked.inInbox !== false ? asked.category : "all");
+      }
       setPicked(messageKey(asked));
     }
     onFocused?.();
@@ -338,8 +424,14 @@ export function Mail({ snapshot, state, line, focus, onFocused }: {
   };
   const following = (thing: string) => (runId: string | null) => { if (runId) setFollow((now) => ({ ...now, [thing]: { run: runId, at: Date.now() } })); };
 
-  const shown = messages.filter((message) => filter === "all" || (filter === "unread" ? message.unread : message.category === "primary"));
-  const count = (which: Filter) => (which === "drafts" ? drafts.length : messages.filter((message) => which === "all" || (which === "unread" ? message.unread : message.category === "primary")).length);
+  const activeCategory = categoryFor(filter, category);
+  function chooseCategory(next: CategoryFilter) {
+    setCategory(next);
+    setPicked(null);
+  }
+
+  const shown = messages.filter((message) => matchesFilter(message, filter, category));
+  const count = (which: Filter) => which === "drafts" ? drafts.length : messages.filter((message) => matchesFilter(message, which, category)).length;
   const open = messages.find((message) => messageKey(message) === picked);
   const openDraft = picked?.startsWith("d:") ? drafts.find((draft) => `d:${draft.key}` === picked) : undefined;
   const ownCompose = openDraft?.kind === "own" && openDraft.key.startsWith("compose:");
@@ -360,6 +452,29 @@ export function Mail({ snapshot, state, line, focus, onFocused }: {
     if (about?.startsWith("mail:") && about !== "mail:compose") lineNow.current.attach(null);
   }, [picked]);
   useEffect(() => { if (!said) return; const timer = window.setTimeout(() => setSaid(null), 5000); return () => window.clearTimeout(timer); }, [said]);
+
+  const changeFavorite = async (message: MailMessage, starred: boolean) => {
+    const key = messageKey(message);
+    if (savingFavorites.includes(key)) return;
+    setSavingFavorites((keys) => [...keys, key]);
+    setFavoriteError(null);
+    setSaid(null);
+    try {
+      const saved = await api.setMailFavorite(message.account, message.id, starred);
+      refresh();
+      setSaid(saved.scope === "gmail"
+        ? t(saved.starred ? "mail.favorite.gmailOn" : "mail.favorite.gmailOff")
+        : t(saved.starred ? "mail.favorite.localOn" : "mail.favorite.localOff"));
+    } catch (reason) {
+      setFavoriteError(t("mail.favorite.failed", { subject: message.subject, error: (reason as Error).message }));
+    } finally {
+      setSavingFavorites((keys) => keys.filter((saving) => saving !== key));
+    }
+  };
+  const favoriteProps = (message: MailMessage): FavoriteProps => ({
+    message, canModify: sources.some((source) => source.account === message.account && source.canModify),
+    pending: savingFavorites.includes(messageKey(message)), onChange: changeFavorite,
+  });
 
   const thingOf = (draft: Draft) => answers(draft) ?? COMPOSE;
   const pickedFor = (draft: Draft): Picked => {
@@ -462,6 +577,7 @@ export function Mail({ snapshot, state, line, focus, onFocused }: {
   const replied = new Set(sentMail.filter((sent) => sent.replyTo && sent.state === "done").map((sent) => `${sent.account}|${sent.replyTo}`));
   const pane = open ? (
     <Reader key={picked} message={open} draft={draftFor(messageKey(open))} writing={isWriting(messageKey(open), open.id)}
+      favorite={favoriteProps(open)}
       sent={sentMail.filter((sent) => sent.replyTo === open.id && sent.account === open.account)}
       canSend={sources.find((source) => source.account === open.account)?.canSend ?? false}
       line={line} acts={acts} {...shownWritten(draftFor(messageKey(open)))} onDraft={draftReply(open)} onOwn={ownReply(open)} onBack={() => setPicked(null)} />
@@ -482,27 +598,63 @@ export function Mail({ snapshot, state, line, focus, onFocused }: {
     </article>
   ) : <p className="mail-read quiet mail-pick">{t("mail.pick")}</p>;
 
+  const hasViews = sources.length > 0 || drafts.length > 0 || composing;
+  const needsConnection = !sources.length || sources.some((source) => source.error);
+  const sourceBar = <SourceBar module="mail" mark="gmail" sources={sources} notConnected={t("src.notConnected.mail")} />;
+  const chooseView = (view: Filter) => { setFilter(view); setPicked(null); };
+
   return (
     <section className="mail" data-composing={ownCompose || undefined} aria-label={t("page.mail")}>
-      <div className="mail-toolbar">
-        <SourceBar module="mail" mark="gmail" sources={sources} notConnected={t("src.notConnected.mail")} />
-        <div className="mail-toolbar-actions">
-          {(sources.length > 0 || drafts.length > 0 || composing) && (
-            <button type="button" className="mail-compose" aria-pressed={line.about === "mail:compose"} onClick={compose}>{t("mail.compose")}</button>
-          )}
-          <button type="button" className="mail-new" onClick={startNew}><Icon name="plus" />{t("mail.new")}</button>
-        </div>
-      </div>
-      {(sources.length > 0 || drafts.length > 0 || composing) && (
-        <>
-          <div className="mail-filters" role="group" aria-label={t("mail.filters")}>
-            {FILTERS.map(([id, label]) => (
-              <button type="button" key={id} aria-pressed={filter === id} onClick={() => { setFilter(id); setPicked(null); }}>
-                {t(label)} <span className="count">{count(id)}</span>
-              </button>
-            ))}
+      {phone ? (
+        <div className="mail-toolbar mail-phone-toolbar">
+          <div className="mail-phone-row">
+            {hasViews && <>
+              <PhoneMailSelect label={t("mail.filters")} options={FILTERS} value={filter} onChange={chooseView} count={count} />
+              {filter !== "drafts" && <PhoneMailSelect label={t("mail.category")} options={CATEGORIES} value={activeCategory} onChange={chooseCategory} />}
+            </>}
+            <button type="button" className="mail-phone-new" onClick={startNew} aria-label={t("mail.new")} title={t("mail.new")}><Icon name="write" /></button>
+            {hasViews && <button type="button" popoverTarget={moreId} aria-label={t("mail.moreActions")} title={t("mail.moreActions")}><Icon name="more" /></button>}
           </div>
+          {needsConnection && sourceBar}
+          {hasViews && <div id={moreId} popover="auto" className="mail-phone-actions" role="group" aria-label={t("mail.moreActions")}>
+            <div className="mail-phone-actions-head">
+              <strong>{t("mail.moreActions")}</strong>
+              <button type="button" popoverTarget={moreId} popoverTargetAction="hide" aria-label={t("common.close")}><Icon name="close" /></button>
+            </div>
+            <button type="button" className="mail-phone-draft" popoverTarget={moreId} popoverTargetAction="hide"
+              aria-pressed={line.about === "mail:compose"} onClick={compose}><Icon name="alfred" />{t("mail.compose")}</button>
+            {!needsConnection && sourceBar}
+          </div>}
+        </div>
+      ) : (
+        <div className="mail-toolbar">
+          {sourceBar}
+          <div className="mail-toolbar-actions">
+            {hasViews && <button type="button" className="mail-compose" aria-pressed={line.about === "mail:compose"} onClick={compose}>{t("mail.compose")}</button>}
+            <button type="button" className="mail-new" onClick={startNew}><Icon name="plus" />{t("mail.new")}</button>
+          </div>
+        </div>
+      )}
+      {hasViews && (
+        <>
+          {!phone && <div className="mail-filterbar">
+            <div className="mail-filters" role="group" aria-label={t("mail.filters")}>
+              {FILTERS.map(([id, label]) => (
+                <button type="button" key={id} aria-pressed={filter === id} onClick={() => chooseView(id)}>
+                  {t(label)} <span className="count">{count(id)}</span>
+                </button>
+              ))}
+            </div>
+            {filter !== "drafts" && (
+              <span className="mail-category">
+                <span aria-hidden="true">{t("mail.category")}</span>
+                <Select className="field-select" label={t("mail.category")} value={activeCategory} onChange={(next) => chooseCategory(next as CategoryFilter)}
+                  options={CATEGORIES.map(([id, label]) => ({ value: id, label: t(label) }))} />
+              </span>
+            )}
+          </div>}
           {said && <p className="inbox-said" role="status">{said}</p>}
+          {favoriteError && <p className="problem small" role="alert">{favoriteError}</p>}
           <div className="mail-split" data-reading={open || openDraft || (picked?.startsWith("d:") && composing) ? true : undefined}>
             <ul className="mail-list">
               {filter === "drafts" ? (
@@ -533,7 +685,7 @@ export function Mail({ snapshot, state, line, focus, onFocused }: {
                   {shown.map((message) => {
                     const key = messageKey(message);
                     return (
-                      <li key={key}>
+                      <li key={key} className="mail-list-entry">
                         <button type="button" className="mail-row" data-unread={message.unread || undefined} aria-current={picked === key || undefined} onClick={() => setPicked(key)}>
                           <span className="mail-dot" aria-hidden="true" />
                           <span className="mail-who">{message.from}</span>
@@ -544,6 +696,7 @@ export function Mail({ snapshot, state, line, focus, onFocused }: {
                           <span className="mail-subject">{message.subject}</span>
                           <span className="mail-snippet">{message.snippet}</span>
                         </button>
+                        <FavoriteButton {...favoriteProps(message)} compact />
                       </li>
                     );
                   })}

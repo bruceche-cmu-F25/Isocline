@@ -10,6 +10,7 @@ import {
   type AttentionPolicy, type EngineModel, type EnginePort, type LiveUpdate, type PresenceOptions, type Run, type World,
 } from "@alfred/core";
 import { moduleMigrations, type AlfredModule, type ModuleServices } from "@alfred/module-kit";
+import { setMailFavorite } from "@alfred/module-mail";
 import { Outlets, watchAttention, type Reach } from "./attention.ts";
 import { FileStore, type FileStoreOptions } from "./files.ts";
 import { Terminals } from "./terminals.ts";
@@ -73,6 +74,7 @@ export interface Home {
   models(): Promise<EngineModel[]>;
   /** Refreshes a module's mirror of an outside service now (a device asked); resolves when done. */
   syncModule(id: string): Promise<void>;
+  setMailFavorite(account: string, id: string, starred: boolean): ReturnType<typeof setMailFavorite>;
   /** Delivers accepted outside changes now (after a proposal is accepted, an op clicked), not at the next sync. */
   deliver(): void;
   /** Starts the runs of automations that are due now (the clock calls it; tests call it with a time). */
@@ -206,6 +208,7 @@ export function openHome(options: HomeOptions): Home {
     models: () => options.engine.models?.() ?? Promise.resolve([]),
     tickAutomations,
     syncModule: passes.sync,
+    setMailFavorite: (account, id, starred) => setMailFavorite(world, options.services?.() ?? {}, account, id, starred),
     deliver: passes.deliver,
     idle: () => current,
     close() {

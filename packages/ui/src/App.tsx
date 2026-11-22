@@ -563,7 +563,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
               </header>
             )}
             <div className="page-body">{current.render({
-              snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName,
+              snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName, refresh: alfred.refresh,
               onEnterInbox: welcoming ? () => setInboxOpen(true) : undefined, focus: inboxFocus, onFocused, openConversation, line,
               go: goTo, item: route.item, onItem: clearItem,
               dev: { session: route.session, onSession: openSession, refresh: alfred.refresh, highlighted, onEvent, pageTitle, automationTitle: automationOf },

@@ -36,9 +36,10 @@ export const GOOGLE_CAPABILITIES = {
   calRead: { scope: `${SCOPE}calendar.readonly`, label: "日历：读" },
   calWrite: { scope: `${SCOPE}calendar.events`, label: "日历：替你加和改" },
   mailRead: { scope: `${SCOPE}gmail.readonly`, label: "Gmail：读" },
+  mailModify: { scope: `${SCOPE}gmail.modify`, label: "Gmail：同步星标" },
   mailSend: { scope: `${SCOPE}gmail.send`, label: "Gmail：替你发" },
 } as const satisfies Record<GoogleCapability, { scope: string; label: string }>;
-export const isGoogleCapability = (value: unknown): value is GoogleCapability => typeof value === "string" && value in GOOGLE_CAPABILITIES;
+export const isGoogleCapability = (value: unknown): value is GoogleCapability => typeof value === "string" && Object.hasOwn(GOOGLE_CAPABILITIES, value);
 export type GoogleStatus = ConnectionsResponse["google"];
 type FlowStatus = ConnectFlow;
 
@@ -239,7 +240,9 @@ export class GoogleConnections {
     };
     await this.options.secrets.set(`google:${email}`, JSON.stringify(token));
 
-    const capabilities = wanted.filter((capability) => granted.includes(GOOGLE_CAPABILITIES[capability].scope));
+    // Gmail may grant the broader modify scope alone. It covers reading when the user also requested it.
+    const capabilities = wanted.filter((capability) => granted.includes(GOOGLE_CAPABILITIES[capability].scope)
+      || (capability === "mailRead" && granted.includes(GOOGLE_CAPABILITIES.mailModify.scope)));
     const missing = wanted.filter((capability) => !capabilities.includes(capability));
     const accounts = this.accounts().filter((account) => account.email !== email);
     const before = this.accounts().find((account) => account.email === email);
@@ -298,6 +301,7 @@ export class GoogleConnections {
     if (token.access && token.expires && token.expires - 60_000 > Date.now()) return token.access;
     const response = await this.fetch(TOKEN_URL, {
       method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      signal: AbortSignal.timeout(20_000),
       body: new URLSearchParams({ client_id: client.id, client_secret: client.secret, refresh_token: token.refresh, grant_type: "refresh_token" }),
     });
     const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;

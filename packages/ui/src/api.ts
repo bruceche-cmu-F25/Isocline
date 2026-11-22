@@ -184,6 +184,8 @@ export const api = {
   query: <T>(name: string, input: unknown) => post<{ result: T }>(`/api/queries/${name}`, { input }).then((response) => response.result),
   /** Refresh a module's mirror of an outside service now; resolves when it has been read. */
   syncModule: (id: string) => post<Record<string, never>>(`/api/modules/${id}/sync`, {}),
+  setMailFavorite: (account: string, id: string, starred: boolean) =>
+    request<{ starred: boolean; scope: "gmail" | "local" }>("/api/modules/mail/favorite", { account, id, starred }),
   /** Automations: make one, change it (or switch it on and off), run it now, delete it. */
   createAutomation: (input: { name: string; goal: string; schedule: Schedule; enabled?: boolean }) =>
     post<Automation>("/api/automations", { requestId: newRequestId(), ...input }),

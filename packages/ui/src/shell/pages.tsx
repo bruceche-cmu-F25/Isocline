@@ -27,6 +27,8 @@ import { todayModel, todaySummary } from "./today.ts";
 
 export interface PageProps extends NamePreference {
   snapshot: unknown;
+  /** Reload the current snapshot after a user action. */
+  refresh(): void;
   /** Subjects (like `todo:abc`) Alfred changed in the last few seconds. */
   fresh: ReadonlySet<string>;
   /** The shared areas of life (core's kernel), for pages that sort by them. */
@@ -96,8 +98,9 @@ function calendarCounts(snapshot: unknown, now: number = Date.now()) {
 /** The page counts unread mail across categories; the sidebar badge tracks the primary inbox. */
 function unreadMail(snapshot: unknown) {
   const { messages = [], sources = [] } = (snapshot as MailSnapshot | undefined) ?? {};
-  const unread = messages.filter((message) => message.unread);
-  return { sources, canRead: sources.some((source) => source.canRead !== false), all: messages.length, unread: unread.length,
+  const inbox = messages.filter((message) => message.inInbox !== false);
+  const unread = inbox.filter((message) => message.unread);
+  return { sources, canRead: sources.some((source) => source.canRead !== false), all: inbox.length, unread: unread.length,
     primaryUnread: unread.filter((message) => message.category === "primary").length, broken: sources.some((source) => source.error) };
 }
 
@@ -204,7 +207,7 @@ const PAGES: PageDef[] = [
       return mail.unread ? t("head.mail.unread", { n: mail.unread }) : t("head.mail.clear");
     },
     suggestions: (snapshot) => unreadMail(snapshot).canRead ? ["sug.mail.reply", "sug.mail.today", "sug.mail.important"] : [],
-    render: ({ snapshot, state, line, item, onItem }) => <Mail snapshot={snapshot as MailSnapshot | undefined} state={state} line={line} focus={item} onFocused={onItem} />,
+    render: ({ snapshot, state, line, item, onItem, refresh }) => <Mail snapshot={snapshot as MailSnapshot | undefined} state={state} line={line} focus={item} onFocused={onItem} refresh={refresh} />,
   },
   {
     key: "link.list", get title() { return t("page.links"); }, icon: "link", k: "violet", group: "modules",

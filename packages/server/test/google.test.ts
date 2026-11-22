@@ -9,6 +9,7 @@ import { listEvents } from "@alfred/core";
 import { todoModule } from "@alfred/module-todo";
 import type { ConnectFlow, ConnectionsResponse } from "@alfred/protocol";
 import { createHttpServer, openHome } from "../src/index.ts";
+import { googleService } from "../src/google-service.ts";
 import { GoogleConnections } from "../src/google.ts";
 import { fileStore } from "../src/secrets.ts";
 
@@ -182,4 +183,54 @@ test("over HTTP: status, connect, poll the flow; every change is a connection ev
     google.close();
     home.close();
   }
+});
+
+test("Gmail star syncing is a separate, incremental grant and preserves read-only access", async () => {
+  const t = setup();
+  const google = new GoogleConnections({ dataDir: t.dataDir, secrets: t.secrets, fetch: t.fakeFetch });
+  try {
+    t.grant(`openid ${SCOPE}gmail.readonly`);
+    const read = await google.start({ capabilities: ["mailRead"] });
+    assert.doesNotMatch(new URL(read.url).searchParams.get("scope")!, /gmail\.modify/);
+    await callback(read.url, { code: "read", state: new URL(read.url).searchParams.get("state")! });
+    const addStar = async () => {
+      const flow = await google.start({ account: "you@gmail.com", capabilities: ["mailModify"] });
+      const params = new URL(flow.url).searchParams;
+      assert.match(params.get("scope")!, /gmail\.modify/);
+      await callback(flow.url, { code: "modify", state: params.get("state")! });
+      return google.flow(flow.id);
+    };
+    const denied = await addStar();
+    assert.ok(denied?.status === "done");
+    assert.deepEqual(denied.missing, ["mailModify"]);
+    assert.deepEqual(google.status().accounts[0].capabilities, ["mailRead"]);
+    t.grant(`openid ${SCOPE}gmail.modify`);
+    await addStar();
+    assert.deepEqual(google.status().accounts[0].capabilities, ["mailRead", "mailModify"]);
+    google.disable("you@gmail.com", "mailModify");
+    assert.deepEqual(google.status().accounts[0].capabilities, ["mailRead"]);
+  } finally { google.close(); }
+});
+
+
+test("a Google session keeps its request deadline when a sync also supplies a shutdown signal", async (t) => {
+  const fixture = setup();
+  const connection = new GoogleConnections({ dataDir: fixture.dataDir, secrets: fixture.secrets, fetch: fixture.fakeFetch });
+  t.mock.method(connection, "accessToken", async () => "fixture-token");
+  const deadline = new AbortController();
+  t.mock.method(AbortSignal, "timeout", () => deadline.signal);
+  const request = t.mock.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+    init?.signal?.throwIfAborted();
+    return new Response("{}");
+  });
+  const session = await googleService(connection, request as typeof fetch).session("sample@example.com");
+  const caller = new AbortController();
+  await session.get("https://example.test/messages", caller.signal);
+  assert.equal(request.mock.calls.length, 1);
+  caller.abort();
+  await assert.rejects(session.get("https://example.test/messages", caller.signal), { code: "unavailable" });
+  deadline.abort();
+  const live = new AbortController().signal;
+  await assert.rejects(session.get("https://example.test/messages", live), { code: "unavailable" });
+  await assert.rejects(session.send("POST", "https://example.test/modify", {}, { signal: live }), { code: "unavailable" });
 });

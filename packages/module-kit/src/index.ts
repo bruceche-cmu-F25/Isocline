@@ -113,7 +113,7 @@ export interface ModuleServices {
 /** Google, for reading: the accounts the user connected (ones that need reconnecting are left out), and a session
  * per account that makes authorised GETs. One session per pass: getting it may refresh the account's token. */
 export interface GoogleService {
-  accounts(): Array<{ email: string; capabilities: readonly string[] }>;
+  accounts(includeBroken?: boolean): Array<{ email: string; capabilities: readonly string[] }>;
   session(email: string): Promise<GoogleSession>;
 }
 export interface GoogleSession {
@@ -128,9 +128,11 @@ export interface GoogleSession {
 export class ServiceError extends Error {
   override name = "ServiceError";
   readonly code: "reconnect" | "unavailable";
-  constructor(code: "reconnect" | "unavailable", message: string) {
+  readonly status?: number;
+  constructor(code: "reconnect" | "unavailable", message: string, status?: number) {
     super(message);
     this.code = code;
+    this.status = status;
   }
 }
 
@@ -143,7 +145,7 @@ function forOnePass(services: ModuleServices): ModuleServices {
   return {
     ...services,
     google: {
-      accounts: () => google.accounts(),
+      accounts: (includeBroken) => google.accounts(includeBroken),
       session(email) {
         let session = sessions.get(email);
         if (!session) sessions.set(email, session = google.session(email));

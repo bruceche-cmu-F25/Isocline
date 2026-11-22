@@ -457,7 +457,7 @@ export interface ErrorResponse { error: string; code?: string; count?: number }
  *   POST /api/connections/google/:email/disconnect    -> { revoked } (revoked at Google, then forgotten here)
  *   GET  /api/connections/google/:email/check         -> GoogleCheck (one small read-only count per capability that is on)
  */
-export type GoogleCapability = "calRead" | "calWrite" | "mailRead" | "mailSend";
+export type GoogleCapability = "calRead" | "calWrite" | "mailRead" | "mailSend" | "mailModify";
 export interface GoogleAccount {
   email: string;
   /** Turned on by the user and granted by Google. */

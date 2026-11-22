@@ -5,11 +5,14 @@
 import { ServiceError, type GoogleService } from "@alfred/module-kit";
 import type { GoogleConnections } from "./google.ts";
 
-const TIMEOUT_MS = 20_000;
+function requestSignal(signal?: AbortSignal): AbortSignal {
+  const deadline = AbortSignal.timeout(20_000);
+  return signal ? AbortSignal.any([signal, deadline]) : deadline;
+}
 
 export function googleService(connections: GoogleConnections, fetchImpl: typeof fetch = globalThis.fetch): GoogleService {
   return {
-    accounts: () => connections.status().accounts.filter((account) => !account.broken).map((account) => ({ email: account.email, capabilities: account.capabilities })),
+    accounts: (includeBroken) => connections.status().accounts.filter((account) => includeBroken || !account.broken).map((account) => ({ email: account.email, capabilities: account.capabilities })),
     async session(email) {
       let token: string;
       try {
@@ -22,15 +25,18 @@ export function googleService(connections: GoogleConnections, fetchImpl: typeof 
         async get(url, signal) {
           let response: Response;
           try {
-            response = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` }, signal: signal ?? AbortSignal.timeout(TIMEOUT_MS) });
+            response = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` }, signal: requestSignal(signal) });
           } catch (error) {
             throw new ServiceError("unavailable", `Google could not be reached: ${(error as Error).message}`);
           }
-          const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-          if (response.status === 401) throw new ServiceError("reconnect", "Google refused the account's access");
+          const body = (await response.json().catch(() => {
+            if (response.ok) throw new ServiceError("unavailable", "Google returned an incomplete response");
+            return {};
+          })) as Record<string, unknown>;
+          if (response.status === 401) throw new ServiceError("reconnect", "Google refused the account's access", 401);
           if (!response.ok) {
             const reason = (body.error as { message?: unknown } | undefined)?.message;
-            throw new ServiceError("unavailable", `Google answered ${response.status}${typeof reason === "string" ? `: ${reason.slice(0, 200)}` : ""}`);
+            throw new ServiceError("unavailable", `Google answered ${response.status}${typeof reason === "string" ? `: ${reason.slice(0, 200)}` : ""}`, response.status);
           }
           return body;
         },
@@ -38,14 +44,14 @@ export function googleService(connections: GoogleConnections, fetchImpl: typeof 
           let response: Response;
           try {
             response = await fetchImpl(url, {
-              method, signal: options.signal ?? AbortSignal.timeout(TIMEOUT_MS),
+              method, signal: requestSignal(options.signal),
               headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...options.headers },
               ...(body === undefined ? {} : { body: JSON.stringify(body) }),
             });
           } catch (error) {
             throw new ServiceError("unavailable", `Google could not be reached: ${(error as Error).message}`);
           }
-          if (response.status === 401) throw new ServiceError("reconnect", "Google refused the account's access");
+          if (response.status === 401) throw new ServiceError("reconnect", "Google refused the account's access", 401);
           return { status: response.status, body: (await response.json().catch(() => ({}))) as Record<string, unknown> };
         },
       };

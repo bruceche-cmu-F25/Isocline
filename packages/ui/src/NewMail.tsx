@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import type { SendInput } from "@alfred/module-mail/types";
 import { Icon } from "./shell/icons.tsx";
+import { Select } from "./shell/Select.tsx";
 import { t } from "./i18n/index.ts";
 
 interface Props {
@@ -45,10 +46,8 @@ export function NewMail({ input, accounts, busy, onChange, onBack, onDiscard, on
         <div className="mail-sender">
           <span>{t("mail.from")}</span>
           {accounts.length > 1 || (!canSend && accounts.length > 0) ? (
-            <select aria-label={t("mail.from")} value={account} disabled={busy} onChange={(event) => change({ account: event.target.value })}>
-              {!canSend && <option value={account} disabled>{account}</option>}
-              {accounts.map((address) => <option key={address}>{address}</option>)}
-            </select>
+            <Select className="mail-sender-pick" label={t("mail.from")} value={account} disabled={busy} onChange={(next) => change({ account: next })}
+              options={[...(!canSend ? [{ value: account, label: account, disabled: true }] : []), ...accounts.map((address) => ({ value: address, label: address }))]} />
           ) : <span className="mail-sender-address" title={account}>{account || t("mail.noSender")}</span>}
         </div>
       </header>

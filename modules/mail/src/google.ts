@@ -2,15 +2,17 @@
  * say unread, important, starred and category; a body is a tree of MIME parts, of which only text is read (never an
  * attachment). Adapted from Robin's extension/robin/gmail.ts.
  */
-import type { GoogleSession } from "@alfred/module-kit";
+import { ServiceError, type GoogleSession } from "@alfred/module-kit";
 import type { MailCategory } from "./types.ts";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 /** The inbox's last two weeks; at most this many messages per account. */
 export const INBOX_QUERY = "in:inbox newer_than:14d";
-export const INBOX_MAX = 100;
+export const INBOX_MAX = 500;
 /** New messages read in full per pass; the rest come next time. */
 const NEW_PER_PASS = 60;
+/** Rotate through previously seen mail outside the ordinary inbox to verify retention and detect deletions. */
+const OUTSIDE_PER_PASS = 30;
 const CONCURRENCY = 5;
 const BODY_MAX = 20_000;
 
@@ -122,18 +124,61 @@ async function inParallel<T, R>(items: T[], limit: number, work: (item: T) => Pr
 }
 
 async function ids(session: Pick<GoogleSession, "get">, q: string, signal?: AbortSignal): Promise<string[]> {
-  const body = await session.get(`${API}/messages?${new URLSearchParams({ q, maxResults: String(INBOX_MAX) })}`, signal);
-  return ((body.messages as Array<{ id?: string }> | undefined) ?? []).map((message) => message.id).filter((id): id is string => !!id);
+  const found = new Set<string>();
+  const tokens = new Set<string>();
+  let token: string | undefined;
+  do {
+    const query = new URLSearchParams({ q, maxResults: String(INBOX_MAX - found.size), fields: "messages/id,nextPageToken" });
+    if (token) query.set("pageToken", token);
+    const body = await session.get(`${API}/messages?${query}`, signal);
+    for (const { id } of (body.messages ?? []) as Array<{ id?: string }>) {
+      if (id) found.add(id);
+      if (found.size === INBOX_MAX) break;
+    }
+    token = body.nextPageToken as string | undefined;
+    if (token && tokens.has(token)) throw new Error("Gmail returned a repeated page token");
+    if (token) tokens.add(token);
+  } while (token && found.size < INBOX_MAX);
+  return [...found];
 }
 
-/** What is in the inbox now (ids, newest first), which of those are unread, and the new ones in full. */
+/** An ID can disappear between listing the inbox and reading the message. Other failures keep the last mirror. */
+async function getMessage(session: Pick<GoogleSession, "get">, id: string, format: "full" | "minimal", signal?: AbortSignal): Promise<GmailMessage | null> {
+  const query = new URLSearchParams({ format });
+  if (format === "minimal") query.set("fields", "id,labelIds");
+  try {
+    const raw = await session.get(`${API}/messages/${encodeURIComponent(id)}?${query}`, signal) as GmailMessage;
+    if (raw.id !== id) throw new Error("Gmail returned an unexpected message");
+    return raw.labelIds?.some((label) => label === "TRASH" || label === "SPAM") ? null : raw;
+  } catch (error) {
+    if (error instanceof ServiceError && (error.status === 404 || error.status === 410)) return null;
+    throw error;
+  }
+}
+
+/** Known IDs are ordered by their oldest out-of-window verification, so even a large retained collection is revisited. */
 export async function readInbox(
-  session: Pick<GoogleSession, "get">, known: ReadonlySet<string>, signal?: AbortSignal,
-): Promise<{ inbox: string[]; unread: Set<string>; added: MessageRow[] }> {
-  const inbox = await ids(session, INBOX_QUERY, signal);
-  const unread = new Set(await ids(session, `${INBOX_QUERY} is:unread`, signal));
-  const fresh = inbox.filter((id) => !known.has(id)).slice(0, NEW_PER_PASS);
-  const added = (await inParallel(fresh, CONCURRENCY, async (id) => mapMessage(await session.get(`${API}/messages/${encodeURIComponent(id)}?format=full`, signal) as GmailMessage)))
-    .filter((row): row is MessageRow => row !== null);
-  return { inbox, unread, added };
+  session: Pick<GoogleSession, "get">, known: ReadonlySet<string>, dueForVerification: string[], signal?: AbortSignal,
+) {
+  const [recent, unreadIds, starredIds, importantIds] = await Promise.all([
+    ids(session, INBOX_QUERY, signal),
+    ids(session, `${INBOX_QUERY} is:unread`, signal),
+    ids(session, `${INBOX_QUERY} is:starred`, signal),
+    ids(session, `${INBOX_QUERY} is:important`, signal),
+  ]);
+  const inbox = new Set(recent);
+  const fresh = recent.filter((id) => !known.has(id)).slice(0, NEW_PER_PASS);
+  const added: MessageRow[] = [];
+  for (const raw of await inParallel(fresh, CONCURRENCY, (id) => getMessage(session, id, "full", signal))) {
+    if (raw?.labelIds?.includes("INBOX")) {
+      const row = mapMessage(raw);
+      if (row) added.push(row);
+    }
+  }
+  const outside = dueForVerification.filter((id) => !inbox.has(id)).slice(0, OUTSIDE_PER_PASS);
+  const checked = await inParallel(outside, CONCURRENCY, async (id) => {
+    const raw = await getMessage(session, id, "minimal", signal);
+    return { id, labels: raw ? new Set(raw.labelIds ?? []) : null };
+  });
+  return { inbox, unread: new Set(unreadIds), starred: new Set(starredIds), important: new Set(importantIds), added, checked };
 }

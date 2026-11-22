@@ -10,7 +10,7 @@ import { request as call } from "./api.ts";
 import { Logo } from "./brand/Logo.tsx";
 import { t, useLocale, type Key } from "./i18n/index.ts";
 
-const CAPS: GoogleCapability[] = ["calRead", "calWrite", "mailRead", "mailSend"];
+const CAPS: GoogleCapability[] = ["calRead", "calWrite", "mailRead", "mailModify", "mailSend"];
 const capName = (id: GoogleCapability) => t(`settings.cap.${id}` as Key);
 const capNote = (id: GoogleCapability) => t(`settings.cap.${id}.note` as Key);
 type CheckState = { reading: true } | { error: string } | { result: Check };
@@ -30,7 +30,8 @@ function say(said: Said): string {
 /** A sign-in in progress: which account it is for ("new" for another one), and its link. */
 interface Pending { flow: ConnectStart; for: string }
 
-export function Accounts() {
+/** `setup`: inside the first run (shell/FirstRun.tsx), only connecting; `onConfigured` hears how many accounts there are. */
+export function Accounts({ setup, onConfigured }: { setup?: boolean; onConfigured?(n: number): void } = {}) {
   const locale = useLocale();
   const [data, setData] = useState<ConnectionsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -114,14 +115,16 @@ export function Accounts() {
   );
 
   const google = data?.google;
+  const accounts = google ? google.accounts.length : null;
+  useEffect(() => { if (accounts !== null) onConfigured?.(accounts); }, [accounts]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <section className="set-section">
-      <h2>{t("settings.accounts")}</h2>
-      <p className="quiet">{t("settings.accounts.sub")}</p>
+      {!setup && <h2>{t("settings.accounts")}</h2>}
+      {!setup && <p className="quiet">{t("settings.accounts.sub")}</p>}
       {error && <p className="problem small" role="alert">{error}</p>}
       {said && <p className="set-message" role="status">{say(said)}</p>}
 
-      {google?.accounts.map((item) => (
+      {!setup && google?.accounts.map((item) => (
         <div className="set-rows" key={item.email}>
           <div className="set-row has-logo">
             <span className="set-logo" data-k="gray"><Logo name="google" /></span>
