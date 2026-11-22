@@ -78,7 +78,7 @@ ${Object.entries(env).map(([key, value]) => `    <key>${xml(key)}</key><string>$
 /** Whether an Alfred home node answers on the port. */
 export async function healthy(port: number): Promise<boolean> {
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/api/state`, { signal: AbortSignal.timeout(1500) });
+    const response = await fetch(`http://127.0.0.1:${port}/api/state?modules=0`, { signal: AbortSignal.timeout(1500) });
     return response.ok && (await response.json() as { protocol?: number }).protocol === 1;
   } catch {
     return false;

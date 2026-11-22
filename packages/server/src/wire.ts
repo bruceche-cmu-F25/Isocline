@@ -6,6 +6,7 @@
  * and logs what was the home node's own fault.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { brotliCompress, constants as zlib, gzip } from "node:zlib";
 import type { ErrorResponse } from "@alfred/protocol";
 
 /** The most a command's JSON body may be. */
@@ -28,10 +29,60 @@ export class Fault extends Error {
   }
 }
 
+/** Answers that go to another device (through the ingress), which are worth making smaller: a phone on a mobile
+ * network pays for every byte. This machine's own are not: over loopback, packing costs more than it saves. */
+const remote = new WeakSet<ServerResponse>();
+export function overTheWire(res: ServerResponse): void { remote.add(res); }
+
+export type Encoding = "br" | "gzip";
+/** Under this many characters an answer is sent as it is: packing would not make it fit in fewer packets. */
+const PACK_FROM = 1024;
+
+/** How to pack the answer for whoever asked: what their browser takes, and only for another device. */
+export function encodingFor(res: ServerResponse): Encoding | null {
+  if (!remote.has(res)) return null;
+  const accepts = String(res.req?.headers["accept-encoding"] ?? "").toLowerCase();
+  const weights = new Map<string, number>();
+  for (const part of accepts.split(",")) {
+    const match = /^(br|gzip|identity|\*)(?:\s*;\s*q\s*=\s*(0(?:\.\d{0,3})?|1(?:\.0{0,3})?))?$/.exec(part.trim());
+    if (match) weights.set(match[1], match[2] === undefined ? 1 : Number(match[2]));
+  }
+  const wildcard = weights.get("*") ?? 0;
+  const br = weights.get("br") ?? wildcard;
+  const gzip = weights.get("gzip") ?? wildcard;
+  if (Math.max(br, gzip) === 0 || (weights.get("identity") ?? 0) > Math.max(br, gzip)) return null;
+  return br >= gzip ? "br" : "gzip";
+}
+
+/** `effort`: `quick` for an answer made now (state, a conversation), `thorough` for a file packed once and kept. */
+export function pack(bytes: Buffer, encoding: Encoding, effort: "quick" | "thorough"): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const done = (error: Error | null, packed: Buffer) => (error ? reject(error) : resolve(packed));
+    if (encoding === "gzip") gzip(bytes, { level: effort === "quick" ? 5 : 9 }, done);
+    else brotliCompress(bytes, { params: { [zlib.BROTLI_PARAM_QUALITY]: effort === "quick" ? 4 : 9, [zlib.BROTLI_PARAM_SIZE_HINT]: bytes.byteLength } }, done);
+  });
+}
+
+/** Answers already on their way: packing takes a moment, and a response is answered once. */
+const answered = new WeakSet<ServerResponse>();
+
 export function send(res: ServerResponse, status: number, body: unknown): void {
+  if (answered.has(res)) return;
+  answered.add(res);
   const text = JSON.stringify(body);
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "Content-Length": Buffer.byteLength(text) });
-  res.end(text);
+  const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
+  const plain = () => {
+    if (res.headersSent || res.destroyed) return;
+    res.writeHead(status, { ...headers, "Content-Length": Buffer.byteLength(text) });
+    res.end(text);
+  };
+  const encoding = text.length >= PACK_FROM ? encodingFor(res) : null;
+  if (!encoding) return plain();
+  pack(Buffer.from(text), encoding, "quick").then((packed) => {
+    if (res.headersSent || res.destroyed) return;
+    res.writeHead(status, { ...headers, "Content-Encoding": encoding, Vary: "Accept-Encoding", "Content-Length": packed.byteLength });
+    res.end(packed);
+  }, plain);
 }
 
 /** A request's body as bytes, refused past `max` (with `tooBig`, when the address has its own words for that). */

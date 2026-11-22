@@ -33,17 +33,18 @@ test("a long completed reply survives restart in full, while the overview keeps 
   assert.deepEqual(conversationRuns(saved, legacy.conversationId).runs.map((run) => run.outcome?.reply), [legacyText, text]);
 });
 
-test("a pinned request does not advance the history cursor; ties and newly arrived turns keep their order", (t) => {
+test("a running turn stays reachable behind queued turns and a pending request does not advance the history cursor; ties and newly arrived turns keep their order", (t) => {
   const world = openWorld(":memory:", CORE_MIGRATIONS);
   t.after(() => world.close());
   const now = Date.now();
   const add = (requestId: string, conversationId?: string) => submitRun(world, { requestId, conversationId, goal: requestId, profile: "assistant", now }).run;
   const pin = add("first");
   claimNextRun(world, "home", { now });
-  openRequest(world, pin.id, "home", { kind: "input", question: "Which?", now });
   const id = pin.conversationId;
   const second = add("second", id), third = add("third", id), fourth = add("fourth", id), fifth = add("fifth", id);
   const page = (before?: string) => conversationRuns(world, id, { before, limit: 2 });
+  assert.deepEqual(page().runs.map((run) => run.id), [pin.id, fourth.id, fifth.id]);
+  openRequest(world, pin.id, "home", { kind: "input", question: "Which?", now });
   assert.deepEqual(page().runs.map((run) => run.id), [pin.id, fourth.id, fifth.id]);
   assert.equal(page().nextCursor, fourth.id);
   const latest = add("latest", id);

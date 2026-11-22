@@ -29,6 +29,7 @@ import { useAlfred, type Alfred } from "./useAlfred.ts";
 import { handed } from "./handed.ts";
 import { WindowAttention } from "./ConversationReply.tsx";
 import { useOutlet } from "./outlet.ts";
+import { useWriting } from "./live.ts";
 import { welcomeLines } from "./welcome.ts";
 
 if (desktop) document.documentElement.classList.add("desktop");
@@ -218,7 +219,8 @@ export function App() {
 
 /** The workspace: sidebar, one page at a time, and Alfred beside it. */
 function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) {
-  const { connection, fresh, live, onEvent } = alfred;
+  const { connection, fresh, onEvent } = alfred;
+  const writing = useWriting();
   const route = useRoute();
   const selected = route.selected;
   const [layout, setLayout] = useLayout();
@@ -413,13 +415,17 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     const target = continues(conversations?.find((conversation) => conversation.id === selected), Date.now());
     const submit = () => api.submit(text, target ?? undefined, view?.context, attachments).then(({ run }) => { if (run.conversationId !== selected) go({ selected: run.conversationId }); });
     const working = target ? runs?.find((run) => run.conversationId === target && run.state === "running") : undefined;
+    // A turn that asked a question takes these words as its answer: as a new message they would queue behind it.
+    const asking = target ? runs?.find((run) => run.conversationId === target && run.request?.kind === "input") : undefined;
     // Words can join the turn that is working; files cannot, so with files it is the next message.
-    if (!working || attachments?.length) return submit();
+    if ((!working && !asking) || attachments?.length) return submit();
     // It may have just finished: then it goes as a new message.
-    await api.steer(working.id, text).then(() => undefined, (reason: unknown) => {
+    const orSubmit = (reason: unknown) => {
       if (reason instanceof ApiError && reason.status === 409) return submit();
       throw reason;
-    });
+    };
+    if (asking) await api.respond(asking.id, asking.request!.id, text).then(() => undefined, orSubmit);
+    else await api.steer(working!.id, text).then(() => undefined, orSubmit);
   }, [conversations, runs, selected, go, view?.context]);
   /** What the user picked on the page to say something about: the bar's next words go to it (shell/about.ts). */
   const [about, setAbout] = useState<About | null>(null);
@@ -468,7 +474,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
   }), [showAlfred]);
 
-  const settledFigure = useSettled(state ? figureState(state, selected, live, greeting) : "rest", 250);
+  const settledFigure = useSettled(state ? figureState(state, selected, writing, greeting) : "rest", 250);
   const figure = speaking ?? settledFigure;
 
   // Keyboard: ⌘K search and ask, anywhere; ⌘. Alfred; ⌘\ the sidebar; ⌘, Settings; ⌥1–9 the pages (not while typing).
@@ -517,7 +523,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
 
   const panel = (
     <AlfredPanel selected={selected} figure={figure} wide={alfredMode === "wide"} phone={phone}
-      live={live} highlighted={highlighted} view={view} pageTitle={pageTitle} automationTitle={automationOf} onEvent={onEvent} onView={onView} onStarted={onStarted}
+      highlighted={highlighted} view={view} pageTitle={pageTitle} automationTitle={automationOf} onEvent={onEvent} onView={onView} onStarted={onStarted}
       onWide={() => setLayout({ alfred: layout.alfred === "wide" ? "open" : "wide" })}
       onClose={() => (phone ? setSheet(null) : setLayout({ alfred: "closed" }))} />
   );
@@ -560,11 +566,11 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
               snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName,
               onEnterInbox: welcoming ? () => setInboxOpen(true) : undefined, focus: inboxFocus, onFocused, openConversation, line,
               go: goTo, item: route.item, onItem: clearItem,
-              dev: { session: route.session, onSession: openSession, refresh: alfred.refresh, live, highlighted, onEvent, pageTitle, automationTitle: automationOf },
+              dev: { session: route.session, onSession: openSession, refresh: alfred.refresh, highlighted, onEvent, pageTitle, automationTitle: automationOf },
             })}</div>
             {/* Under the page: the page's own controls are at its top, Alfred and search at its foot. */}
             {barHere && (
-              <AskBar state={state} selected={selected} figure={figure} live={live} suggestions={view?.suggestions ?? []} find={find} page={current.key} about={about} onAbout={setAbout}
+              <AskBar state={state} selected={selected} figure={figure} suggestions={view?.suggestions ?? []} find={find} page={current.key} about={about} onAbout={setAbout}
                 onAsk={ask} onOpen={showAlfred} onProposal={showProposal} onEvent={onEvent} />
             )}
           </>
@@ -594,7 +600,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
         <Dock state={state} pages={navigationPages} page={current?.key ?? ""} figure={figure} onPage={goPage}
           onAlfred={() => (asking || bare ? setSheet("alfred") : setAsking(true))} onMenu={() => setSheet("nav")}
           ask={asking && !bare ? (
-            <AskBar dock state={state} selected={selected} figure={figure} live={live} suggestions={view?.suggestions ?? []} find={find} page={current?.key} about={about} onAbout={setAbout}
+            <AskBar dock state={state} selected={selected} figure={figure} suggestions={view?.suggestions ?? []} find={find} page={current?.key} about={about} onAbout={setAbout}
               onAsk={ask} onOpen={() => setSheet("alfred")} onProposal={showProposal} onEvent={onEvent} onBack={() => { setAsking(false); setAbout(null); }} />
           ) : undefined} />
       )}

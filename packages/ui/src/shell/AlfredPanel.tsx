@@ -9,12 +9,12 @@ import { MOD } from "./Nav.tsx";
 import type { PageView } from "./pages.tsx";
 
 /** What the figure shows, from the world as this device sees it: greeting on open, amber when anything waits for
- * you (a question, a proposal), speaking while a reply streams in the open conversation, the turning nut while any
+ * you (a question, a proposal), the rolling tesseract while a reply streams in the open conversation, the turning nut while any
  * run works, else calm. */
-export function figureState(state: StateResponse, selected: string | null, live: Readonly<Record<string, string>>, greeting: boolean): FigureState {
+export function figureState(state: StateResponse, selected: string | null, writing: ReadonlySet<string>, greeting: boolean): FigureState {
   if (greeting) return "hello";
   if (waitingCount(state) > 0) return "notice";
-  if (state.runs.some((run) => run.conversationId === selected && run.state === "running" && live[run.id])) return "speak";
+  if (state.runs.some((run) => run.conversationId === selected && run.state === "running" && writing.has(run.id))) return "flow";
   if (state.runs.some((run) => run.state === "running")) return "work";
   if (state.runs.some((run) => run.state === "queued")) return "think";
   return "rest";
@@ -25,7 +25,6 @@ export interface AlfredPanelProps {
   figure: FigureState;
   wide: boolean;
   phone: boolean;
-  live: Readonly<Record<string, string>>;
   highlighted: ReadonlySet<string>;
   /** The page beside Alfred: what a question asked now is about. */
   view?: PageView;
@@ -41,7 +40,7 @@ export interface AlfredPanelProps {
 }
 
 /** Alfred beside the page: one row with the figure and the page it is looking at, then the open conversation. */
-export function AlfredPanel({ selected, figure, wide, phone, live, highlighted, view, pageTitle, automationTitle, onEvent, onView, onStarted, onWide, onClose }: AlfredPanelProps) {
+export function AlfredPanel({ selected, figure, wide, phone, highlighted, view, pageTitle, automationTitle, onEvent, onView, onStarted, onWide, onClose }: AlfredPanelProps) {
   return (
     <aside className="alfred" aria-label="Alfred">
       <header className="alf-head">
@@ -58,7 +57,7 @@ export function AlfredPanel({ selected, figure, wide, phone, live, highlighted, 
           </button>
         </div>
       </header>
-      <Conversation key={selected ?? "new"} id={selected} live={live} highlighted={highlighted} slim
+      <Conversation key={selected ?? "new"} id={selected} highlighted={highlighted} slim
         context={wide ? undefined : view?.context} suggestions={wide ? [] : view?.suggestions ?? []} pageTitle={pageTitle} automationTitle={automationTitle}
         onEvent={onEvent} onView={onView} onStarted={onStarted} />
     </aside>

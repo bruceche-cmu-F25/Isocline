@@ -306,24 +306,37 @@ button.ghost, .notice-actions button.ghost { background: none; color: var(--copy
 /* Under the composer: what the next turn runs on (model, thinking), then send. */
 .composer-bar { display: flex; align-items: center; gap: 2px; min-width: 0; margin-left: -6px; }
 .composer-bar .grow { flex: 1; }
+.composer-send-actions { display: inline-flex; flex: none; align-items: center; gap: 4px; }
+.composer .send-after { min-height: 34px; padding: 0 8px; border-radius: 8px; color: var(--copy); font-size: .8125rem; white-space: nowrap; }
+.composer .send-after:hover:not(:disabled) { background: var(--wash); color: var(--ink); }
 .composer .send { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--accent-solid); color: var(--accent-ink); }
 .composer .send:disabled { opacity: 1; background: color-mix(in oklab, var(--field), var(--ink) 9%); color: var(--muted); }
 /* With nothing to choose under it (a new conversation), the composer is one row: the words, then send. */
-.composer:not(:has(.pick)) { flex-direction: row; align-items: flex-end; gap: 6px; }
-.composer:not(:has(.pick)) textarea { flex: 1; min-width: 0; padding: 6px 2px; }
-.composer:not(:has(.pick)) .composer-bar { margin-left: 0; }
-.composer:not(:has(.pick)) .grow { display: none; }
+.composer:not(:has(.pick, .send-after)) { flex-direction: row; align-items: flex-end; gap: 6px; }
+.composer:not(:has(.pick, .send-after)) textarea { flex: 1; min-width: 0; padding: 6px 2px; }
+.composer:not(:has(.pick, .send-after)) .composer-bar { margin-left: 0; }
+.composer:not(:has(.pick, .send-after)) .grow { display: none; }
 .pick { position: relative; flex: 0 1 auto; min-width: 0; height: 28px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 8px; color: var(--copy); font-size: .75rem; }
 .pick:hover, .pick:focus-within { background: var(--wash); color: var(--ink); }
 .pick svg { width: 14px; height: 14px; flex: none; color: var(--muted); }
 .pick .logo { width: 14px; height: 14px; }
 .pick .logo svg { width: 100%; height: 100%; color: inherit; }
 .pick:first-child { flex-shrink: 4; }
+/* Our own select (shell/Select.tsx). Its looks come from the class each page gives it; these are only the bones. */
+:where(.choice-trigger) { display: inline-flex; align-items: center; gap: 6px; min-width: 0; text-align: start; cursor: pointer; }
+:where(.choice-trigger) .caret { width: 12px; height: 12px; flex: none; stroke-width: 2; color: var(--muted); pointer-events: none; }
+.choice-trigger:not(.pick) .choice-value { flex: 1; max-width: none; }
+/* Lying unseen over a pill or a title that draws what is chosen: a click there is a click on it. */
+.choice-cover, .choice-cover:disabled { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
+/* A bordered field, for a choice that sits in a row of settings or a form. */
+.field-select { justify-content: space-between; max-width: 100%; min-height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); }
+.field-select:hover { border-color: color-mix(in oklch, var(--line), var(--ink) 18%); }
 .choice-trigger[aria-expanded="true"] { background: var(--wash); color: var(--ink); }
+.field-select[aria-expanded="true"] { background: var(--paper); border-color: var(--accent); }
 .choice-trigger[aria-expanded="true"] .caret { transform: rotate(180deg); }
 .choice-value { min-width: 0; max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .choice-menu {
-  position: fixed; z-index: 35; width: max-content; max-width: min(22rem, calc(100vw - 16px));
+  position: fixed; z-index: 60; width: max-content; max-width: min(22rem, calc(100vw - 16px));
   overflow-y: auto; overscroll-behavior: contain; padding: 5px; border: 1px solid var(--line); border-radius: 13px;
   color: var(--copy); background: var(--raise); box-shadow: var(--shadow);
 }
@@ -1465,12 +1478,29 @@ html.desktop .dev-browser-bar { -webkit-app-region: no-drag; }
 /* The composer bar's choices say they open (a caret), and fast is marked when on. */
 .pick svg.caret { width: 10px; height: 10px; margin-left: -2px; color: var(--muted); pointer-events: none; }
 .pick[data-fast] > svg:first-child { color: var(--warm); }
-/* On a narrow page the choices take a line of their own above the buttons, instead of being cut to a character. */
+/* A choice may have a shorter name for a narrow bar (a model without its provider: the logo says that). */
+.choice-short { display: none; }
+/* On a narrow page the choices share one line with the buttons, so the box is for writing: the first (the model, the
+   project) keeps its name, the rest are icons whose colour says what is set, each opening a menu headed by what it
+   is. Only while "send after this turn" is offered do the buttons take a line of their own. */
 @container page (max-width: 520px) {
-  .composer-bar:has(.pick + .pick) { flex-wrap: wrap; row-gap: 2px; }
-  .composer-bar:has(.pick + .pick) .grow { flex-basis: 100%; height: 0; order: 1; }
-  .composer-bar:has(.pick + .pick) > :not(.pick):not(.grow) { order: 2; }
-  .composer-bar:has(.pick + .pick) > .send { margin-left: auto; }
+  .composer-bar .pick { height: 32px; }
+  .composer-bar .pick > .caret, .composer-bar .project-trigger > svg:last-child { display: none; }
+  .composer-bar .pick:first-child { flex-shrink: 1; }
+  .composer-bar .pick ~ .pick { flex: none; width: 32px; padding: 0; justify-content: center; }
+  .composer-bar .pick ~ .pick > span:not(.logo) { display: none; }
+  .composer-bar .pick ~ .pick > svg:first-child { width: 16px; height: 16px; }
+  .composer-bar .pick[data-on] > svg:first-child { color: var(--accent); }
+  .composer-bar .choice-long { display: none; }
+  .composer-bar .choice-short { display: inline; }
+  .composer-bar:has(.send-after) { flex-wrap: wrap; row-gap: 2px; }
+  .composer-bar:has(.send-after) .grow { flex-basis: 100%; height: 0; order: 1; }
+  .composer-bar:has(.send-after) > :not(.pick):not(.grow) { order: 2; }
+  .composer-bar:has(.send-after) > .composer-send-actions { margin-left: auto; }
+  /* The note under a new session's box wraps instead of running off the edge. */
+  .dev-note { flex-wrap: wrap; row-gap: 0; }
+  .dev-note span:last-child { flex: 1 1 100%; min-width: 0; }
+  .dev-note .mono::after { content: none; }
 }
 
 /* The archive controls stay within reach when the current conversation or sidebar closes. */

@@ -374,7 +374,7 @@ runAnswers.setMaxListeners(0);
 
 const MAX_QUESTION = 1000;
 const MAX_OPTION = 120;
-const MAX_ANSWER = 2000;
+const MAX_ANSWER = 8000;
 /** `always`: allow this, and the rest of its kind in this conversation (offered only where it means something). */
 export const PERMISSION_ANSWERS = ["allow", "deny", "always"] as const;
 const MAX_DETAIL = 12_000;
@@ -459,7 +459,7 @@ export function getRun(world: World, id: string): { run: Run; events: CoreEvent[
 }
 
 /** Chronological transcript pages, with the insertion order breaking timestamp ties. Older unanswered
- * requests accompany the first page, but do not move the cursor past the intervening conversation. */
+ * requests and the running turn accompany the first page, so a long queue cannot hide the steer target. */
 export function conversationRuns(world: World, id: string, options: { before?: string; changed?: string[]; limit?: number } = {}) {
   const scope = `${DETAIL_ROWS} WHERE r.conversation_id = ?`;
   const order = " ORDER BY r.created_at DESC, r.rowid DESC";
@@ -479,7 +479,8 @@ export function conversationRuns(world: World, id: string, options: { before?: s
   const boundary = page.at(-1);
   const nextCursor = rows.length > size && boundary ? String(boundary.id) : null;
   if (!before && nextCursor && boundary) {
-    page.push(...world.db.prepare(`${scope} AND r.request IS NOT NULL AND (r.created_at, r.rowid) < (?, ?)${order}`)
+    page.push(...world.db.prepare(`${scope} AND (r.state = 'running' OR r.request IS NOT NULL)
+      AND (r.created_at, r.rowid) < (?, ?)${order}`)
       .all(id, boundary.created_at, boundary.history_order));
   }
   return { runs: page.map(turn).reverse(), nextCursor };

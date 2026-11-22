@@ -8,9 +8,11 @@
  * Events are a Server-Sent Events stream ordered by `seq`; reconnecting with
  * `Last-Event-ID` (or `?after=`) replays what was missed.
  *
- *   GET  /api/state                         StateResponse
+ *   GET  /api/state                         StateResponse (?have=<module>.<revision>,… leaves out the module
+ *                                           snapshots the device already holds; ?modules=0 leaves out all of them)
  *   GET  /api/events?after=<seq>            text/event-stream: `core` events (data: CoreEvent, with ids, replayed
- *                                           after a drop) and `live` updates (data: LiveUpdate, never replayed)
+ *                                           after a drop) and `live` updates (data: LiveUpdate, never replayed).
+ *                                           Add `&delta=1` to accept incremental live updates.
  *   GET  /api/conversations/archived        { conversations: ArchivedConversation[] }, most recently archived first
  *   GET  /api/conversations/:id             ConversationDetail (?before=<run id> for an older page, ?runs=<ids> to refresh changed turns)
  *   POST /api/conversations                 StartSessionRequest -> Conversation (a development session in a trusted project)
@@ -264,8 +266,10 @@ export interface SteerRequest { text: string }
 export interface EngineModel { id: string; provider: string; name: string; reasoning: boolean; contextWindow?: number }
 export interface ModelsResponse { models: EngineModel[] }
 
-/** A run's reply as it is being written. Not recorded; the run's outcome is the record. */
-export interface LiveUpdate { runId: string; conversationId: string; text: string }
+/** A run's reply as it is being written. By default every update carries the full reply so far (`text`).
+ * A device requesting `delta=1` can receive appended text (`add`) at a JavaScript string offset (`at`)
+ * after its first full update. A changed prefix starts another full update. */
+export interface LiveUpdate { runId: string; conversationId: string; text?: string; at?: number; add?: string }
 
 export interface RespondRequest { requestId: string; answer: string }
 
@@ -386,8 +390,12 @@ export interface StateResponse {
   receipts: Record<string, CoreEvent[]>;
   /** Not yet acknowledged, oldest first. A presented notice belongs to the device that presented it. */
   notices: Notice[];
-  /** Each module's snapshot, by module id. */
+  /** Each module's snapshot, by module id. One the device said it already holds (`?have=`, below) is left out. */
   modules: Record<string, unknown>;
+  /** A revision of each module's snapshot, by module id: it changes when the snapshot does. A device that asks
+   * again with `?have=<id>.<revision>,…` is not sent the snapshots it names; `?modules=0` leaves them all out (and
+   * the revisions with them). Older home nodes omit this and always send every snapshot. */
+  revisions?: Record<string, string>;
   /** The views devices can open, by module id. */
   views: Record<string, Array<{ id: string; title: string }>>;
   /** The areas things can belong to, in their fixed order. */

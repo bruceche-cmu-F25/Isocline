@@ -10,7 +10,9 @@
  * A device's commands are not written out here. A module's are its operations (`/api/ops/<name>`); the harness's own
  * are in commands.ts, and each address below that changes something only names one of them.
  */
+import { createHash } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { extname, join, normalize, sep } from "node:path";
@@ -24,7 +26,7 @@ import {
 import { invokeOp, runQuery } from "@alfred/module-kit";
 import type {
   ConversationDetail, CoreEvent, ModelsResponse, NoticeRequest, OpRequest, OutletReport, OutletsResponse, PairRequest, PresenceRequest, ProposalResponse, PushInfo, PushResult,
-  RemoteResponse, RespondRequest, StateResponse, SteerRequest, SubmitRunRequest, SessionBranch, SessionChanges, SessionProcesses, SessionPullRequest,
+  RemoteResponse, RespondRequest, StateResponse, SteerRequest, LiveUpdate as WireLiveUpdate, SubmitRunRequest, SessionBranch, SessionChanges, SessionProcesses, SessionPullRequest,
 } from "@alfred/protocol";
 import { PROTOCOL_VERSION } from "@alfred/protocol";
 import type { Home } from "./home.ts";
@@ -41,7 +43,7 @@ import { WEB_SESSION_COOKIE, type WebLock } from "./web-lock.ts";
 import type { PushService } from "./push.ts";
 import { MAX_VOICE_BYTES, type Transcriber } from "./voice.ts";
 import { MAX_FILE_BYTES } from "./files.ts";
-import { HttpError, parseObject, readBytes, readJson, send, statusOf } from "./wire.ts";
+import { encodingFor, HttpError, overTheWire, pack, parseObject, readBytes, readJson, send, statusOf, type Encoding } from "./wire.ts";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const TYPES: Record<string, string> = {
@@ -95,10 +97,29 @@ const automationView = (world: World, id: string) => listAutomations(world).find
 const mayDev = (peer: Peer) => peer.local || !!peer.device?.scopes.includes("dev");
 const NEEDS_DEV = "This device needs permission to use development sessions.";
 
-function state(home: Home, peer: Peer): StateResponse {
+/** What a device says it already holds of the modules' snapshots: `have=todo.<revision>,mail.<revision>` (the
+ * revisions are the ones the last state came with), or `modules=0` from a caller that reads none of them. */
+function held(query: URLSearchParams): { none: boolean; revisions: Map<string, string> } {
+  const revisions = new Map<string, string>();
+  for (const part of (query.get("have") ?? "").split(",").slice(0, 64)) {
+    const dot = part.indexOf(".");
+    if (dot > 0) revisions.set(part.slice(0, dot), part.slice(dot + 1));
+  }
+  return { none: query.get("modules") === "0", revisions };
+}
+
+function state(home: Home, peer: Peer, has: ReturnType<typeof held> = { none: false, revisions: new Map() }): StateResponse {
   // One synchronous read: no commit can land between these statements.
+  // The snapshots are most of the state (a calendar, an inbox) and seldom what changed. Each goes out with a
+  // revision, a digest of what it says; a device that names the one it holds is not sent the same thing again.
   const modules: Record<string, unknown> = {};
-  for (const module of home.modules) if (module.snapshot) modules[module.id] = module.snapshot(home.world);
+  const revisions: Record<string, string> = {};
+  if (!has.none) for (const module of home.modules) if (module.snapshot) {
+    const snapshot = module.snapshot(home.world);
+    const revision = createHash("sha1").update(JSON.stringify(snapshot)).digest("base64url").slice(0, 16);
+    revisions[module.id] = revision;
+    if (has.revisions.get(module.id) !== revision) modules[module.id] = snapshot;
+  }
   // A device without `dev` gets a development session's title and whether it is busy, and nothing it said or did.
   const devAccess = mayDev(peer) ? "allowed" : !peer.local && peer.device?.devAccessRequested ? "pending" : "off";
   const hidden = devAccess === "allowed" ? null : sessionIds(home.world);
@@ -118,6 +139,7 @@ function state(home: Home, peer: Peer): StateResponse {
     // Presented ones too: the device that showed one keeps showing it until acknowledged.
     notices: listNotices(home.world, { states: ["pending", "claimed", "presented"], includeNeedsYou: true, hiddenConversations }),
     modules,
+    revisions,
     views,
     areas: [...AREAS],
     proposals: listOpenProposals(home.world),
@@ -140,6 +162,8 @@ function conversationDetail(home: Home, id: string, query: URLSearchParams): Con
   return { conversation, ...page, receipts: listRunReceipts(home.world, ids), activity: listRunActivity(home.world, ids), files: listRunFiles(home.world, ids) };
 }
 
+const RUN_ENDED = new Set(["run.completed", "run.failed", "run.cancelled", "run.interrupted"]);
+
 /** Server-Sent Events: replay after the cursor, then follow commits. Live
  * updates (a reply being written) go out as they happen and are never replayed.
  */
@@ -152,11 +176,14 @@ function events(home: Home, peer: Peer, req: IncomingMessage, res: ServerRespons
   let cursor = Number.isInteger(fromHeader) && fromHeader >= 0 ? fromHeader : Number.isInteger(fromQuery) && fromQuery >= 0 ? fromQuery : latestEventSeq(home.world);
   res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store", Connection: "keep-alive", "X-Accel-Buffering": "no" });
   res.write(`retry: 2000\n\n`);
+  /** What this device has been sent of each reply being written, by run. */
+  const written = url.searchParams.get("delta") === "1" ? new Map<string, string>() : null;
   const flush = () => {
     if (!canStream()) { res.end(); return; }
     for (;;) {
       const page = listEvents(home.world, { after: cursor, limit: 500 });
       for (const event of page.events as CoreEvent[]) {
+        if (event.runId && RUN_ENDED.has(event.kind)) written?.delete(event.runId);
         if (event.kind === "device.dev_requested" && !peer.local && event.subject !== `device:${peer.device?.id}`) continue;
         const sent = open || !sessionEvent(home.world, event) ? event : { ...event, payload: {} };
         res.write(`id: ${event.seq}\nevent: core\ndata: ${JSON.stringify(sent)}\n\n`);
@@ -169,11 +196,34 @@ function events(home: Home, peer: Peer, req: IncomingMessage, res: ServerRespons
   const unsubscribe = home.world.onCommit(() => setImmediate(() => { if (!res.writableEnded) flush(); }));
   const onLive = (update: LiveUpdate) => {
     if (res.writableEnded || !canStream() || (!open && isSession(home.world, update.conversationId))) return;
-    res.write(`event: live\ndata: ${JSON.stringify(update)}\n\n`);
+    // The engine says the whole reply so far each time. A device is sent it once, then only what was written since;
+    // the whole again whenever the text does not simply go on from what this device has.
+    const had = written?.get(update.runId);
+    written?.set(update.runId, update.text);
+    const sent: WireLiveUpdate = had !== undefined && update.text.length >= had.length && update.text.startsWith(had)
+      ? { runId: update.runId, conversationId: update.conversationId, at: had.length, add: update.text.slice(had.length) }
+      : update;
+    res.write(`event: live\ndata: ${JSON.stringify(sent)}\n\n`);
   };
   home.live.on("update", onLive);
   const keepAlive = setInterval(() => res.write(`: keep-alive\n\n`), 25_000);
   req.on("close", () => { unsubscribe(); home.live.off("update", onLive); clearInterval(keepAlive); });
+}
+
+/** The interface's files as other devices get them: packed once, kept while the file stays as it is. */
+const PACKED_TYPES = new Set([".html", ".js", ".css", ".svg", ".json", ".webmanifest"]);
+const packed = new Map<string, Promise<Buffer>>();
+function packedFile(file: string, stat: { mtimeMs: number; size: number }, encoding: Encoding): Promise<Buffer> {
+  const key = `${encoding}:${file}:${stat.mtimeMs}:${stat.size}`;
+  let bytes = packed.get(key);
+  if (!bytes) {
+    // A rebuilt interface has new names for its files: the old ones' copies go with the next that is packed.
+    if (packed.size >= 64) packed.clear();
+    bytes = readFile(file).then((plain) => pack(plain, encoding, "thorough"));
+    packed.set(key, bytes);
+    bytes.catch(() => packed.delete(key));
+  }
+  return bytes;
 }
 
 function serveFile(res: ServerResponse, uiDir: string, pathname: string): void {
@@ -187,13 +237,22 @@ function serveFile(res: ServerResponse, uiDir: string, pathname: string): void {
   if (!file.startsWith(uiDir + sep) && file !== uiDir) file = join(uiDir, "index.html");
   if (!existsSync(file) || !statSync(file).isFile()) file = join(uiDir, "index.html");
   const hashed = file.includes(`${sep}assets${sep}`);
-  res.writeHead(200, {
+  const headers = {
     "Content-Type": TYPES[extname(file)] ?? "application/octet-stream",
     "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
+    Vary: "Accept-Encoding",
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
-  });
-  createReadStream(file).pipe(res);
+  };
+  const plain = () => { if (res.headersSent) return; res.writeHead(200, headers); createReadStream(file).pipe(res); };
+  const stat = statSync(file);
+  const encoding = PACKED_TYPES.has(extname(file)) && stat.size >= 1024 ? encodingFor(res) : null;
+  if (!encoding) return plain();
+  packedFile(file, stat, encoding).then((bytes) => {
+    if (res.headersSent || res.destroyed) return;
+    res.writeHead(200, { ...headers, "Content-Encoding": encoding, "Content-Length": bytes.byteLength });
+    res.end(bytes);
+  }, plain);
 }
 
 const LOCAL_ONLY = "Only on the machine Alfred runs on";
@@ -302,7 +361,7 @@ async function remoteRoute(home: Home, options: ServeOptions, peer: Peer, req: I
 async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
   const method = req.method ?? "GET";
   const path = url.pathname;
-  if (method === "GET" && path === "/api/state") return send(res, 200, state(home, peer));
+  if (method === "GET" && path === "/api/state") return send(res, 200, state(home, peer, held(url.searchParams)));
   /** Development sessions are for this machine and the devices the user let in (4.7). */
   const dev = mayDev(peer);
   const needDev = (session: boolean) => { if (session && !dev) throw new HttpError(403, NEEDS_DEV, "needs_dev"); };
@@ -331,16 +390,17 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
   if (kept && method === "GET") {
     const found = getFile(home.world, kept[1]);
     needDev(isSession(home.world, found.conversationId));
-    const bytes = home.files.read(found.id);
+    // Read as it is sent: a 20 MB file held whole would stop every other answer while it was read.
+    const stored = home.files.open(found.id);
     // The user's own file, but still only bytes to a browser: an image is shown as an image, anything else is
     // handed over as a download; neither may load or run anything.
     res.writeHead(200, {
       "Content-Type": found.kind === "image" ? found.type : found.kind === "pdf" ? "application/pdf" : "text/plain; charset=utf-8",
-      "Content-Length": bytes.byteLength, "Cache-Control": peer.local ? "private, max-age=86400" : "no-store", "X-Content-Type-Options": "nosniff",
+      "Content-Length": stored.size, "Cache-Control": peer.local ? "private, max-age=86400" : "no-store", "X-Content-Type-Options": "nosniff",
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
       ...(found.kind === "image" ? {} : { "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(found.name)}` }),
     });
-    res.end(bytes);
+    stored.stream().on("error", () => res.destroy()).pipe(res);
     return;
   }
   if (method === "POST" && path === "/api/conversations") { needDev(true); return send(res, 201, (await ask("conversation.start")).result); }
@@ -454,7 +514,7 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     const found = getConversation(home.world, id);
     if (!found.projectId) throw new HttpError(404, "Not a development session");
     if (method === "GET" && !processId) return send(res, 200, { processes: home.processes.list(id) } satisfies SessionProcesses);
-    if (method === "GET" && action === "logs") return send(res, 200, home.processes.logs(id, processId, Number(url.searchParams.get("lines")) || 400));
+    if (method === "GET" && action === "logs") return send(res, 200, home.processes.logs(id, processId, Number(url.searchParams.get("lines")) || 400, url.searchParams.has("seen") ? Number(url.searchParams.get("seen")) : undefined));
     if (method === "POST" && action === "stop") { await readJson(req); home.processes.stop(id, processId); return send(res, 200, {}); }
     if (method === "POST" && !processId) {
       if (!peer.local) throw new HttpError(403, LOCAL_ONLY, "local_only");
@@ -743,6 +803,7 @@ export function createHttpServer(home: Home, options: ServeOptions): Server {
 /** The listener Tailscale Serve forwards other devices to (bind it to loopback). Nothing here counts as local. */
 export function createIngressServer(home: Home, options: ServeOptions & { remote: RemoteAccess }): Server {
   const server: Server = createServer((req, res) => {
+    overTheWire(res);
     const port = (server.address() as AddressInfo | null)?.port || 0;
     if (!ingressHostAllowed(req, port, options.remote.dnsName) || !originAllowed(req)) return send(res, 403, { error: "Forbidden host or origin" });
     // Serve sets this for tailnet users (and drops any the device sent). Another account's device is refused outright.

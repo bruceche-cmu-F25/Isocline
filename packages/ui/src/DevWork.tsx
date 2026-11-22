@@ -212,14 +212,23 @@ export function Processes({ id, mode, processes, onOpen, onLogs }: {
   );
 }
 
-/** What a process printed, in the session's drawer; read again while it runs. */
+/** What a process printed, in the session's drawer; read again while it runs and the window is in view, and only
+ * taken when there is something new. Once it has ended and nothing more comes, it is not asked again. */
 export function ProcessLogs({ id, process }: { id: string; process: SessionProcess }) {
   const [text, setText] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    const load = () => api.processLogs(id, process.id).then((next) => { if (alive) setText(next.text); }, () => { if (alive) setText(""); });
+    /** How much it had printed at the last reading (a home node that does not say reads it all each time). */
+    let seen: number | undefined;
+    const load = () => api.processLogs(id, process.id, seen).then((next) => {
+      if (!alive) return;
+      if (!next.unchanged) setText(next.text);
+      seen = next.printed;
+      // Ended, and a reading after that found nothing new: what is shown is all there will be.
+      if (next.process.exit !== null && next.unchanged) window.clearInterval(timer);
+    }, () => { seen = undefined; if (alive) setText(""); });
     load();
-    const timer = window.setInterval(load, 2000);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") load(); }, 2000);
     return () => { alive = false; window.clearInterval(timer); };
   }, [id, process.id]);
   return (

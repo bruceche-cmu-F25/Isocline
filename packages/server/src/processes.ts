@@ -33,7 +33,8 @@ export class ProcessError extends Error {
   constructor(code: ProcessError["code"], message: string) { super(message); this.code = code; }
 }
 
-interface Running extends ProcessInfo { session: string; child: ChildProcess | null; output: string }
+/** `printed`: how many characters it has printed in all, which says whether there is anything new to read. */
+interface Running extends ProcessInfo { session: string; child: ChildProcess | null; output: string; printed: number }
 
 const MAX_OUTPUT = 256 * 1024;
 const PER_SESSION = 8;
@@ -81,9 +82,10 @@ export class Processes {
     const child = spawn(shell, ["-lc", command], { cwd: input.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     const entry: Running = {
       id: newId(), session, command, name: (input.name?.trim() || nameOf(command)).slice(0, 60), by: input.by,
-      startedAt: new Date().toISOString(), exit: null, endedAt: null, url: null, child, output: "",
+      startedAt: new Date().toISOString(), exit: null, endedAt: null, url: null, child, output: "", printed: 0,
     };
     const take = (chunk: Buffer) => {
+      entry.printed += chunk.length;
       entry.output = (entry.output + chunk.toString("utf8")).slice(-MAX_OUTPUT);
       if (!entry.url) {
         const found = LOCAL_URL.exec(plainLines(chunk.toString("utf8")).join("\n"));
@@ -101,7 +103,7 @@ export class Processes {
       this.#changed(session);
     };
     child.on("exit", (code, signal) => end(code ?? (signal ? 128 + (signalNumber(signal) ?? 15) : -1)));
-    child.on("error", (error) => { entry.output += `\n${error.message}\n`; end(-1); });
+    child.on("error", (error) => { entry.output += `\n${error.message}\n`; entry.printed += error.message.length + 2; end(-1); });
     this.#all.set(entry.id, entry);
     this.#changed(session);
     return info(entry);
@@ -117,12 +119,14 @@ export class Processes {
     return entry;
   }
 
-  /** What it printed last, as plain lines. */
-  logs(session: string, id: string, lines = 200): { process: ProcessInfo; text: string } {
+  /** What it printed last, as plain lines. `seen`: the `printed` the asker's last reading came with; when nothing
+   * was printed since, the answer says `unchanged` and carries no text, instead of the same lines again. */
+  logs(session: string, id: string, lines = 200, seen?: number): { process: ProcessInfo; text: string; printed: number; unchanged?: true } {
     const entry = this.#get(session, id);
+    if (seen === entry.printed) return { process: info(entry), text: "", printed: entry.printed, unchanged: true };
     const all = plainLines(entry.output);
     while (all.length && !all[all.length - 1]) all.pop();
-    return { process: info(entry), text: all.slice(-Math.max(1, Math.min(lines, 2000))).join("\n") };
+    return { process: info(entry), text: all.slice(-Math.max(1, Math.min(lines, 2000))).join("\n"), printed: entry.printed };
   }
 
   /** Stops it and what it started (its group): asked to end, then made to after a few seconds. An ended one is

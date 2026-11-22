@@ -19,6 +19,7 @@ import type { CoreEvent, Proposal, Run, StateResponse } from "@alfred/protocol";
 import { api } from "../api.ts";
 import { Request } from "../Conversation.tsx";
 import type { FigureState } from "../entity/tesseract.js";
+import { useLiveText } from "../live.ts";
 import { t } from "../i18n/index.ts";
 import { outcomeText } from "../Inbox.tsx";
 import { ConversationReply } from "../ConversationReply.tsx";
@@ -126,7 +127,6 @@ export interface AskBarProps {
   /** The open conversation: what the card is about. */
   selected: string | null;
   figure: FigureState;
-  live: Readonly<Record<string, string>>;
   /** Questions worth asking from the page in view. */
   suggestions: string[];
   /** In the phone's dock: the dock's own figure is the one in sight, and there is a way back to the tabs. */
@@ -148,7 +148,7 @@ export interface AskBarProps {
   onBack?(): void;
 }
 
-export function AskBar({ state, selected, figure, live, suggestions, dock, find, page, about, onAbout, onAsk, onOpen, onProposal, onEvent, onBack }: AskBarProps) {
+export function AskBar({ state, selected, figure, suggestions, dock, find, page, about, onAbout, onAsk, onOpen, onProposal, onEvent, onBack }: AskBarProps) {
   const [draft, setDraft] = useState("");
   /** The found thing picked with the arrow keys; null while Enter does its default. */
   const [picked, setPicked] = useState<number | null>(null);
@@ -172,9 +172,7 @@ export function AskBar({ state, selected, figure, live, suggestions, dock, find,
   const receipts = run ? (state.receipts[run.id] ?? []).filter((event) => event.kind !== "proposal.opened" || !settled) : [];
 
   // The stream ends a moment before the finished reply arrives; the words stay up for that moment.
-  const spoken = useRef<Record<string, string>>({});
-  for (const [runId, text] of Object.entries(live)) spoken.current[runId] = text;
-  const words = run ? live[run.id] ?? (where === "busy" ? spoken.current[run.id] : undefined) : undefined;
+  const words = useLiveText(run?.id, where === "busy");
 
   // The card comes up when the open conversation's newest turn moves: asked, waiting for you, done. One that was
   // already over when the bar appeared has been seen; one waiting for you has not been answered.

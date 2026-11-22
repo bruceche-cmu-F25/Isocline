@@ -87,7 +87,12 @@ export async function request<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
-  state: () => call<StateResponse>("/api/state"),
+  /** `have`: the revisions of the module snapshots this device already holds (the last state's `revisions`); the
+   * home node leaves those snapshots out when they still say the same. `have: null`: no snapshots at all. */
+  state: (have?: Readonly<Record<string, string>> | null) => {
+    const held = have ? Object.entries(have).map(([id, revision]) => `${encodeURIComponent(id)}.${encodeURIComponent(revision)}`).join(",") : "";
+    return call<StateResponse>(`/api/state${have === null ? "?modules=0" : held ? `?have=${held}` : ""}`);
+  },
   /** Without a conversation id, the run starts a new conversation. `context`: the page it was asked from. */
   submit: (goal: string, conversationId?: string, context?: ViewContext, attachments?: string[]) =>
     post<SubmitRunResponse>("/api/runs", { requestId: newRequestId(), goal, ...(conversationId ? { conversationId } : {}), ...(context ? { context } : {}), ...(attachments?.length ? { attachments } : {}) }),
@@ -126,7 +131,9 @@ export const api = {
   processes: (id: string) => call<SessionProcesses>(`/api/conversations/${id}/processes`),
   startProcess: (id: string, command: string) => post<SessionProcess>(`/api/conversations/${id}/processes`, { command }),
   stopProcess: (id: string, processId: string) => post<Record<string, never>>(`/api/conversations/${id}/processes/${processId}/stop`, {}),
-  processLogs: (id: string, processId: string) => call<{ process: SessionProcess; text: string }>(`/api/conversations/${id}/processes/${processId}/logs`),
+  /** `seen`: the `printed` of the last reading; with nothing printed since, the answer is `unchanged` and has no text. */
+  processLogs: (id: string, processId: string, seen?: number) => call<{ process: SessionProcess; text: string; printed?: number; unchanged?: true }>(
+    `/api/conversations/${id}/processes/${processId}/logs${seen === undefined ? "" : `?seen=${seen}`}`),
   respond: (runId: string, requestId: string, answer: string) => post<Run>(`/api/runs/${runId}/respond`, { requestId, answer }),
   run: (runId: string) => call<{ run: Run }>(`/api/runs/${runId}`),
   cancel: (runId: string) => post<Run>(`/api/runs/${runId}/cancel`, { requestId: newRequestId() }),
@@ -188,7 +195,7 @@ export function subscribe(
   after: number,
   handlers: { event(event: CoreEvent): void; live(update: LiveUpdate): void; connection(state: Connection): void },
 ): () => void {
-  const source = new EventSource(`/api/events?after=${after}`);
+  const source = new EventSource(`/api/events?after=${after}&delta=1`);
   source.addEventListener("open", () => handlers.connection("live"));
   source.addEventListener("error", () => handlers.connection("reconnecting"));
   source.addEventListener("core", (message) => handlers.event(JSON.parse((message as MessageEvent<string>).data) as CoreEvent));

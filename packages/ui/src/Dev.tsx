@@ -35,7 +35,6 @@ export interface DevProps {
   session: string | null;
   onSession(id: string | null): void;
   refresh(): void;
-  live: Readonly<Record<string, string>>;
   highlighted: ReadonlySet<string>;
   onEvent(listener: (event: CoreEvent) => void): () => void;
   pageTitle(view: string): string | undefined;
@@ -86,7 +85,7 @@ const noView = () => {};
 const MODES: SessionMode[] = ["plan", "ask", "edits"];
 const PANEL_KEY = "alfred.devPanel";
 
-function Session({ id, conversation, state, onSession, live, highlighted, onEvent, pageTitle, automationTitle }: DevProps & { id: string; conversation?: ConversationRow }) {
+function Session({ id, conversation, state, onSession, highlighted, onEvent, pageTitle, automationTitle }: DevProps & { id: string; conversation?: ConversationRow }) {
   const project = state.projects?.find((candidate) => candidate.id === conversation?.projectId);
   // Open by default where there is room beside the session; on a narrow screen it opens over it, when asked.
   const [panel, setPanel] = useState(() => { try { return matchMedia("(min-width: 1001px)").matches && localStorage.getItem(PANEL_KEY) !== "closed"; } catch { return false; } });
@@ -140,7 +139,7 @@ function Session({ id, conversation, state, onSession, live, highlighted, onEven
   return (
     <div className="dev-layout" data-panel={(panel && !browser) || undefined} data-browser={browser || undefined}>
       <section className="dev-session">
-        <Conversation key={id} id={id} live={live} highlighted={highlighted} suggestions={[]} pageTitle={pageTitle} automationTitle={automationTitle}
+        <Conversation key={id} id={id} highlighted={highlighted} suggestions={[]} pageTitle={pageTitle} automationTitle={automationTitle}
           onEvent={onEvent} onView={noView} onStarted={noView}
           sessionToolbar={(title, usage) => (
             <header className="dev-bar">

@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { fastSpeed, type ConversationDetail, type CoreEvent, type EngineModel, type FileInfo, type Run, type RunRequest, type SessionMode, type ThinkingLevel, type ViewContext } from "@alfred/protocol";
 import { mergeHistory } from "./conversationHistory.ts";
+import { useLiveText } from "./live.ts";
 import { ApiError, api } from "./api.ts";
 import { Logo, modelMark } from "./brand/Logo.tsx";
 import { intlLocale, t, type Key } from "./i18n/index.ts";
@@ -17,6 +18,8 @@ import { AttachButton, AttachChips, SentFiles, useComposer } from "./attach.tsx"
 import { sends } from "./prefs.ts";
 
 const BUSY = new Set<Run["state"]>(["queued", "running", "cancelling"]);
+/** The same empty list each time, so a turn with nothing recorded is not redrawn for a new one. */
+const NO_EVENTS: CoreEvent[] = [];
 
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 /** 950, 1.2k, 34k, 1.3M */
@@ -52,10 +55,11 @@ function useNow(on: boolean): number {
 
 /** Where a reply stands, shown by the dot beside it, and the one line on what it is doing while it works. */
 type Phase = "idle" | "busy" | "waiting" | "failed";
-function phase(run: Run, live: string | undefined, runSteps: Array<{ label: string; about: string; status: string; command: boolean }>): { dot: Phase; label: string | null } {
+function phase(run: Run, live: string | undefined, runSteps: Array<{ label: string; about: string; status: string; command: boolean }>, held: boolean): { dot: Phase; label: string | null } {
   if (run.request) return { dot: "waiting", label: null };
   switch (run.state) {
-    case "queued": return { dot: "busy", label: t("run.queued") };
+    // Held: the turn before it waits on the user, so this one starts when they answer, not by itself.
+    case "queued": return held ? { dot: "waiting", label: t("run.held") } : { dot: "busy", label: t("run.queued") };
     case "cancelling": return { dot: "busy", label: t("run.cancelling") };
     case "running": {
       const step = runSteps.findLast((candidate) => candidate.status === "started");
@@ -158,7 +162,13 @@ export function Request({ run, request, showQuestion = true, onAnswered }: {
   );
 }
 
-function Turn({ run, receipts, activity, files, live, highlighted, askedOn, startedBy, latest, unread }: { run: Run; unread: boolean; receipts: CoreEvent[]; activity: CoreEvent[]; files?: FileInfo[]; live?: string; highlighted: boolean; askedOn?: string; startedBy?: string; latest: boolean }) {
+/** One turn. It follows its own reply as it is written (live.ts), so a word arriving redraws this turn and no other;
+ * `onGrow` says the reply got longer, for the list to keep its end in view. */
+const Turn = memo(function Turn({ run, receipts, activity, files, highlighted, askedOn, startedBy, latest, unread, held, onGrow }: { run: Run; unread: boolean; receipts: CoreEvent[]; activity: CoreEvent[]; files?: FileInfo[]; highlighted: boolean; askedOn?: string; startedBy?: string; latest: boolean; held: boolean; onGrow(): void }) {
+  // The stream ends a moment before the finished reply loads. The words stay up for that moment, so the reply does
+  // not empty and fill again.
+  const live = useLiveText(run.id, BUSY.has(run.state));
+  useLayoutEffect(() => { if (live !== undefined) onGrow(); }, [live, onGrow]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const act = (action: () => Promise<unknown>) => {
@@ -173,7 +183,7 @@ function Turn({ run, receipts, activity, files, live, highlighted, askedOn, star
   const usage = activity.filter((event) => event.kind === "run.usage").at(-1);
   const working = BUSY.has(run.state);
   const now = useNow(working);
-  const { dot, label } = phase(run, live, runSteps);
+  const { dot, label } = phase(run, live, runSteps, held);
   const elapsed = working ? Math.max(0, now - Date.parse(run.createdAt)) : num(usage?.payload.durationMs) || Math.max(0, Date.parse(run.updatedAt) - Date.parse(run.createdAt));
 
   const model = typeof usage?.payload.model === "string" ? usage.payload.model : null;
@@ -210,7 +220,7 @@ function Turn({ run, receipts, activity, files, live, highlighted, askedOn, star
             ))}
             {run.request && <Request key={run.request.id} run={run} request={run.request} />}
             {working && !run.request && (label || !live) && (
-              <p className="working" role="status"><span className="working-label">{label ?? t("run.writing")}</span><span className="elapsed">{took(elapsed).replace(/\.\d/, "")}</span></p>
+              <p className="working" role="status"><span className="working-label">{label ?? t("run.writing")}</span>{!(held && run.state === "queued") && <span className="elapsed">{took(elapsed).replace(/\.\d/, "")}</span>}</p>
             )}
             {live && !outcome && <Markdown className="reply-text live" text={live} />}
             {outcome?.reply && <ConversationReply text={outcome.reply} conversationId={run.conversationId} runId={run.id} unread={unread} />}
@@ -235,7 +245,7 @@ function Turn({ run, receipts, activity, files, live, highlighted, askedOn, star
       </div>
     </li>
   );
-}
+});
 
 const MODES: SessionMode[] = ["plan", "ask", "edits"];
 const THINKING: Array<[ThinkingLevel | "", Key]> = [["", "think.default"], ["off", "think.off"], ["low", "think.low"], ["medium", "think.medium"], ["high", "think.high"], ["xhigh", "think.xhigh"], ["max", "think.max"]];
@@ -336,7 +346,7 @@ function ComposerBar({ conversation, onError }: { conversation: ConversationDeta
     onError(null);
     api.updateConversation(conversation.id, patch).catch((reason: Error) => onError(reason.message));
   };
-  const modelOptions = models.map((model) => ({ value: `${model.provider}/${model.id}`, label: `${model.name} · ${model.provider}` }));
+  const modelOptions: Array<{ value: string; label: string; short?: string }> = models.map((model) => ({ value: `${model.provider}/${model.id}`, label: `${model.name} · ${model.provider}`, short: model.name }));
   if (conversation.model && !modelOptions.some((option) => option.value === conversation.model)) {
     modelOptions.unshift({ value: conversation.model, label: conversation.model.split("/").at(-1) || conversation.model });
   }
@@ -349,7 +359,7 @@ function ComposerBar({ conversation, onError }: { conversation: ConversationDeta
     <>
       <ChoicePicker label={t("conv.model")} value={conversation.model ?? ""} options={modelOptions}
         icon={mark ? <Logo name={mark} /> : <Icon name="model" />} onChange={(value) => change({ model: value || null })} />
-      <ChoicePicker label={t("conv.thinking")} value={conversation.thinking ?? ""} icon={<Icon name="bulb" />}
+      <ChoicePicker label={t("conv.thinking")} value={conversation.thinking ?? ""} on={!!conversation.thinking} icon={<Icon name="bulb" />}
         options={THINKING.map(([value, label]) => ({ value, label: t(label) }))}
         onChange={(value) => change({ thinking: (value || null) as ThinkingLevel | null })} />
       <ChoicePicker label={t("speed.title")} title={t(canFast ? "speed.hint" : "speed.none")}
@@ -399,7 +409,6 @@ function Stats({ total, percent, window }: { total: Spent; percent: number | nul
 export interface ConversationProps {
   /** null: a new conversation, started by the first message. */
   id: string | null;
-  live: Readonly<Record<string, string>>;
   highlighted: ReadonlySet<string>;
   /** The page a message sent now is asked from; nothing when no page is in view. */
   context?: ViewContext;
@@ -419,7 +428,7 @@ export interface ConversationProps {
   sessionToolbar?: SessionToolbar;
 }
 
-export function Conversation({ id, live, highlighted, context, suggestions, pageTitle, automationTitle, onEvent, onView, onStarted, slim, sessionToolbar }: ConversationProps) {
+export function Conversation({ id, highlighted, context, suggestions, pageTitle, automationTitle, onEvent, onView, onStarted, slim, sessionToolbar }: ConversationProps) {
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const { store, text: draft, sending, attachments } = useComposer(sessionToolbar && id ? id : undefined);
   const setDraft = store.setText;
@@ -482,12 +491,11 @@ export function Conversation({ id, live, highlighted, context, suggestions, page
   }, [id, onEvent]);
 
   const runs = detail?.runs ?? [];
-  const last = runs.at(-1);
-  // The stream ends a moment before the finished reply loads. The words stay up for that moment, so the reply does
-  // not empty and fill again.
-  const spoken = useRef<Record<string, string>>({});
-  for (const [runId, text] of Object.entries(live)) spoken.current[runId] = text;
-  const liveOf = (run: Run) => live[run.id] ?? (BUSY.has(run.state) ? spoken.current[run.id] : undefined);
+  const working = runs.find((run) => run.state === "running");
+  // A turn waiting on the user holds the conversation: a new message would queue behind it and never start. So
+  // words typed while it asks a question are the answer to that question; a yes-or-no on a change stays a button.
+  const waitingOn = runs.find((run) => run.request);
+  const asking = waitingOn?.request?.kind === "input" ? waitingOn : undefined;
   // Following a reply keeps its end in view. Someone else's new turn does not interrupt a reader in the past.
   const atEnd = useRef(true);
   const onScroll = () => {
@@ -504,6 +512,11 @@ export function Conversation({ id, live, highlighted, context, suggestions, page
       el.scrollTop = el.scrollHeight;
     }
   });
+  /** A reply being written got longer (a turn says so itself): its end stays in view for someone reading there. */
+  const follow = useCallback(() => {
+    const el = list.current;
+    if (el && atEnd.current && !anchor.current) el.scrollTop = el.scrollHeight;
+  }, []);
 
   const loadEarlier = async () => {
     const listElement = list.current;
@@ -526,10 +539,11 @@ export function Conversation({ id, live, highlighted, context, suggestions, page
     }
   };
 
-  // While a run works, what you say joins it, as in Claude; otherwise it is the next request.
-  const working = last?.state === "running" ? last : null;
-  const send = (event?: FormEvent, text = draft) => {
-    event?.preventDefault();
+  const steerTarget = attachments.ids.length ? undefined : working;
+  const answerTarget = attachments.ids.length ? undefined : asking;
+  const sendDisabled = (!draft.trim() && !attachments.ids.length) || sending || attachments.busy;
+  const sendLabel = t(answerTarget ? "req.answer" : steerTarget ? "composer.steer" : working ? "composer.afterTurn" : "composer.send");
+  const send = (text = draft, timing: "default" | "afterTurn" = "default") => {
     // Files alone are a message too: they go with a few words of their own.
     const files = attachments.ids;
     const goal = text.trim() || (files.length ? t("attach.look") : "");
@@ -537,13 +551,13 @@ export function Conversation({ id, live, highlighted, context, suggestions, page
     atEnd.current = true;
     setError(null);
     const submit = () => api.submit(goal, id ?? undefined, context, files).then(({ run }) => { if (!id) onStarted(run.conversationId); });
-    // Words can join the turn that is working; files cannot, so with files it is the next message.
-    const attempt = working && !files.length
-      // It may have just finished: then it goes as a new message.
-      ? api.steer(working.id, goal).then(() => undefined, (reason: unknown) => {
-        if (reason instanceof ApiError && reason.status === 409) return submit();
-        throw reason;
-      })
+    // The target may have just finished, or the question been answered elsewhere. Keep the words as a follow-up.
+    const orSubmit = (reason: unknown) => {
+      if (reason instanceof ApiError && reason.status === 409) return submit();
+      throw reason;
+    };
+    const attempt = timing === "default" && answerTarget ? api.respond(answerTarget.id, answerTarget.request!.id, goal).then(() => undefined, orSubmit)
+      : timing === "default" && steerTarget ? api.steer(steerTarget.id, goal).then(() => undefined, orSubmit)
       : submit();
     attempt
       .then(() => store.sent(text, files))
@@ -552,7 +566,10 @@ export function Conversation({ id, live, highlighted, context, suggestions, page
   };
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends and Shift+Enter breaks the line, or ⌘Enter sends (Settings → General); never while an IME is composing.
-    if (sends(event)) send(event);
+    if (sends(event)) {
+      event.preventDefault();
+      send();
+    }
   };
 
   // Which page a question came from, said once each time it changes, not on every turn.
@@ -581,17 +598,17 @@ export function Conversation({ id, live, highlighted, context, suggestions, page
             <button className="link" type="button" disabled={loadingEarlier} onClick={loadEarlier}>{t(loadingEarlier ? "auto.loading" : "conv.earlier")}</button>
           </li>}
           {runs.map((run, index) => (
-            <Turn key={run.id} run={run} unread={detail?.conversation.unreadReplyId === run.id} receipts={detail?.receipts[run.id] ?? []} activity={detail?.activity[run.id] ?? []}
-              files={detail?.files?.[run.id]} live={liveOf(run)} highlighted={highlighted.has(run.id)} askedOn={askedOn(run, runs[index - 1])} startedBy={startedBy(run)} latest={index === runs.length - 1} />
+            <Turn key={run.id} run={run} unread={detail?.conversation.unreadReplyId === run.id} receipts={detail?.receipts[run.id] ?? NO_EVENTS} activity={detail?.activity[run.id] ?? NO_EVENTS}
+              files={detail?.files?.[run.id]} onGrow={follow} highlighted={highlighted.has(run.id)} askedOn={askedOn(run, runs[index - 1])} startedBy={startedBy(run)} latest={index === runs.length - 1} held={!!waitingOn && waitingOn.id !== run.id} />
           ))}
         </ol>
       )}
       {offer && (
         <div className="suggestions" role="group" aria-label={t("chips.label")}>
-          {suggestions.map((text) => <button type="button" key={text} className="suggestion" onClick={() => send(undefined, text)}>{text}</button>)}
+          {suggestions.map((text) => <button type="button" key={text} className="suggestion" onClick={() => send(text)}>{text}</button>)}
         </div>
       )}
-      <form className="composer" onSubmit={send} onPaste={attachments.onPaste} onDrop={attachments.onDrop} onDragOver={attachments.onDragOver}>
+      <form className="composer" onSubmit={(event) => { event.preventDefault(); send(); }} onPaste={attachments.onPaste} onDrop={attachments.onDrop} onDragOver={attachments.onDragOver}>
         <AttachChips attachments={attachments} />
         <textarea
           ref={field}
@@ -599,7 +616,7 @@ export function Conversation({ id, live, highlighted, context, suggestions, page
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKey}
           rows={Math.min(6, Math.max(1, draft.split("\n").length))}
-          placeholder={t(working ? "composer.working" : id ? "composer.continue" : "composer.new")}
+          placeholder={t(answerTarget ? "composer.answer" : steerTarget ? "composer.working" : id ? "composer.continue" : "composer.new")}
           aria-label={t("composer.label")}
           maxLength={8000}
         />
@@ -608,9 +625,14 @@ export function Conversation({ id, live, highlighted, context, suggestions, page
           <span className="grow" />
           <AttachButton attachments={attachments} />
           <MicButton onText={(words) => { setDraft((now) => appendDictation(now, words)); field.current?.focus(); }} />
-          <button type="submit" className="send" disabled={(!draft.trim() && !attachments.ids.length) || sending || attachments.busy} aria-label={t("composer.send")}>
-            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
-          </button>
+          <span className="composer-send-actions">
+            {steerTarget && <button type="button" className="send-after" disabled={sendDisabled} onClick={() => send(draft, "afterTurn")}>
+              {t("composer.afterTurn")}
+            </button>}
+            <button type="submit" className="send" disabled={sendDisabled} aria-label={sendLabel} title={sendLabel}>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
+            </button>
+          </span>
         </div>
       </form>
       {error && <p className="problem small composer-error" role="alert">{error}</p>}

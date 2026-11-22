@@ -3,6 +3,9 @@
  */
 import type { StateResponse } from "@alfred/protocol";
 
+/** Events that are only a run's own progress. Inside a payload the quotes are escaped, so this is the event's kind. */
+const QUIET = /"kind":"run\.(step|usage)"/;
+
 export class HomeClient {
   readonly base: string;
   connected = false;
@@ -12,8 +15,9 @@ export class HomeClient {
     this.base = `http://127.0.0.1:${port}`;
   }
 
+  /** Without the modules' snapshots (a calendar, an inbox): the app itself reads what waits, not those. */
   async state(): Promise<StateResponse> {
-    const response = await fetch(`${this.base}/api/state`, { signal: AbortSignal.timeout(5000) });
+    const response = await fetch(`${this.base}/api/state?modules=0`, { signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error(`state: ${response.status}`);
     return await response.json() as StateResponse;
   }
@@ -63,7 +67,8 @@ export class HomeClient {
               const block = buffer.slice(0, end);
               buffer = buffer.slice(end + 2);
               const id = block.split("\n").find((line) => line.startsWith("id: "));
-              if (id) { lastId = id.slice(4); changed(); }
+              // A step of a run's work (and what it spent) changes nothing the app reads from the state.
+              if (id) { lastId = id.slice(4); if (!QUIET.test(block)) changed(); }
             }
           }
         } catch {

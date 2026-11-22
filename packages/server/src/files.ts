@@ -10,7 +10,8 @@
  */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, type ReadStream } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { addFile, dropUnattachedFiles, fileName, newId, type Attachment, type FileInfo, type FileKind, type World } from "@alfred/core";
 
@@ -83,7 +84,7 @@ export class FileStore {
     if (!found) throw new UploadError("unsupported", "Only images, PDFs and text files can be attached");
     const id = newId();
     const name = fileName(input.name);
-    writeFileSync(this.path(id), bytes, { mode: 0o600 });
+    await writeFile(this.path(id), bytes, { mode: 0o600 });
     let extra: { pages?: number; readable?: boolean } = {};
     if (found.kind === "pdf") extra = await (this.#options.readPdf ?? pdfText)(this.path(id), `${this.path(id)}.txt`).catch(() => ({ readable: false }));
     try {
@@ -98,6 +99,12 @@ export class FileStore {
   }
 
   read(id: string): Buffer { return readFileSync(this.path(id)); }
+
+  /** The file to send as it is read, with its size; throws when its bytes are not there. */
+  open(id: string): { size: number; stream(): ReadStream } {
+    const path = this.path(id);
+    return { size: statSync(path).size, stream: () => createReadStream(path) };
+  }
 
   /** The files of a run as the engine takes them: an image by its path, a text file by its path (the engine puts a
    * small one into the message and reads a large one when it wants), a PDF by the text read out of it. */
