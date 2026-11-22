@@ -2,18 +2,19 @@
  * internet, filed by topic. L1: saving looks the page up for its title and what it says about itself; reading the
  * page and writing a summary come later.
  */
-import { AREAS, lastChanges, userLocale, type World } from "@alfred/core";
+import { AREAS, lastChangesOf, userLocale, type World } from "@alfred/core";
 import { defineModule, defineOp, defineTool, Type, type AlfredModule } from "@alfred/module-kit";
 import {
-  ensureTopic, formatClip, getIcon, hostOf, iconsToFetch, listClips, listPlaces, listTopics, MIGRATIONS, noteIcons, orderPlaces, pendingClips, pinPlace,
-  recordIcon, recordPage, recordPageFailure, refetchClip, removeLink, removeTopic, renamePlace, saveClip, updateClip, updateTopic,
+  ensureTopic, formatClip, getIcon, groupPlaces, hostOf, iconsToFetch, listClips, listFolders, listPlaces, listTopics, MIGRATIONS, movePlace, noteIcons, orderPlaces, pendingClips, pinPlace,
+  recordIcon, recordPage, recordPageFailure, refetchClip, removeLink, removeTopic, renamePlace, saveClip, ungroupPlaces, updateClip, updateTopic,
 } from "./domain.ts";
-import { fetchIcon, fetchPage, PageFetchError, type IconFetcher, type PageFetcher } from "./fetch.ts";
+import { getCover, pendingCovers, recordCover } from "./covers.ts";
+import { fetchCover, fetchIcon, fetchPage, PageFetchError, type IconFetcher, type PageFetcher, type PageInfo } from "./fetch.ts";
 import { CLIP_STATES, type LinksSnapshot } from "./types.ts";
 
 export * from "./domain.ts";
 export * from "./types.ts";
-export { classify, findUrl, isShortener, LinkUrlError, nameFromUrl, normalizeUrl } from "./url.ts";
+export { classify, findUrl, isShortener, LinkUrlError, nameFromUrl, normalizeUrl, parseLinkPaste } from "./url.ts";
 export {
   decodeEntities, fetchIcon, fetchPage, imageType, isPublicAddress, looksLikeWall, PageFetchError, readHead,
   type IconFetcher, type PageFetcher, type PageInfo, type SiteIcon,
@@ -29,25 +30,30 @@ const SAY = {
 };
 
 function snapshot(world: World): LinksSnapshot {
-  const changes = lastChanges(world, "link:");
+  const clips = listClips(world);
+  const changes = lastChangesOf(world, clips.map((clip) => `link:${clip.id}`));
   return {
+    sharedTitles: true,
     places: listPlaces(world),
-    clips: listClips(world).map((clip) => (changes.get(`link:${clip.id}`)?.actor === "alfred" ? { ...clip, byAlfred: true } : clip)),
+    folders: listFolders(world),
+    clips: clips.map((clip) => (changes.get(`link:${clip.id}`)?.actor === "alfred" ? { ...clip, byAlfred: true } : clip)),
     topics: listTopics(world),
   };
 }
 
 /** Looks up the pages of clips that have not been looked up yet. One at a time: this is a handful of pages a day,
  * and being gentle with other people's sites costs nothing. */
-function lookUp(fetcher: PageFetcher, icons: IconFetcher) {
+function lookUp(fetcher: PageFetcher, icons: IconFetcher, covers: typeof fetchCover) {
   return async (world: World, _services: unknown, signal: AbortSignal): Promise<void> => {
     /** The icons each page named, by host, for the icon step below. */
     const named = new Map<string, string[]>();
+    const pages = new Map<string, PageInfo>();
     for (const clip of pendingClips(world)) {
       if (signal.aborted) return;
       try {
         const page = await fetcher(clip.url, signal);
         if (page.icons?.length) named.set(hostOf(page.url), page.icons);
+        pages.set(clip.id, page);
         recordPage(world, clip.id, page);
       } catch (error) {
         if (signal.aborted) return;
@@ -55,6 +61,17 @@ function lookUp(fetcher: PageFetcher, icons: IconFetcher) {
         const code = error instanceof PageFetchError ? error.code : "network";
         recordPageFailure(world, clip.id, code, code === "timeout" || code === "network");
       }
+    }
+    for (const clip of pendingCovers(world)) {
+      if (signal.aborted) return;
+      let page = pages.get(clip.id);
+      // Existing videos predate the cache. Backfill just their covers, keeping saved metadata and reading state.
+      if (!page) {
+        try { page = await fetcher(clip.url, signal); } catch { /* try again after the cache interval */ }
+      }
+      const cover = page?.cover && !signal.aborted ? await covers(page.cover, signal).catch(() => null) : null;
+      if (signal.aborted) return;
+      recordCover(world, clip.id, cover, page?.durationSeconds);
     }
     // Then each site's own icon, once per host: the ones its page named, else a look at the page, else /favicon.ico.
     let found = 0;
@@ -74,7 +91,7 @@ function lookUp(fetcher: PageFetcher, icons: IconFetcher) {
 }
 
 /** `fetcher`, `icons`: how a page and a site's icon are looked up; the real ones unless a test passes its own. */
-export function createLinksModule(options: { fetcher?: PageFetcher; icons?: IconFetcher } = {}): AlfredModule {
+export function createLinksModule(options: { fetcher?: PageFetcher; icons?: IconFetcher; covers?: typeof fetchCover } = {}): AlfredModule {
   return defineModule({
     id: "link",
     title: "Links",
@@ -87,15 +104,15 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
       "Use link_pin only for a site they want at hand every day (\"pin Canvas\"), not for something to read or watch.",
       "You have not read a saved page: its title and description are the page's own words. Do not describe what a clip says beyond them.",
     ].join("\n"),
-    sync: { everyMs: 5 * 60_000, onEvents: ["link.saved", "link.refetch", "link.pinned"], run: lookUp(options.fetcher ?? fetchPage, options.icons ?? fetchIcon) },
-    // A site's kept icon, by host: `/api/modules/link/files/<host>`.
-    file: (world, name) => getIcon(world, name),
+    sync: { everyMs: 5 * 60_000, onEvents: ["link.saved", "link.refetch", "link.pinned"], run: lookUp(options.fetcher ?? fetchPage, options.icons ?? fetchIcon, options.covers ?? fetchCover) },
+    // Both covers and site icons are served locally through module files.
+    file: (world, name) => /^cover_[\w-]+$/.test(name) ? getCover(world, name.slice(6)) : getIcon(world, name),
 
     ops: [
       defineOp({
         name: "link.save",
         input: Type.Object({
-          url: Type.String({ minLength: 1, maxLength: 2100 }), title: Type.Optional(Type.String({ maxLength: 300 })), note: Type.Optional(Type.String({ maxLength: 500 })),
+          url: Type.String({ minLength: 1, maxLength: 2100 }), title: Type.Optional(Type.String({ maxLength: 300 })), sharedTitle: Type.Optional(Type.String({ maxLength: 300 })), note: Type.Optional(Type.String({ maxLength: 500 })),
           topicId: Type.Optional(Type.String()), topic: Type.Optional(Type.String({ maxLength: 60 })), area: Type.Optional(Type.String()),
         }),
         run: (world, input) => saveClip(world, input),
@@ -118,6 +135,15 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
         run: (world, input) => pinPlace(world, input),
       }),
       defineOp({ name: "link.rename", input: Type.Object({ id: Type.String(), title: Type.String({ maxLength: 60 }) }), run: (world, input) => renamePlace(world, input.id, input.title) }),
+      defineOp({ name: "link.ungroup", input: Type.Object({ id: Type.String() }), run: (world, input) => ungroupPlaces(world, input.id) }),
+      defineOp({
+        name: "link.group", input: Type.Object({ id: Type.String(), targetId: Type.String(), title: Type.String({ minLength: 1, maxLength: 60 }) }),
+        run: (world, input) => groupPlaces(world, input),
+      }),
+      defineOp({
+        name: "link.move", input: Type.Object({ id: Type.String(), folderId: Type.Optional(Type.String()), beforeId: Type.Optional(Type.String()) }),
+        run: (world, input) => movePlace(world, input),
+      }),
       defineOp({ name: "link.order", input: Type.Object({ ids: Type.Array(Type.String(), { maxItems: 200 }) }), run: (world, input) => orderPlaces(world, input.ids) }),
       defineOp({
         name: "link.topic", input: Type.Object({ id: Type.Optional(Type.String()), name: Type.Optional(Type.String({ maxLength: 60 })), area: Type.Optional(Type.String()), remove: Type.Optional(Type.Boolean()) }),
@@ -134,7 +160,7 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
         name: "link_list", label: "Links", level: "read",
         description: "The user's links: their places (pinned sites), their topics, and the clips they saved, newest first, with ids. Narrow the clips with words from a title or note, a topic's name, or a state.",
         parameters: Type.Object({
-          search: Type.Optional(Type.String({ maxLength: 120, description: "Words in a clip's title, note, description or site" })),
+          search: Type.Optional(Type.String({ maxLength: 120, description: "Words in a folder, site name or address, or a clip's title, note, description or site" })),
           topic: Type.Optional(Type.String({ maxLength: 60, description: "A topic's name" })),
           state: Type.Optional(State),
           limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, description: "How many clips, 30 if left out" })),
@@ -145,6 +171,9 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
           const wanted = params.topic ? topics.find((topic) => topic.name.toLowerCase() === params.topic!.trim().toLowerCase()) : undefined;
           if (params.topic && !wanted) return `No topic named "${params.topic}". Topics: ${topics.map((topic) => topic.name).join(", ") || "none yet"}.`;
           const words = (params.search ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+          const folders = new Map(listFolders(world).map((folder) => [folder.id, folder.title]));
+          const matches = (value: string) => words.every((word) => value.toLowerCase().includes(word));
+          const places = listPlaces(world).filter((place) => matches([place.title, place.url, folders.get(place.folderId ?? "")].join(" ")));
           const clips = listClips(world).filter((clip) => {
             if (wanted && clip.topicId !== wanted.id) return false;
             if (params.state && clip.state !== params.state) return false;
@@ -153,7 +182,8 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
           });
           const shown = clips.slice(0, params.limit ?? 30);
           return [
-            `Places: ${listPlaces(world).map((place) => `${place.title} (${place.id})`).join(", ") || "none"}.`,
+            `Places: ${places.map((place) => `${place.title} (${place.id})${place.folderId ? ` in ${folders.get(place.folderId)}` : ""}`).join(", ") || "none"}.`,
+            ...[...folders].filter(([, title]) => matches(title)).map(([id, title]) => `Folder: ${title} (${id}).`),
             `Topics: ${topics.map((topic) => `${topic.name}${topic.area ? ` [${topic.area}]` : ""}`).join(", ") || "none yet"}.`,
             clips.length ? `Clips (${shown.length}${clips.length > shown.length ? ` of ${clips.length}` : ""}):` : "No clips match.",
             ...shown.map((clip) => formatClip(clip, topics)),

@@ -14,8 +14,17 @@ export interface Place {
   id: string;
   title: string;
   url: string;
+  folderId?: string;
+  /** Order within its folder or among the top-level places and folders. */
+  position?: number;
   /** The site's own icon is kept: its name under the module's files (`/api/modules/link/files/<icon>`). */
   icon?: string;
+}
+
+export interface PlaceFolder {
+  id: string;
+  title: string;
+  position: number;
 }
 
 /** Something the user saved: a video, an article, a post. */
@@ -24,8 +33,8 @@ export interface Clip {
   url: string;
   /** The page's own title; until it is fetched, a name made from the address. */
   title: string;
-  /** Where the title came from: the user or Alfred gave it, the page did, or it is made from the address. */
-  titleSource: "given" | "page" | "url";
+  /** Where the title came from: the user or Alfred gave it, the page or a platform share named it, or it is derived from the address. */
+  titleSource: "given" | "page" | "share" | "url";
   /** A known platform (`youtube`, `bilibili`, `xiaohongshu`, `github`…), or `web`. */
   platform: string;
   type: LinkType;
@@ -46,6 +55,10 @@ export interface Clip {
   fetchError?: string;
   /** The site's own icon is kept: its name under the module's files. */
   icon?: string;
+  /** Cached video thumbnail, served by the home node through the module files route. */
+  cover?: string;
+  /** Playback time when published by the source. */
+  durationSeconds?: number;
   /** Alfred saved or last changed it (from the event log). */
   byAlfred?: boolean;
 }
@@ -59,7 +72,10 @@ export interface Topic {
 }
 
 export interface LinksSnapshot {
+  /** This home node accepts a separate sharedTitle on link.save; older nodes accept the original share caption in note. */
+  sharedTitles?: true;
   places: Place[];
+  folders?: PlaceFolder[];
   /** Newest first. */
   clips: Clip[];
   topics: Topic[];

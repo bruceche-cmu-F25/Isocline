@@ -172,3 +172,48 @@ test("a site's own icon is kept once per host and shown from there; a site witho
   assert.deepEqual(iconsToFetch(w, 8, Date.now() + 8 * 86_400_000).map((entry) => entry.host), ["www.youtube.com"]);
   assert.equal(listEvents(w).events.filter((event) => event.kind === "link.icons").length, 1, "devices are told once that icons arrived");
 });
+
+test("previously saved videos acquire local covers without replacing their metadata, and removing the clip removes its image", async () => {
+  const w = world();
+  const url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+  const { clip } = ok(saveClip(w, { url, title: "My saved talk" }));
+  recordPage(w, clip.id, { url, site: "YouTube", author: "My channel" });
+  ok(updateClip(w, clip.id, { state: "seen", note: "For Tuesday" }));
+  let downloads = 0;
+  const image = { type: "image/jpeg", bytes: new Uint8Array([255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1]) };
+  const thumbnail = "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg";
+  const module = createLinksModule({
+    fetcher: async (href) => href === url ? { url, cover: thumbnail, title: "Updated title", durationSeconds: 814 } : { url: href },
+    covers: async (href) => { assert.equal(href, thumbnail); downloads++; return image; },
+    icons: async () => null,
+  });
+  await module.sync!.run(w, {}, signal);
+  await module.sync!.run(w, {}, signal);
+  const [saved] = listClips(w);
+  assert.equal(downloads, 1);
+  assert.deepEqual([saved.title, saved.author, saved.state, saved.note], ["My saved talk", "My channel", "seen", "For Tuesday"]);
+  assert.equal(saved.durationSeconds, 814);
+  assert.equal(saved.cover, `cover_${clip.id}`);
+  assert.deepEqual(module.file!(w, saved.cover!), image);
+  ok(removeLink(w, clip.id));
+  assert.equal(module.file!(w, saved.cover!), null);
+});
+
+test("a Xiaohongshu note keeps its own cover and is a video when its page says so; an article's banner is not kept", async () => {
+  const w = world();
+  const pictures = "https://www.xiaohongshu.com/explore/aa?xsec_token=A", film = "https://www.xiaohongshu.com/explore/bb?xsec_token=B", article = "https://example.com/essay";
+  for (const url of [pictures, film, article]) ok(saveClip(w, { url }));
+  const image = { type: "image/jpeg", bytes: new Uint8Array([255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1]) };
+  const asked: string[] = [];
+  const module = createLinksModule({
+    fetcher: async (href) => ({ url: href, title: `page ${href.slice(-1)}`, cover: `${href}#cover`, ...(href === film ? { video: true as const } : {}) }),
+    covers: async (href) => { asked.push(href); return image; },
+    icons: async () => null,
+  });
+  await module.sync!.run(w, {}, signal);
+  const by = (url: string) => listClips(w).find((clip) => clip.url === url)!;
+  assert.deepEqual([by(pictures).type, by(film).type, by(article).type], ["post", "video", "article"]);
+  assert.ok(by(pictures).cover && by(film).cover);
+  assert.equal(by(article).cover, undefined);
+  assert.deepEqual(asked.sort(), [`${pictures}#cover`, `${film}#cover`]);
+});

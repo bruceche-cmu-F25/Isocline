@@ -5,9 +5,10 @@
  * web for its title (fetch.ts, later), filed under at most one topic, and marked unread, seen or to do.
  * One address is one place and one clip at most.
  */
-import { changedFields, isArea, AREA_IDS, newId, recordDomainEvent, type World } from "@alfred/core";
-import { CLIP_STATES, type Clip, type ClipState, type Place, type Topic } from "./types.ts";
-import { classify, isShortener, nameFromUrl, normalizeUrl } from "./url.ts";
+import { changedFields, isArea, AREA_IDS, newId, recordDomainEvent, type Migration, type World } from "@alfred/core";
+import { CLIP_STATES, type Clip, type ClipState, type Place, type PlaceFolder, type Topic } from "./types.ts";
+import { classify, isShortener, nameFromUrl, normalizeUrl, parseShareText } from "./url.ts";
+import { COVER_MIGRATION } from "./covers.ts";
 
 export type LinkResult<T> = T | { error: string };
 const failed = (result: object): result is { error: string } => "error" in result;
@@ -15,7 +16,7 @@ const failed = (result: object): result is { error: string } => "error" in resul
 /** The places every world starts with. They are the user's from then on: renamed, moved or removed like any other. */
 const DEFAULT_PLACES = [["Google", "https://www.google.com"], ["Gmail", "https://mail.google.com"], ["YouTube", "https://www.youtube.com"]];
 
-export const MIGRATIONS = [{
+export const MIGRATIONS: Migration[] = [{
   id: "link:1",
   sql: `
 CREATE TABLE link_topics (
@@ -62,6 +63,47 @@ CREATE TABLE link_icons (
   checked_at TEXT NOT NULL
 ) STRICT;
 `,
+}, {
+  id: "link:3",
+  sql: `
+CREATE TABLE link_folders (
+  id TEXT PRIMARY KEY NOT NULL,
+  title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 60),
+  position INTEGER NOT NULL
+) STRICT;
+ALTER TABLE link_items ADD COLUMN folder_id TEXT REFERENCES link_folders(id) CHECK (folder_id IS NULL OR kind = 'place');
+CREATE INDEX link_places_folder ON link_items(folder_id, position) WHERE kind = 'place';
+CREATE VIEW link_place_tiles AS
+  SELECT id, title, position, folder_id, 0 AS is_folder FROM link_items WHERE kind = 'place'
+  UNION ALL
+  SELECT id, title, position, NULL, 1 FROM link_folders;
+`,
+}, COVER_MIGRATION, {
+  id: "link:5",
+  sql: `
+ALTER TABLE link_items ADD COLUMN shared_title TEXT CHECK (length(shared_title) BETWEEN 1 AND 300);
+UPDATE link_items SET fetch = 'pending', fetch_tries = 0, fetch_error = NULL
+  WHERE kind = 'clip' AND platform IN ('bilibili', 'xiaohongshu') AND title_source = 'url';
+UPDATE link_covers SET checked_at = 0 WHERE bytes IS NULL AND clip_id IN
+  (SELECT id FROM link_items WHERE kind = 'clip' AND platform = 'bilibili' AND type = 'video');
+`,
+  apply(db) {
+    // Older clients saved every word around a URL as a note. Only split recognizable platform signatures.
+    const rows = db.prepare("SELECT id, url, title, title_source, note FROM link_items WHERE kind = 'clip' AND platform IN ('bilibili', 'xiaohongshu')").all();
+    const repair = db.prepare("UPDATE link_items SET title = ?, shared_title = ?, note = ? WHERE id = ?");
+    for (const row of rows) {
+      const url = row.url as string;
+      const share = parseShareText(url, (row.note as string | null) ?? "");
+      const title = row.title_source === "url" ? nameFromUrl(url) : row.title as string;
+      if (share.title || title !== row.title) repair.run(title, share.title ?? null, share.note ?? null, row.id);
+    }
+  },
+}, {
+  // Xiaohongshu notes are now read as a phone reads them, which also says whether a note is a video: every saved
+  // note is looked up again (a title the user gave stays).
+  id: "link:6",
+  sql: `UPDATE link_items SET fetch = 'pending', fetch_tries = 0, fetch_error = NULL
+  WHERE kind = 'clip' AND platform = 'xiaohongshu' AND fetch != 'pending';`,
 }];
 
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "");
@@ -70,14 +112,25 @@ const text = (value: unknown, max: number) => (typeof value === "string" ? value
 export const hostOf = (url: string) => { try { return new URL(url).hostname.toLowerCase(); } catch { return ""; } };
 
 function toPlace(row: Record<string, unknown>): Place {
-  return { id: row.id as string, title: row.title as string, url: row.url as string, ...(row.has_icon ? { icon: hostOf(row.url as string) } : {}) };
+  return {
+    id: row.id as string, title: row.title as string, url: row.url as string, position: row.position as number,
+    ...(row.folder_id ? { folderId: row.folder_id as string } : {}),
+    ...(row.has_icon ? { icon: hostOf(row.url as string) } : {}),
+  };
+}
+function clipTitle(row: Record<string, unknown>): Pick<Clip, "title" | "titleSource"> {
+  return row.title_source === "url" && row.shared_title
+    ? { title: row.shared_title as string, titleSource: "share" }
+    : { title: row.title as string, titleSource: row.title_source as Clip["titleSource"] };
 }
 function toClip(row: Record<string, unknown>): Clip {
   return {
-    id: row.id as string, url: row.url as string, title: row.title as string, titleSource: row.title_source as Clip["titleSource"],
+    id: row.id as string, url: row.url as string, ...clipTitle(row),
     platform: row.platform as string, type: row.type as Clip["type"], site: row.site as string,
     ...(row.author ? { author: row.author as string } : {}), ...(row.description ? { description: row.description as string } : {}),
     ...(row.note ? { note: row.note as string } : {}), ...(row.topic_id ? { topicId: row.topic_id as string } : {}),
+    ...(row.duration_seconds ? { durationSeconds: row.duration_seconds as number } : {}),
+    ...(row.has_cover ? { cover: `cover_${row.id}` } : {}),
     state: row.state as ClipState, savedAt: row.saved_at as string, fetch: row.fetch as Clip["fetch"],
     ...(row.fetch_error ? { fetchError: row.fetch_error as string } : {}),
     ...(row.has_icon ? { icon: hostOf(row.url as string) } : {}),
@@ -94,9 +147,18 @@ function withIcons(world: World, rows: Array<Record<string, unknown>>): Array<Re
 export function listPlaces(world: World): Place[] {
   return withIcons(world, world.db.prepare("SELECT * FROM link_items WHERE kind = 'place' ORDER BY position, rowid").all()).map(toPlace);
 }
+
+export function listFolders(world: World): PlaceFolder[] {
+  return world.db.prepare("SELECT id, title, position FROM link_folders ORDER BY position, rowid").all().map(toFolder);
+}
+
+function toFolder(row: Record<string, unknown>): PlaceFolder {
+  return { id: row.id as string, title: row.title as string, position: row.position as number };
+}
 /** Newest first. */
 export function listClips(world: World, options: { limit?: number } = {}): Clip[] {
-  return withIcons(world, world.db.prepare("SELECT * FROM link_items WHERE kind = 'clip' ORDER BY saved_at DESC, rowid DESC LIMIT ?").all(Math.min(options.limit ?? 500, 2000))).map(toClip);
+  return withIcons(world, world.db.prepare(`SELECT i.*, c.bytes IS NOT NULL AS has_cover, c.duration_seconds
+    FROM link_items i LEFT JOIN link_covers c ON c.clip_id = i.id WHERE kind = 'clip' ORDER BY saved_at DESC, i.rowid DESC LIMIT ?`).all(Math.min(options.limit ?? 500, 2000))).map(toClip);
 }
 export function listTopics(world: World): Topic[] {
   return world.db.prepare("SELECT * FROM link_topics ORDER BY created_at, rowid").all()
@@ -166,7 +228,7 @@ export function pinPlace(world: World, input: { url: string; title?: string }): 
     if (found) return { place: toPlace(found), existing: true };
     const id = newId();
     const title = text(input.title, 60) || siteName(url);
-    const position = db.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS next FROM link_items WHERE kind = 'place'").get()!.next as number;
+    const position = db.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS next FROM link_place_tiles WHERE folder_id IS NULL").get()!.next as number;
     db.prepare("INSERT INTO link_items (id, kind, url, title, title_source, position, saved_at) VALUES (?, 'place', ?, ?, 'given', ?, ?)").run(id, url, title, position, new Date().toISOString());
     recordDomainEvent(world, said("pinned", id, { title, url }));
     return { place: toPlace(row(world, id, "place")!), existing: false };
@@ -179,12 +241,20 @@ function siteName(url: string): string {
   return (host.charAt(0).toUpperCase() + host.slice(1)).slice(0, 60);
 }
 
-export function renamePlace(world: World, id: string, title: string): LinkResult<Place> {
+export function renamePlace(world: World, id: string, title: string): LinkResult<Place | PlaceFolder> {
   const name = text(title, 60);
   if (!name) return { error: "A place needs a name." };
   return world.tx((db) => {
     const found = row(world, id, "place");
-    if (!found) return { error: "No such place." };
+    if (!found) {
+      const folder = db.prepare("SELECT * FROM link_folders WHERE id = ?").get(id);
+      if (!folder) return { error: "No such place." };
+      if (folder.title !== name) {
+        db.prepare("UPDATE link_folders SET title = ? WHERE id = ?").run(name, id);
+        recordDomainEvent(world, said("renamed", id, { title: name, was: folder.title as string }));
+      }
+      return toFolder({ ...folder, title: name });
+    }
     if (found.title !== name) {
       db.prepare("UPDATE link_items SET title = ? WHERE id = ?").run(name, id);
       recordDomainEvent(world, said("renamed", id, { title: name, was: found.title as string }));
@@ -193,14 +263,99 @@ export function renamePlace(world: World, id: string, title: string): LinkResult
   });
 }
 
-/** The places in the order given; any left out keep their order after those. */
-export function orderPlaces(world: World, ids: readonly string[]): Place[] {
+/** Ordered peers in the same grid. Folders and top-level sites share positions. */
+function siblings(world: World, folderId?: string) {
+  return world.db.prepare("SELECT id, is_folder FROM link_place_tiles WHERE folder_id IS ? ORDER BY position, id").all(folderId ?? null)
+    .map((tile) => ({ id: tile.id as string, isFolder: !!tile.is_folder }));
+}
+
+function writeOrder(world: World, tiles: ReturnType<typeof siblings>) {
+  const place = world.db.prepare("UPDATE link_items SET position = ? WHERE id = ? AND position != ?");
+  const folder = world.db.prepare("UPDATE link_folders SET position = ? WHERE id = ? AND position != ?");
+  tiles.forEach((tile, i) => (tile.isFolder ? folder : place).run(i, tile.id, i));
+}
+
+function removeEmptyFolder(world: World, folderId: string) {
+  world.db.prepare("DELETE FROM link_folders WHERE id = ? AND NOT EXISTS (SELECT 1 FROM link_items WHERE folder_id = ?)").run(folderId, folderId);
+}
+
+/** Replace a folder in the top-level row with its sites in their displayed order. */
+export function ungroupPlaces(world: World, id: string): LinkResult<{ id: string }> {
   return world.tx((db) => {
-    const current = listPlaces(world).map((place) => place.id);
-    const next = [...new Set(ids.filter((id) => current.includes(id))), ...current.filter((id) => !ids.includes(id))];
-    if (next.join() !== current.join()) {
-      const set = db.prepare("UPDATE link_items SET position = ? WHERE id = ?");
-      next.forEach((id, index) => set.run(index, id));
+    const root = siblings(world);
+    const index = root.findIndex((entry) => entry.id === id && entry.isFolder);
+    if (index < 0) return { error: "No such folder." };
+    const members = siblings(world, id);
+    db.prepare("UPDATE link_items SET folder_id = NULL WHERE folder_id = ?").run(id);
+    db.prepare("DELETE FROM link_folders WHERE id = ?").run(id);
+    root.splice(index, 1, ...members);
+    writeOrder(world, root);
+    recordDomainEvent(world, said("ungrouped", id, { placeIds: members.map((entry) => entry.id) }));
+    return { id };
+  });
+}
+
+/** Two sites become a folder in the target site's top-level position. */
+export function groupPlaces(world: World, input: { id: string; targetId: string; title: string }): LinkResult<{ folder: PlaceFolder }> {
+  const title = text(input.title, 60);
+  if (!title) return { error: "A folder needs a name." };
+  if (input.id === input.targetId) return { error: "Choose two different places." };
+  return world.tx((db) => {
+    const source = row(world, input.id, "place"), target = row(world, input.targetId, "place");
+    if (!source || !target) return { error: "No such place." };
+    if (target.folder_id !== null) {
+      if (source.folder_id === target.folder_id) {
+        return { folder: toFolder(db.prepare("SELECT * FROM link_folders WHERE id = ?").get(target.folder_id as string)!) };
+      }
+      return { error: "The target place is already in a folder." };
+    }
+    const folder = { id: newId(), title, position: target.position as number };
+    db.prepare("INSERT INTO link_folders (id, title, position) VALUES (?, ?, ?)").run(folder.id, title, folder.position);
+    const move = db.prepare("UPDATE link_items SET folder_id = ?, position = ? WHERE id = ?");
+    move.run(folder.id, 0, input.targetId);
+    move.run(folder.id, 1, input.id);
+    if (source.folder_id) removeEmptyFolder(world, source.folder_id as string);
+    recordDomainEvent(world, said("grouped", folder.id, { title, placeIds: [input.targetId, input.id] }));
+    return { folder };
+  });
+}
+
+/** Move to a folder or the top-level grid. A missing neighbour means append. */
+export function movePlace(world: World, input: { id: string; folderId?: string; beforeId?: string }): LinkResult<{ id: string }> {
+  return world.tx((db) => {
+    const tile = db.prepare("SELECT * FROM link_place_tiles WHERE id = ?").get(input.id);
+    if (!tile) return { error: "No such place or folder." };
+    if (input.folderId !== undefined) {
+      if (tile.is_folder) return { error: "Folders can only be moved in Places." };
+      if (!db.prepare("SELECT 1 FROM link_folders WHERE id = ?").get(input.folderId)) return { error: "No such folder." };
+    }
+    const peers = siblings(world, input.folderId);
+    if (input.beforeId !== undefined && !peers.some((peer) => peer.id === input.beforeId)) return { error: "The target is no longer in this grid." };
+    if (input.id === input.beforeId) return { id: input.id };
+    const next = peers.filter((peer) => peer.id !== input.id);
+    const index = input.beforeId === undefined ? next.length : next.findIndex((peer) => peer.id === input.beforeId);
+    next.splice(index, 0, { id: input.id, isFolder: !!tile.is_folder });
+    if (next.length === peers.length && next.every((peer, i) => peer.id === peers[i].id)) return { id: input.id };
+    if (tile.folder_id !== (input.folderId ?? null)) {
+      db.prepare("UPDATE link_items SET folder_id = ? WHERE id = ?").run(input.folderId ?? null, input.id);
+      if (tile.folder_id) removeEmptyFolder(world, tile.folder_id as string);
+    }
+    writeOrder(world, next);
+    recordDomainEvent(world, said("moved", input.id, { folderId: input.folderId ?? null, beforeId: input.beforeId ?? null }));
+    return { id: input.id };
+  });
+}
+
+/** Older clients reorder top-level sites. Their ordering leaves folders and folder contents in place. */
+export function orderPlaces(world: World, ids: readonly string[]): Place[] {
+  return world.tx(() => {
+    const current = siblings(world);
+    const sites = current.filter((tile) => !tile.isFolder).map((tile) => tile.id);
+    const ordered = [...new Set(ids.filter((id) => sites.includes(id))), ...sites.filter((id) => !ids.includes(id))];
+    if (ordered.some((id, i) => id !== sites[i])) {
+      let index = 0;
+      const next = current.map((tile) => tile.isFolder ? tile : { ...tile, id: ordered[index++] });
+      writeOrder(world, next);
       recordDomainEvent(world, { kind: "link.places_ordered", subject: "link:places", payload: { count: next.length } });
     }
     return listPlaces(world);
@@ -213,6 +368,8 @@ export interface SaveInput {
   url: string;
   /** A title the user or Alfred already knows; the page's own is looked up otherwise. */
   title?: string;
+  /** From a platform's clipboard share. A subsequently fetched page title takes priority. */
+  sharedTitle?: string;
   note?: string;
   /** An existing topic's id, or a topic's name (made if new). */
   topicId?: string;
@@ -236,22 +393,29 @@ export function saveClip(world: World, input: SaveInput): LinkResult<{ clip: Cli
       if (failed(topic)) return topic;
       topicId = topic.id;
     }
-    const note = text(input.note, 500) || null;
+    const { platform, type, host } = classify(url);
+    // A cached client still submits the whole share caption as a note. Apply the same signature rule there.
+    const share = input.sharedTitle ? { title: input.sharedTitle, note: input.note } : parseShareText(url, input.note ?? "");
+    const sharedTitle = platform === "bilibili" || platform === "xiaohongshu" ? text(share.title, 300) || null : null;
+    const given = text(input.title, 300) || null;
+    const note = text(share.note, 500) || null;
     const found = db.prepare("SELECT * FROM link_items WHERE kind = 'clip' AND url = ?").get(url);
     if (found) {
       const before = toClip(found);
-      db.prepare("UPDATE link_items SET note = COALESCE(note, ?), topic_id = COALESCE(topic_id, ?) WHERE id = ?").run(note, topicId, found.id as string);
+      db.prepare(`UPDATE link_items SET note = COALESCE(note, ?), topic_id = COALESCE(topic_id, ?),
+        shared_title = COALESCE(shared_title, ?),
+        title = CASE WHEN title_source = 'url' AND ? IS NOT NULL THEN ? ELSE title END,
+        title_source = CASE WHEN title_source = 'url' AND ? IS NOT NULL THEN 'given' ELSE title_source END WHERE id = ?`)
+        .run(note, topicId, sharedTitle, given, given, given, found.id as string);
       const after = toClip(row(world, found.id as string, "clip")!);
       const changes = changedFields(before as unknown as Record<string, unknown>, after as unknown as Record<string, unknown>);
       if (changes) recordDomainEvent(world, said("changed", after.id, { title: after.title, changes }));
       return { clip: after, existing: true };
     }
     const id = newId();
-    const given = text(input.title, 300);
-    const { platform, type, host } = classify(url);
-    db.prepare(`INSERT INTO link_items (id, kind, url, title, title_source, platform, type, site, note, topic_id, state, saved_at, fetch)
-      VALUES (?, 'clip', ?, ?, ?, ?, ?, ?, ?, ?, 'unread', ?, 'pending')`)
-      .run(id, url, given || nameFromUrl(url), given ? "given" : "url", platform, type, host, note, topicId, new Date().toISOString());
+    db.prepare(`INSERT INTO link_items (id, kind, url, title, title_source, shared_title, platform, type, site, note, topic_id, state, saved_at, fetch)
+      VALUES (?, 'clip', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unread', ?, 'pending')`)
+      .run(id, url, given || nameFromUrl(url), given ? "given" : "url", sharedTitle, platform, type, host, note, topicId, new Date().toISOString());
     const clip = toClip(row(world, id, "clip")!);
     recordDomainEvent(world, said("saved", id, { title: clip.title, url, type, platform }));
     return { clip, existing: false };
@@ -303,11 +467,13 @@ export function updateClip(world: World, id: string, patch: ClipPatch): LinkResu
 /** Removes a place or a clip for good. */
 export function removeLink(world: World, id: string): LinkResult<{ title: string; kind: "place" | "clip" }> {
   return world.tx((db) => {
-    const found = db.prepare("SELECT kind, title, url FROM link_items WHERE id = ?").get(id);
+    const found = db.prepare("SELECT kind, title, title_source, shared_title, url, folder_id FROM link_items WHERE id = ?").get(id);
     if (!found) return { error: `No link with id "${id}".` };
     db.prepare("DELETE FROM link_items WHERE id = ?").run(id);
-    recordDomainEvent(world, said("removed", id, { title: found.title as string, url: found.url as string, kind: found.kind as string }));
-    return { title: found.title as string, kind: found.kind as "place" | "clip" };
+    if (found.folder_id) removeEmptyFolder(world, found.folder_id as string);
+    const { title } = clipTitle(found);
+    recordDomainEvent(world, said("removed", id, { title, url: found.url as string, kind: found.kind as string }));
+    return { title, kind: found.kind as "place" | "clip" };
   });
 }
 
@@ -330,7 +496,7 @@ export function pendingClips(world: World, limit = 10): Clip[] {
 
 /** What the page said about itself. A title the user or Alfred gave stays; an address that only stood for another
  * (a share link) becomes the page it led to, unless that page is already saved. */
-export function recordPage(world: World, id: string, page: { url?: string; title?: string; site?: string; author?: string; description?: string }): void {
+export function recordPage(world: World, id: string, page: { url?: string; title?: string; site?: string; author?: string; description?: string; video?: boolean }): void {
   world.tx((db) => {
     const found = row(world, id, "clip");
     if (!found) return;
@@ -344,13 +510,16 @@ export function recordPage(world: World, id: string, page: { url?: string; title
         }
       } catch { /* keep the address as saved */ }
     }
+    // A Xiaohongshu note is a video or pictures, and only its page tells which.
+    if (platform === "xiaohongshu") type = page.video ? "video" : "post";
     const takeTitle = found.title_source !== "given" && !!page.title;
     const title = takeTitle ? page.title! : found.title_source === "url" ? nameFromUrl(url) : found.title as string;
     db.prepare(`UPDATE link_items SET url = ?, platform = ?, type = ?, site = ?, title = ?, title_source = ?, author = ?, description = ?,
       fetch = 'done', fetch_error = NULL WHERE id = ?`)
       .run(url, platform, type, text(page.site, 80) || site, title.slice(0, 300), takeTitle ? "page" : found.title_source as string,
         text(page.author, 120) || null, text(page.description, 600) || null, id);
-    recordDomainEvent(world, said("fetched", id, { title: title.slice(0, 200), found: !!page.title }));
+    const displayTitle = !takeTitle && found.title_source === "url" ? found.shared_title as string || title : title;
+    recordDomainEvent(world, said("fetched", id, { title: displayTitle.slice(0, 200), found: !!page.title }));
   });
 }
 
@@ -362,7 +531,7 @@ export function recordPageFailure(world: World, id: string, error: string, again
     const tries = (found.fetch_tries as number) + 1;
     const giveUp = !again || tries >= 3;
     db.prepare("UPDATE link_items SET fetch = ?, fetch_error = ?, fetch_tries = ? WHERE id = ?").run(giveUp ? "failed" : "pending", error.slice(0, 200), tries, id);
-    if (giveUp) recordDomainEvent(world, said("fetch_failed", id, { title: found.title as string, error: error.slice(0, 200) }));
+    if (giveUp) recordDomainEvent(world, said("fetch_failed", id, { title: clipTitle(found).title, error: error.slice(0, 200) }));
   });
 }
 

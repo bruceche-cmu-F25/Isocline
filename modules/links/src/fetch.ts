@@ -11,6 +11,8 @@ import { lookup as dnsLookup } from "node:dns";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { BlockList, isIP } from "node:net";
+import { Transform } from "node:stream";
+import { createBrotliDecompress, createUnzip } from "node:zlib";
 
 const blocked = new BlockList();
 for (const [network, prefix] of [
@@ -42,6 +44,11 @@ export interface PageInfo {
   site?: string;
   author?: string;
   description?: string;
+  /** The thumbnail the page publishes for sharing; fetched separately for saved videos. */
+  cover?: string;
+  durationSeconds?: number;
+  /** The page says it is a video (`og:type` video…, or it names an `og:video`). */
+  video?: true;
   /** The icons the page names for itself, as addresses, the best for a tile first. */
   icons?: string[];
 }
@@ -57,6 +64,11 @@ const MAX_BYTES = 512 * 1024;
 const MAX_REDIRECTS = 5;
 /** Says what it is. A site that refuses it is simply not read; the link keeps the name made from its address. */
 const USER_AGENT = "Mozilla/5.0 (compatible; Alfred link reader)";
+/** Xiaohongshu sends every reader that is not a phone to its sign-in. Its phone page carries the note's title,
+ * text and cover in the head, so it is asked for as a phone, still saying it is Alfred. */
+const PHONE_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X; compatible; Alfred link reader)";
+const XIAOHONGSHU = /(^|\.)(xiaohongshu|rednote)\.com$|^xhslink\.com$/;
+const agentFor = (url: URL) => (XIAOHONGSHU.test(url.hostname) ? PHONE_AGENT : USER_AGENT);
 
 type Lookup = (hostname: string, options: object, callback: (error: Error | null, address: string | Array<{ address: string; family: number }>, family?: number) => void) => void;
 /** DNS for the connection itself: every address the name resolves to must be public, or none is used. */
@@ -74,7 +86,7 @@ function get(url: URL, signal: AbortSignal | undefined, lookup: Lookup): Promise
   return new Promise((resolve, reject) => {
     const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, {
       method: "GET", lookup: lookup as never, signal, timeout: TIMEOUT_MS,
-      headers: { "User-Agent": USER_AGENT, Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8", "Accept-Encoding": "identity" },
+      headers: { "User-Agent": agentFor(url), Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8", "Accept-Encoding": "identity" },
     }, resolve);
     request.on("timeout", () => request.destroy(new PageFetchError("timeout", "The page took too long")));
     request.on("error", (error) => reject(error instanceof PageFetchError ? error : new PageFetchError((error as NodeJS.ErrnoException).name === "AbortError" ? "timeout" : "network", error.message)));
@@ -83,15 +95,39 @@ function get(url: URL, signal: AbortSignal | undefined, lookup: Lookup): Promise
 }
 
 async function body(response: IncomingMessage): Promise<Buffer> {
+  // Some public pages return a compressed body even when the request explicitly asks for identity.
+  // Limit both the transfer and the expanded HTML, and stop reading once the head has been collected.
+  const encoding = String(response.headers["content-encoding"] ?? "identity").toLowerCase().trim();
+  const decoder = /^(gzip|x-gzip|deflate)$/.test(encoding) ? createUnzip() : encoding === "br" ? createBrotliDecompress() : undefined;
+  if (!decoder && encoding && encoding !== "identity") {
+    response.destroy();
+    throw new PageFetchError("not_html", "Unsupported page encoding");
+  }
+  let stream: NodeJS.ReadableStream = response;
+  if (decoder) {
+    let received = 0;
+    const wireLimit = new Transform({
+      transform(chunk: Buffer, _encoding, done) {
+        received += chunk.length;
+        done(received > MAX_BYTES + 64 * 1024 ? new PageFetchError("status", "The encoded page is too large") : null, chunk);
+      },
+    });
+    stream = response.compose(wireLimit).compose(decoder);
+  }
   const chunks: Buffer[] = [];
   let size = 0;
-  for await (const chunk of response) {
-    chunks.push(chunk as Buffer);
-    size += (chunk as Buffer).length;
-    // What a page says about itself is in its head; the rest is not worth reading.
-    if (size >= MAX_BYTES) { response.destroy(); break; }
-  }
-  return Buffer.concat(chunks);
+  try {
+    for await (const chunk of stream) {
+      const part = (chunk as Buffer).subarray(0, MAX_BYTES - size);
+      chunks.push(part);
+      size += part.length;
+      if (size === MAX_BYTES) break;
+    }
+    return Buffer.concat(chunks, size);
+  } catch (error) {
+    if (error instanceof PageFetchError) throw error;
+    throw new PageFetchError("network", "The page could not be read");
+  } finally { response.destroy(); }
 }
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", "#39": "'" };
@@ -110,7 +146,9 @@ export function decodeEntities(value: string): string {
 const WALL = [
   /\bstale request\b/i, /\bjust a moment\b/i, /\battention required\b/i, /\bchecking your browser\b/i, /\bare you (a )?human\b/i, /\baccess denied\b/i,
   /\b(40[0-9]|50[0-9])\b/, /\bpage not found\b/i, /^\s*(web\s+)?log[- ]?in\b/i, /^\s*sign[- ]?(in|on)\b/i, /^\s*redirecting\b/i, /^\s*loading\b/i,
-  /^\s*(home|index|untitled|document|page|error)\s*$/i, /验证码|安全验证|访问受限|页面不见了|页面不存在|出错了|请先?登录|^\s*登录\s*([-–|·]|$)/,
+  /^\s*(home|index|untitled|document|page|error)\s*$/i, /验证码|安全验证|访问受限|页面不见了|页面不存在|出错了|请先?登录|^\s*登录\s*([-–|·]|$)|^出错啦[!！\s]*(?:[-–|·]|$)/,
+  // Xiaohongshu's front page, which a note address without its share token lands on.
+  /^\s*rednote\s*\(小红书\)\s*[-–|]/i, /^\s*小红书\s*[-–|]\s*你的生活(?:指南|兴趣社区)\s*$/,
 ];
 export const looksLikeWall = (title: string) => WALL.some((pattern) => pattern.test(title));
 
@@ -118,6 +156,15 @@ const tidy = (value: string | undefined, max: number) => {
   const text = value ? decodeEntities(value).replace(/\s+/g, " ").trim() : "";
   return text ? text.slice(0, max) : undefined;
 };
+
+/** Open Graph reports seconds. Schema.org duration uses an ISO time such as PT1H04M37S. */
+function videoSeconds(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const iso = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i.exec(raw);
+  const seconds = iso ? Number(iso[1] ?? 0) * 3600 + Number(iso[2] ?? 0) * 60 + Number(iso[3] ?? 0)
+    : /^\d+$/.test(raw) ? Number(raw) : 0;
+  return Number.isSafeInteger(seconds) && seconds >= 1 && seconds <= 604800 ? seconds : undefined;
+}
 
 /** What a page says about itself in its head. Regular expressions, not a parser: the head is small and this only
  * reads a few well-known tags; anything odd is simply not found. */
@@ -141,8 +188,14 @@ export function readHead(html: string): Omit<PageInfo, "url"> {
     (kind.includes("apple-touch-icon") ? touch : plain).push(address);
   }
   const icons = [...touch, ...plain].slice(0, 4);
+  const durationSeconds = videoSeconds(metas.get("video:duration") ?? metas.get("og:video:duration") ?? metas.get("duration"));
+  const cover = tidy(metas.get("og:image:secure_url"), 2048) ?? tidy(metas.get("og:image") ?? metas.get("twitter:image") ?? metas.get("thumbnailurl"), 2048);
+  const video = /^video\b/i.test(metas.get("og:type") ?? "") || metas.has("og:video") || metas.has("og:video:url") || metas.has("og:video:secure_url");
   return {
     ...(icons.length ? { icons } : {}),
+    ...(cover ? { cover } : {}),
+    ...(video ? { video: true as const } : {}),
+    ...(durationSeconds ? { durationSeconds } : {}),
     ...(title && !looksLikeWall(title) ? { title } : {}),
     ...(tidy(metas.get("og:site_name") ?? metas.get("application-name"), 80) ? { site: tidy(metas.get("og:site_name") ?? metas.get("application-name"), 80) } : {}),
     ...(tidy(metas.get("author") ?? metas.get("article:author") ?? metas.get("og:video:director"), 120) ? { author: tidy(metas.get("author") ?? metas.get("article:author") ?? metas.get("og:video:director"), 120) } : {}),
@@ -166,15 +219,18 @@ async function youtube(target: URL, signal: AbortSignal | undefined, lookup: Loo
   try {
     const response = await get(new URL(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(target.href)}`), signal, lookup);
     if (response.statusCode !== 200) { response.destroy(); return null; }
-    const said = JSON.parse((await body(response)).toString("utf8")) as { title?: unknown; author_name?: unknown };
+    const said = JSON.parse((await body(response)).toString("utf8")) as { title?: unknown; author_name?: unknown; thumbnail_url?: unknown };
     const title = typeof said.title === "string" ? tidy(said.title, 300) : undefined;
     const author = typeof said.author_name === "string" ? tidy(said.author_name, 120) : undefined;
-    return title ? { title, site: "YouTube", ...(author ? { author } : {}) } : null;
+    const cover = typeof said.thumbnail_url === "string" ? tidy(said.thumbnail_url, 2048) : undefined;
+    return title ? { title, site: "YouTube", ...(author ? { author } : {}), ...(cover ? { cover } : {}) } : null;
   } catch { return null; }
 }
 
 /** Looks one page up. `lookup` is the DNS the connection uses; tests pass their own to reach a local server. */
 export async function fetchPage(input: string, signal?: AbortSignal, lookup: Lookup = publicLookup): Promise<PageInfo> {
+  const deadline = AbortSignal.timeout(TIMEOUT_MS);
+  signal = signal ? AbortSignal.any([signal, deadline]) : deadline;
   let target = new URL(input);
   for (let hop = 0; ; hop++) {
     // A redirect from a page to a sign-in is the site's wall, not where the page went.
@@ -194,13 +250,24 @@ export async function fetchPage(input: string, signal?: AbortSignal, lookup: Loo
       target = new URL(location, target);
       continue;
     }
-    if (status === 401 || status === 403) { response.destroy(); throw new PageFetchError("login", `The site answered ${status}`); }
+    if (status === 401) { response.destroy(); throw new PageFetchError("login", `The site answered ${status}`); }
     if (status < 200 || status >= 300) { response.destroy(); throw new PageFetchError("status", `The site answered ${status}`); }
     const type = String(response.headers["content-type"] ?? "");
     if (type && !/html|xml/i.test(type)) { response.destroy(); throw new PageFetchError("not_html", "Not a web page"); }
     const said = readHead(decode(await body(response), type));
+    if (said.title && /(^|\.)bilibili\.com$/.test(target.hostname) && /^\/video\//.test(target.pathname)) {
+      said.title = said.title.replace(/_哔哩哔哩_bilibili$/i, "").trim() || undefined;
+    }
+    if (XIAOHONGSHU.test(target.hostname)) {
+      if (said.title) said.title = said.title.replace(/\s*[-–|]\s*(?:rednote|小红书)$/i, "").trim() || undefined;
+      // "rednote" or "小红书" only repeats the platform the card already names.
+      delete said.site;
+    }
     // Icon addresses are written relative to the page.
     const icons = (said.icons ?? []).flatMap((href) => { try { return [new URL(href, target).href]; } catch { return []; } });
+    if (said.cover) {
+      try { said.cover = new URL(said.cover, target).href; } catch { delete said.cover; }
+    }
     return { url: target.href, ...said, ...(icons.length ? { icons } : {}) };
   }
 }
@@ -222,22 +289,22 @@ export function imageType(bytes: Uint8Array): string | null {
 }
 
 /** Downloads one image with the same care as a page: public addresses only, every redirect checked, a size limit. */
-async function image(address: string, signal: AbortSignal | undefined, lookup: Lookup): Promise<SiteIcon | null> {
+async function image(address: string, signal: AbortSignal | undefined, lookup: Lookup, maxBytes = MAX_ICON_BYTES): Promise<SiteIcon | null> {
   let target = new URL(address);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    if (target.protocol !== "http:" && target.protocol !== "https:") return null;
+    if ((target.protocol !== "http:" && target.protocol !== "https:") || target.username || target.password) return null;
     const literal = target.hostname.replace(/^\[|\]$/g, "");
     if (isIP(literal) && lookup === publicLookup && !isPublicAddress(literal, isIP(literal))) return null;
     const response = await get(target, signal, lookup);
     const status = response.statusCode ?? 0;
     const location = status >= 300 && status < 400 ? response.headers.location : undefined;
     if (location) { response.destroy(); target = new URL(location, target); continue; }
-    if (status !== 200 || Number(response.headers["content-length"] ?? 0) > MAX_ICON_BYTES) { response.destroy(); return null; }
+    if (status !== 200 || Number(response.headers["content-length"] ?? 0) > maxBytes) { response.destroy(); return null; }
     const chunks: Buffer[] = [];
     let size = 0;
     for await (const chunk of response) {
       size += (chunk as Buffer).length;
-      if (size > MAX_ICON_BYTES) { response.destroy(); return null; }
+      if (size > maxBytes) { response.destroy(); return null; }
       chunks.push(chunk as Buffer);
     }
     const bytes = Buffer.concat(chunks);
@@ -258,4 +325,11 @@ export async function fetchIcon(pageUrl: string, candidates: readonly string[], 
     if (signal?.aborted) return null;
   }
   return null;
+}
+
+/** A thumbnail can be published by a different host. Only bounded raster images can become a saved cover. */
+export async function fetchCover(address: string, signal?: AbortSignal, lookup: Lookup = publicLookup): Promise<SiteIcon | null> {
+  const timeout = AbortSignal.timeout(TIMEOUT_MS);
+  const cover = await image(address, signal ? AbortSignal.any([signal, timeout]) : timeout, lookup, 512 * 1024).catch(() => null);
+  return cover && ["image/jpeg", "image/png", "image/webp"].includes(cover.type) ? cover : null;
 }

@@ -3,6 +3,8 @@ import { lookup as dnsLookup } from "node:dns";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
+import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
+import { fetchCover } from "../src/fetch.ts";
 import { fetchIcon, fetchPage, imageType, isPublicAddress, looksLikeWall, PageFetchError, readHead } from "../src/index.ts";
 
 test("only public addresses are reached: not this machine, a private network or a reserved range", async () => {
@@ -27,7 +29,7 @@ test("a page's head is read for what it says of itself; a wall's title is not ta
   { title: "RAG from scratch", site: "Example Video", author: "L. Martin", description: "Chunking, embedding & retrieval." });
   assert.deepEqual(readHead("<title>手冲新手参数</title>"), { title: "手冲新手参数" });
   assert.deepEqual(readHead("<title>Just a moment...</title><meta name='description' content='x'>"), { description: "x" });
-  for (const wall of ["Sign in - Google Accounts", "404 Not Found", "安全验证", "小红书 - 你访问的页面不见了", "Attention Required! | Cloudflare", "登录 - rednote - share, connect, love"]) assert.equal(looksLikeWall(wall), true, wall);
+  for (const wall of ["Sign in - Google Accounts", "404 Not Found", "安全验证", "小红书 - 你访问的页面不见了", "出错啦! - bilibili.com", "Attention Required! | Cloudflare", "登录 - rednote - share, connect, love"]) assert.equal(looksLikeWall(wall), true, wall);
   for (const real of ["How to design a login form", "Error Handling in Rust", "Forbidden City travel guide", "手冲咖啡入门"]) assert.equal(looksLikeWall(real), false, real);
 });
 
@@ -63,9 +65,31 @@ test("a page is fetched through redirects, in its own encoding, without cookies,
     await assert.rejects(fetchPage(`${base}/loop`, undefined, local), (error: PageFetchError) => error.code === "redirects");
     // A page that sends you to its sign-in is behind a wall; the sign-in page is never taken for it.
     await assert.rejects(fetchPage(`${base}/members/post`, undefined, local), (error: PageFetchError) => error.code === "login");
-    await assert.rejects(fetchPage(`${base}/forbidden`, undefined, local), (error: PageFetchError) => error.code === "login");
+    await assert.rejects(fetchPage(`${base}/forbidden`, undefined, local), (error: PageFetchError) => error.code === "status");
     assert.deepEqual(await fetchPage(`${base}/login`, undefined, local), { url: `${base}/login` }, "a sign-in page saved on purpose is read, though its title says nothing");
     assert.ok(seen.every((request) => request.cookie === undefined && /Alfred link reader/.test(String(request.agent))));
+  } finally { server.close(); server.closeAllConnections(); }
+});
+
+test("a compressed video head supplies its title, poster and duration even when the server ignores identity", async () => {
+  const title = "[Agent记忆] 公开记忆架构";
+  const html = `<meta property="og:title" content="${title}_哔哩哔哩_bilibili"><meta property="og:image" content="//i.example/poster.jpg">
+    <meta property="og:image:secure_url" content="https://i.example/poster.jpg"><meta property="video:duration" content="204"><meta name="author" content="作者">`;
+  const lookup: NonNullable<Parameters<typeof fetchPage>[2]> = (_host, _options, respond) => respond(null, [{ address: "127.0.0.1", family: 4 }]);
+  const { base, server } = await site((req, res) => {
+    const kind = req.url?.split("/").at(-1);
+    const large = html + "x".repeat(2_000_000);
+    res.writeHead(200, { "Content-Type": "text/html", "Content-Encoding": kind === "invalid" ? "gzip" : kind });
+    res.end(kind === "gzip" ? gzipSync(large) : kind === "deflate" ? deflateSync(html) : kind === "br" ? brotliCompressSync(html) : Buffer.from("invalid"));
+  });
+  const host = base.replace("127.0.0.1", "www.bilibili.com");
+  try {
+    for (const coding of ["gzip", "br", "deflate"]) {
+      const url = host + "/video/BV1example/" + coding;
+      assert.deepEqual(await fetchPage(url, undefined, lookup), { url, title, author: "作者", cover: "https://i.example/poster.jpg", durationSeconds: 204 });
+    }
+    await assert.rejects(fetchPage(host + "/invalid", undefined, lookup), (e: PageFetchError) => e.code === "network");
+    await assert.rejects(fetchPage(host + "/unknown", undefined, lookup), (e: PageFetchError) => e.code === "not_html");
   } finally { server.close(); server.closeAllConnections(); }
 });
 
@@ -93,4 +117,43 @@ test("an icon is whatever image the page names, else /favicon.ico; what is not a
   } finally { server.close(); server.closeAllConnections(); }
   // An icon address that points at this machine is refused like any other.
   assert.equal(await fetchIcon("https://example.invalid/page", ["http://127.0.0.1:1/icon.png"]), null);
+});
+
+test("a shared video cover is resolved against its page; only a bounded raster image is kept", async () => {
+  assert.equal(readHead('<meta itemprop="duration" content="PT1H04M37S">').durationSeconds, 3877);
+  assert.equal(readHead('<meta property="video:duration" content="-5">').durationSeconds, undefined);
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1]);
+  const { base, server } = await site((req, res) => {
+    if (req.url === "/v/7") { res.end("<meta property='og:image' content='../cover.jpg'>"); return; }
+    if (req.url === "/cover.jpg") { res.end(jpeg); return; }
+    if (req.url === "/large") { res.write(jpeg); res.end(Buffer.alloc(512 * 1024)); return; }
+    res.end("<svg xmlns='http://www.w3.org/2000/svg'></svg>");
+  });
+  try {
+    assert.equal((await fetchPage(`${base}/v/7`, undefined, local)).cover, `${base}/cover.jpg`);
+    assert.deepEqual(await fetchCover(`${base}/cover.jpg`, undefined, local), { type: "image/jpeg", bytes: jpeg });
+    for (const path of ["/large", "/vector"]) assert.equal(await fetchCover(base + path, undefined, local), null);
+    assert.equal(await fetchCover(`${base}/cover.jpg`), null);
+  } finally { server.close(); server.closeAllConnections(); }
+});
+
+test("a Xiaohongshu note is asked for as a phone, which it shows; anyone else is sent to its sign-in", async () => {
+  const lookup: NonNullable<Parameters<typeof fetchPage>[2]> = (_host, _options, respond) => respond(null, [{ address: "127.0.0.1", family: 4 }]);
+  const agents: string[] = [];
+  const { base, server } = await site((req, res) => {
+    agents.push(String(req.headers["user-agent"]));
+    if (!/iPhone/.test(String(req.headers["user-agent"]))) { res.writeHead(302, { Location: "/login?redirectPath=x" }).end(); return; }
+    if (req.url === "/explore/1") { res.writeHead(200, { "Content-Type": "text/html" }).end("<title>rednote (小红书) - global lifestyle hub</title>"); return; }
+    res.writeHead(200, { "Content-Type": "text/html" }).end(`<meta property="og:site_name" content="rednote">
+      <meta property="og:title" content="手冲咖啡入门 - rednote"><meta property="og:description" content="三个参数就够">`);
+  });
+  const port = new URL(base).port;
+  try {
+    assert.deepEqual(await fetchPage(`http://www.xiaohongshu.com:${port}/explore/1?xsec_token=A`, undefined, lookup),
+      { url: `http://www.xiaohongshu.com:${port}/explore/1?xsec_token=A`, title: "手冲咖啡入门", description: "三个参数就够" });
+    assert.deepEqual(await fetchPage(`http://www.xiaohongshu.com:${port}/explore/1`, undefined, lookup), { url: `http://www.xiaohongshu.com:${port}/explore/1` },
+      "without its token a note address lands on the front page, whose title is not the note's");
+    assert.ok(agents.every((agent) => /iPhone/.test(agent) && /Alfred link reader/.test(agent)));
+    assert.equal(looksLikeWall("小红书 - 你的生活指南"), true);
+  } finally { server.close(); server.closeAllConnections(); }
 });

@@ -3,7 +3,7 @@
 import type { LinkType } from "./types.ts";
 
 /** Query parameters that only say where a link was shared from. Anything else is kept: some sites need theirs. */
-const TRACKING = /^(utm_[a-z_]+|fbclid|gclid|dclid|msclkid|igshid|mc_cid|mc_eid|spm|spm_id_from|vd_source|share_source|share_medium|share_plat|share_session_id|share_tag|share_from|from_source|feature|si|ref_src|ref_url)$/i;
+const TRACKING = /^(utm_[a-z_]+|fbclid|gclid|dclid|msclkid|igshid|mc_cid|mc_eid|spm|spm_id_from|vd_source|share_source|share_medium|share_plat|share_session_id|share_tag|share_from|from_source|feature|si|ref_src|ref_url|app_platform|app_version|apptime|author_share|share_from_user_hidden|share_id|shareredid|xhsshare|xsec_source)$/i;
 
 export class LinkUrlError extends Error {
   override name = "LinkUrlError";
@@ -14,12 +14,56 @@ export function findUrl(text: string): { url: string; rest: string } | null {
   const match = /https?:\/\/[^\s<>"'，。；、）】]+/i.exec(text);
   if (match) {
     const url = match[0].replace(/[.,;:!?)\]]+$/, "");
-    const rest = (text.slice(0, match.index) + text.slice(match.index + match[0].length)).replace(/\s+/g, " ").replace(/ ([，。；、,;:：])/g, "$1").trim();
+    const rest = (text.slice(0, match.index) + " " + text.slice(match.index + match[0].length)).replace(/\s+/g, " ").replace(/ ([，。；、,;:：])/g, "$1").trim();
     return { url, rest };
   }
   // A bare host typed by hand: "github.com/owner/repo".
   const bare = /^\s*((?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?)\s*$/i.exec(text);
   return bare ? { url: `https://${bare[1]}`, rest: "" } : null;
+}
+
+/** A platform-stamped share title can be used even when a page cannot be fetched. Keep all other words as a note. */
+export function parseLinkPaste(text: string): { url: string; title?: string; note?: string } | null {
+  const found = findUrl(text);
+  if (!found) return null;
+  return { url: found.url, ...parseShareText(found.url, found.rest) };
+}
+
+export function parseShareText(url: string, rest: string): { title?: string; note?: string } {
+  const { platform } = classify(url);
+  if (!rest || (platform !== "bilibili" && platform !== "xiaohongshu")) return rest ? { note: rest } : {};
+
+  // Match the platform's signature at the END of a wrapper, then balance brackets backwards.
+  // Titles can have their own [tags]; personal text can also contain brackets before the actual share.
+  const signature = platform === "bilibili"
+    ? /[-–—_]\s*(?:bilibili|哔哩哔哩(?:\s*bilibili)?)\s*([】\]])/i
+    : /(?:\|\s*|[-–—]\s*)小红书(?:\s*[-–—]\s*(?:你的生活兴趣社区|你的生活指南))?\s*([】\]])/;
+  const end = signature.exec(rest);
+  if (!end) return { note: rest };
+  const close = end[1], open = close === "】" ? "【" : "[";
+  let depth = 1, start = end.index;
+  while (start > 0 && depth) {
+    const char = rest[--start];
+    if (char === open) depth--;
+    if (char === close) depth++;
+  }
+  if (depth) return { note: rest };
+  let title = rest.slice(start + 1, end.index).trim();
+  // The RED template is “【title - author | 小红书 …】”. A hyphen within a title stays.
+  if (platform === "xiaohongshu" && end[0].startsWith("|") && title.includes(" - ")) title = title.slice(0, title.lastIndexOf(" - ")).trim();
+  if (!title || title.length > 300) return { note: rest };
+  let before = rest.slice(0, start).trim();
+  let after = rest.slice(end.index + end[0].length).trim();
+  if (platform === "xiaohongshu") {
+    if (/^\d{1,3}$/.test(before)) before = "";
+    after = after.replace(/^([\p{Extended_Pictographic}]\uFE0F?)\s*[A-Za-z0-9_=-]{4,64}\s*\1\s*/u, "");
+    after = after.replace(/^[，,。\s]*(?:复制(?:本条信息|本条消息|此链接|链接)?[，,后\s]*)?打开[【「“]?小红书[】」”]?(?:\s*App)?[，,\s]*(?:查看(?:精彩内容|完整内容|笔记)(?:详情)?)?[！!。]?/i, "");
+  } else {
+    after = after.replace(/^[，,。\s]*复制(?:链接)?(?:后)?打开(?:哔哩哔哩(?:\s*App)?)?[！!。]?/i, "");
+  }
+  if (/^[，,。.!！\s]+$/.test(after)) after = "";
+  const note = [before, after.trim()].filter(Boolean).join(" ");
+  return { title, ...(note ? { note } : {}) };
 }
 
 /** An address as it is kept: http or https only, host in lower case, no fragment, no share-tracking parameters, and
@@ -53,7 +97,7 @@ const RULES: Rule[] = [
   { platform: "youtube", type: "video", host: /(^|\.)youtube\.com$|^youtu\.be$/ },
   { platform: "bilibili", type: "article", host: /(^|\.)bilibili\.com$/, path: /^\/(read|opus)\// },
   { platform: "bilibili", type: "video", host: /(^|\.)bilibili\.com$|^b23\.tv$/ },
-  { platform: "xiaohongshu", type: "post", host: /(^|\.)xiaohongshu\.com$|^xhslink\.com$/ },
+  { platform: "xiaohongshu", type: "post", host: /(^|\.)xiaohongshu\.com$|^xhslink\.com$|(^|\.)rednote\.com$/ },
   { platform: "douyin", type: "video", host: /(^|\.)douyin\.com$|(^|\.)tiktok\.com$/ },
   { platform: "vimeo", type: "video", host: /(^|\.)vimeo\.com$/ },
   { platform: "github", type: "repo", host: /^github\.com$/, path: /^\/[^/]+\/[^/]+\/?$/ },
@@ -88,6 +132,9 @@ export function nameFromUrl(href: string): string {
   const host = url.hostname.replace(/^www\./, "");
   const last = url.pathname.split("/").filter(Boolean).at(-1);
   if (!last) return host;
+  // Opaque platform identifiers label an address, but say nothing about its contents.
+  const { platform } = classify(href);
+  if (platform === "xiaohongshu" || (platform === "bilibili" && (host === "b23.tv" || /^(?:BV[\da-z]{10}|av\d+)$/i.test(last)))) return host;
   let words = last;
   try { words = decodeURIComponent(last); } catch { /* as written */ }
   words = words.replace(/\.(html?|php|aspx?)$/i, "").replace(/[-_+]+/g, " ").trim();
