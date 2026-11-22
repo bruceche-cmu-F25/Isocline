@@ -20,13 +20,15 @@ export interface UserSettings {
   model: string | null;
   /** The thinking level a conversation uses unless it chose its own; null: the model's default. */
   thinking: ThinkingLevel | null;
+  /** When the first-run walkthrough was finished or skipped (ISO time). Null: it is still owed, on whichever device opens next. */
+  firstRunAt: string | null;
 }
 
 export class SettingsError extends Error {
   override name = "SettingsError";
 }
 
-const DEFAULTS: UserSettings = { locale: null, preferredName: null, model: null, thinking: null };
+const DEFAULTS: UserSettings = { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null };
 const MODEL = /^[A-Za-z0-9._-]{1,64}\/[^\s/][^\s]{0,199}$/;
 
 export function getSettings(world: World): UserSettings {
@@ -70,6 +72,11 @@ function pick(value: Record<string, unknown>): Partial<UserSettings> {
   if ("thinking" in value) {
     if (value.thinking !== null && !THINKING_LEVELS.includes(value.thinking as ThinkingLevel)) throw new SettingsError(`thinking must be one of: ${THINKING_LEVELS.join(", ")}`);
     out.thinking = value.thinking as ThinkingLevel | null;
+  }
+  if ("firstRunAt" in value) {
+    const at = value.firstRunAt;
+    if (at !== null && (typeof at !== "string" || at.length > 40 || Number.isNaN(Date.parse(at)))) throw new SettingsError("firstRunAt is a time, or null");
+    out.firstRunAt = at === null ? null : new Date(at as string).toISOString();
   }
   return out;
 }

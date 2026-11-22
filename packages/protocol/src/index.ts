@@ -335,6 +335,8 @@ export interface UserSettings {
   model: string | null;
   /** The thinking level a conversation uses unless it chose its own; null: the model's default. */
   thinking: ThinkingLevel | null;
+  /** When the first-run walkthrough was finished or skipped (ISO time). Null: it is still owed. */
+  firstRunAt: string | null;
 }
 export interface SettingsRequest { requestId: string; patch: Partial<UserSettings> }
 
