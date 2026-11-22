@@ -1,8 +1,13 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { AwayDigest, Conversation, Notice, StateResponse } from "@alfred/protocol";
+import type { LinksSnapshot } from "@alfred/module-links/types";
 import { ApiError, api, deviceId } from "./api.ts";
 import { desktop } from "./desktop.ts";
+import { useRoute } from "./shell/useRoute.ts";
 import { AlfredPanel, figureState } from "./shell/AlfredPanel.tsx";
+import { Welcome } from "./shell/Welcome.tsx";
+import { FirstRun, type TourStop } from "./shell/FirstRun.tsx";
+import { SHOW_FIRST_RUN } from "./firstRunEvent.ts";
 import type { About, Picked } from "./shell/about.ts";
 import { continues } from "./shell/ask.ts";
 import { AskBar } from "./shell/AskBar.tsx";
@@ -19,7 +24,6 @@ import { DevAccessApproval } from "./DevAccessApproval.tsx";
 import { ArchiveNotice } from "./shell/ArchiveNotice.tsx";
 import { MOD, Nav } from "./shell/Nav.tsx";
 import { Topbar, type Mode } from "./shell/Topbar.tsx";
-import type { LinksSnapshot } from "@alfred/module-links/types";
 import { useLinkSample } from "./LinkSample.tsx";
 import { availablePages, linkSamplePage, moduleOf, pageView } from "./shell/pages.tsx";
 import { automationTitle } from "./automationText.ts";
@@ -64,48 +68,6 @@ function useAttention(): boolean {
     };
   }, []);
   return attending;
-}
-
-/** The open page, conversation and development session live in the address (#p=todo.list&c=<id>&s=<id>), so a reload keeps them. */
-type Route = { page: string | null; selected: string | null; session: string | null; item: string | null };
-function useRoute() {
-  const read = (): Route => {
-    const params = new URLSearchParams(location.hash.slice(1));
-    return { page: params.get("p"), selected: params.get("c"), session: params.get("s"), item: params.get("item") };
-  };
-  const [route, setRoute] = useState(read);
-  const latest = useRef(route);
-  useEffect(() => {
-    const update = () => { latest.current = read(); setRoute(latest.current); };
-    window.addEventListener("hashchange", update);
-    return () => window.removeEventListener("hashchange", update);
-  }, []);
-  const go = useCallback((patch: Partial<Route>) => {
-    const next = { ...latest.current, ...patch };
-    const params = new URLSearchParams();
-    if (next.page) params.set("p", next.page);
-    if (next.selected) params.set("c", next.selected);
-    if (next.session) params.set("s", next.session);
-    if ((next.page === "core.inbox" || next.page === "mail.inbox") && next.item) params.set("item", next.item);
-    const hash = params.toString();
-    history.replaceState(null, "", hash ? `#${hash}` : location.pathname);
-    latest.current = next;
-    setRoute(next);
-    return next;
-  }, []);
-
-  // Reopen on undo only if the user is still where archiving left them.
-  function leaveArchived(conversation: Conversation) {
-    const field = conversation.projectId ? "session" : "selected";
-    if (latest.current[field] !== conversation.id) return;
-    const left = go({ [field]: null });
-    return () => {
-      if (latest.current !== left) return false;
-      go({ [field]: conversation.id });
-      return true;
-    };
-  }
-  return { ...route, go, leaveArchived };
 }
 
 /** A run can stay selected while its panel is closed. Only a visible result counts as read. */
@@ -223,12 +185,16 @@ export function App() {
 function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) {
   const { connection, fresh, onEvent } = alfred;
   const writing = useWriting();
-  const route = useRoute();
-  const selected = route.selected;
   const [layout, setLayout] = useLayout();
   const phone = useMedia(PHONE);
   const viewport = useViewportWidth();
   const [sheet, setSheet] = useState<"alfred" | "nav" | null>(null);
+  const revealPage = useCallback(() => {
+    setSheet(null);
+    if (layout.alfred === "wide") setLayout({ alfred: "open" });
+  }, [layout.alfred, setLayout]);
+  const route = useRoute(revealPage);
+  const selected = route.selected;
   /** A phone: the dock's tabs have given way to the ask bar. */
   const [asking, setAsking] = useState(false);
   const [palette, setPalette] = useState(false);
@@ -264,6 +230,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
   const sampleActive = route.page === linkSamplePage.key && pages.some((page) => page.key === "link.list");
   const linkSample = useLinkSample(sampleActive);
   const current = sampleActive ? linkSamplePage : pages.find((page) => page.key === route.page) ?? pages[0];
+  const navigationPage = sampleActive ? "link.list" : current?.key ?? "";
   const inInbox = current?.key === "core.inbox";
   const savedName = state.settings?.preferredName ?? null;
   const [name, setName] = useState(savedName);
@@ -273,10 +240,23 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     const saved = await api.settings({ preferredName: next });
     setName(saved.preferredName);
   };
-  const [inboxOpen, setInboxOpen] = useState(false);
-  const welcoming = inInbox && !inboxFocus && !inboxOpen;
-  useEffect(() => { if (!inInbox) setInboxOpen(false); }, [inInbox]);
-  const navigationPages = welcoming ? pages.map((page) => page === current ? { ...page, badge: undefined } : page) : pages;
+  // Opened on a thing a notification pointed at: nothing is put in front of it.
+  const direct = useRef(sampleActive || !!new URLSearchParams(window.location.hash.slice(1)).get("item"));
+  // The first run (shell/FirstRun.tsx): owed until the home node says it was finished or skipped; and again, on this
+  // device, when Settings asks for it.
+  const [firstRunOver, setFirstRunOver] = useState(false);
+  const [firstRunAgain, setFirstRunAgain] = useState(false);
+  useEffect(() => {
+    const show = () => { setFirstRunOver(false); setFirstRunAgain(true); };
+    window.addEventListener(SHOW_FIRST_RUN, show);
+    return () => window.removeEventListener(SHOW_FIRST_RUN, show);
+  }, []);
+  const firstRun = firstRunAgain || (!firstRunOver && state.settings?.firstRunAt === null && !direct.current);
+  // Greet returning users over the page they opened. A name given later belongs to the first meeting.
+  const [opening, setOpening] = useState(() => !direct.current);
+  const knewName = useRef(!!savedName);
+  const greet = opening && knewName.current && !!name && !firstRun;
+  const endOpening = useCallback(() => setOpening(false), []);
   const navStart = useRef(layout.navW);
 
   useEffect(() => { const timer = window.setTimeout(() => setGreeting(false), 2600); return () => window.clearTimeout(timer); }, []);
@@ -289,7 +269,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     const runId = String(notice.payload.runId ?? "");
     if (runId) highlight(runId);
   }, [highlight]);
-  const { shown, remove: unshow, acknowledge } = useNotices(state.notices, onPresented, !welcoming);
+  const { shown, remove: unshow, acknowledge } = useNotices(state.notices, onPresented, !firstRun && !greet);
   /** Alfred's look while it is telling the user something. */
   const [speaking, setSpeaking] = useState<FigureState | null>(null);
 
@@ -322,11 +302,9 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
   }, [select, phone, layout.alfred, setLayout, state?.conversations]);
 
   const showInboxItem = useCallback((item: string) => {
-    setInboxOpen(true);
     route.go({ page: "core.inbox", item });
-    setSheet(null);
-    if (layout.alfred === "wide") setLayout({ alfred: "open" });
-  }, [route, layout.alfred, setLayout]);
+    revealPage();
+  }, [route, revealPage]);
 
   const showProposal = useCallback((id: string) => showInboxItem(`p:${id}`), [showInboxItem]);
 
@@ -351,25 +329,21 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     }
   }, [select, highlight]);
   const onFocused = useCallback(() => {
-    setInboxOpen(true);
-    setSheet(null);
-    if (layout.alfred === "wide") setLayout({ alfred: "open" });
+    revealPage();
     route.go({ item: null });
-  }, [route.go, layout.alfred, setLayout]);
+  }, [route.go, revealPage]);
 
   const goPage = useCallback((key: string) => {
     route.go({ page: key, item: null });
-    setSheet(null);
-    if (layout.alfred === "wide") setLayout({ alfred: "open" });
-  }, [route, layout.alfred, setLayout]);
+    revealPage();
+  }, [route, revealPage]);
 
   /** From one page to another, and to one thing on it. An Inbox item goes the way a notification's does. */
   const goTo = useCallback((key: string, item?: string) => {
     if (key === "core.inbox" && item) { showInboxItem(item); return; }
     route.go({ page: key, item: item ?? null });
-    setSheet(null);
-    if (layout.alfred === "wide") setLayout({ alfred: "open" });
-  }, [route, layout.alfred, setLayout, showInboxItem]);
+    revealPage();
+  }, [route, revealPage, showInboxItem]);
   const clearItem = useCallback(() => { route.go({ item: null }); }, [route.go]);
 
   // A run opened a module's view: show that page.
@@ -408,7 +382,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     if (key) goPage(key);
   };
   // The page a question is asked from, unless Alfred spans the window and the page is out of sight.
-  const view = !welcoming && (phone || layout.alfred !== "wide") ? pageView(current, state) : undefined;
+  const view = phone || layout.alfred !== "wide" ? pageView(current, state) : undefined;
   const pageTitle = (key: string) => pages.find((page) => page.key === key)?.title;
   const automationOf = (id: string) => { const found = state?.automations?.find((automation) => automation.id === id); return found ? automationTitle(found) : undefined; };
 
@@ -478,12 +452,31 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
   }), [showAlfred]);
 
+  // The walk round at the end of the first run: bring each place onto the screen before the figure points at it. The
+  // sidebar goes back to how it was left when the walk is over.
+  const navBefore = useRef<typeof layout.nav | null>(null);
+  const showStop = useCallback((stop: TourStop) => {
+    setSheet(null);
+    setAsking(false);
+    if (navBefore.current === null) navBefore.current = layout.nav;
+    if (stop === "today") route.go({ page: "core.today", item: null });
+    if (!phone) setLayout(stop === "inbox" || stop === "pages" ? { nav: "full", alfred: "closed" } : { alfred: "closed" });
+  }, [phone, layout.nav, route, setLayout]);
+  const endFirstRun = useCallback(() => {
+    setFirstRunOver(true);
+    setFirstRunAgain(false);
+    setOpening(false);
+    if (navBefore.current !== null) setLayout({ nav: navBefore.current });
+    navBefore.current = null;
+  }, [setLayout]);
+
   const settledFigure = useSettled(state ? figureState(state, selected, writing, greeting) : "rest", 250);
   const figure = speaking ?? settledFigure;
 
   // Keyboard: ⌘K search and ask, anywhere; ⌘. Alfred; ⌘\ the sidebar; ⌘, Settings; ⌥1–9 the pages (not while typing).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (firstRun) return;
       const mod = event.metaKey || event.ctrlKey;
       if (mod && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -504,7 +497,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleAlfred, toggleNav, goPage, pages]);
+  }, [toggleAlfred, toggleNav, goPage, pages, firstRun]);
 
   // Sidebar divider: drag to resize; drag past the fold point to fold it to icons (keeping the width it had).
   const navDrag = dragHandle(size.nav, "right", (width) => {
@@ -530,6 +523,15 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     onPlace: (url) => { window.open(url, "_blank", "noopener,noreferrer"); },
   };
 
+  const pageHistory = (
+    <div className="page-history" role="group" aria-label={t("nav.history")}>
+      <button type="button" className="icon-btn" disabled={!route.canGoBack} onClick={route.goBack}
+        aria-label={t("nav.previousPage")} title={t("nav.previousPage")}><Icon name="back" /></button>
+      <button type="button" className="icon-btn" disabled={!route.canGoForward} onClick={route.goForward}
+        aria-label={t("nav.nextPage")} title={t("nav.nextPage")}><Icon name="forward" /></button>
+    </div>
+  );
+
   const panel = (
     <AlfredPanel selected={selected} figure={figure} wide={alfredMode === "wide"} phone={phone}
       highlighted={highlighted} view={view} pageTitle={pageTitle} automationTitle={automationOf} onEvent={onEvent} onView={onView} onStarted={onStarted}
@@ -538,14 +540,16 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
   );
 
   return (
-    <div className="workspace" data-nav={phone ? undefined : navMode} data-alfred={alfredMode} data-phone={phone || undefined}
+    <div className="workspace" inert={firstRun || greet || undefined} data-nav={phone ? undefined : navMode} data-alfred={alfredMode} data-phone={phone || undefined}
       data-sheet={sheet ?? undefined} style={{ "--nav-px": `${size.nav}px`, "--alf-px": `${size.alf}px` } as CSSProperties}>
-      {!phone && <Topbar navOpen={navMode === "full"} onNav={toggleNav} mode={mode} onMode={hasDev ? switchMode : undefined} onLanguage={switchLanguage}
-        heading={current && alfredMode !== "wide" ? { title: current.title, icon: current.icon, k: current.k, summary: bare || welcoming ? undefined : current.topline?.(state) ?? current.summary?.(state.modules[moduleOf(current)], state) } : undefined}
+      {greet && <Welcome name={name!} onDone={endOpening} />}
+      {firstRun && <FirstRun state={state} name={name} saveName={saveName} place={{ phone, show: showStop }} onDone={endFirstRun} />}
+      {!phone && <Topbar pageHistory={pageHistory} navOpen={navMode === "full"} onNav={toggleNav} mode={mode} onMode={hasDev ? switchMode : undefined} onLanguage={switchLanguage}
+        heading={current && alfredMode !== "wide" ? { title: current.title, icon: current.icon, k: current.k, summary: bare ? undefined : current.topline?.(state) ?? current.summary?.(state.modules[moduleOf(current)], state) } : undefined}
         system={pages.filter((page) => page.group === "system")} page={current?.key ?? ""} onPage={goPage} />}
       <div className="sidebar" data-visible={navVisible || undefined}>
         {navVisible && (
-          <Nav state={state} pages={navigationPages} page={alfredMode === "wide" ? "" : current?.key ?? ""} mode={phone ? "all" : mode} selected={selected} session={bare ? route.session : null}
+          <Nav state={state} pages={pages} page={alfredMode === "wide" ? "" : navigationPage} mode={phone ? "all" : mode} selected={selected} session={bare ? route.session : null}
             onSession={openSession} connection={connection} onArchive={archiveConversation} onShowArchive={() => setShowArchive(true)}
             onPage={goPage} onSelect={(id) => { setSheet(null); selectFromList(id); }} onClose={phone ? () => setSheet(null) : undefined} onLanguage={switchLanguage} />
         )}
@@ -565,15 +569,18 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
         {current ? (
           <>
             {/* The top bar carries the page's name and facts; a phone has no top bar, so there the page says them. */}
-            {!bare && phone && (
+            {phone && (
               <header className="page-head">
-                <h1><Icon name={current.icon} />{current.title}</h1>
-                {!welcoming && (current.topline || current.summary) && <p className="page-sub">{current.topline?.(state) ?? current.summary?.(state.modules[moduleOf(current)], state)}</p>}
+                <div className="page-heading">
+                  <h1><Icon name={current.icon} />{current.title}</h1>
+                  {!bare && (current.topline || current.summary) && <p className="page-sub">{current.topline?.(state) ?? current.summary?.(state.modules[moduleOf(current)], state)}</p>}
+                </div>
+                {pageHistory}
               </header>
             )}
             <div className="page-body">{current.render({
-              linkSample, snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName, refresh: alfred.refresh,
-              onEnterInbox: welcoming ? () => setInboxOpen(true) : undefined, focus: inboxFocus, onFocused, openConversation, line,
+              linkSample, snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName,
+              focus: inboxFocus, onFocused, openConversation, line, refresh: alfred.refresh,
               go: goTo, item: route.item, onItem: clearItem,
               dev: { session: route.session, onSession: openSession, refresh: alfred.refresh, highlighted, onEvent, pageTitle, automationTitle: automationOf },
             })}</div>
@@ -606,7 +613,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
       )}
 
       {phone && sheet !== "alfred" && (
-        <Dock state={state} pages={navigationPages} page={current?.key ?? ""} figure={figure} onPage={goPage}
+        <Dock state={state} pages={pages} page={navigationPage} figure={figure} onPage={goPage}
           onAlfred={() => (asking || bare ? setSheet("alfred") : setAsking(true))} onMenu={() => setSheet("nav")}
           ask={asking && !bare ? (
             <AskBar dock state={state} selected={selected} figure={figure} suggestions={view?.suggestions ?? []} find={find} page={current?.key} about={about} onAbout={setAbout}
@@ -618,7 +625,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
         <Palette find={find} onAsk={askAnywhere} onClose={() => setPalette(false)} />
       )}
 
-      {!welcoming && <Says<Notice>
+      {!firstRun && <Says<Notice>
         items={shown} id={(notice) => notice.id} lines={(notice) => noticeSaid(notice, name, inInbox)} stayMs={(notice) => STAY_MS[notice.kind] ?? 25_000}
         remove={unshow} onMood={setSpeaking} done={(notice, outcome: Outcome) => {
           if (outcome === "timeout") return; // left in 通知, not acknowledged

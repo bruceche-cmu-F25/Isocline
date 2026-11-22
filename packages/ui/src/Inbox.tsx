@@ -2,14 +2,14 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Proposal, StateResponse } from "@alfred/protocol";
 import type { MailSnapshot } from "@alfred/module-mail/types";
 import { api } from "./api.ts";
-import { InboxEntry, type NamePreference } from "./InboxEntry.tsx";
 import { Linked, OutLink } from "./Linked.tsx";
 import { RunResult } from "./RunResult.tsx";
 import { Request } from "./Conversation.tsx";
 import type { PageLine } from "./shell/about.ts";
 import { inboxItems, kindColour, kindName, KINDS, type InboxItem, type InboxKind } from "./shell/inbox.ts";
 import { when } from "./shell/Nav.tsx";
-import { PHONE, useMedia } from "./shell/layout.ts";
+import { Figure } from "./shell/Figure.tsx";
+import { dragHandle, PHONE, useMedia } from "./shell/layout.ts";
 import { editionDate, hhmm } from "./automationText.ts";
 import "./inbox-reader.css";
 import { intlLocale, t } from "./i18n/index.ts";
@@ -170,37 +170,54 @@ export function Detail({ item, onDone, onOpenConversation, conversationTitle, li
   );
 }
 
+const LIST_WIDTH_KEY = "alfred.inbox.listWidth";
+const MIN_LIST_WIDTH = 160;
+const MIN_DETAIL_WIDTH = 320;
+
+function savedListWidth(): number | null {
+  try {
+    const width = Number(localStorage.getItem(LIST_WIDTH_KEY));
+    return Number.isFinite(width) && width >= MIN_LIST_WIDTH ? width : null;
+  } catch { return null; }
+}
+
 /** 通知: what needs you, and what Alfred wants you to know. A list on the left, the chosen item on the right. */
-export function Inbox({ name, saveName, onEnter, state, focus, onFocused, onOpenConversation, line }: InboxProps & NamePreference & { onEnter?: () => void }) {
+export function Inbox({ state, focus, onFocused, onOpenConversation, line }: InboxProps) {
   const inbox = useRef<HTMLElement>(null);
   const returnTo = useRef<HTMLButtonElement | null>(null);
   const back = useRef<HTMLButtonElement>(null);
   const phone = useMedia(PHONE);
-  const [roomForColumns, setRoomForColumns] = useState(false);
+  const [pageWidth, setPageWidth] = useState(0);
+  const [preferredListWidth, setPreferredListWidth] = useState(savedListWidth);
   // The navigation and assistant panels can resize this page without resizing the window.
   useLayoutEffect(() => {
     const element = inbox.current;
     if (!element) return;
-    const measure = () => setRoomForColumns(element.clientWidth >= 740);
+    const measure = () => setPageWidth(element.clientWidth);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const welcoming = !!onEnter;
+  useEffect(() => {
+    try {
+      if (preferredListWidth === null) localStorage.removeItem(LIST_WIDTH_KEY);
+      else localStorage.setItem(LIST_WIDTH_KEY, String(preferredListWidth));
+    } catch { /* keep the width for this visit */ }
+  }, [preferredListWidth]);
   const items = useMemo(() => inboxItems(state), [state]);
   const [filter, setFilter] = useState<InboxKind | "all">("all");
   const [selected, setSelected] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
 
   useEffect(() => {
-    if (welcoming || !focus) return;
+    if (!focus) return;
     setFilter("all");
     const target = items.find((item) => item.id === focus || item.alsoNotices?.some((notice) => `n:${notice.id}` === focus));
     if (target) setSelected(target.id);
     else { setSelected(null); setSaid(t("inbox.noLongerPending")); }
     onFocused();
-  }, [welcoming, focus, items, onFocused]);
+  }, [focus, items, onFocused]);
   useEffect(() => { if (!said) return; const timer = window.setTimeout(() => setSaid(null), 5000); return () => window.clearTimeout(timer); }, [said]);
 
   const activeFilter = items.some((item) => item.kind === filter) ? filter : "all";
@@ -210,14 +227,18 @@ export function Inbox({ name, saveName, onEnter, state, focus, onFocused, onOpen
   const grouped = activeFilter === "all" && firstUpdate > 0;
   const current = shown.find((item) => item.id === selected) ?? null;
   const onlyItem = items.length === 1 && !phone;
-  const columns = roomForColumns && !phone && !onlyItem;
+  const columns = pageWidth >= 740 && !phone && !onlyItem;
+  const defaultListWidth = Math.min(272, Math.max(200, Math.round(pageWidth * 0.23)));
+  const maxListWidth = Math.max(MIN_LIST_WIDTH, pageWidth - MIN_DETAIL_WIDTH);
+  const clampList = (width: number) => Math.min(maxListWidth, Math.max(MIN_LIST_WIDTH, Math.round(width)));
+  const listWidth = clampList(preferredListWidth ?? defaultListWidth);
   const detail = current ?? (columns || onlyItem ? shown[0] : null);
   const titleOf = (id: string | null) => state.conversations.find((conversation) => conversation.id === id)?.title;
   const chips = [["all", t("common.all"), items.length] as const, ...KINDS.map(([kind, name]) => [kind, t(name), items.filter((item) => item.kind === kind).length] as const).filter(([, , count]) => count > 0)];
 
   return (
     <section ref={inbox} className="inbox" aria-label={t("inbox.label")}>
-      {!welcoming && chips.length > 2 && (items.length > 5 || activeFilter !== "all") && (
+      {chips.length > 2 && (items.length > 5 || activeFilter !== "all") && (
         <div className="chips" role="group" aria-label={t("inbox.byKind")}>
           {chips.map(([id, name, count]) => (
             <button type="button" key={id} className="chip" aria-pressed={activeFilter === id} onClick={() => setFilter(id)}>
@@ -226,12 +247,21 @@ export function Inbox({ name, saveName, onEnter, state, focus, onFocused, onOpen
           ))}
         </div>
       )}
-      {!welcoming && said && <p className="inbox-said" role="status">{said}</p>}
-      {welcoming || !items.length ? (
-        <InboxEntry name={name} saveName={saveName} onEnter={onEnter} hasItems={items.length > 0} />
+      {said && <p className="inbox-said" role="status">{said}</p>}
+      {!items.length ? (
+        <div className="empty inbox-entry">
+          <div className="inbox-entry-center">
+            <Figure state="rest" size={112} className="figure-tour" />
+            <div className="inbox-entry-body">
+              <p className="empty-title" role="status">{t("inbox.emptyTitle")}</p>
+              <p className="quiet">{t("inbox.emptyHint")}</p>
+            </div>
+          </div>
+        </div>
       ) : (
-        <div className="split" data-columns={columns || undefined}>
-          <ul className="inbox-list" hidden={!!detail && !columns}>
+        <div className="split" data-columns={columns || undefined}
+          style={columns ? { gridTemplateColumns: `${listWidth}px 0 minmax(0, 1fr)` } : undefined}>
+          <ul className="inbox-list" id="inbox-list" hidden={!!detail && !columns}>
             {shown.map((item, index) => (
               <li key={item.id}>
                 {grouped && (index === 0 || index === firstUpdate) &&
@@ -248,6 +278,21 @@ export function Inbox({ name, saveName, onEnter, state, focus, onFocused, onOpen
               </li>
             ))}
           </ul>
+          {columns && (
+            <div className="resizer resizer-inbox" role="separator" tabIndex={0} aria-orientation="vertical"
+              aria-controls="inbox-list" aria-label={t("inbox.listWidth")} title={t("resize.inbox")}
+              aria-valuemin={MIN_LIST_WIDTH} aria-valuemax={maxListWidth} aria-valuenow={listWidth}
+              onPointerDown={dragHandle(listWidth, "right", (width) => setPreferredListWidth(clampList(width)))}
+              onDoubleClick={() => setPreferredListWidth(null)}
+              onKeyDown={(event) => {
+                const widths: Record<string, number> = {
+                  ArrowLeft: listWidth - 16, ArrowRight: listWidth + 16, Home: MIN_LIST_WIDTH, End: maxListWidth,
+                };
+                if (!Object.hasOwn(widths, event.key)) return;
+                event.preventDefault();
+                setPreferredListWidth(clampList(widths[event.key]));
+              }} />
+          )}
           {detail && (
             <div className="inbox-pane" key={detail.id}>
               {!columns && !onlyItem && <button type="button" ref={back} className="back link" onClick={() => {

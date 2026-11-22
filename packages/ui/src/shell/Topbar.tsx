@@ -9,6 +9,7 @@ export type Mode = "daily" | "dev";
 const MODE_ICON: Record<Mode, IconName> = { daily: "home", dev: "code" };
 
 export interface TopbarProps {
+  pageHistory: ReactElement;
   navOpen: boolean;
   onNav(): void;
   mode: Mode;
@@ -32,7 +33,7 @@ export interface TopbarProps {
  * language in the small menu it opens, since those change a few times a year.
  * The bar drags the window.
  */
-export function Topbar({ navOpen, onNav, mode, onMode, onLanguage, heading, system, page, onPage }: TopbarProps) {
+export function Topbar({ pageHistory, navOpen, onNav, mode, onMode, onLanguage, heading, system, page, onPage }: TopbarProps) {
   const fold = t(navOpen ? "nav.fold" : "nav.unfold");
   return (
     <header className="topbar">
@@ -51,6 +52,7 @@ export function Topbar({ navOpen, onNav, mode, onMode, onLanguage, heading, syst
         )}
       </div>
       <div className="topbar-main">
+        {pageHistory}
         {heading && <h1 className="topbar-title" data-k={heading.k}><Icon name={heading.icon} /><span>{heading.title}</span></h1>}
         {heading?.summary && <p className="topbar-sub">{heading.summary}</p>}
         <div className="topbar-room" />

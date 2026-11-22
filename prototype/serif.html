@@ -1,0 +1,214 @@
+<!doctype html>
+<!--
+  Alfred: Geist Serif beside what the app sets in serif today. A prototype: no build step.
+  Each block is one place a serif could go (wordmark, landing headline, first-run title, empty-state and panel
+  titles, body text), in English and in Chinese, in three faces:
+    Georgia · 宋体   the app's --serif today (packages/ui/src/styles.css)
+    Geist Serif      Chinese falls back to 宋体: the font has no Chinese
+    系统字体          the app's --sans, for reference
+  The strip at the top switches light/dark and the shape of Geist Serif's dots (its one variable axis, ELSH).
+
+  Font: Geist Serif 1.9.2 by Vercel with Andrés Briganti and Mark Davis, https://github.com/vercel/geist-font,
+  SIL Open Font License 1.1. The file is fonts/GeistSerifVF.woff2; the licence is beside it (GeistSerif-OFL.txt).
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alfred：Geist Serif 对比</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+@font-face {
+  font-family: "Geist Serif";
+  src: url("fonts/GeistSerifVF.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: block;
+}
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  --serif: Georgia, "Songti SC", STSong, serif;
+  --geist: "Geist Serif", "Songti SC", STSong, serif;
+  --ease: cubic-bezier(.23, 1, .32, 1);
+  --elsh: 0;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { min-height: 100vh; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--alf); outline-offset: 3px; }
+h1, h2, p { margin: 0; }
+
+.strip { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding: 14px 24px; color: var(--muted); font-size: .8125rem; }
+.strip b { color: var(--ink); font-weight: 600; margin-right: auto; }
+.strip .group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.strip button { padding: 3px 10px; border-radius: 999px; background: var(--wash); }
+.strip button[aria-pressed="true"] { background: var(--pick); color: var(--on-pick); }
+
+main { container: page / inline-size; padding: 4px 24px 72px; display: grid; gap: 34px; max-width: 1180px; margin: 0 auto; }
+
+/* What the font is, in six short facts. */
+.facts { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.facts li { padding: 3px 11px; border-radius: 999px; background: var(--wash); color: var(--copy); font-size: .8125rem; }
+.facts li.no { background: color-mix(in oklab, var(--warm) 14%, transparent); color: var(--ink); }
+
+.block > h2 { font-size: .9375rem; font-weight: 650; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.block > h2 em { font-style: normal; font-size: .75rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
+.block > h2 em.yes { color: var(--alf); background: var(--alf-soft); }
+.block > h2 em.maybe { color: var(--ink); background: color-mix(in oklab, var(--warm) 16%, transparent); }
+.block > h2 em.nope { color: var(--muted); background: var(--wash); }
+.block > p { margin: 2px 0 12px; color: var(--copy); font-size: .8125rem; max-width: 72ch; }
+
+.row { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 10px; }
+.row + .row { margin-top: 10px; }
+.cell { container: cell / inline-size; min-width: 0; padding: 14px 18px 18px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--raise); display: grid; gap: 10px; align-content: start; }
+.cell > small { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; color: var(--muted); font-size: .75rem; line-height: 1.4; }
+.cell > small i { font-style: normal; color: var(--alf); }
+.cell.new { border-color: color-mix(in oklab, var(--alf) 34%, var(--line-soft)); }
+.cell .s { overflow-wrap: anywhere; }
+@container page (max-width: 760px) { .row { grid-template-columns: minmax(0, 1fr); } }
+
+/* The three faces. */
+.now { font-family: var(--serif); font-weight: 400; }
+.g { font-family: var(--geist); font-weight: 400; font-synthesis: style; font-variation-settings: "ELSH" var(--elsh); }
+.sys { font-family: var(--sans); font-weight: 650; }
+
+/* Sizes, as the app has them (styles.css) or as a landing page would. */
+.wm { display: flex; align-items: center; gap: 9px; font-size: 1.375rem; line-height: 1; letter-spacing: .01em; }
+.wm img { width: 22px; height: 22px; flex: none; }
+.wm-big { font-size: clamp(2.5rem, 24cqi, 4.5rem); line-height: 1.05; letter-spacing: 0; }
+.it { font-style: italic; }
+.hero { font-size: clamp(1.75rem, 11cqi, 3rem); line-height: 1.12; text-wrap: balance; }
+.sys.hero { letter-spacing: -.02em; }
+.first { font-size: 1.75rem; line-height: 1.25; text-wrap: balance; }
+.empty { font-size: 1.375rem; line-height: 1.3; }
+.panel { font-size: 1.125rem; line-height: 1.2; }
+.body { font-size: .9375rem; line-height: 1.6; font-weight: 400; color: var(--copy); }
+.fine { font-size: .8125rem; line-height: 1.5; font-weight: 400; color: var(--muted); }
+.stack { display: grid; gap: 12px; }
+</style>
+</head>
+<body>
+
+<div class="strip">
+  <b>Geist Serif 对比</b>
+  <span class="group" id="scheme">
+    <button type="button" data-v="light" aria-pressed="true">浅色</button>
+    <button type="button" data-v="dark" aria-pressed="false">深色</button>
+  </span>
+  <span class="group" id="shape">
+    <span>点的形状</span>
+    <button type="button" data-v="0" aria-pressed="true">圆</button>
+    <button type="button" data-v="25" aria-pressed="false">方</button>
+    <button type="button" data-v="50" aria-pressed="false">三角</button>
+    <button type="button" data-v="100" aria-pressed="false">心</button>
+  </span>
+</div>
+
+<main>
+
+  <ul class="facts">
+    <li>开源，SIL OFL 1.1</li>
+    <li>一个文件 49 KB</li>
+    <li>四种点形（i、j、句号）</li>
+    <li class="no">只有一个字重</li>
+    <li class="no">没有斜体</li>
+    <li class="no">没有中文</li>
+  </ul>
+
+  <section class="block">
+    <h2>字标 <em class="yes">建议换</em></h2>
+    <p>现在是 Georgia 斜体。Geist Serif 没有斜体，只能用正体；硬斜是浏览器歪出来的，放在这里只为说明别用。</p>
+    <div class="row" style="--cols: 4">
+      <div class="cell"><small>现在 · Georgia 斜体</small>
+        <p class="s wm now it"><img src="favicon.svg" alt="">Alfred</p>
+        <p class="s wm-big now it">Alfred</p></div>
+      <div class="cell new"><small><i>Geist Serif</i> 正体</small>
+        <p class="s wm g"><img src="favicon.svg" alt="">Alfred</p>
+        <p class="s wm-big g">Alfred</p></div>
+      <div class="cell"><small>Geist Serif 硬斜 · 别用</small>
+        <p class="s wm g it"><img src="favicon.svg" alt="">Alfred</p>
+        <p class="s wm-big g it">Alfred</p></div>
+      <div class="cell"><small>系统字体</small>
+        <p class="s wm sys"><img src="favicon.svg" alt="">Alfred</p>
+        <p class="s wm-big sys">Alfred</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>落地页大标题 <em class="yes">英文建议换</em> <em class="maybe">中文待定</em></h2>
+    <p>大字号是它的主场。中文没有字形，落到宋体上。</p>
+    <div class="row">
+      <div class="cell"><small>Georgia</small><h1 class="s hero now" lang="en">A personal agent that shares your workspace.</h1></div>
+      <div class="cell new"><small><i>Geist Serif</i></small><h1 class="s hero g" lang="en">A personal agent that shares your workspace.</h1></div>
+      <div class="cell"><small>系统字体</small><h1 class="s hero sys" lang="en">A personal agent that shares your workspace.</h1></div>
+    </div>
+    <div class="row">
+      <div class="cell"><small>宋体</small><h1 class="s hero now">和你共用一张工作台的个人助手。</h1></div>
+      <div class="cell new"><small><i>Geist Serif</i> 回落宋体，和左边一样</small><h1 class="s hero g">和你共用一张工作台的个人助手。</h1></div>
+      <div class="cell"><small>系统字体</small><h1 class="s hero sys">和你共用一张工作台的个人助手。</h1></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>首次引导和欢迎 <em class="maybe">看混排</em></h2>
+    <p>28px。「Bruce，欢迎回来。」一行里英文是 Geist Serif、中文是宋体，粗细要看着对得上才行。</p>
+    <div class="row">
+      <div class="cell"><small>Georgia</small><div class="stack first now" lang="en"><p class="s">What should I call you?</p><p class="s">Bruce, welcome back.</p></div></div>
+      <div class="cell new"><small><i>Geist Serif</i></small><div class="stack first g" lang="en"><p class="s">What should I call you?</p><p class="s">Bruce, welcome back.</p></div></div>
+      <div class="cell"><small>系统字体</small><div class="stack first sys" lang="en"><p class="s">What should I call you?</p><p class="s">Bruce, welcome back.</p></div></div>
+    </div>
+    <div class="row">
+      <div class="cell"><small>Georgia + 宋体</small><div class="stack first now"><p class="s">我应该如何称呼你？</p><p class="s">Bruce，欢迎回来。</p></div></div>
+      <div class="cell new"><small><i>Geist Serif</i> + 宋体</small><div class="stack first g"><p class="s">我应该如何称呼你？</p><p class="s">Bruce，欢迎回来。</p></div></div>
+      <div class="cell"><small>系统字体</small><div class="stack first sys"><p class="s">我应该如何称呼你？</p><p class="s">Bruce，欢迎回来。</p></div></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>空状态标题和面板标题 <em class="maybe">英文可以</em></h2>
+    <p>22px 和 18px，是它还站得住的下限。</p>
+    <div class="row">
+      <div class="cell"><small>现在 · Georgia</small><div class="stack now" lang="en"><p class="s empty">What can I do for you?</p><p class="s empty">All clear</p><p class="s panel">Todos</p></div></div>
+      <div class="cell new"><small><i>Geist Serif</i></small><div class="stack g" lang="en"><p class="s empty">What can I do for you?</p><p class="s empty">All clear</p><p class="s panel">Todos</p></div></div>
+      <div class="cell"><small>系统字体</small><div class="stack sys" lang="en"><p class="s empty">What can I do for you?</p><p class="s empty">All clear</p><p class="s panel">Todos</p></div></div>
+    </div>
+    <div class="row">
+      <div class="cell"><small>现在 · 宋体</small><div class="stack now"><p class="s empty">想让我做点什么？</p><p class="s empty">都处理完了</p><p class="s panel">待办</p></div></div>
+      <div class="cell new"><small><i>Geist Serif</i> 回落宋体，和左边一样</small><div class="stack g"><p class="s empty">想让我做点什么？</p><p class="s empty">都处理完了</p><p class="s panel">待办</p></div></div>
+      <div class="cell"><small>系统字体</small><div class="stack sys"><p class="s empty">想让我做点什么？</p><p class="s empty">都处理完了</p><p class="s panel">待办</p></div></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>正文和小字 <em class="nope">不用</em></h2>
+    <p>15px 和 13px。细笔画在小字号下发虚，放在这里只为对照。</p>
+    <div class="row" style="--cols: 2">
+      <div class="cell new"><small><i>Geist Serif</i></small><div class="stack g">
+        <p class="s body" lang="en">Without one I can do nothing. Sign in with a subscription you have, or paste a key.</p>
+        <p class="s fine" lang="en">I only read; I ask before changing anything. 3 todos · 2 events · 14:30</p>
+        <p class="s body">Bruce，今天有 3 件待办、2 个日程，Review PR 14:30 开始。</p></div></div>
+      <div class="cell"><small>系统字体 · 现在</small><div class="stack sys">
+        <p class="s body" lang="en">Without one I can do nothing. Sign in with a subscription you have, or paste a key.</p>
+        <p class="s fine" lang="en">I only read; I ask before changing anything. 3 todos · 2 events · 14:30</p>
+        <p class="s body">Bruce，今天有 3 件待办、2 个日程，Review PR 14:30 开始。</p></div></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// One pressed button per group; what it sets is all there is to switch.
+function group(id, apply) {
+  const buttons = [...document.querySelectorAll(`#${id} button`)];
+  for (const button of buttons) {
+    button.addEventListener("click", () => {
+      for (const other of buttons) other.setAttribute("aria-pressed", String(other === button));
+      apply(button.dataset.v);
+    });
+  }
+}
+group("scheme", (v) => { if (v === "dark") document.documentElement.dataset.scheme = "dark"; else delete document.documentElement.dataset.scheme; });
+group("shape", (v) => document.documentElement.style.setProperty("--elsh", v));
+</script>
+</body>
+</html>

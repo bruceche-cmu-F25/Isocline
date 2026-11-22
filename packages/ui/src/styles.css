@@ -1,10 +1,18 @@
 /* Colours come from tokens.css: the paper theme, light or dark following the system (public/scheme.js sets it).
    Its neutrals (--bg, --paper, --raise, --wash, --line, --ink, --copy, --muted) and --warm are used as they are. */
 @import "./tokens.css";
+/* The wordmark's face: Geist Serif 1.9.2 by Vercel with Andrés Briganti and Mark Davis, github.com/vercel/geist-font,
+   SIL Open Font License 1.1 (fonts/GeistSerif-OFL.txt). One weight, no italic, no Chinese: for the wordmark only. */
+@font-face {
+  font-family: "Geist Serif";
+  src: url("./fonts/GeistSerif-Regular.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: block;
+}
 :root {
   --accent: var(--alf); --accent-soft: var(--alf-soft); --accent-solid: var(--alf-solid); --accent-ink: var(--on-alf); --bad: var(--now);
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
   --serif: Georgia, "Songti SC", STSong, serif;
+  --wordmark: "Geist Serif", Georgia, serif;
   --mono: "SFMono-Regular", ui-monospace, Consolas, monospace;
   --ease: cubic-bezier(.23, 1, .32, 1);
 }
@@ -34,7 +42,7 @@ a:hover { text-decoration-color: var(--accent); }
 .small { font-size: .8125rem; }
 .problem { color: var(--bad); }
 .count { font: .75rem var(--mono); color: var(--muted); }
-.wordmark { font: italic 1.375rem/1 var(--serif); letter-spacing: .01em; }
+.wordmark { font: 1.375rem/1 var(--wordmark); letter-spacing: .01em; }
 
 .boot { min-height: 100dvh; display: grid; place-content: center; gap: 12px; text-align: center; }
 
@@ -69,6 +77,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .topbar-title span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .topbar-title svg { flex: none; width: 20px; height: 20px; color: var(--k-solid, var(--accent)); stroke-width: 1.8; }
 .topbar-sub { flex: 0 20 auto; min-width: 0; margin-left: 6px; color: var(--muted); font-size: .8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page-history { flex: none; display: inline-flex; align-items: center; gap: 2px; }
+.page-history button:disabled { color: var(--muted); background: none; }
 .topbar-room { flex: 1; min-width: 0; align-self: stretch; }
 /* No room for the facts beside the name: the name alone. */
 @container topmain (max-width: 440px) { .topbar-sub { display: none; } }
@@ -155,7 +165,9 @@ body.resizing { cursor: col-resize; user-select: none; }
 .page { grid-area: page; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); container: page / inline-size; overflow: hidden; }
 /* A phone has no top bar, so there the page says its own name and facts: one compact row, as the bar does; the
    facts go under the name when they do not fit beside it. */
-.page-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding: calc(14px + env(safe-area-inset-top, 0px)) 18px 10px; }
+.page-head { flex: none; display: flex; align-items: center; gap: 8px; padding: calc(4px + env(safe-area-inset-top, 0px)) 10px 4px 18px; }
+.page-heading { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.page-head .page-history button { width: 44px; height: 44px; }
 .page-head h1 { min-width: 0; display: flex; align-items: center; gap: 9px; margin: 0; font-size: 1.375rem; line-height: 1.2; font-weight: 650; letter-spacing: -.01em; color: var(--ink); overflow-wrap: anywhere; }
 .page-head h1 svg { flex: none; width: 22px; height: 22px; color: var(--k-solid, var(--accent)); stroke-width: 1.8; }
 .page-sub { min-width: 0; color: var(--muted); font-size: .8125rem; }
@@ -622,15 +634,6 @@ button.ghost, .notice-actions button.ghost { background: none; color: var(--copy
 .inbox-entry-center { flex: none; width: min(100%, 32rem); display: grid; justify-items: center; row-gap: 12px; }
 .inbox-entry-body { display: grid; justify-items: center; align-content: start; gap: 8px; width: 100%; min-height: 5rem; }
 .inbox-entry .empty-title { overflow-wrap: anywhere; max-width: 100%; }
-.inbox-name-form { display: flex; align-items: stretch; gap: 8px; width: min(100%, 21rem); }
-.inbox-name-form input { flex: 1; min-width: 0; min-height: 42px; padding: 6px 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; font-size: 1rem; }
-.inbox-name-form button { padding: 6px 16px; border-radius: 999px; background: var(--accent-solid); color: var(--accent-ink); font-size: .875rem; }
-.inbox-enter { min-height: 36px; color: var(--copy); font-size: .8125rem; }
-.inbox-enter:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
-@container inbox (max-width: 420px) {
-  .inbox-name-form { flex-wrap: wrap; }
-  .inbox-name-form input { flex: 1 1 8rem; }
-}
 @keyframes inbox-appear {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -641,7 +644,7 @@ button.ghost, .notice-actions button.ghost { background: none; color: var(--copy
 .inbox .chips { padding: 0 16px 12px; }
 .inbox-said { margin: 0 16px 10px; padding: 8px 12px; border-radius: 10px; background: var(--alf-soft); color: var(--copy); font-size: .8125rem; }
 .split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--line-soft); margin: 0 -24px; }
-.split[data-columns] { grid-template-columns: clamp(200px, 23%, 272px) minmax(0, 1fr); }
+.resizer-inbox { position: relative; top: auto; justify-self: center; outline-offset: -3px; }
 .inbox-list { min-width: 0; min-height: 0; overflow-y: auto; padding: 8px 8px 24px; }
 .split[data-columns] .inbox-list { border-inline-end: 1px solid var(--line-soft); }
 .note { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; column-gap: 8px; padding: 9px 10px; border-radius: 8px; text-align: left; color: var(--copy); }
@@ -677,7 +680,7 @@ button.link { color: var(--accent); text-decoration: underline; text-decoration-
 html.desktop .topbar-lead { padding-left: 82px; }
 html.desktop.full-screen .topbar-lead { padding-left: 12px; } /* full screen: no window buttons, the bar starts at the edge */ /* with its buttons, 199px: inside the sidebar's narrowest (layout.ts NAV.min) */
 html.desktop .topbar, html.desktop .page-head, html.desktop .alf-head { -webkit-app-region: drag; }
-html.desktop .topbar button, html.desktop .alf-head button { -webkit-app-region: no-drag; }
+html.desktop .topbar button, html.desktop .page-head button, html.desktop .alf-head button { -webkit-app-region: no-drag; }
 
 /* Phone: one column, a dock at the bottom, Alfred and the sidebar as sheets. */
 @media (max-width: 700px) {
@@ -1381,10 +1384,6 @@ textarea.ev-field:disabled { opacity: .5; }
   .cal-add span { display: none; }
   .agenda h3 .icon-btn svg { width: 15px; height: 15px; }
   .agenda li[data-today] h3 { color: var(--now); }
-  .agenda-ev { width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-radius: 8px; color: var(--copy); text-align: left; }
-  .agenda-ev time { flex: none; width: 3.6em; color: var(--muted); font: .75rem var(--mono); }
-  .agenda-ev > span:last-child { min-width: 0; overflow-wrap: anywhere; }
-  .agenda-ev[data-declined] span:last-child { text-decoration: line-through; opacity: .6; }
 }
 /* Mail in a narrow page: the list, or the message with a way back. */
 @container page (max-width: 760px) {

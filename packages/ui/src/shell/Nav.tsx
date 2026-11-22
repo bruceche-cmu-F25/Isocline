@@ -148,7 +148,7 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, co
           {items.map((item) => {
             const count = item.badge?.(state.modules[moduleOf(item)], state);
             return (
-              <button type="button" key={item.key} className="nav-item" data-k={item.k} aria-current={page === item.key ? "page" : undefined}
+              <button type="button" key={item.key} className="nav-item" data-k={item.k} data-page={item.key} aria-current={page === item.key ? "page" : undefined}
                 onClick={() => onPage(item.key)}>
                 <Icon name={item.icon} /><span className="label">{item.title}</span>
                 {count ? <span className="count">{count}</span> : null}

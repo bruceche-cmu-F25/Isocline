@@ -74,6 +74,9 @@ try {
   assert.ok(launchdLoaded(), "launchd agent loaded");
   assert.ok(existsSync(plist), "plist written");
   ok(`launchd agent ${label} is loaded and answers on :${PORT}`);
+  // A new world opens on the first-run walkthrough (ui shell/FirstRun.tsx); this run is about what is behind it.
+  await fetch(`${base}/api/settings`, { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ requestId: crypto.randomUUID(), patch: { firstRunAt: new Date().toISOString() } }) });
   // Alfred's panel may have been left closed: open it from the floating button.
   await main.waitForSelector(".composer textarea, .fab");
   if (await main.$(".fab")) await main.click(".fab");
