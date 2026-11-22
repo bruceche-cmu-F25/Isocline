@@ -9,7 +9,7 @@
 import { existsSync } from "node:fs";
 import { withCoreContext } from "./context.ts";
 import { getConversation, updateConversation, type ThinkingLevel } from "./conversations.ts";
-import { getProject, type SessionMode } from "./projects.ts";
+import { getProject, listProjects, type SessionMode } from "./projects.ts";
 import { commandAllowed, grantCommand, listCommandGrants, simpleCommand, normalizeCommand } from "./shell.ts";
 import { appendEvent, recordDomainEvent } from "./events.ts";
 import { listRunFiles, type FileInfo } from "./files.ts";
@@ -71,6 +71,9 @@ export interface Workspace {
   commands: string[];
   /** Set when the session works in a worktree of its own: the branch checked out there. */
   branch?: string;
+  /** The user's other trusted projects: the run may look in them without asking (the user already let Alfred read
+   * each one), and is told where they are. Changing anything there asks, like any place outside the project. */
+  others?: Array<{ name: string; root: string }>;
 }
 /** A file the user sent with the message, as the engine gets it: where its bytes are, or where the text made of it
  * is (a PDF's), on the home node's disk. No `path`: there is nothing to read (a scanned PDF); `note` says why. */
@@ -200,6 +203,8 @@ async function drive(world: World, run: Run, engine: EnginePort, options: Execut
       commands: listCommandGrants(world, conversation.id).map((grant) => grant.command),
       ...(conversation.branch ? { branch: conversation.branch } : {}),
     };
+    const others = listProjects(world).filter((other) => other.trustedAt && other.id !== project.id).slice(0, 40).map((other) => ({ name: other.name, root: other.path }));
+    if (others.length) workspace.others = others;
   }
 
   const context = { actor: "alfred" as const, run: { id: run.id, owner: options.owner } };

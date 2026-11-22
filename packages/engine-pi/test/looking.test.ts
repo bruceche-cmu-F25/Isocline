@@ -28,6 +28,18 @@ test("in a session, looking inside the project is free; outside it, or through a
   assert.equal(linked.about, linked.path, "outside, the full path");
   assert.equal(look("find", { path: `${root}-other` }, places).free, false, "a sibling with the same prefix is outside");
 
+  // The user's other trusted projects are free to look in; their siblings and links out of them are not.
+  const other = join(base, "site");
+  mkdirSync(join(other, "app"), { recursive: true });
+  symlinkSync(join(base, "secrets"), join(other, "out"));
+  const both = { ...places, others: [other] };
+  assert.equal(look("read", { path: join(other, "app", "page.tsx") }, both).free, true, "inside another project");
+  assert.equal(look("ls", { path: other }, both).free, true, "another project itself");
+  assert.equal(look("read", { path: join(other, "app", "page.tsx") }, both).about, join(other, "app", "page.tsx"), "named in full");
+  assert.equal(look("read", { path: join(other, "out", "key.txt") }, both).free, false, "a link out of another project");
+  assert.equal(look("read", { path: join(base, "secrets", "key.txt") }, both).free, false);
+  assert.equal(look("read", { path: join(other, "app") }, { ...both, root: null }).free, false, "only in a session");
+
   // Not a session: only skills are free.
   assert.equal(look("read", { path: join(root, "src") }, { ...places, root: null }).free, false);
 });

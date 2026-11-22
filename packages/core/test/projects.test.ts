@@ -54,6 +54,13 @@ test("a session's runs get the project's folder; a wrong profile or a removed pr
   assert.equal(getRun(w, ok.id).run.state, "completed");
   assert.deepEqual(seen[0].workspace, { root: project.path, name: "Shop", mode: "ask", commands: [] });
   assert.equal(seen[0].instructions, "Work in the project.\n\nAsk before each change.", "the run is told what its mode allows");
+  // The user's other trusted projects go along (free to look in); an untrusted one does not.
+  const site = trustProject(w, addProject(w, { path: folder(), name: "Site" }).id);
+  addProject(w, { path: folder(), name: "Unread" });
+  submitRun(w, { requestId: "r1o", goal: "Like the site?", profile: "developer", conversationId: session.id });
+  await drain.kick();
+  assert.deepEqual(seen[1].workspace?.others, [{ name: "Site", root: site.path }]);
+  seen.splice(1, 1);
   updateConversation(w, session.id, { mode: "plan" });
   submitRun(w, { requestId: "r1b", goal: "And the cart?", profile: "developer", conversationId: session.id });
   await drain.kick();

@@ -29,8 +29,9 @@
  *
  * A gate checks every call to a tool Alfred did not define. MCP tools their
  * server marks read-only, reading Alfred's skills, and reading, searching or
- * listing inside a session's project folder run freely, and so do changes
- * inside it in `edits` mode; anything else asks the user first, through the
+ * listing inside a session's project folder (or another project the user
+ * trusted) run freely, and so do changes inside the session's own project in
+ * `edits` mode; anything else asks the user first, through the
  * home node, once per call (a change shows its diff). A shell command always
  * asks, shown whole, unless the user allowed that command for the rest of the
  * session; it is not sandboxed and runs as the user. A permitted call that may
@@ -155,7 +156,7 @@ function exitOf(event: { isError?: boolean; details?: unknown; content?: unknown
 }
 
 /** The gate: every call to a tool Alfred did not define passes here first. `root` is a development session's project folder. */
-function gate(state: { run: string | null; mode: string | null; always: boolean; commands: Set<string>; files: Set<string> }, ours: ReadonlySet<string>, root: string | null): ExtensionFactory {
+function gate(state: { run: string | null; mode: string | null; always: boolean; commands: Set<string>; files: Set<string> }, ours: ReadonlySet<string>, root: string | null, others: readonly string[] = []): ExtensionFactory {
   return (pi) => {
     const open = new Map<string, { step: ExternalStep; changes: boolean; run: string; file?: Change; command?: { started: number } }>();
     pi.on("tool_call", async (event) => {
@@ -194,9 +195,9 @@ function gate(state: { run: string | null; mode: string | null; always: boolean;
         always = file.inProject;
         changes = false;
       } else if (Object.hasOwn(LOOKERS, name)) {
-        // Alfred's own skills are instructions, and a session's project is the user's to read in it;
-        // any other file is the user's and needs a yes.
-        const seen = look(name, input, { root, cwd, skills: skillsDir });
+        // Alfred's own skills are instructions, and a session's project is the user's to read in it, as are the
+        // other projects they trusted; any other file is the user's and needs a yes.
+        const seen = look(name, input, { root, cwd, skills: skillsDir, others });
         step.label = seen.label;
         step.about = seen.about;
         // A file the user sent with this very turn is theirs to have read.
@@ -284,7 +285,7 @@ async function close(thread: string): Promise<void> {
 async function open(job: RunJob): Promise<Warm> {
   // What the session is opened with. The commands allowed for the session are not part of it: they are read by the
   // gate each turn, so allowing one does not reopen the session.
-  const place = job.workspace ? { root: job.workspace.root, name: job.workspace.name, mode: job.workspace.mode } : null;
+  const place = job.workspace ? { root: job.workspace.root, name: job.workspace.name, mode: job.workspace.mode, others: job.workspace.others ?? [] } : null;
   const shape = createHash("sha256").update(JSON.stringify({ instructions: job.instructions, tools: job.tools, workspace: place, mcp: mcpRevision(), skills: skillsRevision() })).digest("hex");
   const existing = warm.get(job.thread);
   if (existing && existing.shape === shape) return existing;
@@ -295,6 +296,11 @@ async function open(job: RunJob): Promise<Warm> {
   const state: Warm = { session: null as unknown as AgentSession, shape, run: null, idle: null, mode: job.workspace?.mode ?? null, always: false, commands: new Set(), files: new Set(), speed: null };
   const definitions = alfredTools(state, job);
   const root = job.workspace ? real(job.workspace.root) : null;
+  // The user's other trusted projects: free to look in, and named so "my other repo" needs no question.
+  const others = (job.workspace?.others ?? []).map((other) => ({ name: other.name, root: real(other.root) })).filter((other) => other.root !== root);
+  const elsewhere = others.length
+    ? `\n\nThe user's other projects on this computer (read, search and list them freely when the request involves one; changing anything there asks first):\n${others.map((other) => `- ${other.name}: ${other.root}`).join("\n")}`
+    : "";
   // The servers, and each one's secrets, read once here: Pi asks for both without waiting.
   const mcp = loadAlfredMcpConfig(config);
   const mcpSecrets = new Map<string, McpSecrets>();
@@ -309,9 +315,9 @@ async function open(job: RunJob): Promise<Warm> {
     ...(root ? { agentsFilesOverride: () => ({ agentsFiles: loadProjectContextFiles({ cwd: root, agentDir: resourcesDir }) }) } : {}),
     noPromptTemplates: true,
     noThemes: true,
-    systemPrompt: job.workspace ? `${job.instructions}\n\nProject: ${job.workspace.name}\nFolder: ${root}` : job.instructions,
+    systemPrompt: job.workspace ? `${job.instructions}\n\nProject: ${job.workspace.name}\nFolder: ${root}${elsewhere}` : job.instructions,
     extensionFactories: [
-      { name: "alfred-gate", factory: gate(state, new Set(definitions.map((tool) => tool.name)), root), hidden: true },
+      { name: "alfred-gate", factory: gate(state, new Set(definitions.map((tool) => tool.name)), root, others.map((other) => other.root)), hidden: true },
       createCodemodeExtension(),
       createToolSearchExtension(),
       // Alfred's own servers, not the user's Pi configuration.

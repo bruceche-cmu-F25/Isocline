@@ -193,7 +193,7 @@
 1. **D1 对话组件**【已实现，2026-11-18】：顶部只留标题和用量（↑ ↓ $ 上下文圆环），模型和思考强度挪到输入框下面的底栏（`Conversation.tsx` 的 `ConversationHead`、`ComposerBar`）。只动界面，日常对话先受益。新对话在第一句话之前还没有对话可存，所以底栏只有发送键。
 2. **D2 项目和只读开发会话**【已实现，2026-11-18】：`core_projects`、显式创建对话、子进程按会话的 `cwd`、`developer` 档只开读类工具、读 AGENTS.md。开发页、新会话页、会话页（先没有右栏）。能问"这个仓库怎么组织的"。
    - 核心：`packages/core/src/projects.ts`（添加、信任、移除；路径先 `realpath`）、迁移 `core:9`、`startSession`；执行器按对话给引擎 `workspace`，档和项目对不上（或项目被移除、没信任）的任务直接失败，不进引擎。
-   - 引擎：会话在项目文件夹里开；Pi 内置工具加 `grep`、`find`、`ls`；项目里看（符号链接先解析）不问，项目外照旧问（`packages/engine-pi/src/looking.ts`）；AGENTS.md / CLAUDE.md 用 Pi 的 `loadProjectContextFiles` 读，资源发现仍在 Alfred 自己的目录，项目的 `.pi/` 不加载。Pi 找不到 `fd` / `rg` 时会自己下载。
+   - 引擎：会话在项目文件夹里开；Pi 内置工具加 `grep`、`find`、`ls`；项目里看（符号链接先解析）不问，项目外照旧问（`packages/engine-pi/src/looking.ts`）；2026-11-21 起，用户信任过的其他项目也可以不问就看（只读：read / grep / find / ls），并且会话的指令里列出这些项目的名字和路径，所以"看看我 alfred 的仓库"不用再问在哪；改那里的文件、跑命令仍然每次问，没加进 Alfred 的文件夹仍然每次问；AGENTS.md / CLAUDE.md 用 Pi 的 `loadProjectContextFiles` 读，资源发现仍在 Alfred 自己的目录，项目的 `.pi/` 不加载。Pi 找不到 `fd` / `rg` 时会自己下载。
    - 主节点：`POST /api/projects`、`/api/projects/:id/(trust|remove)` 只接受本机；`POST /api/conversations` 建会话；会话里的任务自动用 `developer` 档，不带页面上下文，也没有 `show_view`。
    - 界面：侧栏「开发」组（项目 → 最近 4 个会话），日常「对话」列表不再列开发会话；「开发」页是新会话页（选项目、添加文件夹、信任卡片、最近会话）或整页会话（返回、项目、"只读"标记）；通知和 ⌘K 打开会话时自动到「开发」页。Mac App 用系统选文件夹窗口（`pick-folder`），本机浏览器里输入路径。
    - 2026-11-18 用真实的 Pi 跑过（模型是 Pi 的默认）：在本仓库里 grep 和 read 不问、回答带 path:line；在一个带 AGENTS.md 的临时项目里，模型不用工具就说出了 AGENTS.md 里的内容；项目里指向外面文件的符号链接被拦下来问，拒绝后不读；ls、find 不问。步骤里项目内的路径从项目根写起（`src/app.ts`），项目外写全路径。
