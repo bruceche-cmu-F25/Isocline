@@ -38,6 +38,10 @@ test("the inbox merges a single brief and its return notice into one dated, dire
   assert.equal(edition.title, editionTitle("Morning brief", run.createdAt));
   assert.equal(edition.summary, "Your schedule is ready.");
   assert.equal(edition.edition?.run?.id, run.id);
+  assert.equal(edition.edition?.morningBrief, true);
+  const renamed = state();
+  renamed.automations = [{ ...brief, template: null, name: "Morning brief" }];
+  assert.equal(inboxItems(renamed)[0].edition?.morningBrief, false, "display names never select the brief reader");
   assert.deepEqual(edition.alsoNotices?.map((notice) => notice.id), [welcome.id]);
 
   const onlyWelcome = state();
@@ -45,6 +49,7 @@ test("the inbox merges a single brief and its return notice into one dated, dire
   assert.equal(inboxItems(onlyWelcome)[0].edition?.runId, run.id);
   onlyWelcome.runs = [];
   assert.equal(inboxItems(onlyWelcome)[0].summary, "Your schedule is ready.");
+  assert.equal(inboxItems(onlyWelcome)[0].edition?.morningBrief, true);
   assert.equal(inboxItems(onlyWelcome)[0].edition?.run, undefined); // the reader fetches this run by id
 
   const moreNews = state();

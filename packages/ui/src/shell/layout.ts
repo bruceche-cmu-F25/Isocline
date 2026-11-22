@@ -100,24 +100,30 @@ export function useViewportWidth(): number {
  */
 export function dragHandle(start: number, edge: "right" | "left", onMove: (width: number) => void, onEnd?: () => void) {
   return (event: ReactPointerEvent<HTMLElement>) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || !event.isPrimary) return;
     event.preventDefault();
     const target = event.currentTarget;
     target.setPointerCapture(event.pointerId);
     target.classList.add("active");
     document.body.classList.add("resizing");
     const x0 = event.clientX;
-    const move = (moved: PointerEvent) => onMove(start + (edge === "right" ? moved.clientX - x0 : x0 - moved.clientX));
-    const up = () => {
+    const move = (moved: PointerEvent) => {
+      if (moved.pointerId === event.pointerId) onMove(start + (edge === "right" ? moved.clientX - x0 : x0 - moved.clientX));
+    };
+    const up = (ended: PointerEvent) => {
+      if (ended.pointerId !== event.pointerId) return;
       target.classList.remove("active");
       document.body.classList.remove("resizing");
       target.removeEventListener("pointermove", move);
-      target.removeEventListener("pointerup", up);
-      target.removeEventListener("pointercancel", up);
+      window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", up, true);
+      window.removeEventListener("lostpointercapture", up, true);
       onEnd?.();
     };
     target.addEventListener("pointermove", move);
-    target.addEventListener("pointerup", up);
-    target.addEventListener("pointercancel", up);
+    // A narrower layout can remove the divider while the pointer is still down.
+    window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", up, true);
+    window.addEventListener("lostpointercapture", up, true);
   };
 }

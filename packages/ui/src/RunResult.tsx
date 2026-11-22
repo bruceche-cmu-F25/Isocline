@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Run, RunState } from "@alfred/protocol";
 import { api } from "./api.ts";
+import { MorningBrief } from "./MorningBrief.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { t, type Key } from "./i18n/index.ts";
 import { RunFailure } from "./RunFailure.tsx";
@@ -13,7 +14,7 @@ const stateLabel: Record<RunState, Key> = {
 export const resultStatus = (state: RunState) => t(stateLabel[state]);
 
 /** The full persisted reply, also for a notice older than the recent runs in /state. */
-export function RunResult({ runId, run, preview, reading = false }: { runId: string; run?: Run; preview?: string; reading?: boolean }) {
+export function RunResult({ runId, run, preview, reading = false, morningBrief = false }: { runId: string; run?: Run; preview?: string; reading?: boolean; morningBrief?: boolean }) {
   const [fetched, setFetched] = useState<Run | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -34,6 +35,7 @@ export function RunResult({ runId, run, preview, reading = false }: { runId: str
       : <p className="quiet small" role="status">{t("auto.loading")}</p>}
   </div>;
   const reply = result.outcome?.reply;
+  if (morningBrief && result.state === "completed") return <MorningBrief key={result.id} run={result} />;
   return <div className={className}>
     {reply && <Markdown text={reply} reading={reading} />}
     <RunFailure key={result.id} run={result} />

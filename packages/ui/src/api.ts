@@ -2,7 +2,7 @@
  * retry after a dropped connection can never do the same thing twice.
  */
 import type {
-  ArchivedConversation, Automation, AutomationHistory, Schedule,
+  ArchivedConversation, Automation, AutomationHistory, MorningBriefEvidence, Schedule,
   Conversation, ConversationDetail, CoreEvent, DeviceInfo, FileInfo, DeviceKind, DeviceScopeRequest, LiveUpdate, ModelsResponse, Notice, OpResponse, PairingCode, ProposalResponse,
   Project, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, ViewContext, WebLockStatus,
 } from "@alfred/protocol";
@@ -170,6 +170,7 @@ export const api = {
     `/api/conversations/${id}/processes/${processId}/logs${seen === undefined ? "" : `?seen=${seen}`}`),
   respond: (runId: string, requestId: string, answer: string) => post<Run>(`/api/runs/${runId}/respond`, { requestId, answer }),
   run: (runId: string) => call<{ run: Run }>(`/api/runs/${runId}`),
+  morningBrief: (runId: string) => call<{ evidence: MorningBriefEvidence | null }>(`/api/runs/${encodeURIComponent(runId)}/morning-brief`),
   cancel: (runId: string) => post<Run>(`/api/runs/${runId}/cancel`, { requestId: newRequestId() }),
   resume: (runId: string) => post<Run>(`/api/runs/${runId}/resume`, { requestId: newRequestId() }),
   op: (op: string, input: unknown, requestId = newRequestId()) => post<OpResponse>(`/api/ops/${op}`, { requestId, input }),

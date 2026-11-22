@@ -1,0 +1,386 @@
+<!doctype html>
+<!--
+  Alfred: colour in the Morning brief. A prototype: no build step, sample data, nothing is sent anywhere.
+  The brief has the same parts every day (a suggested start, the schedule, deadlines, mail and decisions), so a
+  colour can carry one meaning and keep it. The strip switches between four versions of the same edition:
+    现在  as the app draws it today (packages/ui/src/MorningBrief.tsx, morning-brief.css)
+    A    identity only, a change of styles: section icons in their page's colour, events and todos in their
+         area's colour with its name, overdue in red. The mail part is untouched.
+    B    A, and each mail row starts with a tag saying what it is: risk (red), your call (amber), a date or
+         "FYI" (grey); sorted by weight; each row names its letter. Needs the model to hand in a kind and the
+         letter's id with every row, instead of free Markdown.
+    C    A, and the mail rows are grouped by what you do about them, under the same small headings the
+         deadlines column already uses. "FYI" is folded.
+  The strip also switches light/dark, zh/en and a wide or narrow window.
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alfred：早报的颜色</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --ease: cubic-bezier(.23, 1, .32, 1);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { min-height: 100vh; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 3px; }
+svg { flex: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── The prototype's own strip ── */
+.strip { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; padding: 14px 24px 6px; color: var(--muted); font-size: .8125rem; }
+.strip b { color: var(--ink); font-weight: 600; margin-right: auto; }
+.strip .set { display: flex; gap: 4px; }
+.strip button { padding: 3px 10px; border-radius: 999px; background: var(--wash); white-space: nowrap; }
+.strip button[aria-pressed="true"] { background: var(--pick); color: var(--on-pick); }
+.about { margin: 0; padding: 0 24px 12px; max-width: 78ch; color: var(--copy); font-size: .8125rem; }
+.about em { font-style: normal; font-size: .75rem; font-weight: 600; color: var(--alf); background: var(--alf-soft); padding: 1px 8px; border-radius: 999px; margin-right: 6px; }
+
+main { padding: 0 24px 48px; }
+.win { max-width: 1040px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); box-shadow: 0 1px 2px oklch(0 0 0 / .04); transition: max-width .3s var(--ease); }
+.win[data-w="narrow"] { max-width: 400px; }
+.topbar { height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: var(--paper); border-bottom: 1px solid var(--line-soft); border-radius: 12px 12px 0 0; }
+.lights { display: flex; gap: 8px; margin-right: 8px; }
+.lights span { width: 12px; height: 12px; border-radius: 50%; background: var(--line); }
+.title { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 1.0625rem; font-weight: 650; white-space: nowrap; }
+.title svg { width: 20px; height: 20px; color: var(--k-solid); stroke-width: 1.8; }
+.sub { min-width: 0; color: var(--muted); font-size: .8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page { container: page / inline-size; padding: 26px 22px 30px; }
+.col { max-width: 860px; margin: 0 auto; }
+.col > h1 { margin: 0; font-size: 1.5rem; font-weight: 650; line-height: 1.3; }
+.col > .when { margin: 2px 0 16px; padding-bottom: 16px; border-bottom: 1px solid var(--line-soft); color: var(--muted); font-size: .875rem; }
+
+.legend { max-width: 1040px; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 14px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: .75rem; }
+.legend li { display: flex; align-items: center; gap: 6px; }
+.legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--k-solid); }
+.legend i.many { width: 6px; height: 6px; margin-right: 16px; background: oklch(.6 .15 250); box-shadow: 8px 0 0 oklch(.58 .15 300), 16px 0 0 oklch(.64 .15 188); }
+
+.toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 7px 14px; border-radius: 999px; background: var(--pick); color: var(--on-pick); font-size: .8125rem; box-shadow: var(--shadow); animation: rise .2s var(--ease); }
+@keyframes rise { from { opacity: 0; transform: translate(-50%, 6px); } }
+
+/* ── The brief as the app draws it today (after packages/ui/src/morning-brief.css) ── */
+.morning-brief { container: brief / inline-size; width: 100%; min-width: 0; color: var(--ink); line-height: 1.45; overflow-wrap: anywhere; }
+.morning-brief > * + * { margin-top: 22px; }
+.morning-brief h3, .morning-brief h4, .morning-brief p, .morning-brief ul, .morning-brief ol { margin-block: 0; }
+.brief-advice { display: grid; gap: 7px; border-inline-start: 3px solid var(--alf); background: color-mix(in oklab, var(--alf-soft) 65%, var(--paper)); border-radius: 0 8px 8px 0; padding: 13px 16px 15px; }
+.brief-advice h3, .brief-section-head h3 { display: flex; align-items: center; gap: 7px; color: var(--ink); font-size: 1rem; font-weight: 650; line-height: 1.35; }
+.brief-advice h3 { color: var(--alf); font-size: .8125rem; }
+.morning-brief h3 svg { width: 17px; height: 17px; }
+.brief-advice p { font-size: 1.03125rem; line-height: 1.5; }
+.brief-day, .brief-section { min-width: 0; }
+.brief-day { display: grid; gap: 22px; }
+.brief-section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 3px 8px; border-bottom: 1px solid var(--line); margin-bottom: 7px; padding-bottom: 8px; }
+.brief-section-head h3 svg { align-self: center; color: var(--muted); }
+.brief-section-head > span { color: var(--muted); font-size: .8125rem; line-height: 1.4; }
+.brief-timeline, .brief-tasks, .brief-editorial-list, .brief-mail-sources, .brief-all-day ul { padding: 0; list-style: none; }
+.brief-timeline > li { position: relative; display: grid; grid-template-columns: 4.375rem minmax(0, 1fr); align-items: baseline; min-height: 44px; }
+.brief-time { align-self: start; display: grid; gap: 1px; padding-block: 9px; font: 550 .8125rem/1.4 var(--mono); font-variant-numeric: tabular-nums; }
+.brief-end { color: var(--muted); font: 400 .75rem/1.4 var(--sans); }
+.brief-event-name { position: relative; align-self: stretch; padding: 8px 0 9px 14px; font-size: .9375rem; }
+.brief-event-name::before, .brief-event-name::after { content: ""; position: absolute; left: 0; }
+.brief-event-name::before { top: 0; bottom: 0; width: 1px; background: var(--line); }
+.brief-event-name::after { top: 17px; left: -2px; width: 5px; height: 5px; background: var(--alf); border-radius: 50%; }
+.brief-timeline li:first-child .brief-event-name::before { top: 18px; }
+.brief-timeline li:last-child .brief-event-name::before { bottom: calc(100% - 18px); }
+.brief-event-aside { color: var(--muted); font-size: .8125rem; }
+.brief-all-day { display: grid; grid-template-columns: 4.375rem minmax(0, 1fr); align-items: baseline; padding-top: 8px; }
+.brief-timeline + .brief-all-day { margin-top: 2px; border-top: 1px solid var(--line-soft); }
+.brief-all-day ul { display: grid; gap: 4px; padding-left: 14px; font-size: .875rem; color: var(--copy); }
+.brief-section h4 { color: var(--muted); font-size: .75rem; font-weight: 550; }
+.brief-task-group { padding-top: 4px; }
+.brief-task-group + .brief-task-group, .brief-reported { margin-top: 8px; }
+.brief-tasks > li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; border-bottom: 1px solid var(--line-soft); padding: 7px 0; font-size: .9375rem; }
+.brief-tasks > li:last-child { border-bottom: 0; }
+.brief-task-title { min-width: 0; flex: 1 1 7rem; position: relative; padding-inline-start: 13px; }
+.brief-task-title::before { content: ""; position: absolute; left: 0; top: .55em; height: 4px; width: 4px; background: var(--muted); border-radius: 1px; }
+.brief-task-due { display: flex; flex-wrap: wrap; gap: 4px; font-size: .8125rem; color: var(--copy); font-variant-numeric: tabular-nums; }
+.brief-task-due[data-late] { color: var(--warm); }
+.brief-editorial-list > li { position: relative; padding: 7px 0 7px 14px; color: var(--copy); font-size: .9375rem; line-height: 1.5; }
+.brief-editorial-list > li::before { content: ""; position: absolute; left: 1px; top: calc(7px + .65em); width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
+.brief-editorial-list > li + li { border-top: 1px solid var(--line-soft); }
+.brief-disclosure { border-top: 1px solid var(--line-soft); }
+.morning-brief .brief-disclosure + .brief-disclosure { margin-top: 0; }
+.brief-disclosure summary { display: flex; align-items: center; gap: 7px; width: fit-content; max-width: 100%; padding: 9px 1px; list-style: none; cursor: pointer; color: var(--copy); font-size: .8125rem; }
+.brief-disclosure summary::-webkit-details-marker { display: none; }
+.brief-disclosure summary svg { width: 14px; height: 14px; transform: rotate(-90deg); }
+.brief-disclosure[open] summary svg { transform: none; }
+.brief-mail-sources { display: grid; gap: 8px; padding: 4px 0 12px 22px; }
+.brief-mail-sources li { display: grid; gap: 2px; }
+.brief-mail-sources strong { font-size: .875rem; font-weight: 550; }
+.brief-mail-sources span { color: var(--muted); font-size: .8125rem; }
+@container brief (min-width: 610px) {
+  .brief-day[data-paired] { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 24px; }
+  .brief-day[data-paired] .brief-due { padding-inline-start: 20px; border-inline-start: 1px solid var(--line-soft); }
+}
+
+/* ── A, B, C: identity. Small marks only: an icon, a dot, a circle, and the area's name beside it. ── */
+.area { display: none; }
+.morning-brief:not([data-v="now"]) .brief-section-head h3 svg { color: var(--k-solid); }
+.morning-brief:not([data-v="now"]) .brief-event-name::after { top: 16px; left: -3px; width: 7px; height: 7px; background: var(--k-solid); box-shadow: 0 0 0 2px var(--bg); }
+.morning-brief:not([data-v="now"]) .area { display: inline; margin-inline-start: 6px; color: var(--k-text); font-size: .75rem; white-space: nowrap; }
+.morning-brief:not([data-v="now"]) .brief-all-day li { position: relative; }
+.morning-brief:not([data-v="now"]) .brief-all-day li::before { content: ""; position: absolute; left: -17px; top: .5em; width: 7px; height: 7px; border-radius: 50%; background: var(--k-solid); }
+.morning-brief:not([data-v="now"]) .brief-task-title { padding-inline-start: 19px; }
+.morning-brief:not([data-v="now"]) .brief-task-title::before { top: .28em; width: 11px; height: 11px; background: none; border: 1.6px solid var(--k-solid); border-radius: 50%; }
+/* Overdue is a missed date: red, and always with its word and its date. */
+.morning-brief:not([data-v="now"]) .brief-task-group[data-k="now"] h4,
+.morning-brief:not([data-v="now"]) .brief-task-due[data-late] { color: var(--k-text); }
+.morning-brief:not([data-v="now"]) .brief-task-due[data-late] { font-weight: 550; }
+
+/* ── B and C: what a mail row is ── */
+.tag { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--k-fill, var(--wash)); color: var(--k-text, var(--copy)); font-size: .75rem; font-weight: 500; white-space: nowrap; }
+.tag svg { width: 12px; height: 12px; stroke-width: 1.8; }
+.src { margin-top: 2px; color: var(--muted); font-size: .8125rem; }
+.src button, .brief-advice a { color: var(--alf); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--alf) 40%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.src button:hover, .brief-advice a:hover { text-decoration-color: currentColor; }
+.mail-rows { display: grid; grid-template-columns: minmax(0, 1fr); padding: 0; list-style: none; }
+.mail-rows > li { display: grid; gap: 4px; padding: 9px 0; color: var(--copy); font-size: .9375rem; line-height: 1.5; border-radius: 6px; transition: background .6s var(--ease); }
+.mail-rows > li + li { border-top: 1px solid var(--line-soft); }
+.mail-rows > li[data-kind="risk"] p:first-child, .mail-rows > li[data-kind="decide"] p:first-child { color: var(--ink); }
+.mail-rows > li[data-kind="fyi"] p:first-child { color: var(--muted); }
+.mail-rows .tag { justify-self: start; }
+@container brief (min-width: 520px) {
+  .mail-rows { grid-template-columns: max-content minmax(0, 1fr); column-gap: 14px; }
+  .mail-rows > li { grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; }
+}
+[data-flash] { background: var(--alf-soft) !important; transition-duration: .1s !important; }
+.brief-tasks > li { border-radius: 6px; transition: background .6s var(--ease); }
+
+/* C: groups under the small headings the deadlines column uses */
+.mail-group + .mail-group { margin-top: 10px; }
+.mail-group h4 { display: flex; align-items: center; gap: 6px; padding-top: 4px; }
+.mail-group[data-k] h4 { color: var(--k-text); }
+.mail-group h4 i { width: 7px; height: 7px; border-radius: 50%; background: var(--k-solid, var(--muted)); }
+.mail-group .mail-rows > li { padding-inline-start: 13px; }
+.mail-group .mail-rows { grid-template-columns: minmax(0, 1fr); }
+.mail-group .mail-rows > li { grid-template-columns: minmax(0, 1fr); }
+details.mail-group > summary { list-style: none; cursor: pointer; width: fit-content; }
+details.mail-group > summary::-webkit-details-marker { display: none; }
+details.mail-group summary svg { width: 12px; height: 12px; transform: rotate(-90deg); }
+details.mail-group[open] summary svg { transform: none; }
+</style>
+</head>
+<body>
+<div class="strip">
+  <b data-t="head"></b>
+  <span class="set"><button type="button" data-set="v:now" data-t="vNow"></button><button type="button" data-set="v:a" data-t="vA"></button><button type="button" data-set="v:b" data-t="vB"></button><button type="button" data-set="v:c" data-t="vC"></button></span>
+  <span class="set"><button type="button" data-set="scheme:light">☀︎</button><button type="button" data-set="scheme:dark">☾</button></span>
+  <span class="set"><button type="button" data-set="lang:zh">中文</button><button type="button" data-set="lang:en">EN</button></span>
+  <span class="set"><button type="button" data-set="w:wide" data-t="wide"></button><button type="button" data-set="w:narrow" data-t="narrow"></button></span>
+</div>
+<p class="about" id="about"></p>
+<main>
+  <div class="win" id="win">
+    <header class="topbar">
+      <span class="lights"><span></span><span></span><span></span></span>
+      <h1 class="title" data-k="warm"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 11.5 5.5 5h9l2 6.5V15.5h-13zM3.5 11.5H8l1 2h2l1-2h4.5"/></svg><span data-t="inbox"></span></h1>
+      <span class="sub" data-t="inboxSub"></span>
+    </header>
+    <div class="page"><div class="col">
+      <h1 data-t="brief"></h1>
+      <p class="when" data-t="when"></p>
+      <div class="morning-brief" id="brief"></div>
+    </div></div>
+  </div>
+  <ul class="legend" id="legend"></ul>
+</main>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+const P = {
+  todo: "M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM7 10.2l2 2 4-4.4",
+  cal: "M4 5.5h12v10.5H4zM4 9h12M7.5 3.5v3.5M12.5 3.5v3.5",
+  mail: "M3.5 5.5h13v9.5h-13zM4 6l6 4.75L16 6",
+  bulb: "M8 15h4M8.5 17.5h3M10 3a5 5 0 0 0-3 9c.6.5 1 1.1 1 1.8V14h4v-.2c0-.7.4-1.3 1-1.8A5 5 0 0 0 10 3",
+  down: "M5 8l5 5 5-5",
+  shield: "M10 3.5 15.5 5.5v4.5c0 3.5-5.5 6.5-5.5 6.5S4.5 13.5 4.5 10V5.5z",
+  clock: "M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM10 6.5V10l2.5 1.5",
+};
+const icon = (n) => `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="${P[n]}"/></svg>`;
+
+/* Areas, in the fixed order of docs/design/style.md §2.1. */
+const AREA = {
+  work: ["blue", "工作", "Work"], life: ["green", "生活", "Life"], study: ["violet", "学习", "Study"],
+  health: ["teal", "健康", "Health"], money: ["yellow", "财务", "Money"], family: ["pink", "家人朋友", "Family"],
+};
+
+/* One edition. Sample data. Mail rows are in the order the model happened to write them. */
+const D = {
+  events: [
+    { start: "09:30", end: "10:00", zh: "组会", en: "Group meeting", area: "work" },
+    { start: "14:00", end: "15:30", zh: "算法课", en: "Algorithms lecture", aside: ["（教学楼 208）", "(Hall 208)"], area: "study" },
+    { start: "19:00", end: "20:00", zh: "羽毛球", en: "Badminton", area: "health" },
+  ],
+  allDay: [{ zh: "妈妈生日", en: "Mum's birthday", area: "family" }],
+  overdue: [{ id: "t-claim", zh: "交报销单", en: "Hand in the expense claim", date: ["11月16日", "Nov 16"], area: "money" }],
+  today: [
+    { id: "t-proposal", zh: "提交项目提案", en: "Submit the project proposal", at: "23:59", area: "study" },
+    { id: "t-domain", zh: "续订域名", en: "Renew the domain", area: "money" },
+  ],
+  reported: [["练习测验 12月2日 08:59 截止（邮件里说的，没记成待办）", "Practice test due Dec 2, 08:59 (said in mail, not a saved todo)"]],
+  mail: [
+    { id: "m-bill", kind: "due", date: ["今天到期", "Due today"], from: ["云服务账单", "Cloud billing"],
+      zh: "云服务账单 $12.40 今天到期。卡已绑定，会自动扣。", en: "The cloud invoice, $12.40, is due today. A card is on file and will be charged." },
+    { id: "m-login", kind: "risk", from: ["代码托管 · 账号安全", "Code host · Security"],
+      zh: "昨晚 18:30 有一台没见过的设备登录代码托管账号，一小时后又来了三封验证码。看看是不是你。", en: "An unrecognised device signed in to the code host at 18:30 last night, then three sign-in codes an hour later. Check it was you." },
+    { id: "m-library", kind: "fyi", from: ["图书馆", "Library"],
+      zh: "图书馆这个周末闭馆。", en: "The library is closed this weekend." },
+    { id: "m-invite", kind: "decide", from: ["助教 Lin", "Lin, TA"],
+      zh: "周四的代码讨论改到 15:00–16:00，208 室。日历邀请还没回：接受或不去。", en: "Thursday's code discussion moved to 15:00–16:00, Room 208. The invitation is unanswered: accept or leave it." },
+    { id: "m-quiz", kind: "due", date: ["12月2日", "Dec 2"], from: ["课程通知", "Course notices"],
+      zh: "期末练习测验改为 12月2日 08:59 截止。", en: "The final practice test is now due Dec 2, 08:59." },
+  ],
+};
+const ORDER = ["risk", "decide", "due", "fyi"];
+
+const T = {
+  zh: {
+    head: "早报的颜色", vNow: "现在", vA: "A 标识", vB: "B 标签", vC: "C 分组", wide: "宽", narrow: "窄", best: "推荐",
+    about: {
+      now: "和应用里一样：只有 Alfred 的靛蓝，逾期是琥珀。五条邮件看起来一样重，其实一条是安全问题，一条等你点头。",
+      a: "只改样式就能做。小标题的图标用那一页的颜色，日程和待办的点用领域色并写出名字，逾期改成红。邮件那一段没动。",
+      b: "A，加上每条邮件开头一个标签：风险是红，等你是琥珀，日期和告知是灰；按轻重排，每行写明哪封邮件。「建议先做」里的词能点到那一行。要模型交稿时每行带上类型和邮件 id。",
+      c: "A，邮件按「要做什么」分组，用右栏「已逾期 / 当天到期」那种小标题。「知道就行」收起。行数少时每组只有一行，显得碎。",
+    },
+    inbox: "通知", inboxSub: "Alfred 的 1 条", brief: "早报", when: "11月18日 周三 · 07:30",
+    start: "建议先做", agenda: "日程", calSrc: "Google 日历 · PST", deadlines: "截止事项", todoSrc: "Alfred 待办", mail: "邮件与待决定事项",
+    until: (x) => `至 ${x}`, allDay: "全天", overdue: "已逾期", dueToday: "当天到期", reported: "早报中提到的事项",
+    opened: (n) => `Alfred 打开过的邮件（${n}）`, original: "查看早报原文", originalBody: "（模型交来的原文）",
+    advice: { plain: "先确认昨晚那次登录是不是你：一分钟的事，只有它拖不得。接着是今晚 23:59 的项目提案。",
+      rich: `先确认<a data-ref="m-login">昨晚那次登录</a>是不是你：一分钟的事，只有它拖不得。接着是今晚 23:59 的<a data-ref="t-proposal">项目提案</a>。` },
+    kind: { risk: "风险", decide: "等你", fyi: "告知" }, group: { risk: "先看", decide: "等你决定", due: "有日期", fyi: "知道就行" },
+    from: "来自", open: "打开邮件", toast: "原型：这里会打开那封邮件",
+    legend: [["now", "危险、已逾期"], ["warm", "等你决定"], ["alfred", "Alfred 的话"], ["many", "领域，旁边写着名字"], ["", "小标题图标 = 那一页的颜色"]],
+  },
+  en: {
+    head: "Colour in the Morning brief", vNow: "Today", vA: "A Identity", vB: "B Tags", vC: "C Groups", wide: "Wide", narrow: "Narrow", best: "Recommended",
+    about: {
+      now: "As in the app: only Alfred's indigo, and amber for overdue. Five mail rows look equally heavy, though one is a security matter and one waits for your yes.",
+      a: "A change of styles only. Section icons take their page's colour, events and todos take their area's colour with its name, overdue turns red. The mail part is untouched.",
+      b: "A, and each mail row starts with a tag: risk is red, your call is amber, dates and FYI are grey; sorted by weight, each naming its letter. Words in the suggested start jump to their row. Needs the model to hand in a kind and the letter's id with every row.",
+      c: "A, with mail grouped by what you do about it, under the small headings the deadlines column already uses. FYI is folded. With few rows each group holds one line and feels scattered.",
+    },
+    inbox: "Inbox", inboxSub: "1 note from Alfred", brief: "Morning brief", when: "Wed, Nov 18 · 07:30",
+    start: "Suggested start", agenda: "Schedule", calSrc: "Google Calendar · PST", deadlines: "Deadlines", todoSrc: "Alfred Todos", mail: "Mail and decisions",
+    until: (x) => `to ${x}`, allDay: "All day", overdue: "Overdue", dueToday: "Due today", reported: "Mentioned in the brief",
+    opened: (n) => `Mail Alfred opened (${n})`, original: "Show the brief as written", originalBody: "(the text the model handed in)",
+    advice: { plain: "First check last night's sign-in was you: a minute, and the only thing that can't wait. Then tonight's 23:59 project proposal.",
+      rich: `First check <a data-ref="m-login">last night's sign-in</a> was you: a minute, and the only thing that can't wait. Then tonight's 23:59 <a data-ref="t-proposal">project proposal</a>.` },
+    kind: { risk: "Risk", decide: "Your call", fyi: "FYI" }, group: { risk: "Look first", decide: "Your call", due: "Has a date", fyi: "Good to know" },
+    from: "From", open: "Open mail", toast: "Prototype: this would open that letter",
+    legend: [["now", "Danger, overdue"], ["warm", "Waits for you"], ["alfred", "Alfred's words"], ["many", "Area, with its name beside it"], ["", "Section icon = that page's colour"]],
+  },
+};
+
+const S = { v: "b", scheme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light", lang: "zh", w: "wide" };
+for (const [k, v] of new URLSearchParams(location.hash.slice(1))) if (k in S) S[k] = v;
+const root = document.documentElement;
+const zh = () => S.lang === "zh";
+const pick = (pair) => pair[zh() ? 0 : 1];
+const name = (x) => zh() ? x.zh : x.en;
+const area = (x) => `<span class="area">${AREA[x.area][zh() ? 1 : 2]}</span>`;
+const k = (x) => `data-k="${AREA[x.area][0]}"`;
+
+function head(ic, title, source, hue) {
+  return `<header class="brief-section-head" data-k="${hue}"><h3>${icon(ic)}${title}</h3>${source ? `<span>${source}</span>` : ""}</header>`;
+}
+
+function todoGroup(items, label, late) {
+  return `<div class="brief-task-group" ${late ? 'data-k="now"' : ""}><h4>${label}</h4><ul class="brief-tasks">${items.map((x) => `
+    <li id="${x.id}"><span class="brief-task-title" ${k(x)}>${name(x)}${area(x)}</span>
+      ${x.date || x.at ? `<span class="brief-task-due" ${late ? "data-late" : ""}>${x.date ? `<time>${pick(x.date)}</time>` : ""}${x.at ? `<time>${x.at}</time>` : ""}</span>` : ""}</li>`).join("")}</ul></div>`;
+}
+
+function tag(m, t) {
+  if (m.kind === "risk") return `<span class="tag" data-k="now">${icon("shield")}${t.kind.risk}</span>`;
+  if (m.kind === "decide") return `<span class="tag" data-k="warm">${t.kind.decide}</span>`;
+  if (m.kind === "due") return `<span class="tag">${icon("clock")}${pick(m.date)}</span>`;
+  return `<span class="tag">${t.kind.fyi}</span>`;
+}
+const body = (m, t) => `<div><p>${name(m)}</p><p class="src">${t.from} ${pick(m.from)} · <button type="button" data-open>${t.open}</button></p></div>`;
+
+function mail(t) {
+  if (S.v === "now" || S.v === "a") return `<ul class="brief-editorial-list">${D.mail.map((m) => `<li>${name(m)}</li>`).join("")}</ul>`;
+  const sorted = [...D.mail].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
+  if (S.v === "b") return `<ul class="mail-rows">${sorted.map((m) => `<li id="${m.id}" data-kind="${m.kind}">${tag(m, t)}${body(m, t)}</li>`).join("")}</ul>`;
+  const hue = { risk: 'data-k="now"', decide: 'data-k="warm"', due: "", fyi: "" };
+  return ORDER.map((kind) => {
+    const rows = sorted.filter((m) => m.kind === kind);
+    if (!rows.length) return "";
+    const list = `<ul class="mail-rows">${rows.map((m) => `<li id="${m.id}" data-kind="${m.kind}">${body(m, t)}</li>`).join("")}</ul>`;
+    return kind === "fyi"
+      ? `<details class="mail-group"><summary><h4>${icon("down")}${t.group.fyi}${zh() ? `（${rows.length}）` : ` (${rows.length})`}</h4></summary>${list}</details>`
+      : `<div class="mail-group" ${hue[kind]}><h4><i></i>${t.group[kind]}</h4>${list}</div>`;
+  }).join("");
+}
+
+function render() {
+  const t = T[S.lang];
+  document.querySelectorAll("[data-t]").forEach((el) => { el.textContent = t[el.dataset.t]; });
+  document.getElementById("about").innerHTML = (S.v === "b" ? `<em>${t.best}</em>` : "") + t.about[S.v];
+  document.getElementById("win").dataset.w = S.w;
+  const rich = S.v === "b" || S.v === "c";
+  const el = document.getElementById("brief");
+  el.dataset.v = S.v;
+  el.innerHTML = `
+    <section class="brief-advice"><h3>${icon("bulb")}${t.start}</h3><p>${rich ? t.advice.rich : t.advice.plain}</p></section>
+    <div class="brief-day" data-paired>
+      <section class="brief-section brief-agenda">${head("cal", t.agenda, t.calSrc, "now")}
+        <ol class="brief-timeline">${D.events.map((e) => `<li ${k(e)}><div class="brief-time"><time>${e.start}</time><span class="brief-end">${t.until(e.end)}</span></div>
+          <div class="brief-event-name">${name(e)}${e.aside ? ` <span class="brief-event-aside">${pick(e.aside)}</span>` : ""}${area(e)}</div></li>`).join("")}</ol>
+        <div class="brief-all-day"><h4>${t.allDay}</h4><ul>${D.allDay.map((e) => `<li ${k(e)}>${name(e)}${area(e)}</li>`).join("")}</ul></div>
+      </section>
+      <section class="brief-section brief-due">${head("todo", t.deadlines, t.todoSrc, "blue")}
+        ${todoGroup(D.overdue, t.overdue, true)}${todoGroup(D.today, t.dueToday, false)}
+        <details class="brief-disclosure brief-reported"><summary>${icon("down")}${t.reported}</summary><ul class="brief-editorial-list">${D.reported.map((r) => `<li>${pick(r)}</li>`).join("")}</ul></details>
+      </section>
+    </div>
+    <section class="brief-section brief-decisions">${head("mail", t.mail, "", "teal")}${mail(t)}</section>
+    <details class="brief-disclosure"><summary>${icon("down")}${t.opened(D.mail.length - 1)}</summary>
+      <ul class="brief-mail-sources">${D.mail.filter((m) => m.kind !== "fyi").map((m) => `<li><strong>${name(m)}</strong><span>${pick(m.from)}</span></li>`).join("")}</ul></details>
+    <details class="brief-disclosure"><summary>${icon("down")}${t.original}</summary><p class="src" style="padding:4px 0 12px 22px">${t.originalBody}</p></details>`;
+  document.getElementById("legend").innerHTML = S.v === "now" ? "" : t.legend.filter(([hue]) => S.v !== "a" || hue !== "warm")
+    .map(([hue, text]) => `<li>${hue === "many" ? '<i class="many"></i>' : hue ? `<i data-k="${hue}"></i>` : ""}${text}</li>`).join("");
+}
+
+function apply() {
+  root.dataset.scheme = S.scheme;
+  root.lang = zh() ? "zh-CN" : "en";
+  document.title = zh() ? "Alfred：早报的颜色" : "Alfred: colour in the Morning brief";
+  document.querySelectorAll("[data-set]").forEach((b) => { const [key, v] = b.dataset.set.split(":"); b.setAttribute("aria-pressed", S[key] === v); });
+  render();
+}
+
+let toastTimer;
+document.addEventListener("click", (e) => {
+  const set = e.target.closest("[data-set]");
+  if (set) { const [key, v] = set.dataset.set.split(":"); S[key] = v; return apply(); }
+  const ref = e.target.closest("[data-ref]");
+  if (ref) {
+    const row = document.getElementById(ref.dataset.ref);
+    const group = row?.closest("details");
+    if (group) group.open = true;
+    row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    row?.setAttribute("data-flash", "");
+    setTimeout(() => row?.removeAttribute("data-flash"), 700);
+    return;
+  }
+  if (e.target.closest("[data-open]")) {
+    const toast = document.getElementById("toast");
+    toast.textContent = T[S.lang].toast;
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.hidden = true; }, 1600);
+  }
+});
+apply();
+</script>
+</body>
+</html>

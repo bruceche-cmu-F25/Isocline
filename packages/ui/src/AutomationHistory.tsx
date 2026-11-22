@@ -53,7 +53,7 @@ export function AutomationHistory({ automation, recent, onOpenConversation }: {
     </div>
     {current && <article className="history-result">
       <h3>{editionTitle(name, current.createdAt)}</h3>
-      <RunResult runId={current.id} run={current} />
+      <RunResult runId={current.id} run={current} morningBrief={automation.template === "brief"} />
       <button type="button" className="link" onClick={() => onOpenConversation(current.conversationId, current.id)}>{t("inbox.openConversation")}</button>
     </article>}
   </section>;

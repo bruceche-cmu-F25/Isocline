@@ -35,6 +35,7 @@ export interface InboxItem {
 
 type AwayResult = NonNullable<AwayDigest["runs"]["results"]>[number];
 export interface Edition {
+  morningBrief: boolean;
   name: string;
   runId: string;
   conversationId: string;
@@ -68,7 +69,8 @@ function editionFor(result: AwayResult, state: StateResponse, notice?: Notice): 
   const at = run?.createdAt ?? result.at;
   const snippet = run?.outcome?.reply ?? (typeof notice?.payload.reply === "string" ? notice.payload.reply : undefined)
     ?? (automation?.lastRun?.id === result.runId ? automation.lastRun.reply : null);
-  return { runId: result.runId, conversationId: result.conversationId, name, title: editionTitle(name, at),
+  const morningBrief = (automation ? automation.template : notice?.payload.template) === "brief";
+  return { morningBrief, runId: result.runId, conversationId: result.conversationId, name, title: editionTitle(name, at),
     at, preview: snippet ? plainText(snippet).slice(0, 280) : "", run };
 }
 

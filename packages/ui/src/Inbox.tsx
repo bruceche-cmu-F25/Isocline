@@ -87,7 +87,7 @@ export function Detail({ item, onDone, onOpenConversation, conversationTitle, li
         </p>
       </header>
       {edition
-        ? <RunResult key={edition.runId} runId={edition.runId} run={edition.run} preview={edition.preview} reading />
+        ? <RunResult key={edition.runId} runId={edition.runId} run={edition.run} preview={edition.preview} morningBrief={edition.morningBrief} reading />
         : item.summary && <p className="inbox-summary"><Linked text={item.summary} /></p>}
 
       {proposal && (
@@ -150,7 +150,7 @@ export function Detail({ item, onDone, onOpenConversation, conversationTitle, li
       {item.results?.map(({ edition }) => edition && (
         <details key={edition.runId} className="away-edition">
           <summary>{edition.title}</summary>
-          <RunResult runId={edition.runId} run={edition.run} preview={edition.preview} reading />
+          <RunResult runId={edition.runId} run={edition.run} preview={edition.preview} morningBrief={edition.morningBrief} reading />
         </details>
       ))}
       {(notice?.kind === "run_result" || notice?.kind === "welcome") && (

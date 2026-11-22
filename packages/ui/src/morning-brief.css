@@ -1,0 +1,137 @@
+/* A saved edition. Its columns respond to the reader, including when the conversation is open beside it. */
+.morning-brief {
+  container: brief / inline-size;
+  width: 100%;
+  min-width: 0;
+  color: var(--ink);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.morning-brief > * + * { margin-top: 22px; }
+.morning-brief h3, .morning-brief h4, .morning-brief p, .morning-brief ul, .morning-brief ol { margin-block: 0; }
+.brief-advice {
+  display: grid;
+  gap: 7px;
+  border-inline-start: 3px solid var(--alf);
+  background: color-mix(in oklab, var(--alf-soft) 65%, var(--paper));
+  border-radius: 0 8px 8px 0;
+  padding: 13px 16px 15px;
+}
+.brief-advice h3, .brief-section-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.brief-advice h3 { color: var(--alf); font-size: .8125rem; }
+.morning-brief h3 svg { flex: none; width: 17px; height: 17px; }
+.brief-advice .md { font-size: 1.03125rem; line-height: 1.5; color: var(--ink); }
+.brief-day, .brief-section { min-width: 0; }
+.brief-day { display: grid; gap: 22px; }
+.brief-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 3px 8px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 7px;
+  padding-bottom: 8px;
+}
+.brief-section-head h3 svg { align-self: center; color: var(--muted); }
+.brief-section-head > span, .brief-empty, .brief-retry { color: var(--muted); font-size: .8125rem; }
+.brief-section-head > span { line-height: 1.4; }
+.brief-timeline, .brief-tasks, .brief-editorial-list, .brief-mail-sources, .brief-all-day ul { padding: 0; list-style: none; }
+.brief-timeline > li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 4.375rem minmax(0, 1fr);
+  align-items: baseline;
+  min-height: 44px;
+}
+.brief-time { align-self: start; display: grid; gap: 1px; padding-block: 9px; color: var(--ink); font: 550 .8125rem/1.4 var(--mono); font-variant-numeric: tabular-nums; }
+.brief-end { color: var(--muted); font: 400 .75rem/1.4 var(--sans); }
+.brief-event-name { position: relative; align-self: stretch; padding: 8px 0 9px 14px; font-size: .9375rem; }
+.brief-event-name::before, .brief-event-name::after { content: ""; position: absolute; left: 0; }
+.brief-event-name::before { top: 0; bottom: 0; width: 1px; background: var(--line); }
+.brief-event-name::after { top: 17px; left: -2px; width: 5px; height: 5px; background: var(--alf); border-radius: 50%; }
+.brief-timeline li:first-child .brief-event-name::before { top: 18px; }
+.brief-timeline li:last-child .brief-event-name::before { bottom: calc(100% - 18px); }
+.brief-event-aside { color: var(--muted); font-size: .8125rem; }
+.brief-event-details { margin-top: 2px; color: var(--muted); font-size: .8125rem; }
+.brief-event-details > summary { width: fit-content; max-width: 100%; display: flex; align-items: center; gap: 4px; padding: 2px 0; cursor: pointer; list-style: none; }
+.brief-event-details summary::-webkit-details-marker { display: none; }
+.brief-event-details summary svg { width: 12px; height: 12px; transform: rotate(-90deg); }
+.brief-event-details[open] summary svg { transform: none; }
+.brief-event-details > div { padding: 3px 0 3px 16px; overflow-wrap: anywhere; }
+.brief-all-day { display: grid; grid-template-columns: 4.375rem minmax(0, 1fr); align-items: baseline; padding-top: 8px; }
+.brief-timeline + .brief-all-day { margin-top: 2px; border-top: 1px solid var(--line-soft); }
+.brief-all-day ul { display: grid; gap: 4px; padding-left: 14px; font-size: .875rem; color: var(--copy); }
+.brief-section h4 { color: var(--muted); font-size: .75rem; font-weight: 550; }
+.brief-task-group { padding-top: 4px; }
+.brief-task-group + .brief-task-group, .brief-reported { margin-top: 8px; }
+.brief-tasks > li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; border-bottom: 1px solid var(--line-soft); padding: 7px 0; font-size: .9375rem; }
+.brief-tasks > li:last-child { border-bottom: 0; }
+.brief-task-title { min-width: 0; flex: 1 1 7rem; position: relative; }
+.brief-task-title::before { content: ""; position: absolute; left: 0; }
+.brief-task-due { display: flex; flex-wrap: wrap; gap: 4px; font-size: .8125rem; color: var(--copy); font-variant-numeric: tabular-nums; }
+.brief-task-due[data-late] { color: var(--k-text, var(--warm)); font-weight: 550; }
+.brief-editorial-list > li { position: relative; padding: 7px 0 7px 14px; color: var(--copy); }
+.brief-editorial-list > li::before { content: ""; position: absolute; left: 1px; top: calc(7px + .65em); width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
+.brief-editorial-list > li + li { border-top: 1px solid var(--line-soft); }
+.brief-editorial-list .md, .brief-original .md { font-size: .9375rem; line-height: 1.5; }
+.brief-reported:first-child { margin-top: 0; }
+.brief-disclosure { border-top: 1px solid var(--line-soft); }
+.morning-brief .brief-disclosure + .brief-disclosure { margin-top: 0; }
+.brief-disclosure summary { display: flex; align-items: center; gap: 7px; width: fit-content; max-width: 100%; padding: 9px 1px; list-style: none; cursor: pointer; color: var(--copy); font-size: .8125rem; }
+.brief-disclosure summary::-webkit-details-marker { display: none; }
+.brief-disclosure summary svg { flex: none; width: 14px; height: 14px; transform: rotate(-90deg); }
+.brief-disclosure[open] summary svg { transform: none; }
+.brief-disclosure summary:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+.brief-mail-sources { display: grid; gap: 8px; padding: 4px 0 12px 22px; }
+.brief-mail-sources li { display: grid; gap: 2px; }
+.brief-mail-sources strong { font-size: .875rem; font-weight: 550; }
+.brief-mail-sources span { color: var(--muted); font-size: .8125rem; }
+.brief-original .md { padding: 4px 0 12px; }
+.brief-coverage { margin: 0 0 12px 22px; color: var(--muted); font-size: .8125rem; }
+
+/* Colour says one thing each (docs/design/style.md §2): a section's icon is its page's, a dot or a circle is the
+   event's calendar or the todo's area, red is danger or a missed date, amber waits for you. Small marks only,
+   and a status colour never without its word. */
+.brief-section-head[data-k] h3 svg { color: var(--k-solid); }
+.brief-timeline > li[data-k] .brief-event-name::after { top: 16px; left: -3px; width: 7px; height: 7px; background: var(--k-solid); box-shadow: 0 0 0 2px var(--bg); }
+.brief-all-day li[data-k] { position: relative; }
+.brief-all-day li[data-k]::before { content: ""; position: absolute; left: -17px; top: .5em; width: 7px; height: 7px; border-radius: 50%; background: var(--k-solid); }
+.brief-task-title { padding-inline-start: 19px; }
+.brief-task-title::before { top: .28em; width: 11px; height: 11px; background: none; border: 1.6px solid var(--muted); border-radius: 50%; }
+.brief-task-title[data-k]::before { border-color: var(--k-solid); }
+.brief-area { margin-inline-start: 6px; color: var(--k-text); font-size: .75rem; white-space: nowrap; }
+.brief-section h4[data-k] { color: var(--k-text); }
+
+/* What each mail row is. */
+.brief-tag { justify-self: start; display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--k-fill, var(--wash)); color: var(--k-text, var(--copy)); font-size: .75rem; font-weight: 500; line-height: 1; white-space: nowrap; }
+.brief-tag svg { flex: none; width: 12px; height: 12px; stroke-width: 1.8; }
+.brief-mail-rows { display: grid; grid-template-columns: minmax(0, 1fr); padding: 0; list-style: none; }
+.brief-mail-rows > li { display: grid; gap: 4px; padding: 9px 0; border-radius: 6px; color: var(--copy); transition: background .6s cubic-bezier(.23, 1, .32, 1); }
+.brief-mail-rows > li + li { border-top: 1px solid var(--line-soft); }
+.brief-mail-rows > li > span:empty { display: none; }
+.brief-mail-rows .md { font-size: .9375rem; line-height: 1.5; }
+.brief-mail-rows > li:is([data-kind="risk"], [data-kind="decide"]) .md { color: var(--ink); }
+.brief-mail-rows > li[data-kind="fyi"] .md { color: var(--muted); }
+.brief-row-source { display: flex; flex-wrap: wrap; gap: 0 6px; margin-top: 2px; color: var(--muted); font-size: .8125rem; }
+.brief-row-source > span + a::before { content: "· "; color: var(--muted); display: inline-block; margin-inline-end: 6px; text-decoration: none; }
+.morning-brief [data-flash] { background: var(--alf-soft); transition-duration: .1s; }
+.brief-advice-row { display: grid; gap: 4px; }
+.brief-advice-row > button { justify-self: start; font-size: .8125rem; }
+@container brief (min-width: 520px) {
+  .brief-mail-rows { grid-template-columns: max-content minmax(0, 1fr); column-gap: 14px; }
+  .brief-mail-rows > li { grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; }
+  .brief-mail-rows > li > span:empty { display: block; }
+}
+@container brief (min-width: 610px) {
+  .brief-day[data-paired] { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 24px; }
+  .brief-day[data-paired] .brief-due { padding-inline-start: 20px; border-inline-start: 1px solid var(--line-soft); }
+}
