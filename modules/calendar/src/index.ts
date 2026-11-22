@@ -92,6 +92,21 @@ UPDATE calendar_sources SET digest = NULL;
 ALTER TABLE calendar_events ADD COLUMN notes TEXT;
 UPDATE calendar_sources SET digest = NULL;
 `,
+}, {
+  // Earlier versions could send an undo while its add was retrying. If it already ran, repeat the
+  // idempotent delete after the add's last attempt. Match the account and calendar as well as the event.
+  id: "calendar:6",
+  sql: `
+UPDATE core_outbound AS undo SET after_id = creation.id,
+  state = 'queued', attempts = 0, error = NULL, result = NULL
+FROM core_outbound AS creation
+WHERE undo.module = 'calendar' AND undo.action = 'delete' AND undo.state IN ('queued', 'sending', 'done')
+  AND creation.module = 'calendar' AND creation.action = 'add' AND creation.state IN ('queued', 'sending')
+  AND creation.rowid < undo.rowid
+  AND json_extract(creation.payload, '$.account') = json_extract(undo.payload, '$.account')
+  AND json_extract(creation.payload, '$.calendarId') = json_extract(undo.payload, '$.calendarId')
+  AND json_extract(creation.payload, '$.eventId') = json_extract(undo.payload, '$.eventId');
+`,
 }];
 
 const canRead = (capabilities: readonly string[]) => capabilities.includes("calRead") || capabilities.includes("calWrite");

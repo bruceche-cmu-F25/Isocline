@@ -139,6 +139,58 @@ test("an event with only a start is proposed as one hour; moving one still needs
   assert.match(String((move.pin!(w, { event: event(w, "Standup").id, start: local(at(3, 16)) } as never) as { error: string }).error), /Give start and end/);
 });
 
+test("an event made by hand can be taken back at once: the delete goes after the add, and the page shows neither", async () => {
+  const w = world();
+  const { google, sent } = fakeGoogle({ answers: [{ status: 200, body: {} }, { status: 204 }] });
+  await syncCalendar(w, { google });
+  const start = at(2, 16), end = at(2, 17);
+  const said = byHand(w, "calendar.create", { account: "me@example.com", calendarId: "me@example.com", title: "Final", when: { start: start.toISOString(), end: end.toISOString() } });
+  assert.ok(byHand(w, "calendar.delete", { account: "me@example.com", id: said.id! }).queued, "not in the mirror yet, and still theirs to take back");
+  assert.deepEqual(snapshotOf(w).pending.map((change) => [change.id, change.added, change.removed ?? false]), [[said.id, true, false], [said.id, false, true]]);
+  await deliverQueued(w, calendarModule, { google }, signal);
+  await deliverQueued(w, calendarModule, { google }, signal);
+  assert.deepEqual(sent.map((request) => request.method), ["POST", "DELETE"]);
+  assert.equal(listEvents(w, "0000-01-01", "9999-12-31").some((candidate) => candidate.title === "Final"), false);
+  assert.deepEqual(byHand(w, "calendar.delete", { account: "me@example.com", id: "me@example.com:never" }), { error: "gone" });
+});
+
+test("an undo waits for its own add to finish retrying while unrelated calendar changes still go through", async () => {
+  const w = world();
+  const { google, sent } = fakeGoogle({ answers: [{ status: 503 }, { status: 200 }, { status: 409 }, { status: 204 }] });
+  await syncCalendar(w, { google });
+  const account = "me@example.com";
+  const input = { account, calendarId: account, title: "Focus", when: { start: at(2, 16).toISOString(), end: at(2, 17).toISOString() } };
+  const made = byHand(w, "calendar.create", input);
+  const undo = byHand(w, "calendar.delete", { account, id: made.id! });
+  byHand(w, "calendar.create", { ...input, title: "Lunch" });
+
+  await deliverQueued(w, calendarModule, { google }, signal);
+  assert.deepEqual(sent.map((request) => [request.method, (request.body as { summary: string }).summary]), [["POST", "Focus"], ["POST", "Lunch"]]);
+  const waiting = listOutbound(w).find((entry) => entry.id === undo.queued)!;
+  assert.deepEqual([waiting.state, waiting.attempts], ["queued", 0]);
+  await deliverQueued(w, calendarModule, { google }, signal);
+  assert.deepEqual(sent.map((request) => request.method), ["POST", "POST", "POST", "DELETE"]);
+  assert.ok(sent.at(-1)!.url.includes(made.id!.slice(account.length + 1)));
+  assert.ok(listOutbound(w).every((entry) => entry.state === "done"));
+});
+
+test("upgrading an outstanding add repeats an undo that was delivered prematurely", async () => {
+  const w = world();
+  const { google, sent } = fakeGoogle({ answers: [{ status: 503 }, { status: 404 }, { status: 200 }, { status: 204 }] });
+  await syncCalendar(w, { google });
+  const account = "me@example.com";
+  const made = byHand(w, "calendar.create", { account, calendarId: account, title: "Focus", when: { start: at(2, 16).toISOString(), end: at(2, 17).toISOString() } });
+  byHand(w, "calendar.delete", { account, id: made.id! });
+  w.db.prepare("UPDATE core_outbound SET after_id = NULL").run();
+  await deliverQueued(w, calendarModule, { google }, signal);
+  assert.deepEqual(listOutbound(w).map((entry) => entry.state), ["queued", "done"]);
+
+  w.db.exec(calendarModule.migrations.find(({ id }) => id === "calendar:6")!.sql);
+  await deliverQueued(w, calendarModule, { google }, signal);
+  assert.deepEqual(sent.map((request) => request.method), ["POST", "DELETE", "POST", "DELETE"]);
+  assert.ok(listOutbound(w).every((entry) => entry.state === "done"));
+});
+
 test("a proposed event is the user's to move before they say yes: the step takes the new time, and accepting adds it there", async () => {
   const w = world();
   const { google, sent } = fakeGoogle({ answers: [{ status: 200, body: {} }] });

@@ -74,6 +74,8 @@ export function listOutbound(world: World, options: { module?: string; states?: 
  * decision or not at all. */
 export function enqueueOutbound(world: World, input: {
   module: string; action: string; payload: unknown; preview: string; detail?: string; idempotent: boolean; quiet?: boolean; now?: number;
+  /** Wait until this earlier outbound reaches a terminal state, including after retries or a restart. */
+  afterId?: string;
 }): Outbound {
   const now = input.now ?? Date.now();
   const preview = input.preview.trim().slice(0, 300);
@@ -81,9 +83,9 @@ export function enqueueOutbound(world: World, input: {
   return world.tx((db) => {
     const id = newId();
     const proposalId = coreContext()?.proposalId ?? null;
-    db.prepare(`INSERT INTO core_outbound (id, module, action, payload, preview, detail, idempotent, proposal_id, quiet, state, attempts, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)`)
-      .run(id, input.module, input.action, JSON.stringify(input.payload ?? null), preview, input.detail?.slice(0, 20_000) ?? null, input.idempotent ? 1 : 0, proposalId, input.quiet ? 1 : 0, iso(now), iso(now));
+    db.prepare(`INSERT INTO core_outbound (id, module, action, payload, preview, detail, idempotent, proposal_id, quiet, state, attempts, created_at, updated_at, after_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)`)
+      .run(id, input.module, input.action, JSON.stringify(input.payload ?? null), preview, input.detail?.slice(0, 20_000) ?? null, input.idempotent ? 1 : 0, proposalId, input.quiet ? 1 : 0, iso(now), iso(now), input.afterId ?? null);
     recordDomainEvent(world, { kind: "outbound.queued", subject: `outbound:${id}`, payload: { outboundId: id, module: input.module, action: input.action, preview }, now });
     return load(db, id);
   });
@@ -93,7 +95,8 @@ export function enqueueOutbound(world: World, input: {
  * pass. Null when there is none. */
 export function claimOutbound(world: World, module: string, skip: ReadonlySet<string> = new Set(), now: number = Date.now()): Outbound | null {
   return world.tx((db) => {
-    const row = db.prepare(`SELECT id FROM core_outbound WHERE module = ? AND state = 'queued' AND id NOT IN (SELECT value FROM json_each(?))
+    const row = db.prepare(`SELECT id FROM core_outbound AS next WHERE module = ? AND state = 'queued' AND id NOT IN (SELECT value FROM json_each(?))
+      AND NOT EXISTS (SELECT 1 FROM core_outbound AS prior WHERE prior.id = next.after_id AND prior.state IN ('queued', 'sending'))
       ORDER BY created_at, rowid LIMIT 1`).get(module, JSON.stringify([...skip]));
     if (!row) return null;
     db.prepare("UPDATE core_outbound SET state = 'sending', attempts = attempts + 1, updated_at = ? WHERE id = ?").run(iso(now), row.id as string);

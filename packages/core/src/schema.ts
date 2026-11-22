@@ -377,4 +377,7 @@ CREATE TABLE core_upkeep (
 ) STRICT;
 INSERT INTO core_upkeep (id) VALUES (1);
 `,
+}, {
+  id: "core:27",
+  sql: "ALTER TABLE core_outbound ADD COLUMN after_id TEXT REFERENCES core_outbound(id);",
 }];

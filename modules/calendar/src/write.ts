@@ -194,16 +194,28 @@ export const calendarOps = [
     input: Type.Object({ account: Ids.account, id: Type.String({ maxLength: 300 }) }),
     run(world, input): { queued: string } | { error: DirectRefusal } {
       const row = world.db.prepare("SELECT * FROM calendar_events WHERE account = ? AND id = ?").get(input.account, input.id) as Row | undefined;
-      if (!row) return { error: "gone" };
+      const locale = userLocale(world);
+      // A mirror refresh can find an add whose POST is still waiting for a retry. In either case the undo
+      // must be delivered after the last attempt at creating this particular event.
+      const creation = world.db.prepare(`SELECT id, payload FROM core_outbound
+        WHERE module = 'calendar' AND action = 'add' AND state IN ('queued', 'sending', 'done')
+        AND json_extract(payload, '$.account') = ? AND json_extract(payload, '$.calendarId') || ':' || json_extract(payload, '$.eventId') = ?
+        ORDER BY rowid DESC LIMIT 1`).get(input.account, input.id);
+      const afterId = creation?.id as string | undefined;
+      if (!row) {
+        if (!creation) return { error: "gone" };
+        const made = JSON.parse(creation.payload as string) as AddInput & { eventId: string };
+        const payload: DeleteInput = { account: made.account, calendarId: made.calendarId, eventId: made.eventId, title: made.title, at: format(made.when, locale), notify: false, attendees: 0 };
+        return { queued: enqueueOutbound(world, { module: "calendar", action: "delete", payload, preview: SAY[locale].delete(payload), idempotent: true, quiet: true, afterId }).id };
+      }
       const access = source(world, row.account);
       if (!access?.canWrite || !access.calendars.find((calendar) => calendar.id === row.calendar_id)?.writable) return { error: "no_write" };
       if (row.organizer_self !== 1) return { error: "not_yours" };
-      const locale = userLocale(world);
       const payload: DeleteInput = {
         account: row.account, calendarId: row.calendar_id, eventId: row.id.slice(row.calendar_id.length + 1), title: row.title, at: whenWas(row, locale),
         notify: row.attendees > 1, attendees: row.attendees,
       };
-      const outbound = enqueueOutbound(world, { module: "calendar", action: "delete", payload, preview: SAY[locale].delete(payload), idempotent: true, quiet: true });
+      const outbound = enqueueOutbound(world, { module: "calendar", action: "delete", payload, preview: SAY[locale].delete(payload), idempotent: true, quiet: true, afterId });
       return { queued: outbound.id };
     },
   }),
