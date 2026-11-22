@@ -2,7 +2,7 @@
 
 **整体风格**（颜色、层次、文字、布局、交互、动效、形象、文案）汇总在 [style.md](style.md)。新页面先看它。
 
-**已定的是形象，不是整套工作台皮肤。** 把工作台原型做进 App 的方案草案：[workspace-architecture.md](workspace-architecture.md)（等确认）。 日常对话和开发会话怎么分开：[dev-mode.md](dev-mode.md)（2026-11-18 已批准；D1 对话组件、D2 项目和只读开发会话已做完），[原型](../../prototype/dev.html)。 一件事由谁、在哪、什么时候告诉你：[attention.md](attention.md)（2026-11-19 已批准；A1 决定用的表、A2 主节点分派推送并记事件、A3 每个出口上报它看到的、A4 窗口和形象只呈现派给自己的、A5 回来时等着的通知并进欢迎语，已做完）。 Alfred 自己的笔记（一个 Markdown 文件夹 `Alfred Notes`，Obsidian 只是可选的旁路）：[notes.md](notes.md)（2026-11-20 已批准；[原型](../../prototype/notes.html)；代码没开始）。 你的注意力放在哪（新的默认页「今天」是 Alfred 写给你的便条；通知页只放 Alfred 自己的事在等你；问名字挪到首次引导）：[today-and-inbox.md](today-and-inbox.md)（2026-11-20 方向已逐条对齐，文档待看；代码没开始）。 标志为超立方体线框；没有脸或眼睛。切换状态时，同一组线连续重组成另一种几何体。依据：[形象决策记录 §4.4](../research/alfred-entity.md)。
+**已定的是形象，不是整套工作台皮肤。** 把工作台原型做进 App 的方案草案：[workspace-architecture.md](workspace-architecture.md)（等确认）。 日常对话和开发会话怎么分开：[dev-mode.md](dev-mode.md)（2026-11-18 已批准；D1 对话组件、D2 项目和只读开发会话已做完），[原型](../../prototype/dev.html)。 一件事由谁、在哪、什么时候告诉你：[attention.md](attention.md)（2026-11-19 已批准；A1 决定用的表、A2 主节点分派推送并记事件、A3 每个出口上报它看到的、A4 窗口和形象只呈现派给自己的、A5 回来时等着的通知并进欢迎语，已做完）。 Alfred 自己的笔记（一个 Markdown 文件夹 `Alfred Notes`，Obsidian 只是可选的旁路）：[notes.md](notes.md)（2026-11-20 已批准；[原型](../../prototype/notes.html)；代码没开始）。 你的注意力放在哪（新的默认页「今天」是 Alfred 写给你的便条；通知页只放 Alfred 自己的事在等你；问名字挪到首次引导）：[today-and-inbox.md](today-and-inbox.md)（2026-11-20 方向已逐条对齐；「今天」、通知卡片和首次引导的实现进度见文内）。 多个邮箱（先把多个 Gmail 做完整，再加发件地址，再接 IMAP 和 Outlook）：[mail-accounts.md](mail-accounts.md)（2026-11-21 草案，待看；代码没开始）。 标志为超立方体线框；没有脸或眼睛。切换状态时，同一组线连续重组成另一种几何体。依据：[形象决策记录 §4.4](../research/alfred-entity.md)。
 
 [查看可交互的十种状态](../../prototype/tesseract.html) · [浏览器截图](tesseract.png) · [放进工作台原型的样子](../../prototype/workspace.html)
 
