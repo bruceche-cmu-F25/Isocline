@@ -24,6 +24,7 @@ import { waitingCount } from "../shell/inbox.ts";
 import { noticeLines } from "../noticeText.ts";
 import { SpeechCard } from "../speech/SpeechCard.tsx";
 import { useSpeech, type Said } from "../speech/useSpeech.ts";
+import { WebLockGate } from "../WebLockGate.tsx";
 import { useAlfred } from "../useAlfred.ts";
 import { welcomeLines } from "../welcome.ts";
 import "./presence.css";
@@ -218,4 +219,4 @@ function playDemo(hear: (notices: Notice[], visit: boolean) => void): () => void
   return () => timers.forEach((timer) => window.clearTimeout(timer));
 }
 
-createRoot(document.getElementById("root")!).render(<StrictMode><Presence /></StrictMode>);
+createRoot(document.getElementById("root")!).render(<StrictMode><WebLockGate><Presence /></WebLockGate></StrictMode>);

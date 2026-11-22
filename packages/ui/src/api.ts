@@ -4,7 +4,7 @@
 import type {
   ArchivedConversation, Automation, AutomationHistory, Schedule,
   Conversation, ConversationDetail, CoreEvent, DeviceInfo, FileInfo, DeviceKind, DeviceScopeRequest, LiveUpdate, ModelsResponse, Notice, OpResponse, PairingCode, ProposalResponse,
-  Project, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, ViewContext,
+  Project, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, ViewContext, WebLockStatus,
 } from "@alfred/protocol";
 import "./desktop.ts";
 import { t } from "./i18n/dict.ts";
@@ -49,6 +49,7 @@ async function answer<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const { error, code, count } = body as { error?: string; code?: string; count?: number };
+    if (response.status === 423 && code === "web_locked") window.dispatchEvent(new Event("alfred:web-locked"));
     throw new ApiError(response.status, error ?? t("api.failed", { status: response.status }), code, typeof count === "number" ? count : undefined);
   }
   return body as T;
@@ -72,6 +73,32 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const post = <T>(path: string, body: unknown) => call<T>(path, json(body));
+
+/** Translate the home's expiry to this browser's clock; the device clock may be hours off. */
+async function webLockRequest(path: string, body?: unknown): Promise<WebLockStatus> {
+  const start = performance.now();
+  let response: Response;
+  try {
+    response = await fetch(path, { ...(body === undefined ? {} : json(body)), cache: "no-store", signal: AbortSignal.timeout(12_000) });
+  } catch {
+    throw new ApiError(0, t("api.unreachable"));
+  }
+  const status = await answer<WebLockStatus>(response);
+  if (typeof status?.enabled !== "boolean" || typeof status.locked !== "boolean") {
+    throw new ApiError(0, t("webLock.unavailable"));
+  }
+  if (!status.enabled || status.locked) {
+    if (status.expiresAt !== null || (!status.enabled && status.locked)) throw new ApiError(0, t("webLock.unavailable"));
+    return status;
+  }
+  const serverTime = Date.parse(response.headers.get("date") ?? "");
+  if (!Number.isFinite(serverTime) || !Number.isFinite(status.expiresAt) || status.expiresAt === null) {
+    throw new ApiError(0, t("webLock.unavailable"));
+  }
+  // HTTP dates are rounded down to a second. Cover a little early, including time in transit.
+  const remaining = Math.min(15 * 60_000, status.expiresAt - serverTime - 1000) - (performance.now() - start);
+  return { ...status, expiresAt: Date.now() + Math.max(0, remaining) };
+}
 
 /** One request to the home node from outside the commands below (the settings pages, the terminal): a GET, or a POST
  * when there is a body. Sent once, never again by itself: these carry no request id, so a second sending could be a
@@ -168,6 +195,10 @@ export const api = {
   /** Remote access and devices: on this machine the switch and the list, on another device just itself. */
   remote: () => call<RemoteResponse>("/api/remote"),
   setRemote: (enabled: boolean) => post<RemoteResponse>("/api/remote", { enabled }),
+  webLock: () => webLockRequest("/api/device/web-lock"),
+  unlockWeb: (password: string) => webLockRequest("/api/device/unlock", { password }),
+  webActivity: () => webLockRequest("/api/device/activity", {}),
+  setWebLock: (enabled: boolean, password?: string) => request<RemoteResponse>("/api/remote/web-lock", { enabled, password }),
   pairingCode: () => post<PairingCode>("/api/remote/pairing", {}),
   revokeDevice: (id: string) => post<RemoteResponse>(`/api/devices/${id}/revoke`, {}),
   /** Lets a device into development sessions, or takes that away (this machine only). */

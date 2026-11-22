@@ -83,6 +83,16 @@
   .set-row.sub:not(.has-logo) { padding-left: 0; }
 }
 
+/* Cover existing workspace, dialogs and body portals immediately while a protected browser resumes. */
+html[data-web-covered] body > :not(#root),
+html[data-web-covered] #root > :not(.web-access-screen),
+html[data-web-covered] dialog[open] { display: none !important; }
+.web-password-form, .web-password-form label { display: flex; flex-direction: column; gap: 6px; }
+.web-password-form label { text-align: start; }
+.web-password-form .model-input { width: 100%; min-width: 0; font-size: 1rem; }
+.web-password-form.pair-form { width: min(100%, 20rem); margin-inline: auto; gap: 12px; }
+.web-password-form.pair-form .set-button { align-self: center; }
+
 /* Settings → Models (ModelSettings.tsx). */
 .set-rows-item .set-flow { margin: 10px 0 12px; }
 /* Connectors: the form for a server of the user's own. */
@@ -109,6 +119,7 @@
 
 /* A subscription's usage under its row: one line per limit window (ModelSettings.tsx). Lines up with the name, past
    the logo. */
+.usage-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .usage { display: flex; flex-direction: column; gap: 6px; padding: 0 2px 13px 46px; border-bottom: 1px solid var(--line-soft); }
 .set-rows-item:has(> .usage) > .set-row { border-bottom: 0; padding-bottom: 10px; }
 .usage-row { display: grid; grid-template-columns: minmax(64px, max-content) minmax(80px, 1fr) 3.2em minmax(0, max-content); align-items: center; column-gap: 10px; font-size: .8125rem; }

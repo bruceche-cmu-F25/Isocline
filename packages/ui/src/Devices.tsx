@@ -4,6 +4,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { encode } from "uqr";
 import type { DeviceInfo, PairingCode, RemoteResponse } from "@alfred/protocol";
+import { WebLockSetting } from "./WebLockSetting.tsx";
 import { api } from "./api.ts";
 import { DevAccessApproval } from "./DevAccessApproval.tsx";
 import { RequestDevAccess } from "./RequestDevAccess.tsx";
@@ -72,11 +73,36 @@ function DeviceRow({ device, onRevoke, onDev }: { device: DeviceInfo; onRevoke?:
   );
 }
 
+function CopyAddress({ url, label, primary = false }: { url: string; label: string; primary?: boolean }) {
+  const [status, setStatus] = useState<"ready" | "copied" | "manual">("ready");
+  useEffect(() => {
+    if (status !== "copied") return;
+    const timer = setTimeout(() => setStatus("ready"), 1500);
+    return () => clearTimeout(timer);
+  }, [status]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setStatus("copied");
+    } catch {
+      setStatus("manual");
+    }
+  };
+
+  if (status === "manual") {
+    return <label className="quiet small">{t("devices.manualCopy")} <input type="text" readOnly value={url}
+      autoFocus onFocus={(event) => event.currentTarget.select()} /></label>;
+  }
+  return <button type="button" className={primary ? "set-button" : "set-button ghost"} onClick={() => void copy()}>
+    {status === "copied" ? t("devices.copied") : label}
+  </button>;
+}
+
 /** On the Mac. */
 function Manage({ remote, onChange, onError }: { remote: Local; onChange(next: RemoteResponse): void; onError(message: string | null): void }) {
   const [busy, setBusy] = useState(false);
   const [pairing, setPairing] = useState<PairingCode | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const fail = (reason: Error) => onError(reason.message);
   const reload = () => api.remote().then(onChange, fail);
@@ -102,10 +128,6 @@ function Manage({ remote, onChange, onError }: { remote: Local; onChange(next: R
   };
   const newCode = () => { onError(null); api.pairingCode().then(setPairing, fail); };
   const revoke = (id: string) => api.revokeDevice(id).then(onChange, fail);
-  const copy = () => {
-    if (!remote.url) return;
-    void navigator.clipboard?.writeText(remote.url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
-  };
 
   const ts = remote.tailscale;
   const minutes = pairing ? Math.max(1, Math.round((Date.parse(pairing.expiresAt) - Date.now()) / 60_000)) : 0;
@@ -145,7 +167,7 @@ function Manage({ remote, onChange, onError }: { remote: Local; onChange(next: R
             <span className="set-name">{t("devices.address")}</span>
             <span className="set-note dev-url">{remote.url}</span>
             <span className="set-end">
-              <button type="button" className="set-button ghost" onClick={copy}>{copied ? t("devices.copied") : t("devices.copy")}</button>
+              <CopyAddress key={remote.url} url={remote.url} label={t("devices.copy")} />
             </span>
           </div>
         )}
@@ -164,6 +186,7 @@ function Manage({ remote, onChange, onError }: { remote: Local; onChange(next: R
               <div className="dev-code">{pairing.code}</div>
               <p className="quiet small">{t("devices.pair.expires", { min: minutes })}</p>
               <div className="set-actions">
+                {pairing.url && <CopyAddress key={pairing.url} url={pairing.url} label={t("devices.pair.copyLink")} primary />}
                 <button type="button" className="set-button ghost" onClick={newCode}>{t("devices.pair.new")}</button>
                 <button type="button" className="set-button ghost" onClick={() => setPairing(null)}>{t("common.close")}</button>
               </div>
@@ -173,6 +196,8 @@ function Manage({ remote, onChange, onError }: { remote: Local; onChange(next: R
           <div className="set-actions"><button type="button" className="set-button" onClick={newCode}>{t("devices.pair")}</button></div>
         )
       )}
+
+      {typeof remote.webLockEnabled === "boolean" && <WebLockSetting enabled={remote.webLockEnabled} onChange={onChange} />}
 
       <h3 className="set-sub">{t("devices.list")}</h3>
       <div className="set-rows">

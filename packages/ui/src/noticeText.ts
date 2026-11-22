@@ -7,7 +7,7 @@ import { plainText } from "./markdown.ts";
 export interface NoticeLines {
   title: string;
   body: string;
-  /** The figure's state once it has finished speaking. */
+  /** The figure's state while this notice is on screen. */
   mood: FigureState;
   /** A question is closed by answering it and a proposal by deciding it, never just by opening them. */
   closesOnOpen: boolean;
