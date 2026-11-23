@@ -1,0 +1,582 @@
+<!doctype html>
+<!--
+  Alfred: 「排一下今天」 (plan today) on the 今天 page. A prototype: no build step, sample data, nothing is sent anywhere.
+  It builds on prototype/alfred.html (一句 · 一条线 · 一行) and adds planning, not a new page:
+
+    Alfred plans the WHOLE day in one go: what first, how long each takes (a guess you can change), which gap it
+    goes in, and what does not fit and moves to tomorrow, with one reason each. The plan is drawn on the same line,
+    in the same row shape, with dashed hours. You change a row in place (time, length, tomorrow, no hour), then
+    accept the whole thing once. Accepting gives the todos an hour; the calendar is not touched unless you put one
+    row on it.
+
+  Four moments (the strip at the top, or ?s=before|morning|afternoon|evening):
+    排之前   no plan yet: the todos sit under 今天之内, with 「排一下」 on that mark
+    早上     the morning plan is waiting for one yes (what the morning brief would have ready when you open the app)
+    下午     you fell behind: the hours that passed unticked are re-planned from now, old hour struck through
+    晚上     closing the day: what is still unticked moves to tomorrow in one click
+
+  Placement is a plain rule, the same one the app uses for suggested hours: 09:00–18:30, lunch 12–13 kept free,
+  5 minutes after every meeting and every block, first gap that fits, in Alfred's order. Alfred's own judgement
+  (the order, the lengths, what to leave for tomorrow) is sample data here; in the app it would be one model call.
+  Also by URL: &lang=zh|en &scheme=light|dark
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Alfred：排一下今天</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+  --ease: cubic-bezier(.23, 1, .32, 1);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
+h1, h2, p, ol, ul { margin: 0; padding: 0; }
+ol, ul { list-style: none; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+
+/* ── The prototype's own strip ── */
+.proto { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; }
+.proto .lab { flex: none; padding: 0 4px 0 10px; opacity: .6; }
+.proto button { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; }
+.proto button:hover { opacity: 1; }
+.proto button[aria-pressed="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+@media (max-width: 700px) { .proto .lab { display: none; } }
+
+/* ── The shell (as in the app: 今天 is the first row of the sidebar, a small house) ── */
+.app { flex: 1; min-height: 0; display: grid; grid-template: 52px minmax(0, 1fr) / 232px minmax(0, 1fr); }
+.topbar { grid-column: 1 / -1; display: flex; background: var(--paper); border-bottom: 1px solid var(--line-soft); }
+.lead { flex: none; width: 232px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-right: 1px solid var(--line-soft); }
+.lights { display: flex; gap: 7px; margin-right: 6px; }
+.lights i { width: 11px; height: 11px; border-radius: 50%; background: var(--line); }
+.icon-btn { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); }
+.icon-btn:hover { background: var(--wash); color: var(--ink); }
+.main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 18px; }
+.title { font-size: .9375rem; font-weight: 650; white-space: nowrap; }
+.sub { min-width: 0; color: var(--muted); font-size: .8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room { flex: 1; }
+.side { padding: 10px 8px; background: var(--paper); border-right: 1px solid var(--line-soft); overflow: auto; }
+.side .k { padding: 14px 10px 4px; color: var(--muted); font-size: .6875rem; }
+.side li { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 8px; font-size: .875rem; }
+.side li[aria-current] { background: var(--wash); font-weight: 600; }
+.side li svg { color: var(--k-solid, var(--muted)); }
+.side li i { margin-left: auto; color: var(--muted); font: normal .75rem var(--sans); }
+.page { min-width: 0; overflow: auto; container: page / inline-size; }
+
+.col { max-width: 680px; margin: 0 auto; padding: clamp(28px, 8vh, 80px) 24px 120px; }
+
+/* 一句 */
+.hello { color: var(--muted); font-size: .875rem; }
+.next { margin-top: 4px; color: var(--muted); font: 400 1.375rem/1.45 var(--sans); letter-spacing: -.01em; text-wrap: pretty; overflow-wrap: anywhere; }
+.next b { color: var(--ink); font-weight: 600; }
+.doors { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 16px; }
+.door { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--raise); font-size: .875rem; font-weight: 550; white-space: nowrap; }
+.door:hover { border-color: var(--muted); }
+.door.main-door { border-color: transparent; background: var(--alf-solid); color: var(--on-alf); }
+.door.main-door:hover { filter: brightness(1.08); }
+.door svg { width: 13px; height: 13px; }
+.doors .where { color: var(--muted); font-size: .8125rem; }
+
+/* the plan's one line: what Alfred did to the day, and the one answer it needs */
+.plan { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: clamp(24px, 5vh, 40px); padding: 12px 14px; border-radius: 12px; background: var(--alf-soft); }
+.plan.warm { background: var(--k-fill); }
+.plan .say { flex: 1 1 260px; min-width: 0; font-size: .9375rem; }
+.plan .say b { font-weight: 600; }
+.plan .say small { display: block; color: var(--muted); font-size: .8125rem; }
+.plan .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.plan .door { height: 30px; padding: 0 12px; }
+.plan.quiet { padding: 0; background: none; color: var(--muted); font-size: .8125rem; }
+.plan.quiet .say { font-size: .8125rem; }
+.plan.quiet button { color: var(--alf); }
+.plan svg.fig { width: 18px; height: 18px; color: var(--alf); stroke-width: 1.3; }
+.plan.warm svg.fig { color: var(--k-solid); }
+.plan.thinking .say { color: var(--muted); }
+.plan.thinking svg.fig { animation: spin 1.2s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 一条线 */
+.line { margin-top: clamp(20px, 4vh, 32px); }
+.row { display: grid; grid-template-columns: 64px 16px minmax(0, 1fr) auto; align-items: baseline; column-gap: 12px; padding: 8px 10px; margin: 0 -10px; border-radius: 10px; width: calc(100% + 20px); }
+button.row:hover, .row.open { background: var(--paper); }
+.row.open { border-radius: 10px 10px 0 0; }
+.when { min-width: 0; color: var(--muted); font-size: .8125rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.when .t { color: var(--copy); }
+.when.guess .t { text-decoration: underline dashed; text-underline-offset: 4px; text-decoration-color: var(--alf); color: var(--alf); }
+.when s { display: block; color: var(--muted); font-size: .75rem; }
+.when small { display: block; font-size: .75rem; line-height: 1.3; }
+.kind { align-self: start; margin-top: 4px; color: var(--k-solid, var(--muted)); }
+.kind.tick { width: 16px; height: 16px; border-radius: 50%; border: 1.6px solid var(--k-solid, var(--muted)); }
+.kind.tick:hover { background: var(--k-fill); }
+.row.planned .kind.tick { border-style: dashed; }
+.what { min-width: 0; overflow-wrap: anywhere; }
+.what b { font-weight: 500; }
+.what span { color: var(--muted); font-size: .875rem; }
+.what b + span::before { content: "  "; white-space: pre; }
+.what span.late { color: var(--k-text); }
+.go { color: var(--muted); font-size: .8125rem; white-space: nowrap; }
+button.row:hover .go, .go.ext { color: var(--alf); }
+.go.late { color: var(--k-text); font-weight: 600; }
+.row.past { opacity: .5; }
+.row.done .what b { text-decoration: line-through; color: var(--muted); font-weight: 400; }
+.row.done .kind.tick { background: var(--k-solid); border-style: solid; }
+.row.flash { animation: flash 900ms var(--ease); }
+@keyframes flash { from { background: var(--alf-soft); } }
+
+.mark { display: flex; align-items: center; gap: 10px; margin: 14px 0 4px; color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.mark::after { content: ""; flex: 1; height: 1px; background: var(--line-soft); order: 1; }
+.mark .act { order: 2; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 8px; background: var(--alf-soft); color: var(--alf); font-size: .8125rem; font-weight: 600; }
+.mark .act:hover { background: color-mix(in oklch, var(--alf) 18%, transparent); }
+.mark .act svg { width: 14px; height: 14px; stroke-width: 1.3; }
+.mark.now { color: var(--now); font-weight: 600; }
+.mark.now::after { background: color-mix(in oklch, var(--now) 45%, transparent); }
+.mark:first-child { margin-top: 0; }
+.fold { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; color: var(--muted); font-size: .8125rem; }
+.fold:hover { color: var(--ink); }
+.fold svg { width: 12px; height: 12px; transition: transform 160ms var(--ease); }
+.fold[aria-expanded="true"] svg { transform: rotate(90deg); }
+
+/* a row opened in place: change it */
+.edit { margin: 0 -10px 6px; padding: 6px 10px 12px 102px; border-radius: 0 0 10px 10px; background: var(--paper); }
+.edit .f { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.edit .f > span { width: 52px; color: var(--muted); font-size: .75rem; }
+.chip { height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line-soft); background: var(--raise); font-size: .8125rem; font-variant-numeric: tabular-nums; }
+.chip:hover { border-color: var(--line); }
+.chip[aria-pressed="true"] { border-color: transparent; background: var(--alf-solid); color: var(--on-alf); }
+.edit .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.edit .door { height: 30px; padding: 0 12px; }
+.edit p { color: var(--copy); font-size: .875rem; }
+
+/* 一行 */
+.rest { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; margin-top: clamp(28px, 6vh, 48px); padding-top: 14px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: .8125rem; }
+.rest b { color: var(--ink); font-weight: 600; }
+.rest .wrote { margin-left: auto; white-space: nowrap; }
+
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 8px 14px; border-radius: 10px; background: var(--ink); color: var(--bg); font-size: .8125rem; box-shadow: var(--shadow); z-index: 5; }
+
+@container page (max-width: 560px) {
+  .col { padding: 28px 16px 120px; }
+  .next { font-size: 1.1875rem; }
+  .row { grid-template-columns: 56px 16px minmax(0, 1fr); column-gap: 10px; }
+  .what span { display: block; }
+  .what b + span::before { content: none; }
+  .go { display: none; }
+  .go.ext, .go.late { display: block; grid-column: 3; justify-self: start; }
+  .edit { padding-left: 10px; }
+  .rest .wrote { margin-left: 0; width: 100%; }
+}
+@media (max-width: 700px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .lead { width: auto; }
+  .side { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<nav class="proto" id="proto"></nav>
+<div class="app" id="app"></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const SCENE_IDS = ["before", "morning", "afternoon", "evening"];
+const S = {
+  lang: params.get("lang") === "en" ? "en" : "zh",
+  scene: SCENE_IDS.includes(params.get("s")) ? params.get("s") : "morning",
+};
+if (params.get("scheme") === "dark") document.documentElement.dataset.scheme = "dark";
+const L = (pair) => (typeof pair === "string" ? pair : pair?.[S.lang] ?? "");
+const zh = () => S.lang === "zh";
+
+const ICON = {
+  home: '<path d="M3.5 9.2 10 3.8l6.5 5.4V16h-4.4v-4.2H7.9V16H3.5z"/>',
+  rail: '<rect x="3" y="4" width="14" height="12" rx="2.5"/><path d="M8 4v12"/>',
+  gear: '<circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/>',
+  cal: '<rect x="3" y="4.5" width="14" height="12" rx="2.5"/><path d="M3 8.5h14M7 2.8v3M13 2.8v3"/>',
+  mail: '<rect x="2.8" y="4.5" width="14.4" height="11" rx="2.5"/><path d="m3.5 6 6.5 5 6.5-5"/>',
+  check: '<path d="m4.5 10.5 3.5 3.5 7.5-8"/>',
+  inbox: '<path d="M3 11.5 5 4.5h10l2 7v4H3z"/><path d="M3 11.5h4l1 2h4l1-2h4"/>',
+  out: '<path d="M8 4.5h7.5V12M15 5 5.5 14.5"/>',
+  chev: '<path d="m7.5 4.5 5.5 5.5-5.5 5.5"/>',
+  /* Alfred's mark, reduced: a cube in a cube (the tesseract's two shells) */
+  alf: '<rect x="3" y="3" width="14" height="14" rx="1"/><rect x="7" y="7" width="6" height="6"/><path d="M3 3l4 4M17 3l-4 4M3 17l4-4M17 17l-4-4"/>',
+};
+const icon = (name, cls = "") => `<svg class="i ${cls}" viewBox="0 0 20 20" aria-hidden="true">${ICON[name]}</svg>`;
+
+/* ── Time ── */
+const D = (h, m = 0) => h * 60 + m;
+const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const ceil5 = (m) => Math.ceil(m / 5) * 5;
+const len = (m) => {
+  const h = Math.floor(m / 60), r = m % 60;
+  if (zh()) return h ? (r ? (r === 30 ? `${h}.5 小时` : `${h} 小时 ${r} 分`) : `${h} 小时`) : `${r} 分钟`;
+  return h ? (r ? (r === 30 ? `${h}.5 h` : `${h} h ${r} min`) : `${h} h`) : `${r} min`;
+};
+const DAY_START = D(9), DAY_END = D(18, 30), GAP = 5, LUNCH = [D(12), D(13)];
+
+/* ── Sample day: Monday. Calendar events are fixed; todos have no hour until a plan gives one. ── */
+const EVENTS = [
+  { id: "group", s: D(10), e: D(11), k: "blue", what: { zh: "组会", en: "Group meeting" }, why: { zh: "304 会议室", en: "Room 304" }, go: "Meet", ext: true, door: { zh: "进 Meet", en: "Join Meet" } },
+  { id: "contract", s: D(14, 30), e: D(15, 30), k: "orange", what: { zh: "和 Leo 过合同", en: "Contract review with Leo" }, why: { zh: "到 15:30", en: "until 15:30" }, go: { zh: "合同第二版", en: "Version two" }, ext: true, door: { zh: "合同第二版", en: "Version two" } },
+  { id: "clinic", s: D(17), e: D(17, 30), k: "teal", what: { zh: "取体检报告", en: "Pick up the check-up report" }, why: { zh: "仁爱诊所，18:00 关门", en: "Ren'ai Clinic, closes 18:00" }, go: { zh: "日历", en: "Calendar" } },
+];
+/* In Alfred's order: this order, the lengths and `defer` are the model's judgement; placing them is the rule. */
+const TODOS = [
+  { id: "zhou", k: "violet", dur: 15, what: { zh: "回周老师：周四的时间", en: "Reply to Prof. Zhou: a time on Thursday" }, why: { zh: "她在等你定时间", en: "she is waiting for a time" } },
+  { id: "report", k: "blue", dur: 60, what: { zh: "写周报", en: "Write the weekly report" }, why: { zh: "今天 18:00 交", en: "due 18:00 today" } },
+  { id: "study", k: "pink", dur: 45, what: { zh: "线性代数 3.3", en: "Linear algebra 3.3" }, why: { zh: "这周的学习，上次到 3.2", en: "this week's study, left at 3.2" } },
+  { id: "claim", k: "orange", dur: 30, what: { zh: "整理报销单据", en: "Sort the expense receipts" }, why: { zh: "11/25 截止", en: "due Nov 25" } },
+  { id: "passport", k: "green", dur: 15, what: { zh: "预约续签护照", en: "Book the passport renewal" }, why: { zh: "拖了两周了", en: "put off for two weeks" } },
+  { id: "photos", k: "green", dur: 120, what: { zh: "整理旅行照片", en: "Sort the trip photos" }, why: { zh: "", en: "" } },
+  { id: "gift", k: "green", dur: 20, defer: true, what: { zh: "给妈妈订生日礼物", en: "Order Mum's birthday present" }, why: { zh: "11/28 前就行", en: "any time before Nov 28" } },
+];
+const TODO = Object.fromEntries(TODOS.map((todo) => [todo.id, todo]));
+
+/* ── The rule: free gaps between DAY_START (or now) and DAY_END, first one that fits, in Alfred's order. ── */
+function gaps(from, busy) {
+  const out = []; let cursor = from;
+  for (const [a, b] of [...busy].sort((x, y) => x[0] - y[0])) {
+    if (a > cursor) out.push([cursor, Math.min(a, DAY_END)]);
+    cursor = Math.max(cursor, b);
+    if (cursor >= DAY_END) break;
+  }
+  if (cursor < DAY_END) out.push([cursor, DAY_END]);
+  return out.filter(([a, b]) => b > a);
+}
+function baseBusy() { return [...EVENTS.map((event) => [event.s, event.e + GAP]), LUNCH]; }
+function plan(now, st) {
+  // five minutes' lead: nothing is planned to start the very minute you look
+  const from = Math.max(ceil5(now + GAP), DAY_START), busy = baseBusy(), at = {}, tomorrow = {};
+  const roomiest = Math.max(0, ...gaps(from, baseBusy()).map(([a, b]) => b - a));
+  const open = TODOS.filter((todo) => !st.done[todo.id] && !st.loose[todo.id]);
+  for (const todo of open) {
+    if (st.later[todo.id]) tomorrow[todo.id] = st.later[todo.id];
+    else if (todo.defer && !st.keep[todo.id] && st.pins[todo.id] == null) tomorrow[todo.id] = "defer";
+  }
+  for (const todo of TODOS) if (st.done[todo.id] && st.pins[todo.id] != null) at[todo.id] = st.pins[todo.id];
+  for (const todo of open) {
+    const pin = st.pins[todo.id], need = dur(todo.id, st);
+    if (pin == null || tomorrow[todo.id]) continue;
+    // a pin that no longer fits (made longer, or its hour has passed) goes back to the rule
+    if (!gaps(from, busy).some(([a, b]) => a <= pin && pin + need <= b)) continue;
+    at[todo.id] = pin; busy.push([pin, pin + need + GAP]);
+  }
+  for (const todo of open) {
+    if (at[todo.id] != null || tomorrow[todo.id]) continue;
+    const need = dur(todo.id, st), fit = gaps(from, busy).find(([a, b]) => b - a >= need);
+    if (fit) { at[todo.id] = fit[0]; busy.push([fit[0], fit[0] + need + GAP]); }
+    else tomorrow[todo.id] = "full";
+  }
+  return { at, tomorrow, from, roomiest };
+}
+const dur = (id, st = S) => st.durs[id] ?? TODO[id].dur;
+/* where else this one could go: the start of every gap it fits in, once the others are placed */
+function options(id) {
+  const busy = baseBusy();
+  for (const [other, s] of Object.entries(S.plan.at)) if (other !== id) busy.push([s, s + dur(other) + GAP]);
+  return gaps(S.plan.from, busy).filter(([a, b]) => b - a >= dur(id)).map(([a]) => a).slice(0, 6);
+}
+
+/* ── Copy ── */
+const T = {
+  zh: {
+    strip: { scene: "时候", lang: "语言", scheme: "明暗" },
+    scenes: { before: "排之前", morning: "早上", afternoon: "下午 · 落后了", evening: "晚上 · 收尾" },
+    title: "今天", date: "11月23日 周一", now: "现在", within: "今天之内", tomorrow: "明天 · 周二",
+    planIt: "排一下", thinking: "在排今天……", past: (n) => `已经过去的 ${n} 件`,
+    proposed: (a, b) => `我把今天排了：<b>${a} 件</b>放进空档${b ? `，<b>${b} 件</b>挪到明天` : ""}。`,
+    proposedSub: "排到 18:30，午饭和会后 5 分钟留着。点一行能改。",
+    accept: "就这样", replan: "重排", drop: "不排了", calNote: "日历没动",
+    accepted: (n) => `按计划走 · 还剩 ${n} 件`,
+    slipped: (n, from) => `<b>${n} 件</b>过了钟点还没勾。剩下的从 ${from} 往后重排了：`,
+    slippedSub: "原来的钟点划掉了。不合适就点一行改。",
+    mine: "我自己来",
+    close: (n) => `今天还有 <b>${n} 件</b>没勾。挪到明天？`,
+    closeSub: "明天早上我把它们和明天的一起排。",
+    allTomorrow: "都挪到明天", closed: "收好了。明天早上排好给你看。",
+    when: "什么时候", long: "要多久", toTomorrow: "挪到明天", noHour: "不定钟点", keepToday: "留在今天", toCal: "放进日历", onCal: "已放进日历",
+    did: "做完了", notNeeded: "不要了", unticked: "没勾",
+    why: { full: (need, max) => `要 ${need}，今天剩下最长的空档 ${max}`, packed: "今天排满了", defer: (why) => `${why}，今天先不放`, you: "你挪的", left: "今天没做完" },
+    hello: { morning: "早上好，Bruce。", afternoon: "下午好，Bruce。", evening: "晚上好，Bruce。" },
+    next: (what, time, until) => `下一件是 <b>${time} 的${what}</b>，还有 ${until}。`,
+    on: (what, end) => `<b>${what}</b>正在进行，到 ${end}。`,
+    over: "今天的都过去了。",
+    rest: ["今天来了 <b>12</b> 封信", "<b>3</b> 件刚办完"], wrote: "07:30 写的",
+    gotTimes: (n) => `${n} 件待办有了钟点 · 日历没动`, full: "今天放不下了，还在明天",
+    side: { work: "工作台", inbox: "通知", cal: "日历", todo: "待办", mail: "邮件" },
+  },
+  en: {
+    strip: { scene: "Time", lang: "Language", scheme: "Scheme" },
+    scenes: { before: "Before", morning: "Morning", afternoon: "Afternoon · behind", evening: "Evening · wrap up" },
+    title: "Today", date: "Mon, Nov 23", now: "Now", within: "Sometime today", tomorrow: "Tomorrow · Tue",
+    planIt: "Plan it", thinking: "Planning today…", past: (n) => `${n} already over`,
+    proposed: (a, b) => `I planned today: <b>${a}</b> into free gaps${b ? `, <b>${b}</b> moved to tomorrow` : ""}.`,
+    proposedSub: "Until 18:30, lunch and 5 min after meetings kept free. Click a row to change it.",
+    accept: "Looks good", replan: "Replan", drop: "Don't plan", calNote: "calendar untouched",
+    accepted: (n) => `On plan · ${n} left`,
+    slipped: (n, from) => `<b>${n}</b> passed their hour unticked. The rest is replanned from ${from}:`,
+    slippedSub: "Old hours are struck through. Click a row to change it.",
+    mine: "I'll do it",
+    close: (n) => `<b>${n}</b> still unticked. Move to tomorrow?`,
+    closeSub: "Tomorrow morning I plan them with tomorrow's.",
+    allTomorrow: "Move all", closed: "Wrapped up. Tomorrow's plan comes in the morning.",
+    when: "When", long: "Takes", toTomorrow: "Tomorrow", noHour: "No hour", keepToday: "Keep today", toCal: "Put on calendar", onCal: "On the calendar",
+    did: "Done", notNeeded: "Drop it", unticked: "Unticked",
+    why: { full: (need, max) => `needs ${need}; the longest gap left today is ${max}`, packed: "today is full", defer: (why) => `${why}; left out today`, you: "you moved it", left: "not done today" },
+    hello: { morning: "Good morning, Bruce.", afternoon: "Good afternoon, Bruce.", evening: "Good evening, Bruce." },
+    next: (what, time, until) => `Next is <b>${what} at ${time}</b>, in ${until}.`,
+    on: (what, end) => `<b>${what}</b> is on until ${end}.`,
+    over: "Today is over.",
+    rest: ["<b>12</b> letters today", "<b>3</b> just finished"], wrote: "Written 07:30",
+    gotTimes: (n) => `${n} todos got an hour · calendar untouched`, full: "Doesn't fit today; stays tomorrow",
+    side: { work: "Workspace", inbox: "Inbox", cal: "Calendar", todo: "Todos", mail: "Mail" },
+  },
+};
+const t = () => T[S.lang];
+
+/* ── Scenes ── */
+function fresh(now) { return { now, done: {}, pins: {}, durs: {}, later: {}, keep: {}, loose: {}, cal: {}, open: null, past: false, old: {}, edited: false }; }
+function setScene(id) {
+  S.scene = id;
+  if (id === "before") Object.assign(S, fresh(D(9, 5)), { phase: "before" });
+  if (id === "morning") Object.assign(S, fresh(D(9, 5)), { phase: "proposed" });
+  if (id === "afternoon" || id === "evening") {
+    // the morning plan was accepted at 09:05 …
+    Object.assign(S, fresh(D(9, 5)));
+    const morning = plan(D(9, 5), S);
+    Object.assign(S.pins, morning.at);
+    if (id === "afternoon") {
+      // … it is 15:40: two done, three hours passed unticked → re-planned from now
+      Object.assign(S, { now: D(15, 40), phase: "slipped", done: { zhou: true, claim: true } });
+      for (const [tid, s] of Object.entries(morning.at)) if (!S.done[tid] && s + dur(tid) <= S.now) { S.old[tid] = s; delete S.pins[tid]; }
+      for (const [tid, s] of Object.entries(morning.at)) if (!S.done[tid] && s >= S.now) delete S.pins[tid];
+    } else {
+      // … the afternoon re-plan was accepted; it is 20:30 and two are still open
+      Object.assign(S, { now: D(15, 40), done: { zhou: true, claim: true } });
+      for (const tid of Object.keys(S.pins)) if (!S.done[tid]) delete S.pins[tid];
+      Object.assign(S.pins, plan(D(15, 40), S).at);
+      Object.assign(S, { now: D(20, 30), phase: "close", done: { zhou: true, claim: true, report: true } });
+    }
+  }
+  S.plan = S.phase === "close" ? { ...plan(D(9, 5), S), from: DAY_START } : plan(S.now, S);
+  if (S.phase === "close") S.plan.at = Object.fromEntries(Object.entries(S.pins).filter(([tid]) => !S.later[tid]));
+}
+function replan() {
+  if (S.phase === "close") return;
+  S.plan = plan(S.now, S);
+}
+
+/* ── Drawing ── */
+function nextSentence() {
+  const items = EVENTS.map((event) => ({ what: L(event.what), s: event.s, e: event.e, event }));
+  if (S.phase === "accepted") for (const [id, s] of Object.entries(S.plan.at)) if (!S.done[id]) items.push({ what: L(TODO[id].what), s, e: s + dur(id) });
+  const on = items.find((item) => item.s <= S.now && S.now < item.e);
+  if (on) return { text: t().on(on.what, fmt(on.e)), event: on.event };
+  const next = items.filter((item) => item.s > S.now).sort((a, b) => a.s - b.s)[0];
+  if (!next) return { text: t().over };
+  const until = next.s - S.now;
+  return { text: t().next(next.what, fmt(next.s), len(until)), event: next.event };
+}
+
+function planBar() {
+  const at = Object.keys(S.plan.at).filter((id) => !S.done[id]).length, later = Object.keys(S.plan.tomorrow).length;
+  const fig = icon("alf", "fig"), btn = (key, text, main) => `<button class="door ${main ? "main-door" : ""}" data-plan="${key}">${text}</button>`;
+  if (S.phase === "thinking") return `<div class="plan thinking">${fig}<p class="say">${t().thinking}</p></div>`;
+  if (S.phase === "proposed") return `<div class="plan">${fig}<p class="say">${t().proposed(at, later)}<small>${t().proposedSub}</small></p>
+    <div class="acts">${btn("accept", t().accept, true)}${S.edited ? btn("replan", t().replan) : ""}${btn("drop", t().drop)}</div></div>`;
+  if (S.phase === "slipped") return `<div class="plan warm" data-k="warm">${fig}<p class="say">${t().slipped(Object.keys(S.old).length, fmt(S.plan.from))}<small>${t().slippedSub}</small></p>
+    <div class="acts">${btn("accept", t().accept, true)}${btn("mine", t().mine)}</div></div>`;
+  if (S.phase === "close") {
+    const left = Object.keys(S.plan.at).filter((id) => !S.done[id]).length;
+    if (!left) return `<div class="plan quiet"><p class="say">${t().closed}</p></div>`;
+    return `<div class="plan">${fig}<p class="say">${t().close(left)}<small>${t().closeSub}</small></p><div class="acts">${btn("allTomorrow", t().allTomorrow, true)}</div></div>`;
+  }
+  if (S.phase === "accepted") return `<div class="plan quiet"><p class="say">${t().accepted(at)} · <button data-plan="replan">${t().replan}</button></p></div>`;
+  return "";
+}
+
+function eventRow(event, cls = "") {
+  return `<li><button class="row ${cls}" data-event="${event.id}" data-k="${event.k}">
+    <span class="when"><span class="t">${fmt(event.s)}</span></span>${icon("cal", "kind")}
+    <span class="what"><b>${L(event.what)}</b>${event.why ? `<span>${L(event.why)}</span>` : ""}</span>
+    <span class="go ${event.ext ? "ext" : ""}">${L(event.go)}${event.ext ? " ↗" : ""}</span></button></li>`;
+}
+function todoRow(id, where, cls = "") {
+  const todo = TODO[id], s = S.plan.at[id], open = S.open === id, done = S.done[id];
+  const dashed = (S.phase === "proposed" || S.phase === "slipped") && where === "line" && !done;
+  const late = S.phase === "close" && !done && where === "line";
+  let when = "";
+  if (where === "line") when = `${S.old[id] != null && S.phase === "slipped" ? `<s>${fmt(S.old[id])}</s>` : ""}<span class="t">${fmt(s)}</span><small>${len(dur(id))}</small>`;
+  else if (where !== "within" || S.phase !== "before") when = `<small>${len(dur(id))}</small>`;
+  let why = L(todo.why), whyCls = "";
+  if (where === "tomorrow") {
+    const r = S.plan.tomorrow[id];
+    why = r === "full" ? (S.plan.roomiest < dur(id) ? t().why.full(len(dur(id)), len(S.plan.roomiest)) : t().why.packed) : r === "defer" ? t().why.defer(L(todo.why)) : r === "left" ? t().why.left : t().why.you;
+  }
+  if (late) { why = t().unticked; whyCls = "late"; }
+  const go = late ? `<span class="go late">${t().toTomorrow}</span>` : S.cal[id] ? `<span class="go">${t().onCal}</span>` : `<span class="go">${where === "within" && S.phase === "before" ? "" : (zh() ? "改" : "Change")}</span>`;
+  return `<li><button class="row ${cls} ${dashed ? "planned" : ""} ${done ? "done" : ""} ${open ? "open" : ""} ${S.flash?.[id] ? "flash" : ""}" data-todo="${id}" data-where="${where}" data-k="${late ? "warm" : todo.k}" aria-expanded="${open}">
+    <span class="when ${dashed ? "guess" : ""}">${when}</span><span class="kind tick" data-tick="${id}" data-k="${todo.k}" role="checkbox" aria-checked="${!!done}"></span>
+    <span class="what"><b>${L(todo.what)}</b>${why ? `<span class="${whyCls}">${why}</span>` : ""}</span>${go}
+  </button>${open ? editor(id, where) : ""}</li>`;
+}
+function editor(id, where) {
+  const chip = (attr, value, text, on) => `<button class="chip" ${attr}="${value}" data-id="${id}" aria-pressed="${on}">${text}</button>`;
+  const act = (key, text, main) => `<button class="door ${main ? "main-door" : ""}" data-do="${key}" data-id="${id}">${text}</button>`;
+  if (S.phase === "close" && where === "line") return `<div class="edit"><div class="acts">${act("later", t().toTomorrow, true)}${act("did", t().did)}${act("drop", t().notNeeded)}</div></div>`;
+  if (where === "tomorrow") return `<div class="edit"><div class="acts">${act("keep", t().keepToday, true)}</div></div>`;
+  if (where === "within") return `<div class="edit"><div class="acts">${S.phase !== "before" ? act("hour", zh() ? "排进今天" : "Plan into today", true) : ""}${act("later", t().toTomorrow)}</div></div>`;
+  const s = S.plan.at[id], starts = [...new Set([s, ...options(id)])].sort((a, b) => a - b);
+  return `<div class="edit">
+    <div class="f"><span>${t().when}</span>${starts.map((start) => chip("data-start", start, fmt(start), start === s)).join("")}</div>
+    <div class="f"><span>${t().long}</span>${[15, 30, 45, 60, 90, 120].map((m) => chip("data-dur", m, len(m), m === dur(id))).join("")}</div>
+    <div class="acts">${act("later", t().toTomorrow)}${act("loose", t().noHour)}${S.phase === "accepted" && !S.cal[id] ? act("cal", t().toCal) : ""}</div></div>`;
+}
+const mark = (text, cls = "", extra = "") => `<li class="mark ${cls}"><span>${text}</span>${extra}</li>`;
+
+function page() {
+  const out = [], line = [];
+  for (const event of EVENTS) line.push({ s: event.s, e: event.e, html: (cls) => eventRow(event, cls), past: event.e <= S.now });
+  if (S.phase !== "before" && S.phase !== "thinking") {
+    for (const [id, s] of Object.entries(S.plan.at)) {
+      const pastDone = S.done[id] && s < S.now;
+      line.push({ s, e: s + dur(id), html: (cls) => todoRow(id, "line", cls), past: pastDone || (S.phase !== "close" && s + dur(id) <= S.now && S.done[id]) });
+    }
+  }
+  line.sort((a, b) => a.s - b.s);
+  const past = line.filter((item) => item.past), ahead = line.filter((item) => !item.past);
+  if (past.length) {
+    out.push(`<li><button class="fold" data-past aria-expanded="${S.past}">${icon("chev")}${t().past(past.length)}</button></li>`);
+    if (S.past) out.push(...past.map((item) => item.html("past")));
+  }
+  out.push(mark(`${t().now} ${fmt(S.now)}`, "now"), ...ahead.map((item) => item.html("")));
+  const within = S.phase === "before" || S.phase === "thinking"
+    ? TODOS.filter((todo) => !S.done[todo.id]).map((todo) => todo.id)
+    : TODOS.filter((todo) => S.loose[todo.id] && !S.done[todo.id]).map((todo) => todo.id);
+  if (within.length) {
+    const plan = S.phase === "before" ? `<button class="act" data-plan="start">${icon("alf")}${t().planIt}</button>` : "";
+    out.push(mark(`${t().within} · ${within.length}`, "", plan), ...within.map((id) => todoRow(id, "within")));
+  }
+  const later = Object.keys(S.plan.tomorrow);
+  if (later.length && S.phase !== "before" && S.phase !== "thinking") out.push(mark(t().tomorrow), ...later.map((id) => todoRow(id, "tomorrow")));
+
+  const next = nextSentence(), hello = S.now < D(12) ? "morning" : S.now < D(18) ? "afternoon" : "evening";
+  return `<div class="col">
+    <p class="hello">${t().hello[hello]}</p>
+    <h2 class="next">${next.text}</h2>
+    ${next.event?.door ? `<div class="doors"><button class="door main-door" data-door>${L(next.event.door)}${icon("out")}</button><span class="where">${L(next.event.why)}</span></div>` : ""}
+    ${planBar()}
+    <ol class="line">${out.join("")}</ol>
+    <div class="rest">${t().rest.map((text) => `<span>${text}</span>`).join("")}<span class="wrote">${t().wrote}</span></div>
+  </div>`;
+}
+
+function render() {
+  document.documentElement.lang = zh() ? "zh-CN" : "en";
+  const strip = (label, key, options) => `<span class="lab">${label}</span>${options.map(([value, text]) => `<button data-set="${key}" data-value="${value}" aria-pressed="${S[key] === value}">${text}</button>`).join("")}`;
+  document.getElementById("proto").innerHTML =
+    strip(t().strip.scene, "scene", Object.entries(t().scenes)) +
+    strip(t().strip.lang, "lang", [["zh", "中文"], ["en", "EN"]]) +
+    `<span class="lab">${t().strip.scheme}</span><button data-scheme>◐</button>`;
+  const left = Object.keys(S.plan.at).filter((id) => !S.done[id]).length;
+  document.getElementById("app").innerHTML = `
+    <header class="topbar">
+      <div class="lead"><span class="lights"><i></i><i></i><i></i></span><button class="icon-btn" aria-label="sidebar">${icon("rail")}</button></div>
+      <div class="main"><h1 class="title">${t().title}</h1><p class="sub">${t().date}</p><span class="room"></span><button class="icon-btn" aria-label="settings">${icon("gear")}</button></div>
+    </header>
+    <aside class="side"><ul><li aria-current="page" data-k="alfred">${icon("home")}${t().title}${S.phase === "proposed" || S.phase === "slipped" ? `<i>${left}</i>` : ""}</li></ul>
+      <p class="k">${t().side.work}</p><ul>
+      <li data-k="warm">${icon("inbox")}${t().side.inbox}</li>
+      <li data-k="blue">${icon("cal")}${t().side.cal}</li>
+      <li data-k="green">${icon("check")}${t().side.todo}<i>11</i></li>
+      <li data-k="violet">${icon("mail")}${t().side.mail}<i>2</i></li></ul></aside>
+    <main class="page">${page()}</main>`;
+  S.flash = null;
+}
+
+let toastTimer;
+function toast(text) {
+  const el = document.getElementById("toast");
+  el.textContent = text; el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 2000);
+}
+function edited(id) { S.edited = true; S.flash = { [id]: true }; replan(); render(); }
+
+document.addEventListener("click", (event) => {
+  const el = event.target.closest?.("[data-set],[data-scheme],[data-plan],[data-tick],[data-start],[data-dur],[data-do],[data-past],[data-door],[data-event],[data-todo]");
+  if (!el) return;
+  if (el.dataset.set === "scene") { setScene(el.dataset.value); return render(); }
+  if (el.dataset.set) { S[el.dataset.set] = el.dataset.value; return render(); }
+  if (el.hasAttribute("data-scheme")) { const root = document.documentElement; root.dataset.scheme = root.dataset.scheme === "dark" ? "light" : "dark"; return; }
+  if (el.hasAttribute("data-past")) { S.past = !S.past; return render(); }
+  if (el.hasAttribute("data-door")) return toast(zh() ? "在浏览器里打开" : "Opens in the browser");
+  if (el.dataset.event) { const ev = EVENTS.find((one) => one.id === el.dataset.event); return toast(ev.ext ? (zh() ? "在浏览器里打开" : "Opens in the browser") : (zh() ? "去「日历」" : "Goes to Calendar")); }
+
+  const key = el.dataset.plan;
+  if (key === "start") {
+    S.phase = "thinking"; render();
+    return setTimeout(() => { S.phase = "proposed"; S.edited = false; S.plan = plan(S.now, S); render(); }, 900);
+  }
+  if (key === "accept") {
+    const n = Object.keys(S.plan.at).filter((id) => !S.done[id]).length;
+    Object.assign(S.pins, S.plan.at); S.old = {}; S.phase = "accepted"; S.open = null; render();
+    return toast(t().gotTimes(n));
+  }
+  if (key === "replan") { for (const id of Object.keys(S.pins)) if (!S.done[id]) delete S.pins[id]; S.later = {}; S.loose = {}; S.edited = false; S.open = null; if (S.phase === "accepted") S.phase = "proposed"; replan(); return render(); }
+  if (key === "drop") { setScene("before"); return render(); }
+  if (key === "mine") {
+    // keep the old hours, just accepted as they were: the passed ones stay passed
+    for (const [id, s] of Object.entries(S.old)) S.plan.at[id] = s;
+    S.old = {}; S.phase = "accepted"; return render();
+  }
+  if (key === "allTomorrow") {
+    for (const id of Object.keys(S.plan.at)) if (!S.done[id]) { delete S.plan.at[id]; S.plan.tomorrow[id] = "left"; }
+    S.open = null; return render();
+  }
+
+  if (el.dataset.tick) {
+    const tid = el.dataset.tick;
+    if (S.plan.at[tid] != null) S.pins[tid] = S.plan.at[tid];   // a ticked one keeps its place on the line
+    S.done[tid] = !S.done[tid]; return render();
+  }
+  const id = el.dataset.id;
+  if (el.dataset.start) { S.pins[id] = Number(el.dataset.start); return edited(id); }
+  if (el.dataset.dur) { S.durs[id] = Number(el.dataset.dur); if (S.plan.at[id] != null && S.phase !== "slipped") S.pins[id] = S.plan.at[id]; return edited(id); }
+  if (el.dataset.do) {
+    const what = el.dataset.do;
+    if (S.phase === "close") {
+      if (what === "later") { delete S.plan.at[id]; S.plan.tomorrow[id] = "left"; }
+      if (what === "did") S.done[id] = true;
+      if (what === "drop") delete S.plan.at[id];
+      if (what === "keep") toast(zh() ? "今天已经过去了" : "Today is over");
+      S.open = null; return render();
+    }
+    if (what === "later") { S.later[id] = "you"; delete S.pins[id]; delete S.loose[id]; S.open = null; return edited(id); }
+    if (what === "loose") { S.loose[id] = true; delete S.pins[id]; S.open = null; return edited(id); }
+    if (what === "hour") { delete S.loose[id]; S.open = null; return edited(id); }
+    if (what === "keep") {
+      delete S.later[id]; S.keep[id] = true; replan();
+      if (S.plan.tomorrow[id]) toast(t().full); else S.open = null;
+      return edited(id);
+    }
+    if (what === "cal") { S.cal[id] = true; S.open = null; render(); return toast(zh() ? `日历上多了「${L(TODO[id].what)}」，${len(dur(id))}` : `“${L(TODO[id].what)}” is on the calendar, ${len(dur(id))}`); }
+  }
+  if (el.dataset.todo) {
+    if (S.phase === "before" || S.phase === "thinking") return toast(zh() ? "去「待办」" : "Goes to Todos");
+    if (S.done[el.dataset.todo] && el.dataset.where === "line") return;
+    S.open = S.open === el.dataset.todo ? null : el.dataset.todo; return render();
+  }
+});
+
+setScene(S.scene);
+render();
+</script>
+</body>
+</html>
