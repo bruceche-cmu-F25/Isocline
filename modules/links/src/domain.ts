@@ -5,7 +5,7 @@
  * web for its title (fetch.ts, later), filed under at most one topic, and marked unread, seen or to do.
  * One address is one place and one clip at most.
  */
-import { changedFields, isArea, newId, unknownArea, recordDomainEvent, type Migration, type World } from "@alfred/core";
+import { changedFields, isArea, newId, unknownArea, recordDomainEvent, type Migration, type World } from "@alfred/module-kit";
 import { CLIP_STATES, type Clip, type ClipState, type Place, type PlaceFolder, type Topic } from "./types.ts";
 import { classify, isShortener, nameFromUrl, normalizeUrl, parseShareText } from "./url.ts";
 import { COVER_MIGRATION } from "./covers.ts";

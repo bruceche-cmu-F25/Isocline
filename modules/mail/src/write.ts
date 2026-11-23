@@ -4,8 +4,7 @@
  * idempotent, so it is tried once: anything other than a clear answer from Gmail leaves it `unknown`, and the user is
  * asked to look in Sent.
  */
-import { enqueueOutbound, localeOf, userLocale, type Locale, type Outbound, type World } from "@alfred/core";
-import { defineOp, defineTool, Type, type Delivered, type GoogleSession, type ModuleServices } from "@alfred/module-kit";
+import { enqueueOutbound, localeOf, userLocale, type Locale, type Outbound, type World, defineOp, defineTool, Type, type Delivered, type GoogleSession, type ModuleServices } from "@alfred/module-kit";
 import { getMail } from "./index.ts";
 import type { SendInput } from "./types.ts";
 

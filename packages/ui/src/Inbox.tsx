@@ -13,6 +13,7 @@ import { dragHandle, PHONE, useMedia } from "./shell/layout.ts";
 import { editionDate, hhmm } from "./automationText.ts";
 import "./inbox-reader.css";
 import { intlLocale, t } from "./i18n/index.ts";
+import { snapshotOf } from "./modules.ts";
 
 export interface InboxProps {
   state: StateResponse;
@@ -299,7 +300,7 @@ export function Inbox({ state, focus, onFocused, onOpenConversation, line }: Inb
                 setSelected(null);
                 requestAnimationFrame(() => returnTo.current?.focus());
               }}>{t("inbox.back")}</button>}
-              <Detail item={detail} mail={state.modules.mail as MailSnapshot | undefined} conversationTitle={titleOf(detail.conversationId) ?? undefined} onOpenConversation={onOpenConversation} line={line}
+              <Detail item={detail} mail={snapshotOf(state, "mail")} conversationTitle={titleOf(detail.conversationId) ?? undefined} onOpenConversation={onOpenConversation} line={line}
                 onDone={(message) => { setSelected(null); if (message) setSaid(message); }} />
             </div>
           )}

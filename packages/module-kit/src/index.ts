@@ -17,6 +17,19 @@ import { Value } from "typebox/value";
 
 export { Type, type Static, type TSchema };
 
+/** What of the core a module may use: the world and its migrations, recording its own events, the shared areas of
+ * life, the user's language, the outbound queue for changes outside Alfred, and amending its own proposed steps.
+ * Modules import these from here, never from @alfred/core (packages/server/test/module-types.test.ts holds them to
+ * it), so the core can change everything else, run internals included, without touching a module. */
+export {
+  type World, type Migration, type Locale, type Outbound, type Proposal,
+  recordDomainEvent, changedFields, lastChangesOf, withDefaultActor, newId, localDate,
+  isArea, unknownArea, areaName, describeAreas,
+  userLocale, localeOf, localeTag, acceptLanguage,
+  enqueueOutbound, listOutbound,
+  getProposal, amendProposal, ProposalStateError,
+} from "@alfred/core";
+
 /** How much consent an operation needs (ARCHITECTURE.md §5.2). `external` changes something outside Alfred (the
  * user's Google Calendar, an email sent from their Gmail): a run never does it directly, it can only propose it. */
 export const PERMISSION_LEVELS = ["read", "local", "batch", "irreversible", "external"] as const;

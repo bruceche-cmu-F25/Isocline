@@ -81,3 +81,8 @@ export interface MailSnapshot {
   /** What was sent from here in the last two weeks, oldest first (at most 30). */
   sent: MailSent[];
 }
+
+/** The operations a device may ask of this module (POST /api/ops/<name>), as the module defines them. A test on the
+ * home node checks this list against the module's own, so a device cannot name one that is not there. */
+export const MAIL_OPS = ["mail.send", "mail.mark_read", "mail.favorite"] as const;
+export type MailOp = (typeof MAIL_OPS)[number];

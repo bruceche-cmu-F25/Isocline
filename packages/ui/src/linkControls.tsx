@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import type { LinkOp } from "@alfred/module-links/types";
 import { api } from "./api.ts";
 
 export function linkFileUrl(key?: string) {
@@ -17,7 +18,7 @@ export function SiteIcon({ icon, fallback }: { icon: string | undefined; fallbac
 /** Runs a module operation; an `{ error }` answer is shown like a failure. */
 export function useOp(onError: (message: string | null) => void) {
   const [busy, setBusy] = useState(false);
-  const run = (op: string, input: unknown, then?: (result: unknown) => void) => {
+  const run = (op: LinkOp, input: unknown, then?: (result: unknown) => void) => {
     setBusy(true);
     onError(null);
     return api.op(op, input).then((response) => {

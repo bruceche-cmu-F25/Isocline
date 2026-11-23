@@ -7,8 +7,7 @@
  * the change is delivered by write.ts, and what Google answers is written into the mirror at once.
  */
 import { createHash } from "node:crypto";
-import { localDate, recordDomainEvent, withDefaultActor, type World } from "@alfred/core";
-import { defineModule, defineTool, ServiceError, Type, type ModuleServices } from "@alfred/module-kit";
+import { localDate, recordDomainEvent, withDefaultActor, type World, defineModule, defineTool, ServiceError, Type, type ModuleServices } from "@alfred/module-kit";
 import { addDays, readAccount } from "./google.ts";
 import { calendarSources, colourSeries, putEvent, seriesOf } from "./mirror.ts";
 import { calendarOps, calendarQueries, calendarWriteTools, deliverCalendar, pendingChanges } from "./write.ts";

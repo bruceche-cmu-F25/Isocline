@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { CalendarSnapshot } from "@alfred/module-calendar/types";
-import type { MailSnapshot } from "@alfred/module-mail/types";
 import type { Todo } from "@alfred/module-todo/types";
 import type { StateResponse } from "@alfred/protocol";
 import { api } from "./api.ts";
@@ -13,6 +11,7 @@ import { todayFocus, todayLine, todayModel, untilText, type LineRow, type TodayF
 import { intlLocale, t, type Key } from "./i18n/index.ts";
 import { plainText } from "./markdown.ts";
 import "./today.css";
+import { snapshotOf } from "./modules.ts";
 
 export interface TodayProps {
   state: StateResponse;
@@ -248,7 +247,7 @@ export function Today({ state, name, go, onOpenConversation, line: bar }: TodayP
   // sync, so until then the page remembers that it was taken.
   const [placed, setPlaced] = useState<ReadonlyMap<string, string>>(new Map());
   const target = useMemo(() => {
-    for (const source of (state.modules.calendar as CalendarSnapshot | undefined)?.sources ?? []) {
+    for (const source of snapshotOf(state, "calendar")?.sources ?? []) {
       const calendar = source.canWrite ? source.calendars.find((one) => one.writable && one.varied) ?? source.calendars.find((one) => one.writable) : undefined;
       if (calendar) return { account: source.account, calendarId: calendar.id };
     }
@@ -269,7 +268,7 @@ export function Today({ state, name, go, onOpenConversation, line: bar }: TodayP
   const inPlace: Doing = {
     go, ticked, onTick: tick, open, onOpen: (id) => { setOpen(id); setSaid(null); }, placed, onPlace: target ? place : undefined,
     card: (item) => (
-      <Detail key={item.id} item={item} mail={state.modules.mail as MailSnapshot | undefined} line={bar} onOpenConversation={onOpenConversation}
+      <Detail key={item.id} item={item} mail={snapshotOf(state, "mail")} line={bar} onOpenConversation={onOpenConversation}
         conversationTitle={state.conversations.find((conversation) => conversation.id === item.conversationId)?.title}
         onDone={(message) => { setOpen(null); setSaid(message ? { text: message } : null); }} />
     ),

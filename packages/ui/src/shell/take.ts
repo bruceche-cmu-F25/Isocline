@@ -20,8 +20,8 @@ export const localToday = () => ymd(new Date());
 
 /** Where an event goes: the user's main calendar, as a proposal's would. */
 export interface Target { account: string; calendarId: string }
-export function calendarTarget(snapshot: unknown): Target | null {
-  for (const source of (snapshot as CalendarSnapshot | undefined)?.sources ?? []) {
+export function calendarTarget(snapshot: CalendarSnapshot | undefined): Target | null {
+  for (const source of snapshot?.sources ?? []) {
     const calendar = source.canWrite ? source.calendars.find((candidate) => candidate.writable) : undefined;
     if (calendar) return { account: source.account, calendarId: calendar.id };
   }

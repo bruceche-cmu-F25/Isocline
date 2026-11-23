@@ -1,6 +1,5 @@
 /** Gmail's recent inbox and previously seen saved or important messages, mirrored for reading on the home node. */
-import { listOutbound, recordDomainEvent, withDefaultActor, type World } from "@alfred/core";
-import { defineModule, defineOp, defineQuery, defineTool, ServiceError, Type, type ModuleServices } from "@alfred/module-kit";
+import { listOutbound, recordDomainEvent, withDefaultActor, type World, defineModule, defineOp, defineQuery, defineTool, ServiceError, Type, type ModuleServices } from "@alfred/module-kit";
 import { deliverStar, favoriteOp, starsOnTheirWay } from "./favorites.ts";
 import { INBOX_MAX, readInbox, unescapeHtml } from "./google.ts";
 import { deliverMail, mailOps, mailWriteTools } from "./write.ts";

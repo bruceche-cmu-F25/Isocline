@@ -8,8 +8,7 @@
  *
  * Without that permission a favorite is saved in Alfred only. A Gmail star cannot be removed from here then.
  */
-import { enqueueOutbound, listOutbound, localeOf, recordDomainEvent, userLocale, type Locale, type Outbound, type World } from "@alfred/core";
-import { defineOp, Type, type Delivered, type GoogleSession, type ModuleServices } from "@alfred/module-kit";
+import { enqueueOutbound, listOutbound, localeOf, recordDomainEvent, userLocale, type Locale, type Outbound, type World, defineOp, Type, type Delivered, type GoogleSession, type ModuleServices } from "@alfred/module-kit";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 

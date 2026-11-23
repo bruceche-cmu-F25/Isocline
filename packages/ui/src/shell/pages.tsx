@@ -6,7 +6,6 @@ import type { ReactNode } from "react";
 import type { Area, StateResponse, ViewContext } from "@alfred/protocol";
 import type { CalendarSnapshot } from "@alfred/module-calendar/types";
 import type { MailSnapshot } from "@alfred/module-mail/types";
-import type { LinksSnapshot } from "@alfred/module-links/types";
 import type { TodoSnapshot } from "@alfred/module-todo/types";
 import { Automations } from "../Automations.tsx";
 import { Calendar } from "../Calendar.tsx";
@@ -25,13 +24,15 @@ import type { PageLine } from "./about.ts";
 import { inboxItems, waitingCount } from "./inbox.ts";
 import type { IconName } from "./icons.tsx";
 import { todayModel, todaySummary } from "./today.ts";
+import { snapshotOf, type ModuleId, type ModuleSnapshots } from "../modules.ts";
 
 // Loaded when first opened (lazyPage.tsx): the two pages with the most code of their own that a window may never show.
 const Dev = lazyPage(() => import("../Dev.tsx").then((module) => module.Dev));
 const Settings = lazyPage(() => import("../Settings.tsx").then((module) => module.Settings));
 
-export interface PageProps extends NamePreference {
-  snapshot: unknown;
+export interface PageProps<S = unknown> extends NamePreference {
+  /** A module page's own snapshot (see `modulePage`); nothing a core page reads. */
+  snapshot: S;
   /** Reload the current snapshot after a user action. */
   refresh(): void;
   /** Subjects (like `todo:abc`) Alfred changed in the last few seconds. */
@@ -54,7 +55,7 @@ export interface PageProps extends NamePreference {
   line: PageLine;
 }
 
-export interface PageDef {
+export interface PageDef<S = unknown> {
   /** `<module>.<view>`, as the home node names the view. */
   key: string;
   title: string;
@@ -66,24 +67,24 @@ export interface PageDef {
   /** The page draws its own top (no title and summary above it), and Alfred's panel steps aside for it. */
   bare?: boolean;
   /** A number for the sidebar, or nothing. */
-  badge?(snapshot: unknown, state: StateResponse): number | undefined;
+  badge?(snapshot: S, state: StateResponse): number | undefined;
   /** One plain line under the page title: the facts. It also tells Alfred what you were looking at when you ask. */
-  summary?(snapshot: unknown, state: StateResponse): string;
+  summary?(snapshot: S, state: StateResponse): string;
   /** What the quiet line beside the page's name says when it is not the summary: 今天 shows the date, since its
    * facts are the page itself. */
   topline?(state: StateResponse): string;
   /** Alfred's line about the page, shown under its name while nothing is going on. A few words: how many things,
    * not a sentence about them. */
-  headline?(snapshot: unknown, state: StateResponse): string;
+  headline?(snapshot: S, state: StateResponse): string;
   /** Questions worth asking from this page, most useful first; the chips above the composer. */
-  suggestions?(snapshot: unknown, state: StateResponse): Key[];
-  render(props: PageProps): ReactNode;
+  suggestions?(snapshot: S, state: StateResponse): Key[];
+  render(props: PageProps<S>): ReactNode;
 }
 
 /** The automation that fires next, if any is on. */
 /** Today's calendar as the page's lines need it: what is left today, tomorrow's count, and this week's. */
-function calendarCounts(snapshot: unknown, now: number = Date.now()) {
-  const { today = "", events = [], sources = [] } = (snapshot as CalendarSnapshot | undefined) ?? {};
+function calendarCounts(snapshot: CalendarSnapshot | undefined, now: number = Date.now()) {
+  const { today = "", events = [], sources = [] } = snapshot ?? {};
   const [y, m, d] = (today || "1970-01-01").split("-").map(Number);
   const day = (offset: number) => { const date = new Date(y, m - 1, d + offset); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
   const sinceMonday = (new Date(y, m - 1, d).getDay() + 6) % 7;
@@ -99,8 +100,8 @@ function calendarCounts(snapshot: unknown, now: number = Date.now()) {
 }
 
 /** The page counts unread mail across categories; the sidebar badge tracks the primary inbox. */
-function unreadMail(snapshot: unknown) {
-  const { messages = [], sources = [] } = (snapshot as MailSnapshot | undefined) ?? {};
+function unreadMail(snapshot: MailSnapshot | undefined) {
+  const { messages = [], sources = [] } = snapshot ?? {};
   const inbox = messages.filter((message) => message.inInbox !== false);
   const unread = inbox.filter((message) => message.unread);
   return { sources, canRead: sources.some((source) => source.canRead !== false), all: inbox.length, unread: unread.length,
@@ -112,8 +113,8 @@ function soonest(state: StateResponse) {
 }
 
 /** Counts the todo page and its lines share. A range running today counts as due today. */
-function todoCounts(snapshot: unknown) {
-  const { todos = [], today = "" } = (snapshot as TodoSnapshot | undefined) ?? {};
+function todoCounts(snapshot: TodoSnapshot | undefined) {
+  const { todos = [], today = "" } = snapshot ?? {};
   // Alfred's suggestions are not todos until the user keeps them.
   const open = todos.filter((todo) => !todo.done && !todo.suggested);
   const runsToday = (todo: (typeof open)[number]) => !!todo.due && (todo.due === today || (!!todo.startDate && todo.startDate <= today && todo.due >= today));
@@ -122,6 +123,12 @@ function todoCounts(snapshot: unknown) {
     late: open.filter((todo) => !!todo.due && todo.due < today && !runsToday(todo)).length,
     today: open.filter(runsToday).length,
   };
+}
+
+/** A module's page: its lines and its body get that module's snapshot, typed. The registry keeps every page as a plain
+ * `PageDef`; the shell hands each page `state.modules[moduleOf(page)]`, which the key makes this module's. */
+function modulePage<K extends ModuleId>(_module: K, page: PageDef<ModuleSnapshots[K] | undefined> & { key: `${K}.${string}` }): PageDef {
+  return page as unknown as PageDef;
 }
 
 const PAGES: PageDef[] = [
@@ -157,7 +164,7 @@ const PAGES: PageDef[] = [
       <Inbox state={state} focus={focus} onFocused={onFocused} onOpenConversation={openConversation} line={line} />
     ),
   },
-  {
+  modulePage("calendar", {
     key: "calendar.week", get title() { return t("page.calendar"); }, icon: "cal", k: "now", group: "work",
     summary: (snapshot) => {
       const counts = calendarCounts(snapshot);
@@ -172,11 +179,11 @@ const PAGES: PageDef[] = [
       return t(counts.today ? "head.cal.doneToday" : "head.cal.free", { n: counts.tomorrow });
     },
     suggestions: (snapshot) => calendarCounts(snapshot).sources.length ? ["sug.cal.afternoon", "sug.cal.freeDay", "sug.cal.tomorrow"] : [],
-    render: ({ snapshot, line, state }) => <Calendar snapshot={snapshot as CalendarSnapshot | undefined} line={line} proposals={state.proposals} />,
-  },
-  {
+    render: ({ snapshot, line, state }) => <Calendar snapshot={snapshot} line={line} proposals={state.proposals} />,
+  }),
+  modulePage("todo", {
     key: "todo.list", get title() { return t("page.todos"); }, icon: "todo", k: "blue", group: "work",
-    badge: (snapshot) => (snapshot as TodoSnapshot | undefined)?.todos.filter((todo) => !todo.done && !todo.suggested).length,
+    badge: (snapshot) => snapshot?.todos.filter((todo) => !todo.done && !todo.suggested).length,
     summary: (snapshot) => {
       const { open, late } = todoCounts(snapshot);
       return open ? t("page.todos.open", { n: open }) + (late ? t("page.todos.late", { n: late }) : "") : t("page.todos.allDone");
@@ -192,9 +199,9 @@ const PAGES: PageDef[] = [
       if (!open) return [];
       return late ? ["sug.todos.first", "sug.todos.late", "sug.todos.week"] : ["sug.todos.first", "sug.todos.week"];
     },
-    render: ({ snapshot, fresh, areas, state, line }) => <Todos snapshot={snapshot as TodoSnapshot} fresh={fresh} areas={areas} automations={state.automations} calendar={state.modules.calendar as CalendarSnapshot | undefined} line={line} />,
-  },
-  {
+    render: ({ snapshot, fresh, areas, state, line }) => <Todos snapshot={snapshot!} fresh={fresh} areas={areas} automations={state.automations} calendar={snapshotOf(state, "calendar")} line={line} />,
+  }),
+  modulePage("mail", {
     key: "mail.inbox", get title() { return t("page.mail"); }, icon: "mail", k: "teal", group: "modules",
     badge: (snapshot) => unreadMail(snapshot).primaryUnread || undefined,
     summary: (snapshot) => {
@@ -210,21 +217,21 @@ const PAGES: PageDef[] = [
       return mail.unread ? t("head.mail.unread", { n: mail.unread }) : t("head.mail.clear");
     },
     suggestions: (snapshot) => unreadMail(snapshot).canRead ? ["sug.mail.reply", "sug.mail.today", "sug.mail.important"] : [],
-    render: ({ snapshot, state, line, item, onItem, refresh }) => <Mail snapshot={snapshot as MailSnapshot | undefined} state={state} line={line} focus={item} onFocused={onItem} refresh={refresh} />,
-  },
-  {
+    render: ({ snapshot, state, line, item, onItem, refresh }) => <Mail snapshot={snapshot} state={state} line={line} focus={item} onFocused={onItem} refresh={refresh} />,
+  }),
+  modulePage("link", {
     key: "link.list", get title() { return t("page.links"); }, icon: "link", k: "violet", group: "modules",
     summary: (snapshot) => {
-      const clips = (snapshot as LinksSnapshot | undefined)?.clips ?? [];
+      const clips = snapshot?.clips ?? [];
       return clips.length ? t("links.sum", { n: clips.length, unread: clips.filter((clip) => clip.state === "unread").length }) : t("links.sum.none");
     },
     headline: (snapshot) => {
-      const clips = (snapshot as LinksSnapshot | undefined)?.clips ?? [];
+      const clips = snapshot?.clips ?? [];
       const unread = clips.filter((clip) => clip.state === "unread").length;
       return unread ? t("head.links.unread", { n: unread }) : t("head.links.clear");
     },
-    render: ({ snapshot, fresh, areas, item, onItem }) => <Links snapshot={snapshot as LinksSnapshot | undefined} fresh={fresh} areas={areas} focus={item} onFocused={onItem} />,
-  },
+    render: ({ snapshot, fresh, areas, item, onItem }) => <Links snapshot={snapshot} fresh={fresh} areas={areas} focus={item} onFocused={onItem} />,
+  }),
   {
     key: "core.automations", get title() { return t("page.automations"); }, icon: "clock", k: "green", group: "modules",
     summary: (_, state) => {

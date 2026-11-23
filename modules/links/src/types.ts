@@ -80,3 +80,8 @@ export interface LinksSnapshot {
   clips: Clip[];
   topics: Topic[];
 }
+
+/** The operations a device may ask of this module (POST /api/ops/<name>), as the module defines them. A test on the
+ * home node checks this list against the module's own, so a device cannot name one that is not there. */
+export const LINK_OPS = ["link.save", "link.update", "link.remove", "link.refetch", "link.pin", "link.rename", "link.ungroup", "link.group", "link.move", "link.order", "link.topic"] as const;
+export type LinkOp = (typeof LINK_OPS)[number];

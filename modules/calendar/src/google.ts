@@ -2,8 +2,7 @@
  * here: an all-day event's end date is exclusive, a timed one carries its own zone, cancelled ones are left out,
  * recurring ones come expanded. Adapted from Robin's extension/robin/google-calendar.ts.
  */
-import { localDate } from "@alfred/core";
-import type { GoogleSession } from "@alfred/module-kit";
+import { localDate, type GoogleSession } from "@alfred/module-kit";
 
 const API = "https://www.googleapis.com/calendar/v3";
 const MAX_PAGES = 4;

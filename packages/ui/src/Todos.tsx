@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Area, Automation } from "@alfred/protocol";
 import type { CalendarEvent, CalendarSnapshot } from "@alfred/module-calendar/types";
-import { isDayOff, SAMPLE_OFF_WORDS, type CalendarMode, type TodoSnapshot } from "@alfred/module-todo/types";
+import { isDayOff, SAMPLE_OFF_WORDS, type CalendarMode, type TodoOp, type TodoSnapshot } from "@alfred/module-todo/types";
 import { api } from "./api.ts";
 import { AddBar, Pill, PickerPill } from "./AddBar.tsx";
 import { Linked, OutLink } from "./Linked.tsx";
@@ -177,7 +177,7 @@ function Meta({ todo, today, all, areas, when }: { todo: Item; today: string; al
 
 function useRun(onError: OnError) {
   const [busy, setBusy] = useState(false);
-  const run = (op: string, input: unknown, then?: () => void) => {
+  const run = (op: TodoOp, input: unknown, then?: () => void) => {
     setBusy(true);
     onError(null);
     api.op(op, input).then((response) => {

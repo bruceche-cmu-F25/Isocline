@@ -1,5 +1,4 @@
-import { areaName, describeAreas, lastChangesOf, localDate, userLocale, type World } from "@alfred/core";
-import { defineModule, defineOp, defineTool, Type } from "@alfred/module-kit";
+import { areaName, describeAreas, lastChangesOf, localDate, userLocale, type World, defineModule, defineOp, defineTool, Type } from "@alfred/module-kit";
 import {
   acceptTodo, addTodo, sameTodo, todosForProposedEvents, completeTodo, deleteTodo, formatTodo, getTodoSettings, listTodos, MIGRATIONS, moveTodosOutOfArea, resolveTodo, setTodoSettings, suggestTodo, todoRevision,
   updateTodo, type Todo,

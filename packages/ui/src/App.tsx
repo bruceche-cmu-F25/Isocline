@@ -1,6 +1,5 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { AwayDigest, Conversation, Notice, StateResponse } from "@alfred/protocol";
-import type { LinksSnapshot } from "@alfred/module-links/types";
 import { ApiError, api, deviceId } from "./api.ts";
 import { desktop } from "./desktop.ts";
 import { useRoute } from "./shell/useRoute.ts";
@@ -36,7 +35,7 @@ import { WindowAttention } from "./ConversationReply.tsx";
 import { useOutlet } from "./outlet.ts";
 import { useWriting } from "./live.ts";
 import { welcomeLines } from "./welcome.ts";
-import type { ContentSources } from "./shell/find.ts";
+import { snapshotOf } from "./modules.ts";
 
 if (desktop) document.documentElement.classList.add("desktop");
 desktop?.onFullScreen?.((full) => document.documentElement.classList.toggle("full-screen", full));
@@ -524,7 +523,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
   ];
   const find: FindSources = {
     pages, commands, conversations: state.conversations, onPage: goPage, onSelect: select,
-    links: state.modules.link as LinksSnapshot | undefined,
+    links: snapshotOf(state, "link"),
     onFolder: (id) => goTo("link.list", id),
     onPlace: (url) => { window.open(url, "_blank", "noopener,noreferrer"); },
   };
@@ -629,9 +628,9 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
 
       {palette && (
         <Palette find={find} onAsk={askAnywhere} onClose={() => setPalette(false)} content={{
-          todo: state.modules.todo as ContentSources["todo"],
-          calendar: state.modules.calendar as ContentSources["calendar"],
-          mail: state.modules.mail as ContentSources["mail"],
+          todo: snapshotOf(state, "todo"),
+          calendar: snapshotOf(state, "calendar"),
+          mail: snapshotOf(state, "mail"),
           onOpen: goTo,
         }} />
       )}

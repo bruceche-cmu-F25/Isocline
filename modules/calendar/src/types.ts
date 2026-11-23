@@ -81,3 +81,8 @@ export interface CalendarSnapshot {
   /** Empty until a Google account with calendar access is connected. */
   sources: CalendarSource[];
 }
+
+/** The operations a device may ask of this module (POST /api/ops/<name>), as the module defines them. A test on the
+ * home node checks this list against the module's own, so a device cannot name one that is not there. */
+export const CALENDAR_OPS = ["calendar.add", "calendar.move", "calendar.respond", "calendar.retime", "calendar.create", "calendar.edit", "calendar.delete"] as const;
+export type CalendarOp = (typeof CALENDAR_OPS)[number];

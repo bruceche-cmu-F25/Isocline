@@ -3,7 +3,7 @@
  * not edit yet (colour, estimate, work plan…) survive an import untouched.
  */
 import { createHash } from "node:crypto";
-import { changedFields, isArea, localDate, unknownArea, newId, recordDomainEvent, withDefaultActor, type World } from "@alfred/core";
+import { changedFields, isArea, localDate, unknownArea, newId, recordDomainEvent, withDefaultActor, type World } from "@alfred/module-kit";
 import { CALENDAR_MODES, isDayOff, MAX_OFF_WORD, MAX_OFF_WORDS, SAMPLE_OFF_WORDS, TODO_STATUSES, type CalendarMode, type Todo, type TodoRepeat, type TodoSettings, type TodoSource, type TodoStatus } from "./types.ts";
 
 export { CALENDAR_MODES, TODO_STATUSES, type CalendarMode, type Todo, type TodoRepeat, type TodoSettings, type TodoSource, type TodoStatus };

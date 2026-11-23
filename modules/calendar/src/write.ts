@@ -13,8 +13,7 @@
  * be dragged to another time before they say yes (`calendar.retime`). The proposal stays a proposal.
  */
 import { randomInt } from "node:crypto";
-import { amendProposal, enqueueOutbound, getProposal, listOutbound, localeOf, localeTag, ProposalStateError, userLocale, type Locale, type Outbound, type Proposal, type World } from "@alfred/core";
-import { defineOp, defineQuery, defineTool, Type, type Delivered, type GoogleSession, type ModuleServices } from "@alfred/module-kit";
+import { amendProposal, enqueueOutbound, getProposal, listOutbound, localeOf, localeTag, ProposalStateError, userLocale, type Locale, type Outbound, type Proposal, type World, defineOp, defineQuery, defineTool, Type, type Delivered, type GoogleSession, type ModuleServices } from "@alfred/module-kit";
 import { addDays, mapEvent, type GoogleEvent } from "./google.ts";
 import { colourOf, colourSeries, putEvent } from "./mirror.ts";
 import type { CalendarPending, CalendarWhen } from "./types.ts";

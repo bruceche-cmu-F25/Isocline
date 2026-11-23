@@ -11,15 +11,16 @@
  *   done     what finished and has not been looked at
  * `todayLine` lays these out as the page draws them: one line of rows in order of time.
  */
-import type { CalendarEvent, CalendarSnapshot } from "@alfred/module-calendar/types";
-import type { Clip, LinksSnapshot } from "@alfred/module-links/types";
-import type { MailMessage, MailSnapshot } from "@alfred/module-mail/types";
-import type { Todo, TodoSnapshot } from "@alfred/module-todo/types";
+import type { CalendarEvent } from "@alfred/module-calendar/types";
+import type { Clip } from "@alfred/module-links/types";
+import type { MailMessage } from "@alfred/module-mail/types";
+import type { Todo } from "@alfred/module-todo/types";
 import type { Run, StateResponse } from "@alfred/protocol";
 import { automationTitle, hhmm, whenText } from "../automationText.ts";
 import { t } from "../i18n/dict.ts";
 import { inboxItems, type InboxItem } from "./inbox.ts";
 import { readSections } from "../sections.ts";
+import { snapshotOf } from "../modules.ts";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const localDate = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
@@ -116,10 +117,10 @@ function timed(event: CalendarEvent): TodayEvent {
 }
 
 export function todayModel(state: StateResponse, now: number = Date.now()): TodayModel {
-  const calendar = state.modules.calendar as CalendarSnapshot | undefined;
-  const todos = state.modules.todo as TodoSnapshot | undefined;
-  const mail = state.modules.mail as MailSnapshot | undefined;
-  const links = state.modules.link as LinksSnapshot | undefined;
+  const calendar = snapshotOf(state, "calendar");
+  const todos = snapshotOf(state, "todo");
+  const mail = snapshotOf(state, "mail");
+  const links = snapshotOf(state, "link");
   const date = calendar?.today ?? todos?.today ?? localDate(now);
   const hour = new Date(now).getHours();
   const areaK = (id?: string) => state.areas?.find((area) => area.id === id)?.k ?? null;

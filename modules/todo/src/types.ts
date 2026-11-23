@@ -93,3 +93,8 @@ export interface TodoSnapshot {
   settings?: TodoSettings;
   todos: Array<Todo & { revision: string; changedBy?: { actor: "alfred"; kind: string; at: string } }>;
 }
+
+/** The operations a device may ask of this module (POST /api/ops/<name>), as the module defines them. A test on the
+ * home node checks this list against the module's own, so a device cannot name one that is not there. */
+export const TODO_OPS = ["todo.add", "todo.update", "todo.complete", "todo.accept", "todo.sources", "todo.delete"] as const;
+export type TodoOp = (typeof TODO_OPS)[number];

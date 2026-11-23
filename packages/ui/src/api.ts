@@ -7,6 +7,7 @@ import type { Area, Preference,
   Project, ProjectBranches, StartSessionRequest, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, ViewContext, WebLockStatus,
 } from "@alfred/protocol";
 import "./desktop.ts";
+import type { OpName } from "./modules.ts";
 import { t } from "./i18n/dict.ts";
 
 /** The options every automation has (core automations.ts). */
@@ -169,7 +170,7 @@ export const api = {
   runSources: (runId: string) => call<{ evidence: RunSources | null }>(`/api/runs/${encodeURIComponent(runId)}/sources`),
   cancel: (runId: string) => post<Run>(`/api/runs/${runId}/cancel`, { requestId: newRequestId() }),
   resume: (runId: string) => post<Run>(`/api/runs/${runId}/resume`, { requestId: newRequestId() }),
-  op: (op: string, input: unknown, requestId = newRequestId()) => post<OpResponse>(`/api/ops/${op}`, { requestId, input }),
+  op: (op: OpName, input: unknown, requestId = newRequestId()) => post<OpResponse>(`/api/ops/${op}`, { requestId, input }),
   present: (id: string) => post<Notice>(`/api/notices/${id}/present`, { client: deviceId }),
   acknowledge: (id: string) => post<Notice>(`/api/notices/${id}/acknowledge`, {}),
   /** What this window sees (is it being looked at, when was it last used), for the home node to decide who tells the

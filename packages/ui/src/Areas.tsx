@@ -8,16 +8,15 @@ import { api } from "./api.ts";
 import { t } from "./i18n/index.ts";
 import { Icon } from "./shell/icons.tsx";
 import { Select } from "./shell/Select.tsx";
-import type { LinksSnapshot } from "@alfred/module-links/types";
-import type { TodoSnapshot } from "@alfred/module-todo/types";
+import { snapshotOf } from "./modules.ts";
 
 /** The colour slots an area can take (core AREA_COLOURS), gray last. */
 const COLOURS = ["blue", "green", "violet", "orange", "teal", "yellow", "pink", "gray"] as const;
 
 export function Areas({ state }: { state: StateResponse }) {
   const areas = state.areas ?? [];
-  const todos = (state.modules.todo as TodoSnapshot | undefined)?.todos ?? [];
-  const topics = (state.modules.link as LinksSnapshot | undefined)?.topics ?? [];
+  const todos = snapshotOf(state, "todo")?.todos ?? [];
+  const topics = snapshotOf(state, "link")?.topics ?? [];
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});

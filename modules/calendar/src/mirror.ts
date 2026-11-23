@@ -3,7 +3,7 @@
  * has just answered with) put events here.
  */
 import type { DatabaseSync } from "node:sqlite";
-import type { World } from "@alfred/core";
+import type { World } from "@alfred/module-kit";
 import type { EventRow } from "./google.ts";
 import type { CalendarSource } from "./types.ts";
 

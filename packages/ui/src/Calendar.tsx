@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Proposal } from "@alfred/protocol";
-import type { CalendarEvent, CalendarPending, CalendarSnapshot, CalendarSource, CalendarWhen } from "@alfred/module-calendar/types";
+import type { CalendarEvent, CalendarOp, CalendarPending, CalendarSnapshot, CalendarSource, CalendarWhen } from "@alfred/module-calendar/types";
 import { api } from "./api.ts";
 import { Linked, OutLink } from "./Linked.tsx";
 import { SourceBar } from "./SourceBar.tsx";
@@ -274,7 +274,7 @@ function EventEditor({ draft, targets, k, range, onChange, onClose, onSaved, onD
     submit?.preventDefault();
     const title = draft.title.trim(), location = draft.location.trim(), notes = draft.notes?.trim();
     if (!when || !title || saving) return;
-    let op: string, input: Record<string, unknown>, change: CalendarPending;
+    let op: CalendarOp, input: Record<string, unknown>, change: CalendarPending;
     if (event) {
       const changes = {
         ...(title !== event.title ? { title } : {}), ...(sameWhen(when, eventWhen(event)) ? {} : { when }),

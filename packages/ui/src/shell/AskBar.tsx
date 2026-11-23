@@ -45,6 +45,7 @@ import { MOD } from "./Nav.tsx";
 import { readLine, type Reading } from "./read.ts";
 import { calendarTarget, dayChoices, localToday, put, PutRefused, whenText, type Put } from "./take.ts";
 import "./ask.css";
+import { snapshotOf } from "../modules.ts";
 
 /** How many found things are listed above the bar; typing more narrows them. */
 const FOUND = 6;
@@ -253,7 +254,7 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
   const attachments = useAttachments();
   const textOnly = !about && attachments.items.length === 0;
   const today = localToday();
-  const target = useMemo(() => calendarTarget(state.modules.calendar), [state.modules.calendar]);
+  const target = useMemo(() => calendarTarget(snapshotOf(state, "calendar")), [state.modules.calendar]);
   const read = useMemo(() => (textOnly ? readLine(draft, today) : []), [draft, textOnly, today]);
   const [flips, setFlips] = useState<Record<number, Reading["kind"]>>({});
   // A day picked from a reading's own menu stands in for the one it read (null: no day, for a todo).

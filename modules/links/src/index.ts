@@ -2,8 +2,7 @@
  * internet, filed by topic. L1: saving looks the page up for its title and what it says about itself; reading the
  * page and writing a summary come later.
  */
-import { acceptLanguage, describeAreas, lastChangesOf, userLocale, type World } from "@alfred/core";
-import { defineModule, defineOp, defineTool, Type, type AlfredModule } from "@alfred/module-kit";
+import { acceptLanguage, describeAreas, lastChangesOf, userLocale, type World, defineModule, defineOp, defineTool, Type, type AlfredModule } from "@alfred/module-kit";
 import {
   ensureTopic, formatClip, getIcon, groupPlaces, hostOf, iconsToFetch, listClips, listFolders, listPlaces, listTopics, MIGRATIONS, movePlace, noteIcons, orderPlaces, pendingClips, pinPlace,
   moveTopicsOutOfArea, recordIcon, recordPage, recordPageFailure, refetchClip, removeLink, removeTopic, renamePlace, saveClip, ungroupPlaces, updateClip, updateTopic,
