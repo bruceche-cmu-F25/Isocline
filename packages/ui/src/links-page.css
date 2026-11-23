@@ -27,6 +27,12 @@ a.lk-place:hover, button.lk-place:hover { background: var(--wash); }
 
 /* Saving one, and pinning a place: an address goes in, what it will become is said under it. */
 .lk-save { padding-top: 12px; }
+.lk-save .add-go { width: auto; padding: 0 14px; margin-inline-start: auto; border-radius: 999px; font-size: .8125rem; font-weight: 600; white-space: nowrap; }
+.lk-save .add-go:disabled { opacity: 1; }
+.lk-save .add-pills { max-width: min(48%, 16rem); }
+.lk-save :is(.add-pill, .add-new) { max-width: 100%; }
+.lk-save .add-pill-text { overflow: hidden; text-overflow: ellipsis; }
+.lk-save .add-pill-clear { flex-shrink: 0; }
 .lk-add { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding-top: 12px; }
 .lk-add input { min-width: 0; height: 40px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); outline: none; }
 .lk-add input:focus { box-shadow: inset 0 0 0 1.5px var(--accent); }
@@ -94,6 +100,7 @@ input.lk-pick.lk-new { width: 150px; color: var(--ink); outline: none; box-shado
 .lk-delete-dialog p { margin-top: 8px; color: var(--muted); font-size: .875rem; }
 .lk-delete-dialog > div { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 @media (pointer: coarse) {
+  .lk-save .add-go { min-height: 44px; }
   .lk-card-delete, .lk-shelf-toggle, .lk-delete-dialog .lk-btn { min-width: 44px; min-height: 44px; }
   .lk-card:not([data-open]) .lk-foot { padding-inline-end: 40px; }
   .lk-title-form :is(input, button), .lk-acts .lk-btn, .lk-hint .lk-btn { min-height: 44px; }

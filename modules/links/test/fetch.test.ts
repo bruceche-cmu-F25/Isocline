@@ -122,16 +122,19 @@ test("an icon is whatever image the page names, else /favicon.ico; what is not a
 test("a shared video cover is resolved against its page; only a bounded raster image is kept", async () => {
   assert.equal(readHead('<meta itemprop="duration" content="PT1H04M37S">').durationSeconds, 3877);
   assert.equal(readHead('<meta property="video:duration" content="-5">').durationSeconds, undefined);
-  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1]);
+  const { default: sharp } = await import("sharp");
+  const jpeg = await sharp({ create: { width: 64, height: 36, channels: 3, background: "#c84" } }).jpeg().toBuffer();
   const { base, server } = await site((req, res) => {
     if (req.url === "/v/7") { res.end("<meta property='og:image' content='../cover.jpg'>"); return; }
     if (req.url === "/cover.jpg") { res.end(jpeg); return; }
-    if (req.url === "/large") { res.write(jpeg); res.end(Buffer.alloc(512 * 1024)); return; }
+    if (req.url === "/large") { res.write(jpeg); res.end(Buffer.alloc(4 * 1024 * 1024)); return; }
     res.end("<svg xmlns='http://www.w3.org/2000/svg'></svg>");
   });
   try {
     assert.equal((await fetchPage(`${base}/v/7`, undefined, local)).cover, `${base}/cover.jpg`);
-    assert.deepEqual(await fetchCover(`${base}/cover.jpg`, undefined, local), { type: "image/jpeg", bytes: jpeg });
+    const cover = (await fetchCover(`${base}/cover.jpg`, undefined, local))!;
+    assert.ok(["image/jpeg", "image/webp"].includes(cover.type) && cover.bytes.length <= jpeg.length);
+    assert.deepEqual([(await sharp(cover.bytes).metadata()).width, (await sharp(cover.bytes).metadata()).height], [64, 36], "a small cover is not enlarged");
     for (const path of ["/large", "/vector"]) assert.equal(await fetchCover(base + path, undefined, local), null);
     assert.equal(await fetchCover(`${base}/cover.jpg`), null);
   } finally { server.close(); server.closeAllConnections(); }

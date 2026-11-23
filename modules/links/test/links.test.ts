@@ -217,3 +217,39 @@ test("a Xiaohongshu note keeps its own cover and is a video when its page says s
   assert.equal(by(article).cover, undefined);
   assert.deepEqual(asked.sort(), [`${pictures}#cover`, `${film}#cover`]);
 });
+
+test("a cover is kept at the size it is drawn, and covers stored at full size are shrunk where they are", async () => {
+  const { default: sharp } = await import("sharp");
+  const { shrinkCover } = await import("../src/fetch.ts");
+  const { recordCover } = await import("../src/covers.ts");
+  // A noisy upright photo, as a phone posts it: large, and hard to compress.
+  const noise = new Uint8Array(1080 * 1920 * 3).map(() => Math.floor(Math.random() * 256));
+  const photo = await sharp(noise, { raw: { width: 1080, height: 1920, channels: 3 } }).jpeg({ quality: 90 }).toBuffer();
+  const big = { type: "image/jpeg", bytes: new Uint8Array(photo) };
+  const small = (await shrinkCover(big))!;
+  const size = await sharp(small.bytes).metadata();
+  assert.equal(small.type, "image/webp");
+  assert.ok(size.width! <= 640 && size.height === 640, `${size.width}×${size.height}`);
+  assert.ok(small.bytes.length < big.bytes.length);
+  assert.equal(await shrinkCover({ type: "image/jpeg", bytes: new Uint8Array([255, 216, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) }), null, "not a readable picture");
+  assert.equal(await shrinkCover({ type: "image/gif", bytes: big.bytes }), null);
+
+  // A cover kept before covers were shrunk: within the table's limit, but larger than a shrunk one ever is.
+  const older = new Uint8Array(700 * 900 * 3).map(() => Math.floor(Math.random() * 256));
+  const kept = { type: "image/jpeg", bytes: new Uint8Array(await sharp(older, { raw: { width: 700, height: 900, channels: 3 } }).jpeg({ quality: 75 }).toBuffer()) };
+  assert.ok(kept.bytes.length > 120 * 1024 && kept.bytes.length <= 512 * 1024, `${kept.bytes.length}`);
+  const w = world();
+  const { clip } = ok(saveClip(w, { url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }));
+  recordPage(w, clip.id, { url: clip.url, title: "A talk" });
+  recordCover(w, clip.id, kept);
+  const module = createLinksModule({ fetcher: async (href) => ({ url: href }), covers: async () => null, icons: async () => null });
+  await module.sync!.run(w, {}, signal);
+  const stored = module.file!(w, `cover_${clip.id}`)!;
+  const fitted = await sharp(stored.bytes).metadata();
+  assert.equal(stored.type, "image/webp");
+  assert.ok(fitted.width! <= 640 && fitted.height! <= 640 && stored.bytes.length < kept.bytes.length, `${fitted.width}×${fitted.height}, ${stored.bytes.length} bytes`);
+  // Noise does not compress, so this one is still large: it is not shrunk over and over.
+  const again = module.file!(w, `cover_${clip.id}`)!;
+  await module.sync!.run(w, {}, signal);
+  assert.deepEqual(module.file!(w, `cover_${clip.id}`), again);
+});

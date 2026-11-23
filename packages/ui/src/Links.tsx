@@ -247,7 +247,7 @@ export function Links({ snapshot, fresh, areas, focus, onFocused, libraryControl
 
       <div className="lk-save">
         <AddBar value={draft} onChange={setDraft} onSubmit={save} ready={!!found} busy={busy} maxLength={2400} spellCheck={false}
-          placeholder={t("links.paste")} label={t("links.paste")} submitLabel={t("links.save")}>
+          placeholder={t("links.paste")} label={t("links.paste")} submitLabel={t("links.save")} showSubmitLabel>
           <TopicPill topics={topics} areas={areas} pick={pick} onPick={setPick} />
         </AddBar>
       </div>

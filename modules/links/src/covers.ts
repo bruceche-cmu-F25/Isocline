@@ -10,10 +10,12 @@ export const COVER_MIGRATION = {
   ) STRICT;`,
 };
 
-// Cache covers for the newest 128 clips that have one worth showing: videos, and Xiaohongshu notes, whose cover is
-// the note's own first picture (other posts and articles mostly publish a site banner). At 512 KiB per image this
-// caps cover data at 64 MiB.
-const newestCovered = "SELECT id FROM link_items WHERE kind = 'clip' AND (type = 'video' OR platform = 'xiaohongshu') ORDER BY saved_at DESC, rowid DESC LIMIT 128";
+// Covers for the newest 1000 clips that have one worth showing: videos, and Xiaohongshu notes, whose cover is the
+// note's own first picture (other posts and articles mostly publish a site banner). A cover is kept at the size it
+// is drawn (fetch.ts shrinkCover), tens of kilobytes, so a thousand come to a few tens of MB.
+const newestCovered = "SELECT id FROM link_items WHERE kind = 'clip' AND (type = 'video' OR platform = 'xiaohongshu') ORDER BY saved_at DESC, rowid DESC LIMIT 1000";
+/** Covers kept before they were shrunk weigh more than this; a shrunk one does not. */
+const LARGE = 120 * 1024;
 const retryAfterMs = 7 * 86_400_000;
 
 export function pendingCovers(world: World): Array<{ id: string; url: string }> {
@@ -35,6 +37,22 @@ export function recordCover(world: World, id: string, cover: SiteIcon | null, du
       WHERE link_covers.bytes IS NULL`).run(cover?.type ?? null, cover?.bytes ?? null, duration, Date.now(), id);
     if ((cover || duration) && result.changes) recordDomainEvent(world, { kind: "link.cover", subject: "link:covers", payload: { id } });
   });
+}
+
+/** Covers stored at the size the site sent them, a few at a time, largest first. `tried`: ones already shrunk
+ * that are still large (a picture that does not compress), left as they are. */
+export function largeCovers(world: World, tried: ReadonlySet<string>, limit = 8): Array<{ id: string; cover: SiteIcon }> {
+  const ids = (world.db.prepare("SELECT clip_id FROM link_covers WHERE length(bytes) > ? ORDER BY length(bytes) DESC").all(LARGE) as Array<{ clip_id: string }>)
+    .map((row) => row.clip_id).filter((id) => !tried.has(id)).slice(0, limit);
+  return ids.map((id) => {
+    const row = world.db.prepare("SELECT type, bytes FROM link_covers WHERE clip_id = ?").get(id)!;
+    return { id, cover: { type: row.type as string, bytes: row.bytes as Uint8Array } };
+  });
+}
+
+/** A stored cover, shrunk; null when it could not be read, which drops it until the page is looked at again. */
+export function replaceCover(world: World, id: string, cover: SiteIcon | null): void {
+  world.tx((db) => db.prepare("UPDATE link_covers SET type = ?, bytes = ?, checked_at = ? WHERE clip_id = ?").run(cover?.type ?? null, cover ? Buffer.from(cover.bytes) : null, Date.now(), id));
 }
 
 export function getCover(world: World, id: string): SiteIcon | null {

@@ -8,8 +8,8 @@ import {
   ensureTopic, formatClip, getIcon, groupPlaces, hostOf, iconsToFetch, listClips, listFolders, listPlaces, listTopics, MIGRATIONS, movePlace, noteIcons, orderPlaces, pendingClips, pinPlace,
   recordIcon, recordPage, recordPageFailure, refetchClip, removeLink, removeTopic, renamePlace, saveClip, ungroupPlaces, updateClip, updateTopic,
 } from "./domain.ts";
-import { getCover, pendingCovers, recordCover } from "./covers.ts";
-import { fetchCover, fetchIcon, fetchPage, PageFetchError, type IconFetcher, type PageFetcher, type PageInfo } from "./fetch.ts";
+import { getCover, largeCovers, pendingCovers, recordCover, replaceCover } from "./covers.ts";
+import { fetchCover, fetchIcon, shrinkCover, fetchPage, PageFetchError, type IconFetcher, type PageFetcher, type PageInfo } from "./fetch.ts";
 import { CLIP_STATES, type LinksSnapshot } from "./types.ts";
 
 export * from "./domain.ts";
@@ -44,6 +44,7 @@ function snapshot(world: World): LinksSnapshot {
 /** Looks up the pages of clips that have not been looked up yet. One at a time: this is a handful of pages a day,
  * and being gentle with other people's sites costs nothing. */
 function lookUp(fetcher: PageFetcher, icons: IconFetcher, covers: typeof fetchCover) {
+  const shrunk = new Set<string>();
   return async (world: World, _services: unknown, signal: AbortSignal): Promise<void> => {
     /** The icons each page named, by host, for the icon step below. */
     const named = new Map<string, string[]>();
@@ -72,6 +73,12 @@ function lookUp(fetcher: PageFetcher, icons: IconFetcher, covers: typeof fetchCo
       const cover = page?.cover && !signal.aborted ? await covers(page.cover, signal).catch(() => null) : null;
       if (signal.aborted) return;
       recordCover(world, clip.id, cover, page?.durationSeconds);
+    }
+    // Covers kept before they were shrunk: shrunk where they are, a few each time, nothing fetched again.
+    for (const { id, cover } of largeCovers(world, shrunk)) {
+      if (signal.aborted) return;
+      shrunk.add(id);
+      replaceCover(world, id, await shrinkCover(cover));
     }
     // Then each site's own icon, once per host: the ones its page named, else a look at the page, else /favicon.ico.
     let found = 0;

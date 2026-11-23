@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@alfred/core": "*",
-    "@alfred/module-kit": "*"
+    "@alfred/module-kit": "*",
+    "sharp": "^0.35.5"
   }
 }

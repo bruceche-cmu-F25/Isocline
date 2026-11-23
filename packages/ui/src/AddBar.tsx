@@ -3,9 +3,9 @@ import { useRef, type FormEvent, type ReactNode } from "react";
 /** The line a page adds things with (a todo, a link): one rounded field, as the ask bar under the page is, with
  * the words first, what goes with them as small pills inside it (a day, an hour, an area, a topic), and a round
  * button at the end. The whole field lights when any part of it has focus; the pills are quiet until they are set. */
-export function AddBar({ value, onChange, onSubmit, placeholder, label, submitLabel, ready, busy, maxLength, spellCheck, children }: {
+export function AddBar({ value, onChange, onSubmit, placeholder, label, submitLabel, showSubmitLabel, ready, busy, maxLength, spellCheck, children }: {
   value: string; onChange(value: string): void; onSubmit(): void; placeholder: string; label: string; submitLabel: string;
-  ready: boolean; busy?: boolean; maxLength?: number; spellCheck?: boolean; children?: ReactNode;
+  showSubmitLabel?: boolean; ready: boolean; busy?: boolean; maxLength?: number; spellCheck?: boolean; children?: ReactNode;
 }) {
   const submit = (event: FormEvent) => { event.preventDefault(); if (ready && !busy) onSubmit(); };
   return (
@@ -14,7 +14,7 @@ export function AddBar({ value, onChange, onSubmit, placeholder, label, submitLa
         maxLength={maxLength} spellCheck={spellCheck} />
       {children && <span className="add-pills">{children}</span>}
       <button type="submit" className="add-go" disabled={!ready || busy} aria-label={submitLabel} title={submitLabel}>
-        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" /></svg>
+        {showSubmitLabel ? submitLabel : <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" /></svg>}
       </button>
     </form>
   );

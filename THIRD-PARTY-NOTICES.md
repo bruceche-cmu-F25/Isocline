@@ -16,6 +16,12 @@ says what, where, and under which licence. Where code was adapted, the file it l
 
 The logos are trademarks of their owners; see `packages/ui/src/brand/README.md`.
 
+## Libraries with terms to keep when packaging
+
+| Used by | Library | Licence |
+| --- | --- | --- |
+| `modules/links/src/fetch.ts` (`shrinkCover`): saved covers are resized to the size they are drawn | [sharp](https://github.com/lovell/sharp) 0.35.5, with its prebuilt [libvips](https://github.com/libvips/libvips) (`@img/sharp-libvips-*`) | sharp: Apache-2.0; libvips: LGPL-3.0-or-later, linked dynamically. A packaged Alfred.app must carry libvips's licence and leave the library replaceable. |
+
 ## Designs followed (no code copied)
 
 These parts were written for Alfred, but their shape follows [pi-web](https://github.com/agegr/pi-web) (MIT,

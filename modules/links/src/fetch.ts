@@ -13,6 +13,7 @@ import { request as httpsRequest } from "node:https";
 import { BlockList, isIP } from "node:net";
 import { Transform } from "node:stream";
 import { createBrotliDecompress, createUnzip } from "node:zlib";
+import sharp from "sharp";
 
 const blocked = new BlockList();
 for (const [network, prefix] of [
@@ -327,9 +328,29 @@ export async function fetchIcon(pageUrl: string, candidates: readonly string[], 
   return null;
 }
 
-/** A thumbnail can be published by a different host. Only bounded raster images can become a saved cover. */
+/** A cover is drawn a few hundred pixels across at most, twice that on a sharp screen. */
+const COVER_BOX = 640;
+/** What a stored cover may weigh (the table's own limit). */
+const MAX_COVER_BYTES = 512 * 1024;
+const RASTER = ["image/jpeg", "image/png", "image/webp"];
+
+/** A cover at the size it is drawn: fitted inside 640×640 as WebP, which is tens of kilobytes where the site's
+ * original is often hundreds. Kept as it came when that is already smaller. Null when it is not a picture that can
+ * be read (or would be too large to decode: a bound on pixels, against images made to explode). */
+export async function shrinkCover(cover: SiteIcon): Promise<SiteIcon | null> {
+  if (!RASTER.includes(cover.type)) return null;
+  try {
+    const small = await sharp(cover.bytes, { limitInputPixels: 40_000_000, failOn: "error" })
+      .rotate().resize(COVER_BOX, COVER_BOX, { fit: "inside", withoutEnlargement: true }).webp({ quality: 72 }).toBuffer();
+    const best = small.length < cover.bytes.length ? { type: "image/webp", bytes: new Uint8Array(small) } : cover;
+    return best.bytes.length <= MAX_COVER_BYTES ? best : null;
+  } catch { return null; }
+}
+
+/** A thumbnail can be published by a different host. Only raster images become a saved cover, shrunk to the size
+ * they are drawn at. */
 export async function fetchCover(address: string, signal?: AbortSignal, lookup: Lookup = publicLookup): Promise<SiteIcon | null> {
   const timeout = AbortSignal.timeout(TIMEOUT_MS);
-  const cover = await image(address, signal ? AbortSignal.any([signal, timeout]) : timeout, lookup, 512 * 1024).catch(() => null);
-  return cover && ["image/jpeg", "image/png", "image/webp"].includes(cover.type) ? cover : null;
+  const cover = await image(address, signal ? AbortSignal.any([signal, timeout]) : timeout, lookup, 4 * 1024 * 1024).catch(() => null);
+  return cover ? shrinkCover(cover) : null;
 }
