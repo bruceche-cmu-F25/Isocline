@@ -4,8 +4,9 @@
  * itself. A conversation that grows is opened in the panel from the card. On a phone the bar takes the place of the
  * dock's tabs, and the dock's figure stays where it is.
  *
- * It is also the one place to search (⌘K comes here): words that name a page, a command or a conversation list
- * those above the bar, and Enter goes to the page or command they name; anything else Enter says to Alfred.
+ * Words that name a page, a command or a conversation list those above the bar, and Enter goes to the page or
+ * command they name; anything else Enter says to Alfred. Searching everything (todos, events, mail too) is ⌘K's
+ * panel (shell/Palette.tsx); ⌘J and `/` come here.
  *
  * And it is where words about one thing on the page are written (shell/about.ts): a mail to answer, a draft to
  * change. The thing sits in the bar before the field, the words go to it, and what comes of them shows on the page
@@ -471,10 +472,10 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
         )}
         <input
           ref={field} value={draft} onChange={(event) => { setDraft(event.target.value); setPicked(null); setError(null); }} onKeyDown={onKey} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-          placeholder={about ? about.placeholder : t(where === "busy" ? "composer.working" : "ask.placeholder")} aria-label={about ? about.label : t("pal.label")} maxLength={8000} autoComplete="off" enterKeyHint="send"
+          placeholder={about ? about.placeholder : t(where === "busy" ? "composer.working" : "ask.placeholder")} aria-label={about ? about.label : t("ask.label")} maxLength={8000} autoComplete="off" enterKeyHint="send"
           role="combobox" aria-expanded={asking > 0} aria-controls="ask-found" aria-activedescendant={asking > 0 ? `ask-found-${lit}` : undefined}
         />
-        {!dock && !draft && !focused && !about && <kbd aria-hidden="true">{MOD}K</kbd>}
+        {!dock && !draft && !focused && !about && <kbd aria-hidden="true">{MOD}J</kbd>}
         {!about && <AttachButton attachments={attachments} />}
         <MicButton onText={(text) => { setDraft((now) => appendDictation(now, text)); field.current?.focus(); }} />
         <button type="submit" className="send" disabled={(!draft.trim() && !(attachments.ids.length && !about)) || sending || attachments.busy} aria-label={t("composer.send")}

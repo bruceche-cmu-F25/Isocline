@@ -1480,6 +1480,15 @@ textarea.ev-field:disabled { opacity: .5; }
 .with-mic > textarea + .mic { align-self: flex-end; margin-bottom: 3px; }
 .pal-field { border-bottom: 1px solid var(--line-soft); padding-right: 12px; }
 .pal .pal-field input { border-bottom: 0; }
+/* ⌘K, like Spotlight: a search glass in the field, results grouped under small headings, the best match first. */
+.pal-field { padding-left: 18px; }
+.pal-field > svg { flex: none; color: var(--muted); }
+.pal .pal-field input { padding-left: 8px; }
+.pal li.pal-head { padding: 10px 14px 4px; color: var(--muted); font-size: .6875rem; font-weight: 600; letter-spacing: .02em; }
+.pal li.pal-head:first-child { padding-top: 4px; }
+.pal li button small { flex: none; max-width: 40%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: .75rem; }
+.pal li button[data-kind="ask"] { color: var(--muted); }
+.pal li button[data-kind="ask"][aria-selected="true"] { color: var(--ink); }
 
 /* Files sent with a message (attach.tsx): the paperclip, the chips waiting in a composer, and those under a turn. */
 .attach-button { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 50%; color: var(--muted); }

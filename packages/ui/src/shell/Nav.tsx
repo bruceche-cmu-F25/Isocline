@@ -124,7 +124,7 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, co
 
   return (
     <nav className="nav" aria-label={t("nav.label")}>
-      {/* Searching is done in the ask bar (⌘K goes there); the sheet on a phone only needs its way out. */}
+      {/* Searching is ⌘K's panel and the ask bar; the sheet on a phone only needs its way out. */}
       {onClose && (
         <div className="nav-top">
           <button type="button" className="icon-btn" onClick={onClose} aria-label={t("common.close")} title={t("common.close")}><Icon name="close" /></button>

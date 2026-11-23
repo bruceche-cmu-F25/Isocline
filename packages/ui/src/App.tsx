@@ -36,6 +36,7 @@ import { WindowAttention } from "./ConversationReply.tsx";
 import { useOutlet } from "./outlet.ts";
 import { useWriting } from "./live.ts";
 import { welcomeLines } from "./welcome.ts";
+import type { ContentSources } from "./shell/find.ts";
 
 if (desktop) document.documentElement.classList.add("desktop");
 desktop?.onFullScreen?.((full) => document.documentElement.classList.toggle("full-screen", full));
@@ -443,13 +444,19 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
 
   // The Mac app: a notification was clicked, or the hotkey brought the window up.
   useEffect(() => desktop?.onFocusRun((runId) => openRun(runId)), [openRun]);
-  useEffect(() => desktop?.onFocusComposer(() => {
-    // The ask bar when it is there: talking does not need the panel.
+  /** Where you talk to Alfred, with the cursor in it: the ask bar when it is there (talking does not need the panel),
+   * else the panel's composer. ⌘J, and the Mac app's hotkey. */
+  const focusTalk = useCallback((toggle = false) => {
     const bar = document.querySelector<HTMLInputElement>(".ask-form input");
-    if (bar) { bar.focus(); return; }
+    if (bar) {
+      if (toggle && document.activeElement === bar) bar.blur();
+      else bar.focus();
+      return;
+    }
     showAlfred();
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
-  }), [showAlfred]);
+  }, [showAlfred]);
+  useEffect(() => desktop?.onFocusComposer(() => focusTalk()), [focusTalk]);
 
   // The walk round at the end of the first run: bring each place onto the screen before the figure points at it. The
   // sidebar goes back to how it was left when the walk is over.
@@ -472,20 +479,18 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
   const settledFigure = useSettled(state ? figureState(state, selected, writing, greeting) : "rest", 250);
   const figure = speaking ?? settledFigure;
 
-  // Keyboard: ⌘K search and ask, anywhere; ⌘. Alfred; ⌘\ the sidebar; ⌘, Settings; ⌥1–9 the pages (not while typing).
+  // Keyboard: ⌘K search (Spotlight-like), anywhere; ⌘J talk to Alfred; ⌘. Alfred; ⌘\ the sidebar; ⌘, Settings; ⌥1–9 the pages (not while typing).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (firstRun) return;
       const mod = event.metaKey || event.ctrlKey;
       if (mod && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        // Searching is done in the ask bar where it is on screen; the palette is for where it is not.
-        const bar = document.querySelector<HTMLInputElement>(".ask-form input");
-        if (!bar) setPalette((open) => !open);
-        else if (document.activeElement === bar) bar.blur();
-        else { bar.focus(); bar.select(); }
+        // Like Spotlight: one search field in the middle of the window, wherever you are. Talking is the ask bar's (`/`).
+        setPalette((open) => !open);
         return;
       }
+      if (mod && event.key.toLowerCase() === "j") { event.preventDefault(); setPalette(false); focusTalk(true); return; }
       if (mod && event.key === ".") { event.preventDefault(); toggleAlfred(); return; }
       if (mod && event.key === "\\") { event.preventDefault(); toggleNav(); return; }
       if (mod && event.key === ",") { event.preventDefault(); goPage("core.settings"); return; }
@@ -496,7 +501,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleAlfred, toggleNav, goPage, pages, firstRun]);
+  }, [toggleAlfred, toggleNav, goPage, pages, firstRun, focusTalk]);
 
   // Sidebar divider: drag to resize; drag past the fold point to fold it to icons (keeping the width it had).
   const navDrag = dragHandle(size.nav, "right", (width) => {
@@ -621,7 +626,12 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
       )}
 
       {palette && (
-        <Palette find={find} onAsk={askAnywhere} onClose={() => setPalette(false)} />
+        <Palette find={find} onAsk={askAnywhere} onClose={() => setPalette(false)} content={{
+          todo: state.modules.todo as ContentSources["todo"],
+          calendar: state.modules.calendar as ContentSources["calendar"],
+          mail: state.modules.mail as ContentSources["mail"],
+          onOpen: goTo,
+        }} />
       )}
 
       {!firstRun && <Says<Notice>

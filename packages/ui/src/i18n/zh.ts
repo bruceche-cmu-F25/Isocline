@@ -75,10 +75,17 @@ export const zh = {
   "scheme.to.light": "切换到浅色",
 
   // Command palette
-  "pal.label": "搜索或问 Alfred",
-  "pal.placeholder": "去哪一页、打开哪条对话，或者直接跟 Alfred 说…",
+  "pal.label": "搜索",
+  "pal.placeholder": "搜索页面、待办、日程、邮件、网站…",
   "pal.go": "去「{title}」",
   "pal.conversation": "对话",
+  "pal.top": "最佳匹配",
+  "pal.pages": "页面",
+  "pal.commands": "命令",
+  "pal.conversations": "对话",
+  "pal.alfred": "Alfred",
+  "pal.done": "已完成",
+  "pal.noSubject": "（无主题）",
   "pal.ask": "问 Alfred：{text}",
 
   // Alfred's panel
@@ -1284,7 +1291,8 @@ export const zh = {
   "inbox.sent.unknown": "不确定成没成：Google 没给准话。去 Gmail「已发送」或日历里看一眼，别直接再发一遍。",
 
   // The ask bar under the page (shell/AskBar.tsx)
-  "ask.placeholder": "问 Alfred，或搜索",
+  "ask.label": "问 Alfred",
+  "ask.placeholder": "问 Alfred",
   "ask.open": "展开对话",
   "ask.back": "回到标签",
   "ask.about.clear": "不说这个了",

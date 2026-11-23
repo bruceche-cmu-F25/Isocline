@@ -2,11 +2,19 @@
  * so searching is the same wherever it is done. */
 import type { Conversation } from "@alfred/protocol";
 import type { LinksSnapshot } from "@alfred/module-links/types";
-import { t } from "../i18n/dict.ts";
+import type { TodoSnapshot } from "@alfred/module-todo/types";
+import type { CalendarSnapshot } from "@alfred/module-calendar/types";
+import type { MailSnapshot } from "@alfred/module-mail/types";
+import { intlLocale, t } from "../i18n/index.ts";
 import type { IconName } from "./icons.tsx";
 
 export interface FindCommand { id: string; label: string; icon: IconName; hint?: string; run(): void }
-export interface FindItem extends FindCommand { unread?: boolean; kind: "page" | "command" | "conversation" | "place" | "folder" }
+export interface FindItem extends FindCommand {
+  unread?: boolean;
+  kind: "page" | "command" | "conversation" | "place" | "folder" | "todo" | "event" | "mail";
+  /** A second, quieter part of the row: a todo's day, an event's time, a letter's sender. */
+  detail?: string;
+}
 export interface FindSources {
   pages: ReadonlyArray<{ key: string; title: string; icon: IconName }>;
   /** Extra commands, e.g. "new conversation", "close Alfred". */
@@ -67,4 +75,62 @@ function findPlaces(query: string, links: FindSources["links"], onFolder: FindSo
  * default: its title is usually a question once asked, and asking that again must not open the old one instead. */
 export function defaultPick(items: readonly FindItem[]): number {
   return items.findIndex((item) => item.kind !== "conversation");
+}
+
+/** What ⌘K finds besides places to go: the things on the pages, by their words. Only ⌘K lists them; in the ask bar a
+ * line that names a todo is still something to say to Alfred. */
+export interface ContentSources {
+  todo?: Pick<TodoSnapshot, "todos">;
+  calendar?: Pick<CalendarSnapshot, "events">;
+  mail?: Pick<MailSnapshot, "messages">;
+  /** Opens a page, and one thing on it where the page can show one (a letter: `<account>|<id>`). */
+  onOpen(page: string, item?: string): void;
+}
+
+/** How many of each kind ⌘K lists; typing more narrows them. */
+const EACH = 5;
+
+export function findContent(query: string, { todo, calendar, mail, onOpen }: ContentSources): FindItem[] {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  /** 0 when the name starts with the words, 1 when it has them all, -1 when it does not. */
+  const rank = (name: string, ...more: Array<string | undefined>) => {
+    const lower = name.toLowerCase();
+    const all = [lower, ...more.map((text) => text?.toLowerCase() ?? "")].join(" ");
+    if (!words.every((word) => all.includes(word))) return -1;
+    return lower.startsWith(words.join(" ")) ? 0 : 1;
+  };
+  const best = <T,>(list: readonly T[], score: (one: T) => number, order: (a: T, b: T) => number) =>
+    list.map((one) => ({ one, at: score(one) })).filter(({ at }) => at >= 0)
+      .sort((a, b) => a.at - b.at || order(a.one, b.one)).slice(0, EACH).map(({ one }) => one);
+  const day = new Intl.DateTimeFormat(intlLocale(), { month: "short", day: "numeric" });
+  const time = new Intl.DateTimeFormat(intlLocale(), { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const onDay = (date: string) => day.format(new Date(`${date}T12:00:00`));
+  const now = Date.now();
+
+  const todos = best(todo?.todos.filter((one) => !one.archivedAt) ?? [], (one) => rank(one.title, one.area),
+    (a, b) => Number(a.done) - Number(b.done) || (a.due ?? "9").localeCompare(b.due ?? "9"));
+  // Events nearest to now first, coming ones before past ones.
+  const away = (event: { startDate: string; start?: string }) => {
+    const at = Date.parse(event.start ?? `${event.startDate}T00:00:00`) - now;
+    return at >= -864e5 ? at : 1e15 - at;
+  };
+  const events = best(calendar?.events ?? [], (one) => rank(one.title, one.location, one.calendar), (a, b) => away(a) - away(b));
+  const letters = best(mail?.messages ?? [], (one) => rank(one.subject, one.from, one.fromEmail, one.snippet),
+    (a, b) => b.receivedAt.localeCompare(a.receivedAt));
+
+  return [
+    ...todos.map((one): FindItem => ({
+      kind: "todo", id: `todo:${one.id}`, label: one.title, icon: one.done ? "check" : "todo",
+      detail: one.done ? t("pal.done") : one.due ? onDay(one.due) : undefined, run: () => onOpen("todo.list"),
+    })),
+    ...events.map((one): FindItem => ({
+      kind: "event", id: `event:${one.account}:${one.id}`, label: one.title, icon: "cal",
+      detail: one.start && !one.allDay ? time.format(new Date(one.start)) : onDay(one.startDate), run: () => onOpen("calendar.week"),
+    })),
+    ...letters.map((one): FindItem => ({
+      kind: "mail", id: `mail:${one.account}|${one.id}`, label: one.subject || t("pal.noSubject"), icon: "mail", unread: one.unread,
+      detail: one.from, run: () => onOpen("mail.inbox", `${one.account}|${one.id}`),
+    })),
+  ];
 }

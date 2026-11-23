@@ -76,10 +76,17 @@ export const en: Record<keyof typeof zh, string> = {
   "scheme.to.light": "Switch to light",
 
   // Command palette
-  "pal.label": "Search or ask Alfred",
-  "pal.placeholder": "Go to a page, open a conversation, or just tell Alfred…",
+  "pal.label": "Search",
+  "pal.placeholder": "Search pages, todos, events, mail, sites…",
   "pal.go": "Go to {title}",
   "pal.conversation": "Conversation",
+  "pal.top": "Top hit",
+  "pal.pages": "Pages",
+  "pal.commands": "Commands",
+  "pal.conversations": "Conversations",
+  "pal.alfred": "Alfred",
+  "pal.done": "Done",
+  "pal.noSubject": "(no subject)",
   "pal.ask": "Ask Alfred: {text}",
 
   // Alfred's panel
@@ -1285,7 +1292,8 @@ export const en: Record<keyof typeof zh, string> = {
   "inbox.sent.unknown": "Not sure it went through: Google didn't say. Check Gmail's Sent or your calendar before trying again.",
 
   // The ask bar under the page (shell/AskBar.tsx)
-  "ask.placeholder": "Ask Alfred, or search",
+  "ask.label": "Ask Alfred",
+  "ask.placeholder": "Ask Alfred",
   "ask.open": "Open the conversation",
   "ask.back": "Back to the tabs",
   "ask.about.clear": "Never mind this",
