@@ -2,17 +2,22 @@
  *
  *   rest    tesseract, breathing, now and then a blink  hello   tesseract, slowly unfolding and back (the body)
  *   listen  a globe turning, swelling with your voice   think    an octahedron spinning like a top
- *   speak   four stacked rings swelling with a voice    work     a hex nut turned a sixth at a time
+ *   speak   four stacked rings swelling with a voice    work     the body turning slowly in two planes, endlessly
  *   notice  a tetrahedron, amber, hopping               done     a cube, settled, green
  *   error   two crossed beams, red, shaking             sleep    a flat slab lying down, breathing
- *   ponder  the body turning in two planes at once: thinking for a while (think becomes this after PONDER_AFTER s)
- *   flow    the body turning through its fourth dimension, the inner cube rolling out: loading, syncing
+ *   ponder  the same slow double turn: thinking for a while (think becomes this after PONDER_AFTER s)
+ *   flow    the body turning slowly through its fourth dimension, the inner cube rolling out: loading, syncing
  *
  * One-shot moves of the body, played over rest or hello and back (figure.play):
  *   hop     crouch, spring up, flip inside out in the air, land with a bump. Played by itself when work ends.
  *   poke    a flinch and a wobble of every corner: when touched
  *   grow    a point, then a line, a square, a cube, the tesseract: an entrance (createFigure's `enter`)
  *   unfold  opens hinge by hinge into its net (a cross of eight cubes), turns, folds back: introducing itself
+ *   twirl   crouch, spin once round in the air (the inner cube half a beat behind), land
+ *   tiptoe  tips up onto one corner, spins twice like a top, wobbles as it slows, comes back down
+ *   toss    the outer cube flings the inner one up; it turns over in the air and drops back in
+ * grow and unfold end square-on (no sway, the inner cube dead centre) and the body holds still a moment, no breath or
+ * blink, before the breathing eases back in.
  *
  * A change between two figures is a redraw: the old one's wires shrink back to their middles and fade while the new
  * one draws itself wire by wire, like a pen, turning gently into place. Poses of the same figure glide. Lines further
@@ -26,7 +31,7 @@
  */
 
 export const STATES = ["rest", "hello", "listen", "think", "speak", "work", "notice", "done", "error", "sleep", "ponder", "flow"];
-export const MOVES = ["hop", "poke", "grow", "unfold"];
+export const MOVES = ["hop", "poke", "grow", "unfold", "twirl", "tiptoe", "toss"];
 export const PALETTES = {
   light: { ind: "#4967c5", light: "#a9b8f2", amber: "#e09a1f", ok: "#2f9a64", now: "#d9443f" },
   dark: { ind: "#86a0f2", light: "#56649c", amber: "#efaa3e", ok: "#4cc38a", now: "#f05a54" },
@@ -35,11 +40,14 @@ export const PALETTES = {
 export const LOUD = ["notice", "done", "error"];
 /* How long "think" holds its octahedron before it turns into the body pondering. */
 const PONDER_AFTER = 8;
+/* How fast the body turns (rad/s) while working or pondering (both planes), and in flow: slow enough to play all day. */
+const TURN2_SPEED = 0.3, FLOW_SPEED = 0.42;
+/* After grow or unfold: held square-on and still for SETTLE_HOLD s, then the breath, sway and blinks ease back in. */
+const SETTLE_HOLD = 1.6, SETTLE_EASE = 2.4;
 
 const S = Math.sin, Cs = Math.cos, PI = Math.PI, abs = Math.abs, max = Math.max;
 const NSEG = 96;
 const voice = (t) => max(0, 0.5 + 0.3 * S(t * 7.3) + 0.25 * S(t * 12.1 + 1) + 0.2 * S(t * 2.3));
-const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 /* Quintic: starts and stops with no sudden acceleration. */
 const sm = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (6 * x - 15) + 10));
 const lerp = (a, b, u) => a + (b - a) * u;
@@ -129,7 +137,8 @@ function tesseract(o = {}) {
 const bodyCut = (o) => cut(tesseract(o), "body");
 
 /* Rest: a slow sway through the fourth dimension; a breath (the two cubes draw together, in faster than out); and,
-   every few seconds at a time of its own, a blink (the two cubes meet in one, a beat, and spring back a touch past). */
+   every few seconds at a time of its own, a blink (the two cubes meet in one, a beat, and spring back a touch past).
+   calm (0..1) is how much of all that is in it: 0 is the square-on mark, held still (just after grow and unfold). */
 const sway = (t) => 0.12 * S(t * 0.55);
 const blinkAt = (d) => {
   if (d <= 0 || d >= 0.45) return 0;
@@ -140,12 +149,13 @@ const blinkAt = (d) => {
 };
 const hash = (n) => { const x = S(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 const BLINK_EVERY = 7;
-function restPose(t, seed = 0) {
+function restPose(t, seed = 0, calm = 1) {
   const p = (((t + seed * 6) / 6) % 1 + 1) % 1, breath = p < 0.4 ? sm(p / 0.4) : 1 - sm((p - 0.4) / 0.6);
   const bt = t + seed * BLINK_EVERY, k = Math.floor(bt / BLINK_EVERY), local = bt - k * BLINK_EVERY;
   const at = 1.5 + 4 * hash(k + seed * 1000), twice = hash(k * 3.7 + seed * 99) < 0.3;
   const blink = Math.max(blinkAt(local - at), twice ? blinkAt(local - at - 0.55) : 0);
-  return { xw: sway(t), axes: [1, 1, 1, (1 - 0.3 * breath) * (1 - blink)], sc: 1 + 0.03 * breath, dy: -1.2 * breath };
+  const br = breath * calm, bl = blink * calm;
+  return { xw: sway(t) * calm, axes: [1, 1, 1, (1 - 0.3 * br) * (1 - bl)], sc: 1 + 0.03 * br, dy: -1.2 * br };
 }
 
 /* The net: the inner cube in the middle, the six side cells hinged on its faces, the outer cube hinged on the far end
@@ -169,26 +179,35 @@ const NETFIT = fitOf(proj4(netCells([1, 1, 1, 1]).flat(), { D: NETD }).map(cam4)
 /* A fixed random direction for each corner (for the poke's wobble). */
 const DIRS = TV.map((_, i) => { const a = i * 2.399, b = ((i * 0.618) % 1) * 2 - 1, r = Math.sqrt(1 - b * b); return [r * Cs(a), b, r * S(a)]; });
 
-/* ── Moves: (time into the move, clock, seed) → a frame. dur in s. Each ends exactly on the resting pose. ── */
+/* The resting body as 3D points (after the 4D projection), before it is seen: what the moves below bend. */
+const restPoints = (r) => proj4(TV.map((v) => v.map((c, i) => c * r.axes[i])), { xw: r.xw });
+const onPoints = (P, f) => P.map((p, i) => { const [x, y, z] = f([p[0], p[1], p[2]], i); return [x, y, z, p[3]]; });
+const isOuter = (i) => TV[i][3] > 0;
+const lowest = (list) => { let b = -Infinity; for (const [p, q] of list) b = Math.max(b, p[1], q[1]); return b; };
+
+/* ── Moves: (time into the move, clock, seed, calm) → a frame. dur in s. Each starts on the resting pose at that calm
+   and ends exactly on it; a move that `settles` ends on the square-on mark instead (calm 0), and the body holds it. ── */
 const MOVE = {
-  hop: { dur: 2.3, f: (u, t, seed) => {
-    const r = restPose(t, seed), up = 0.5, land = 1.1, air = clamp((u - up) / (land - up), 0, 1), q = u - land;
+  hop: { dur: 2.3, f: (u, t, seed, calm = 1) => {
+    const r = restPose(t, seed, calm), up = 0.5, land = 1.1, air = clamp((u - up) / (land - up), 0, 1), q = u - land;
     const squash = kf(u, [[0, 0], [up, -0.13], [up + 0.12, 0.07], [land - 0.08, 0]]);
     const sy = 1 + squash - 0.12 * ring(q, 15, 6), sx = 1 - 0.5 * squash + 0.06 * ring(q, 15, 6);
     return { s: bodyCut({ ...r, xw: r.xw + PI * sm(air), sx, sy, sc: r.sc * (1 - 0.15 * S(PI * air)) }), col: "ind", dy: r.dy - 9 * S(PI * air), depth: true };
   } },
-  poke: { dur: 1.6, f: (u, t, seed) => {
-    const r = restPose(t, seed), A = 0.15 * Math.exp(-u / 0.32) * (1 - Math.exp(-u / 0.06)), k = 0.11 * ring(u, 20, 8);
+  poke: { dur: 1.6, f: (u, t, seed, calm = 1) => {
+    const r = restPose(t, seed, calm), A = 0.15 * Math.exp(-u / 0.32) * (1 - Math.exp(-u / 0.06)), k = 0.11 * ring(u, 20, 8);
     const jig = DIRS.map((v, i) => v.map((c) => c * A * S(2 * PI * 4.2 * u + i * 1.7)));
     return { s: bodyCut({ ...r, jig, sy: 1 - k, sx: 1 + 0.6 * k }), col: "ind", dy: r.dy, depth: true };
   } },
-  grow: { dur: 3.3, dots: true, f: (u, t, seed) => {
-    const r = restPose(t, seed), g = (start, dur) => sm((u - start) / dur);
+  // from a point, so it can begin anywhere; it grows straight into the square-on mark
+  grow: { dur: 3.3, dots: true, settles: true, f: (u, t, seed) => {
+    const r = restPose(t, seed, 0), g = (start, dur) => sm((u - start) / dur);
     const k = [g(0.3, 0.9), g(0.85, 0.9), g(1.4, 0.9), g(1.95, 1.2)], axes = k.map((a, i) => a * r.axes[i]);
     return { s: bodyCut({ xw: r.xw, axes, sc: lerp(1, r.sc, k[3]) }), col: "ind", dy: r.dy * k[3], depth: true, op: sm(u / 0.35), sw: 1 + 0.6 * (1 - k[0]) };
   } },
-  unfold: { dur: 7.4, f: (u, t, seed) => {
-    const r = restPose(t, seed), m0 = kf(u, [[0, 0], [2.8, 1], [4.6, 1], [7.4, 0]]);
+  // the breath and blinks fade out as it starts to open, so it folds back into the square-on mark
+  unfold: { dur: 7.4, settles: true, f: (u, t, seed, calm = 1) => {
+    const r = restPose(t, seed, calm * (1 - sm(u / 0.8))), m0 = kf(u, [[0, 0], [2.8, 1], [4.6, 1], [7.4, 0]]);
     const open = [0, 0.26, 0.13, 0.4].map((a) => sm((m0 - a) / 0.6)), m = open.reduce((a, b) => a + b, 0) / 4;
     const V = netCells(open).flat().map(([x, y, z, w]) => [x, y, z, w * r.axes[3]]);
     const D = Math.max(lerp(2.7, NETD, sm(m)), Math.max(...V.map((v) => v[3])) + 1.7);
@@ -198,6 +217,32 @@ const MOVE = {
     const fit = { s: Math.min(lerp(FIT.s, NETFIT.s, sm(m)), (now.s * 100) / 92), cx: lerp(FIT.cx, now.cx, sm(m)), cy: lerp(FIT.cy, now.cy, sm(m)) };
     return { s: body4(P, CELLE, { yaw, fit, sc: lerp(r.sc, 1, sm(m)) }), col: "ind", dy: r.dy * (1 - m), depth: true };
   } },
+  twirl: { dur: 2.7, f: (u, t, seed, calm = 1) => {
+    const r = restPose(t, seed, calm), up = 0.4, land = 1.75, air = clamp((u - up) / (land - up), 0, 1), q = u - land;
+    const crouch = kf(u, [[0, 0], [up, -0.1], [up + 0.14, 0.05], [land - 0.1, 0]]);
+    const outer = 2 * PI * sm(air), inner = 2 * PI * sm((u - up - 0.22) / (land - up));
+    const P = onPoints(restPoints(r), (p, i) => rotY(p, isOuter(i) ? outer : inner));
+    const sy = 1 + crouch - 0.1 * ring(q, 14, 6), sx = 1 - 0.5 * crouch + 0.05 * ring(q, 14, 6);
+    return { s: cut(body4(P, TE, { sc: r.sc * (1 - 0.08 * S(PI * air)), sx, sy }), "body"), col: "ind", dy: r.dy - 8 * S(PI * air), depth: true };
+  } },
+  tiptoe: { dur: 4.6, f: (u, t, seed, calm = 1) => {
+    const r = restPose(t, seed, calm), up = kf(u, [[0.1, 0], [1.0, 1], [3.6, 1], [4.5, 0]]);
+    const spin = 4 * PI * sm((u - 0.55) / 3.4), wob = 0.07 * up * S(PI * clamp((u - 2.6) / 1.4, 0, 1)) * S(u * 9);
+    // The outer cube's corner (1, 1, 1) tipped straight down, a spin about the upright, standing on that corner.
+    const stand = (p) => rotX(rotZ(p, (up * PI) / 4), up * -0.6155);
+    const P0 = restPoints(r), P = onPoints(P0, (p) => rotZ(rotY(stand(p), spin), wob));
+    const list = body4(P, TE, { sc: r.sc * (1 - 0.1 * up) });
+    return { s: cut(list, "body"), col: "ind", dy: r.dy + up * (lowest(body4(P0, TE, { sc: r.sc })) - lowest(list)), depth: true };
+  } },
+  toss: { dur: 2.7, f: (u, t, seed, calm = 1) => {
+    const r = restPose(t, seed, calm), fling = 0.42, land = 1.5, x = clamp((u - fling) / (land - fling), 0, 1), q = u - land;
+    const crouch = kf(u, [[0, 0], [fling - 0.05, -0.09], [fling + 0.12, 0.03], [fling + 0.4, 0]]);
+    // Thrown up and caught: a parabola, turning over once on the way; caught with a dip and a bump.
+    const h = 2 * x * (1 - x) - 0.06 * ring(q, 15, 6) + 0.02 * crouch, spin = 2 * PI * sm(x);
+    const P = onPoints(restPoints(r), (p, i) => { if (isOuter(i)) return p; const [a, b, c] = rotX(rotY(p, spin), spin); return [a, b - h, c]; });
+    const sy = 1 + crouch - 0.07 * ring(q - 0.03, 14, 6), sx = 1 - 0.5 * crouch + 0.04 * ring(q - 0.03, 14, 6);
+    return { s: cut(body4(P, TE, { sc: r.sc * (1 - 0.1 * S(PI * x)), sx, sy }), "body"), col: "ind", dy: r.dy + 5 * S(PI * x), depth: true };
+  } },
 };
 
 /** How long a move takes, in s (0 for a name that is not a move). */
@@ -206,11 +251,14 @@ export const moveSeconds = (move) => MOVE[move]?.dur ?? 0;
 /* The greeting's timing in s: still, unfold, held open, fold back (also `move`), then still again till the cycle ends. */
 const HELLO = { rest: 3, move: 2.6, hold: 1.2, cycle: 11 };
 
-/* ── States: (time in s, entry spin in rad, { since, seed }) → { s: segments, col: palette key, dx, dy, depth }.
-   since: seconds since this state began on this figure; seed: this figure's own (0..1), so blinks are not in step. ── */
-const CTX0 = { since: 0, seed: 0 };
+/* ── States: (time in s, entry spin in rad, { since, seed, calm }) → { s: segments, col: palette key, dx, dy, depth }.
+   since: seconds since this state began on this figure; seed: this figure's own (0..1), so blinks are not in step;
+   calm: how much breath and blink the resting body has (see restPose). ── */
+const CTX0 = { since: 0, seed: 0, calm: 1 };
+/* The body turning in two planes at once, the two cubes passing through each other; it speeds up from still. */
+const turn2 = (t, e, c = CTX0) => { const a = spinUp(c.since, TURN2_SPEED, 1.6) + e; return { s: bodyCut({ xw: a, yz: a }), col: "ind", depth: true }; };
 const STATE = {
-  rest: (t, e, c = CTX0) => { const r = restPose(t, c.seed); return { s: bodyCut(r), col: "ind", dy: r.dy, depth: true }; },
+  rest: (t, e, c = CTX0) => { const r = restPose(t, c.seed, c.calm ?? 1); return { s: bodyCut(r), col: "ind", dy: r.dy, depth: true }; },
   // a slow, full turn through the fourth dimension: the inner cube swells out until it is the outer one, a pause,
   // then it folds back the same way; long rests between
   hello: (t) => {
@@ -218,10 +266,9 @@ const STATE = {
     const u = ph < rest ? 0 : ph < rest + move ? glide((ph - rest) / move) : ph < rest + move + hold ? 1 : 1 - glide((ph - rest - move - hold) / move);
     return { s: bodyCut({ xw: u * PI + sway(t) }), col: "ind", dy: -3 * S(u * PI), depth: true };
   },
-  // the body turning in two planes at once, the two cubes passing through each other; it speeds up from still
-  ponder: (t, e, c = CTX0) => { const a = spinUp(c.since, 0.5) + e; return { s: bodyCut({ xw: a, yz: a }), col: "ind", depth: true }; },
+  ponder: turn2,
   // the body rolling through its fourth dimension: the inner cube keeps coming out to be the outer one
-  flow: (t, e, c = CTX0) => ({ s: bodyCut({ xw: spinUp(c.since, 0.7) + e, yaw: 0.15 * S(c.since * 0.3) }), col: "ind", depth: true }),
+  flow: (t, e, c = CTX0) => ({ s: bodyCut({ xw: spinUp(c.since, FLOW_SPEED, 1.4) + e, yaw: 0.15 * S(c.since * 0.25) }), col: "ind", depth: true }),
   // a globe: equator and three meridians, turning; it swells a little with your voice
   listen: (t, e) => {
     const R = 0.72 * (1 + 0.07 * voice(t * 0.7 + 3)), spin = t * 0.35 + e;
@@ -237,8 +284,8 @@ const STATE = {
     const g = merge(...lat.map((u, i) => { const r = R * Math.sqrt(1 - u * u) * (1 + 0.32 * voice(t - i * 0.09)); return ring3(24, (a) => [r * Cs(a + e), R * u * 1.2, r * S(a + e)]); }));
     return { s: segs(g.pts.map((p) => rotZ(p, 0.08 * S(t * 0.9))), g.edges), col: "ind", depth: true };
   },
-  // a nut being turned: a sixth of a turn at a time
-  work: (t, e) => { const ph = (t * 0.8) % 1, step = Math.floor(t * 0.8), ry = ((step + ease(ph / 0.35)) * PI) / 3 + e; return { s: cut(segs(HEXV.map((v) => rotX(rotY(v, ry), 0.12)), HEXE), "hex"), col: "ind", depth: true }; },
+  // working: the slow double turn, for as long as the work takes
+  work: turn2,
   notice: (t, e) => ({ s: cut(segs(TETV.map((v) => rotX(rotY(v.map((c) => c * 0.8), 0.5 + 0.25 * S(t * 1.5) + e), 0.05)), TETE), "tet"), col: "amber", dy: -5 * abs(S(t * 4.2)), depth: true }),
   done: (t, e) => ({ s: cut(segs(CUBEV.map((v) => rotY(v.map((c) => c * 0.55), 0.08 * S(t * 0.8) + e)), CUBEE), "cube"), col: "ok", depth: true }),
   // two crossed beams, seen a little from the side, shaking
@@ -255,12 +302,10 @@ const OCTV = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1
 const OCTE = []; for (let i = 0; i < 6; i++) for (let j = i + 1; j < 6; j++) if ((i >> 1) !== (j >> 1)) OCTE.push([i, j]);
 const TETV = [[0, -1.15, 0], [0.94, 0.42, 0.54], [-0.94, 0.42, 0.54], [0, 0.42, -1.09]];
 const TETE = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
-const HEXV = [...Array.from({ length: 6 }, (_, i) => [0.8 * Cs((i * PI) / 3), -0.36, 0.8 * S((i * PI) / 3)]), ...Array.from({ length: 6 }, (_, i) => [0.8 * Cs((i * PI) / 3), 0.36, 0.8 * S((i * PI) / 3)])];
-const HEXE = [...Array.from({ length: 6 }, (_, i) => [i, (i + 1) % 6]), ...Array.from({ length: 6 }, (_, i) => [6 + i, 6 + ((i + 1) % 6)]), ...Array.from({ length: 6 }, (_, i) => [i, 6 + i])];
 const BEAMV = CUBEV.map(([x, y, z]) => [x * 0.82, y * 0.13, z * 0.13]);
 
 const BODY = ["rest", "hello"]; // the body's poses; moves play over these
-const SPIN = ["ponder", "flow"]; // the body turning: in mono and small sizes these drop the W edges too
+const SPIN = ["ponder", "flow", "work"]; // the body turning: in mono and small sizes these drop the W edges too
 const WHOLE = [...BODY, ...SPIN];
 
 /**
@@ -319,7 +364,7 @@ let running = false;
 
 // While the body is idle it alternates turns and gestures. Each figure starts on its own beat.
 // Use only the body here: the amber, green and red shapes, the microphone and the working shapes carry meaning.
-const IDLE_CUES = ["flow", "hop", "ponder", "unfold"];
+const IDLE_CUES = ["flow", "twirl", "ponder", "toss", "unfold", "hop", "tiptoe"];
 function pauseIdle(I, t) {
   if (!I.idle) return;
   I.idle.turn = null;
@@ -483,6 +528,8 @@ function step(I, t, still) {
   }
   const since = t - I.changed;
   if (I.mode && since >= (I.mode === "glide" ? GLIDE_S : REDRAW_S)) { I.mode = null; I.out = null; }
+  // How much breath and blink the resting body has: none for a while after grow or unfold, then easing back.
+  const calmNow = () => (still || I.calmAt == null ? 1 : sm((t - I.calmAt - SETTLE_HOLD) / SETTLE_EASE));
 
   // The leaving figure: its wires shrink toward their middles and fade, still moving as it did.
   if (I.mode === "redraw" && I.out && since < OUT_S) {
@@ -498,8 +545,9 @@ function step(I, t, still) {
   else if (P && t >= P.start && BODY.includes(I.now) && I.mode !== "redraw") {
     P.started ??= t;
     const m = MOVE[P.move], u = t - P.start;
-    if (u < m.dur) frame = { ...m.f(u, t, I.seed), dots: m.dots };
+    if (u < m.dur) frame = { ...m.f(u, t, I.seed, calmNow()), dots: m.dots };
     else {
+      if (m.settles) I.calmAt = t;
       // Every move ends on the resting pose, so at rest it simply hands over (its lines may be cut differently, but
       // they lie in the same places); over the greeting it glides into that pose.
       I.play = null;
@@ -516,7 +564,7 @@ function step(I, t, still) {
       const duration = I.idle.turnSeconds;
       since = duration * (1 - Cs(2 * PI * clamp(since / duration, 0, 1))) / 2;
     }
-    frame = STATE[I.now](t, spin, { since, seed: I.seed });
+    frame = STATE[I.now](t, spin, { since, seed: I.seed, calm: calmNow() });
     if (I.mode === "glide") {
       const w = easeInOut((t - I.changed) / GLIDE_S);
       frame = { ...frame, s: frame.s.map((piece, i) => {

@@ -1,6 +1,7 @@
 export type FigureState = "rest" | "hello" | "listen" | "think" | "speak" | "work" | "notice" | "done" | "error" | "sleep" | "ponder" | "flow";
-/** One-shot moves of the body: hop (happy), poke (touched), grow (an entrance from a point), unfold (introducing itself). */
-export type FigureMove = "hop" | "poke" | "grow" | "unfold";
+/** One-shot moves of the body: hop (happy), poke (touched), grow (an entrance from a point), unfold (introducing itself),
+ * twirl (a spin in the air), tiptoe (spinning on one corner), toss (the inner cube thrown up and caught). */
+export type FigureMove = "hop" | "poke" | "grow" | "unfold" | "twirl" | "tiptoe" | "toss";
 
 export const STATES: FigureState[];
 export const MOVES: FigureMove[];

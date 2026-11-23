@@ -9,7 +9,7 @@ import { MOD } from "./Nav.tsx";
 import type { PageView } from "./pages.tsx";
 
 /** What the figure shows, from the world as this device sees it: greeting on open, amber when anything waits for
- * you (a question, a proposal), the rolling tesseract while a reply streams in the open conversation, the turning nut while any
+ * you (a question, a proposal), the rolling tesseract while a reply streams in the open conversation, the slow double turn while any
  * run works, else calm. */
 export function figureState(state: StateResponse, selected: string | null, writing: ReadonlySet<string>, greeting: boolean): FigureState {
   if (greeting) return "hello";

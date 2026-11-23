@@ -1,15 +1,18 @@
 <!doctype html>
 <!--
   Alfred: how the body moves, drawn by the real figure (packages/ui/src/entity/tesseract.js, linked here as figure.js).
-  The eight moves Bruce kept on 2026-11-20, as they now live in the engine:
-    平静 rest   breathes; now and then blinks (once or twice)          — every resting figure
-    跳一下 hop   crouch, spring, flip inside out in the air, land        — played by itself when work ends
+  Endless (states):
+    双旋 work / ponder  slow turn in two planes at once (0.3 rad/s)      — while Alfred works; "think" held for 8 s
+    翻涌 flow           slow roll through the fourth dimension          — a reply streaming in; pairing a device
+  One-shot moves (figure.play), each starting and ending on the resting pose:
+    平静 rest   breathes; now and then blinks                          — every resting figure
+    跳一下 hop   crouch, spring, flip inside out in the air, land        — when work ends
     被戳 poke    flinch and wobble                                       — pressing any figure; a landing after a drag
-    双旋 ponder  turning in two planes at once                           — "think" held for 8 s turns into this
-    翻涌 flow    rolling through the fourth dimension                    — pairing a device (syncing)
-    长出来 grow  point → line → square → cube → tesseract                 — the first figure on a page, the Mac figure
-    展开 unfold  opens into its net of eight cubes and folds back        — the Mac figure while it says the welcome
-  Dropped the same day: look around, look at you, bow, nod, shake, light walk, dive in, cells apart, sleep and wake.
+    长出来 grow  point → line → square → cube → tesseract, ends square-on — the first figure on a page, the Mac figure
+    展开 unfold  opens into its net of eight cubes, folds back square-on — the Mac figure after the welcome
+    转一圈 twirl, 踮脚转 tiptoe, 抛起来 toss (2026-11-22)                — the idle rotation
+  Dropped: look around, look at you, bow, nod, shake, light walk, dive in, cells apart, sleep and wake (2026-11-20);
+  ripple, rock, twist and a reel of many moves (2026-11-22).
 -->
 <html lang="zh-CN">
 <head>
@@ -56,6 +59,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .card b { display: block; padding: 0 10px; font-size: 14px; color: var(--ink); font-weight: 600; }
 body.dk .card b { color: #eae7e4; }
 .card span { padding: 2px 10px 0; }
+.card .new { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 6px; background: var(--paper); color: var(--muted); font-size: 11px; font-weight: 500; vertical-align: 1px; }
 .card.on { box-shadow: inset 0 0 0 2px var(--alf); }
 body.dk .card.on { box-shadow: inset 0 0 0 2px #86a0f2; }
 
@@ -66,7 +70,7 @@ body.dk .card.on { box-shadow: inset 0 0 0 2px #86a0f2; }
 <body>
 <main>
   <h1>Alfred · 超立方体的动作</h1>
-  <p class="sub">2026-11-20 · 留下的八个动作，现在都在真正的形象里（呼吸和眨眼合在「平静」里）。这页直接用 app 的那份代码画。点一张卡放大看。</p>
+  <p class="sub">2026-11-22 · 干活时一直播的是慢双旋；长出来和展开最后停在板正的样子，停一会儿不眨眼再开始呼吸；转一圈、踮脚转、抛起来进了待机轮换。这页直接用 app 的那份代码画。点一张卡放大看。</p>
 
   <div class="top">
     <div class="hero" id="hero" title="点一下戳它"><svg viewBox="0 0 120 120"></svg><span class="hint">点一下戳它</span></div>
@@ -85,7 +89,12 @@ body.dk .card.on { box-shadow: inset 0 0 0 2px #86a0f2; }
     </div>
   </div>
 
-  <h2>八个动作</h2>
+  <h2>一直播</h2>
+  <p class="sub">转得很慢，匀速一直转下去，没有起点和终点。</p>
+  <div class="grid" id="grid-loop"></div>
+
+  <h2>一次性的动作</h2>
+  <p class="sub">每个都从平静开始、回到平静结束。标「新」的是今天加的。</p>
   <div class="grid" id="grid"></div>
 </main>
 
@@ -94,27 +103,35 @@ import { createFigure } from "./figure.js";
 
 /* state: what the figure is set to; move: a one-shot played over it, again every `every` ms. */
 const MOVES = [
+  { id: "work", loop: true, name: "双旋", en: "work · ponder", state: "work",
+    desc: "同时在两个互相垂直的平面里慢慢转，里外两个立方体不停地互相穿过。从静止慢慢转起来，然后匀速一直转下去。", use: "Alfred 在干活时一直播；「在想」超过 8 秒也换成它" },
+  { id: "flow", loop: true, name: "翻涌", en: "flow", state: "flow",
+    desc: "慢慢沿第四维一直转，里面的立方体不断从侧面翻出来变成外面的。", use: "逐字输出回复时、配对设备时" },
   { id: "rest", name: "平静", en: "breathe + blink", state: "rest",
     desc: "一直在呼吸：里外两个立方体慢慢靠近再分开，吸得比呼快。每隔几秒眨一次眼（有时两下），每个形象各有各的节奏。", use: "所有平静的形象" },
+  { id: "grow", name: "长出来", en: "grow", state: "rest", move: "grow", every: 8000,
+    desc: "一个点 → 线 → 正方形 → 立方体 → 超立方体，一维接一维长出来，最后停在板正的样子：不晃，里面的立方体正好在正中。停一会儿，不眨眼，再慢慢开始呼吸。", use: "页面上第一个出现的形象；Mac 上的形象出场" },
+  { id: "unfold", name: "展开", en: "unfold", state: "rest", move: "unfold", every: 12000,
+    desc: "一开始展开就不再呼吸眨眼，一格一格折开成八个立方体拼成的十字，转一转，折回来停在板正的样子，停一会儿再呼吸。太小（48px 以下）时不展开。", use: "Mac 上的形象说完欢迎回来；较大的形象待机时" },
   { id: "hop", name: "跳一下", en: "hop", state: "rest", move: "hop", every: 3400,
-    desc: "下蹲，弹起时拉长，在空中沿第四维里外翻一次，落地压扁再回弹。", use: "做完事回到平静时，自己跳一下" },
+    desc: "下蹲，弹起时拉长，在空中沿第四维里外翻一次，落地压扁再回弹。", use: "做完事回到平静时" },
   { id: "poke", name: "被戳", en: "poke", state: "rest", move: "poke", every: 2600,
     desc: "一缩，每个角各自晃一下，越晃越小，再定住。", use: "按到任何一个形象；Mac 上拖着放下" },
-  { id: "ponder", name: "双旋", en: "ponder", state: "ponder",
-    desc: "同时在两个互相垂直的平面里转，从静止慢慢转起来，里外的立方体不停地互相穿过。", use: "「在想」超过 8 秒，八面体换成它" },
-  { id: "flow", name: "翻涌", en: "flow", state: "flow",
-    desc: "一直沿第四维转，里面的立方体不断从侧面翻出来变成外面的。", use: "配对设备时（同步中）" },
-  { id: "grow", name: "长出来", en: "grow", state: "rest", move: "grow", every: 5200,
-    desc: "一个点 → 线 → 正方形 → 立方体 → 超立方体，一维接一维长出来。", use: "页面上第一个出现的形象；Mac 上的形象出场" },
-  { id: "unfold", name: "展开", en: "unfold", state: "rest", move: "unfold", every: 9000,
-    desc: "一格一格折开成八个立方体拼成的十字，转一转，再按相反的顺序折回去。太小（48px 以下）时不展开。", use: "Mac 上的形象说欢迎回来的时候" },
+  { id: "twirl", fresh: true, name: "转一圈", en: "twirl", state: "rest", move: "twirl", every: 3800,
+    desc: "下蹲，弹起来在空中转一整圈，里面的立方体慢半拍跟上，落地轻轻一顿。", use: "待机轮换" },
+  { id: "tiptoe", fresh: true, name: "踮脚转", en: "tiptoe", state: "rest", move: "tiptoe", every: 5800,
+    desc: "侧过来用一个角立住，像陀螺一样转两圈，慢下来时晃一晃，再躺回原来的样子。", use: "待机轮换" },
+  { id: "toss", fresh: true, name: "抛起来", en: "toss", state: "rest", move: "toss", every: 3800,
+    desc: "外面的立方体一蹲，把里面的立方体抛上去，它在空中翻一圈，落回原处，外面接住一颤。", use: "待机轮换" },
 ];
 
 const all = [];
 const add = (svg, m, opts) => { const f = createFigure(svg, { ...opts, state: m.state }); const I = { f, m, svg, last: 0 }; all.push(I); return I; };
-const grid = document.getElementById("grid");
-grid.innerHTML = MOVES.map((m) => `<button class="card" data-id="${m.id}"><svg viewBox="0 0 120 120"></svg><b>${m.name}</b><span>${m.use}</span></button>`).join("");
-MOVES.forEach((m) => add(grid.querySelector(`[data-id="${m.id}"] svg`), m, { width: 4.2 }));
+const grid = document.getElementById("grid"), gridLoop = document.getElementById("grid-loop");
+const card = (m) => `<button class="card" data-id="${m.id}"><svg viewBox="0 0 120 120"></svg><b>${m.name}${m.fresh ? '<span class="new">新</span>' : ""}</b><span>${m.use}</span></button>`;
+gridLoop.innerHTML = MOVES.filter((m) => m.loop).map(card).join("");
+grid.innerHTML = MOVES.filter((m) => !m.loop).map(card).join("");
+MOVES.forEach((m) => add(document.querySelector(`.card[data-id="${m.id}"] svg`), m, { width: 4.2 }));
 const big = [add(document.querySelector("#hero svg"), MOVES[0], { width: 3.8 }), add(document.getElementById("s36"), MOVES[0], { width: 5.5, small: true }), add(document.getElementById("s18"), MOVES[0], { width: 7, mono: true })];
 
 /* Moves come round again on their own; the big one starts its move at once when picked. */
@@ -129,10 +146,11 @@ function pick(id) {
   document.getElementById("name").innerHTML = `${m.name}<small>${m.en}</small>`;
   document.getElementById("desc").textContent = m.desc;
   document.getElementById("use").textContent = m.use;
+  document.getElementById("replay").hidden = !m.move;
   document.querySelectorAll(".card").forEach((c) => c.classList.toggle("on", c.dataset.id === m.id));
   history.replaceState(null, "", "#" + m.id);
 }
-grid.addEventListener("click", (e) => { const c = e.target.closest(".card"); if (c) { pick(c.dataset.id); if (innerWidth < 860) scrollTo({ top: 0, behavior: "smooth" }); } });
+for (const g of [grid, gridLoop]) g.addEventListener("click", (e) => { const c = e.target.closest(".card"); if (c) { pick(c.dataset.id); if (innerWidth < 860) scrollTo({ top: 0, behavior: "smooth" }); } });
 document.getElementById("hero").addEventListener("click", () => big.forEach((I) => I.f.play("poke")));
 document.getElementById("replay").addEventListener("click", () => big.forEach((I) => { if (I.m.move) { I.f.play(I.m.move); I.last = performance.now(); } }));
 let dark = false;
