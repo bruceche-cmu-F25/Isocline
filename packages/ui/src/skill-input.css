@@ -1,0 +1,11 @@
+.composer:has(.code-skill-menu) { position: relative; }
+.code-skill-menu { position: absolute; z-index: 6; inset: auto 0 calc(100% + 6px); padding: 5px; background: var(--raise); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+.dev-new .code-skill-menu { inset: calc(100% + 6px) 0 auto; }
+.code-skill-heading, .code-skill-menu p { padding: 4px 8px; font-size: .75rem; color: var(--muted); }
+.code-skill-menu [role="listbox"] { max-height: min(14rem, 28dvh); overflow-y: auto; overscroll-behavior: contain; }
+.code-skill-menu [role="option"] { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; width: 100%; padding: 6px 8px; border-radius: 6px; text-align: left; }
+.code-skill-menu [role="option"]:hover, .code-skill-menu [aria-selected="true"] { background: var(--wash); }
+.code-skill-menu b, .code-skill-menu span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.code-skill-menu b { font-weight: 550; font-size: .875rem; }
+.code-skill-menu small { color: var(--accent); font-size: .75rem; }
+.code-skill-menu span { grid-column: 1 / -1; color: var(--muted); font-size: .75rem; }

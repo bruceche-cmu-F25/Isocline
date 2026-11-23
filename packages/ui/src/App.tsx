@@ -194,6 +194,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     if (layout.alfred === "wide") setLayout({ alfred: "open" });
   }, [layout.alfred, setLayout]);
   const route = useRoute(revealPage);
+  const [newSession, setNewSession] = useState<{ projectId: string; key: number } | null>(null);
   const selected = route.selected;
   /** A phone: the dock's tabs have given way to the ask bar. */
   const [asking, setAsking] = useState(false);
@@ -281,7 +282,8 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
   }, [phone, layout.alfred, setLayout]);
 
   /** Opens a development session on the Code page. */
-  const openSession = useCallback((id: string | null) => {
+  const openSession = useCallback((id: string | null, projectId?: string) => {
+    setNewSession((previous) => projectId ? { projectId, key: (previous?.key ?? 0) + 1 } : null);
     route.go({ page: DEV_PAGE, session: id, item: null });
     setSheet(null);
   }, [route]);
@@ -554,7 +556,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
       <div className="sidebar" data-visible={navVisible || undefined}>
         {navVisible && (
           <Nav state={state} pages={listed} page={alfredMode === "wide" ? "" : navigationPage} mode={phone ? "all" : mode} selected={selected} session={bare ? route.session : null}
-            onSession={openSession} connection={connection} onArchive={archiveConversation} onShowArchive={() => setShowArchive(true)}
+            onSession={openSession} onNewProjectSession={(projectId) => openSession(null, projectId)} connection={connection} onArchive={archiveConversation} onShowArchive={() => setShowArchive(true)}
             onPage={goPage} onSelect={(id) => { setSheet(null); selectFromList(id); }} onClose={phone ? () => setSheet(null) : undefined} onLanguage={switchLanguage} />
         )}
         {archived && <ArchiveNotice key={archived.conversation.id + archived.conversation.archivedAt} conversation={archived.conversation}
@@ -586,7 +588,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
               snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName,
               focus: inboxFocus, onFocused, openConversation, line, refresh: alfred.refresh,
               go: goTo, item: route.item, onItem: clearItem,
-              dev: { session: route.session, onSession: openSession, refresh: alfred.refresh, highlighted, onEvent, pageTitle, automationTitle: automationOf },
+              dev: { session: route.session, newSession, onSession: openSession, refresh: alfred.refresh, highlighted, onEvent, pageTitle, automationTitle: automationOf },
             })}</div>
             {/* Under the page: the page's own controls are at its top, Alfred and search at its foot. */}
             {barHere && (

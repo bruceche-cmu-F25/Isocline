@@ -1,7 +1,7 @@
 import { ConversationStatus } from "./shell/ConversationStatus.tsx";
 /** The Code page: development sessions in the user's projects (docs/design/dev-mode.md).
  *
- * With no session open it is the new-session screen: one composer, with the project and the permission mode chosen
+ * With no session open it is the new-session screen: one composer, with the model, permissions, project and branch chosen
  * under it (adding and trusting a folder happen here, on the home node's machine only); the first message opens the
  * session. With one open it is that session, full page: the same conversation component as everyday ones, without a
  * page to ask from. Behind both moves a field of characters (shell/AsciiField.tsx): this is where code is written.
@@ -16,11 +16,14 @@ import { Diff } from "./Diff.tsx";
 import { t, type Key } from "./i18n/index.ts";
 import { AsciiField } from "./shell/AsciiField.tsx";
 import { Figure } from "./shell/Figure.tsx";
+import { BranchPicker, branchNameOf, type BranchTarget } from "./shell/BranchPicker.tsx";
+import { ModelPicker } from "./shell/ModelPicker.tsx";
 import { ChoicePicker } from "./shell/ChoicePicker.tsx";
 import { Icon } from "./shell/icons.tsx";
 import { MicButton } from "./voice/MicButton.tsx";
 import { appendDictation } from "./voice/wav.ts";
-import { AttachButton, AttachChips, useAttachments } from "./attach.tsx";
+import { SkillInput } from "./SkillInput.tsx";
+import { AttachButton, AttachChips, useComposer } from "./attach.tsx";
 import { sends } from "./prefs.ts";
 import { Terminal } from "./Terminal.tsx";
 import { BrowserPane } from "./BrowserPane.tsx";
@@ -36,6 +39,8 @@ export interface DevProps {
   state: StateResponse;
   /** The open session, or null for the new-session screen. */
   session: string | null;
+  /** A fresh composer opened with the + beside a project in the sidebar. */
+  newSession: { projectId: string; key: number } | null;
   onSession(id: string | null): void;
   refresh(): void;
   highlighted: ReadonlySet<string>;
@@ -57,7 +62,8 @@ export function Dev(props: DevProps) {
       {!session && <div className="dev-drag" aria-hidden="true" />}
       {session
         ? setup ?? <Session key={session} {...props} id={session} conversation={open} />
-        : <NewSession state={state} onSession={props.onSession} setup={setup} />}
+        : <NewSession key={props.newSession?.key ?? 0} initialProjectId={props.newSession?.projectId}
+            state={state} onSession={props.onSession} setup={setup} />}
     </div>
   );
 }
@@ -133,10 +139,11 @@ function Session({ id, conversation, state, onSession, highlighted, onEvent, pag
   const added = files.reduce((sum, file) => sum + file.added, 0), removed = files.reduce((sum, file) => sum + file.removed, 0);
   const mode = conversation?.mode ?? "plan";
   const allowed = conversation?.commands ?? [];
+  const commandHint = { plan: "dev.commandsPlan", ask: "dev.commandsAsk", edits: "dev.commandsEdits" } as const;
   return (
     <div className="dev-layout" data-panel={(panel && !browser) || undefined} data-browser={browser || undefined}>
       <section className="dev-session">
-        <Conversation key={id} id={id} highlighted={highlighted} suggestions={[]} pageTitle={pageTitle} automationTitle={automationTitle}
+        <Conversation key={id} id={id} preferredModel={state.settings?.model} highlighted={highlighted} suggestions={[]} pageTitle={pageTitle} automationTitle={automationTitle}
           onEvent={onEvent} onView={noView} onStarted={noView}
           sessionToolbar={(title, usage) => (
             <header className="dev-bar">
@@ -191,7 +198,8 @@ function Session({ id, conversation, state, onSession, highlighted, onEvent, pag
           </section>
           <section>
             <h3>{t("dev.commands")}</h3>
-            {allowed.length === 0 ? <p className="small quiet">{t(mode === "plan" ? "dev.commandsPlan" : "dev.commandsAsk")}</p> : (
+            {(mode !== "ask" || allowed.length === 0) && <p className="small quiet">{t(commandHint[mode])}</p>}
+            {allowed.length > 0 && (
               <>
                 <ul className="dev-commands">
                   {allowed.map((command) => (
@@ -234,26 +242,31 @@ function Session({ id, conversation, state, onSession, highlighted, onEvent, pag
   );
 }
 
-function NewSession({ state, onSession, setup }: { state: StateResponse; onSession(id: string): void; setup: ReactElement | null }) {
+function NewSession({ state, onSession, setup, initialProjectId }: { state: StateResponse; onSession(id: string): void; setup: ReactElement | null; initialProjectId?: string }) {
   const projects = state.projects ?? [];
-  const [chosen, setChosen] = useState<string | null>(() => projects.find((project) => project.trustedAt)?.id ?? null);
-  const [mode, setMode] = useState<SessionMode>("ask");
-  // A worktree of its own: a separate folder on a new branch, so the project's own folder is left as it is.
-  const [worktreeChoice, setWorktreeChoice] = useState<{ projectId: string; enabled: boolean } | null>(null);
+  const [chosen, setChosen] = useState<string | null>(() => initialProjectId ?? projects.find((project) => project.trustedAt)?.id ?? null);
+  const [chosenMode, setChosenMode] = useState<SessionMode | undefined>();
+  const [model, setModel] = useState<string | null>(null);
+  const [target, setTarget] = useState<BranchTarget>("project");
   const project = projects.find((candidate) => candidate.id === chosen);
-  const concurrent = !!project?.gitRoot && mode !== "plan" && state.conversations.some((session) =>
-    session.projectId === chosen && !session.archivedAt && session.base && session.mode !== "plan");
-  const worktree = project?.gitRoot !== false && (worktreeChoice && worktreeChoice.projectId === chosen ? worktreeChoice.enabled : concurrent);
-  const [draft, setDraft] = useState("");
+  const mode = chosenMode ?? project?.defaultMode ?? "edits";
+  const changeProject = (id: string | null) => {
+    if (id !== chosen) { setChosenMode(undefined); setTarget("project"); }
+    setChosen(id);
+    setError(null);
+    setPicking(false);
+  };
   const [picking, setPicking] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const attachments = useAttachments();
+  // Reopening a project from its sidebar button restores that project's unsent text and files.
+  const { store, text: draft, sending: busy, attachments } = useComposer(initialProjectId && chosen ? `new-project:${chosen}` : undefined);
+  const setDraft = store.setText;
+  const form = useRef<HTMLFormElement>(null);
   // Keep the draft and project choices if the Mac changes access while the user is composing.
   if (setup) return setup;
   const fail = (reason: unknown) => setError(reason instanceof ApiError && reason.code === "local_only" ? t("dev.addLocal")
     : reason instanceof ApiError && reason.code === "needs_dev" ? t("dev.needsScope")
-    : reason instanceof ApiError && (reason.code === "git_not_git" || reason.code === "git_no_commit" || reason.code === "git_subproject") ? t(`git.${reason.code.slice(4)}` as Key)
+    : reason instanceof ApiError && ["git_not_git", "git_no_commit", "git_subproject", "git_branch_missing", "git_branch_in_use"].includes(reason.code ?? "") ? t(`git.${reason.code!.slice(4)}` as Key)
     : reason instanceof Error ? reason.message : String(reason));
 
   const trust = (target: Project) => { setError(null); api.trustProject(target.id).catch(fail); };
@@ -262,12 +275,19 @@ function NewSession({ state, onSession, setup }: { state: StateResponse; onSessi
     event?.preventDefault();
     const files = attachments.ids;
     const text = draft.trim() || (files.length ? t("attach.look") : "");
-    if (!text || !project?.trustedAt || busy || attachments.busy) return;
-    setBusy(true);
+    if (!text || !project?.trustedAt || attachments.busy || !store.beginSend()) return;
     setError(null);
-    api.startSession(project.id, text, mode, worktree)
-      .then(async (conversation) => { await api.submit(text, conversation.id, undefined, files); attachments.clear(); onSession(conversation.id); })
-      .catch((reason) => { fail(reason); setBusy(false); });
+    const branchTarget = project.gitRoot === false ? "project" : target;
+    api.startSession({ projectId: project.id, title: text, mode: chosenMode, model,
+      branch: branchNameOf(branchTarget), worktree: branchTarget === "new" || undefined })
+      .then(async (conversation) => {
+        await api.submit(text, conversation.id, undefined, files);
+        store.sent(draft, files);
+        // The user may already be writing in another project while this request finishes.
+        if (form.current) onSession(conversation.id);
+      })
+      .catch(fail)
+      .finally(() => store.endSend());
   };
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (sends(event)) start(event);
@@ -283,36 +303,37 @@ function NewSession({ state, onSession, setup }: { state: StateResponse; onSessi
           <h2>{t("dev.new")}</h2>
         </header>
 
-        <form className="composer dev-composer" onSubmit={start} onPaste={attachments.onPaste} onDrop={attachments.onDrop} onDragOver={attachments.onDragOver}>
+        <form ref={form} className="composer dev-composer" onSubmit={start} onPaste={attachments.onPaste} onDrop={attachments.onDrop} onDragOver={attachments.onDragOver}>
           <AttachChips attachments={attachments} />
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={onKey}
+          <SkillInput autoFocus={!!initialProjectId} value={draft} onValueChange={setDraft} onKeyDown={onKey}
             rows={Math.min(6, Math.max(2, draft.split("\n").length))} maxLength={8000} aria-label={t("composer.label")}
             placeholder={project?.trustedAt ? t("dev.ask", { name: project.name }) : t("dev.pick")} disabled={!project?.trustedAt} />
           <div className="composer-bar">
-            <button type="button" className="pick project-trigger" aria-haspopup="dialog" aria-expanded={picking}
-              aria-label={project ? t("dev.switchProject", { name: project.name }) : t("dev.projects")} title={project?.path ?? t("dev.projects")}
-              onClick={(event) => { event.currentTarget.focus(); setPicking(true); }}>
-              <Icon name="folder" /><span>{project?.name ?? t("dev.projects")}</span><Icon name="down" />
-            </button>
-            <ChoicePicker label={t("mode.title")} value={mode} mode={mode} icon={<Icon name="shield" />}
-              options={MODES.map((value) => ({ value, label: t(`mode.${value}` as Key) }))}
-              onChange={(value) => setMode(value as SessionMode)} />
-            <button type="button" className="pick toggle" aria-pressed={worktree} onClick={() => { if (chosen) setWorktreeChoice({ projectId: chosen, enabled: !worktree }); }} disabled={!project?.trustedAt || project.gitRoot === false} title={t(project?.gitRoot === false ? "git.subproject" : "dev.worktreeHint")}>
-              <Icon name="branch" /><span>{t("dev.worktree")}</span>
-            </button>
-            <span className="grow" />
-            <AttachButton attachments={attachments} disabled={!project?.trustedAt} />
-            <MicButton disabled={!project?.trustedAt} onText={(words) => setDraft((now) => appendDictation(now, words))} />
-            <button type="submit" className="send" disabled={(!draft.trim() && !attachments.ids.length) || !project?.trustedAt || busy || attachments.busy} aria-label={t("composer.send")}>
-              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
-            </button>
+            <ModelPicker model={model} preferred={state.settings?.model} onChange={setModel} disabled={busy} />
+            <ChoicePicker label={t("mode.title")} title={t(`mode.${mode}.hint` as Key)} value={mode} mode={mode} icon={<Icon name="shield" />}
+              options={MODES.map((value) => ({ value, label: t(`mode.${value}` as Key), short: t(`mode.${value}.short` as Key) }))}
+              onChange={(value) => setChosenMode(value as SessionMode)} />
+            <div className="composer-send-actions">
+              <AttachButton attachments={attachments} disabled={!project?.trustedAt} />
+              <MicButton disabled={!project?.trustedAt} onText={(words) => setDraft((now) => appendDictation(now, words))} />
+              <button type="submit" className="send" disabled={(!draft.trim() && !attachments.ids.length) || !project?.trustedAt || busy || attachments.busy} aria-label={t("composer.send")}>
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
+              </button>
+            </div>
           </div>
         </form>
-        {/* What the two choices under the composer mean, in one line. */}
-        <p className="dev-note">{project && <span className="mono" title={project.path}>{project.path}</span>}<span>{worktree ? `${t("dev.worktreeHint")} · ` : ""}{t(`mode.${mode}.hint` as Key)}</span></p>
+        <div className="dev-target">
+          <button type="button" className="pick project-trigger" disabled={busy} aria-haspopup="dialog" aria-expanded={picking}
+            aria-label={project ? t("dev.switchProject", { name: project.name }) : t("dev.projects")} title={project?.path ?? t("dev.projects")}
+            onClick={(event) => { event.currentTarget.focus(); setPicking(true); }}>
+            <Icon name="folder" /><span>{project?.name ?? t("dev.projects")}</span><Icon name="down" />
+          </button>
+          {project?.trustedAt && project.gitRoot !== false && <BranchPicker key={project.id} projectId={project.id} target={target}
+            onChange={(next) => { setTarget(next); setError(null); }} />}
+        </div>
         {picking && (
           <ProjectPicker projects={projects} chosen={chosen} onClose={() => setPicking(false)}
-            onChoose={(id) => { setChosen(id); setError(null); setPicking(false); }} />
+            onChoose={changeProject} />
         )}
         {error && <p className="problem small" role="alert">{error}</p>}
 
@@ -322,7 +343,7 @@ function NewSession({ state, onSession, setup }: { state: StateResponse; onSessi
             <ul><li>{t("dev.trust1")}</li><li>{t("dev.trust2")}</li><li>{t("dev.trust3")}</li></ul>
             <div className="dev-actions">
               <button type="button" onClick={() => trust(project)}>{t("dev.trust")}</button>
-              <button type="button" className="ghost" onClick={() => setChosen(projects.find((candidate) => candidate.trustedAt)?.id ?? null)}>{t("dev.trustNo")}</button>
+              <button type="button" className="ghost" onClick={() => changeProject(projects.find((candidate) => candidate.trustedAt)?.id ?? null)}>{t("dev.trustNo")}</button>
             </div>
           </div>
         )}

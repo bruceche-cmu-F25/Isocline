@@ -405,4 +405,7 @@ UPDATE core_notices SET payload = json_set(payload, '$.layout', 'sections', '$.k
   // What the user has said about how they like things (preferences.ts; ARCHITECTURE.md §8's USER.md).
   id: "core:30",
   sql: PREFERENCE_MIGRATION_SQL,
+}, {
+  id: "core:32",
+  sql: "ALTER TABLE core_projects ADD COLUMN default_mode TEXT NOT NULL DEFAULT 'edits' CHECK (default_mode IN ('plan', 'ask', 'edits'));",
 }];

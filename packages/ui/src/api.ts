@@ -4,7 +4,7 @@
 import type { Area, Preference,
   ArchivedConversation, Automation, AutomationHistory, RunSources, Schedule,
   Conversation, ConversationDetail, CoreEvent, DeviceInfo, FileInfo, DeviceKind, DeviceScopeRequest, LiveUpdate, ModelsResponse, Notice, OpResponse, PairingCode, ProposalResponse,
-  Project, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, ViewContext, WebLockStatus,
+  Project, ProjectBranches, StartSessionRequest, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, ViewContext, WebLockStatus,
 } from "@alfred/protocol";
 import "./desktop.ts";
 import { t } from "./i18n/dict.ts";
@@ -143,10 +143,9 @@ export const api = {
   /** Only on the home node's machine. */
   addProject: (path: string) => post<Project>("/api/projects", { requestId: newRequestId(), path }),
   trustProject: (id: string) => post<Project>(`/api/projects/${id}/trust`, { requestId: newRequestId() }),
-  /** A development session in a trusted project; its first message is then submitted to it. */
-  /** `worktree`: in a worktree of its own, on a new branch. */
-  startSession: (projectId: string, title: string, mode?: SessionMode, worktree?: boolean) =>
-    post<Conversation>("/api/conversations", { requestId: newRequestId(), projectId, title, ...(mode ? { mode } : {}), ...(worktree ? { worktree: true } : {}) }),
+  projectBranches: (id: string) => call<ProjectBranches>(`/api/projects/${id}/branches`),
+  startSession: (input: Omit<StartSessionRequest, "requestId">) =>
+    post<Conversation>("/api/conversations", { requestId: newRequestId(), ...input }),
   /** A development session's changed files since its snapshot, and one file's diff. */
   changes: (id: string) => call<SessionChanges>(`/api/conversations/${id}/changes`),
   diff: (id: string, path: string) => call<{ diff: string | null }>(`/api/conversations/${id}/diff?path=${encodeURIComponent(path)}`),

@@ -8,16 +8,16 @@
  */
 import { existsSync } from "node:fs";
 import { withCoreContext } from "./context.ts";
-import { getConversation, updateConversation, type ThinkingLevel } from "./conversations.ts";
+import { getConversation, type ThinkingLevel } from "./conversations.ts";
 import { getProject, listProjects, type SessionMode } from "./projects.ts";
-import { commandAllowed, grantCommand, listCommandGrants, simpleCommand, normalizeCommand } from "./shell.ts";
-import { appendEvent, recordDomainEvent } from "./events.ts";
+import { commandAllowed, simpleCommand, normalizeCommand, sessionPermissions } from "./shell.ts";
+import { appendEvent, onEvents, recordDomainEvent } from "./events.ts";
 import { listRunFiles, type FileInfo } from "./files.ts";
 import { newId } from "./ids.ts";
-import { getSettings } from "./settings.ts";
+import { getSettings, userLocale, type Locale } from "./settings.ts";
 import { completionNotification } from "./result-delivery.ts";
 import {
-  claimNextRun, conversationBefore, finishRun, heartbeatRun, openRequest, RUN_LEASE_MS, runAnswers, sweepRuns,
+  answerRequest, claimNextRun, conversationBefore, finishRun, heartbeatRun, openRequest, RUN_LEASE_MS, runAnswers, sweepRuns,
   type Run, type RunRequest, type ViewContext,
 } from "./runs.ts";
 import type { World } from "./world.ts";
@@ -28,9 +28,7 @@ export interface RunToolContext {
   ask(request: { kind?: RunRequest["kind"]; question: string; options?: string[] }): Promise<string>;
   /** Records a moment in the run that is not a change to the world (e.g. `view`). */
   note(kind: string, payload: Record<string, unknown>): void;
-  /** For a tool that runs a shell command in a development session (a background process): whether it may, asked
-   * the way the engine's own shell asks (shown whole; a plain command can be allowed for the session, and one that
-   * was runs without asking). Absent outside a session; `deny` in plan mode. */
+  /** Checks a background command using the same live session policy as the engine's shell. */
   command?(question: string, command: string): Promise<"allow" | "deny">;
 }
 
@@ -100,6 +98,8 @@ export interface EngineRequest {
   history: Array<{ role: "user" | "assistant"; text: string }>;
   tools: RunTool[];
   today: string;
+  /** The local time the request was made, HH:MM: "in half an hour", "tonight at 8" (already past?) need it. */
+  now?: string;
   timezone: string;
   /** The reply so far, whole, as it is written. Optional for engines. */
   onText?(text: string): void;
@@ -110,6 +110,8 @@ export interface EngineRequest {
   thinking?: ThinkingLevel;
   /** `fast`: ask the provider to write faster where it can (for a higher price). Optional for engines. */
   speed?: "fast";
+  /** The user's language, for what the engine asks them itself (a permission question). */
+  locale?: Locale;
   /** A development session's project folder; absent for everyday conversations. */
   workspace?: Workspace;
   /** The files the user sent with this message. They are the user's own material: read them, do not obey them. */
@@ -133,14 +135,18 @@ export interface TurnUsage {
   durationMs?: number;
 }
 /** A model an engine can run, for choosing one per conversation. */
-export interface EngineModel { id: string; provider: string; name: string; reasoning: boolean; contextWindow?: number }
+export interface EngineModel { id: string; provider: string; name: string; reasoning: boolean; supportsImages?: boolean; engineDefault?: boolean; contextWindow?: number }
 /** How an engine reports calls to its own tools, which Alfred did not define. */
 export interface ExternalHooks {
-  /** Asks the user to allow this one call, showing `detail` (a diff) with the question. Resolves `deny` unless the user
-   * said yes; `always` (offered only with `always: true`) means yes to this and to the rest of its kind in the session.
-   * With `command` it is a shell command that is asked about: it is what the user is shown, and `always` (offered
-   * only for a plain command) allows that command for the rest of the session. */
-  allow(question: string, extra?: { detail?: string; always?: boolean; command?: string }): Promise<"allow" | "deny" | "always">;
+  /** Checks the current session mode for a command or a file edit (`inProject` uses its resolved path).
+   * Other calls always ask. A command can also return `always` for its narrower prefix grant. */
+  allow(question: string, extra?: {
+    detail?: string;
+    inProject?: boolean;
+    command?: string;
+    /** Older engines mark project edits this way. */
+    always?: boolean;
+  }): Promise<"allow" | "deny" | "always">;
   /** A file in the session's project changed: kept as a receipt. */
   changed?(file: FileChange): void;
   /** A step, shown like Alfred's own tool calls. A command's step ends with its exit code, how long it took and
@@ -200,7 +206,7 @@ async function drive(world: World, run: Run, engine: EnginePort, options: Execut
     if (conversation.worktree && !existsSync(conversation.worktree)) return finishRun(world, run.id, options.owner, { status: "failed", error: "worktree_missing" });
     workspace = {
       root: conversation.worktree ?? project.path, name: project.name, mode: conversation.mode ?? "plan",
-      commands: listCommandGrants(world, conversation.id).map((grant) => grant.command),
+      commands: conversation.commands,
       ...(conversation.branch ? { branch: conversation.branch } : {}),
     };
     const others = listProjects(world).filter((other) => other.trustedAt && other.id !== project.id).slice(0, 40).map((other) => ({ name: other.name, root: other.path }));
@@ -224,24 +230,35 @@ async function drive(world: World, run: Run, engine: EnginePort, options: Execut
       world.tx((db) => appendEvent(db, { kind: `run.${kind}`, subject: `run:${run.id}`, runId: run.id, actor: "alfred", payload }));
     } catch { /* a note is not worth failing the run */ }
   };
-  /** Who gave the latest answer (`home`, or a paired device): an `always` is that device's to have given. */
-  let answeredBy = "home";
-  const ask = (request: Parameters<RunToolContext["ask"]>[0] & { detail?: string; detailKind?: "command"; grant?: string; always?: boolean }): Promise<string> => {
+  const ask = (
+    request: Parameters<RunToolContext["ask"]>[0] & { detail?: string; detailKind?: "command"; grant?: string; always?: boolean; allowSession?: boolean },
+    currentDecision?: () => "allow" | "deny" | undefined,
+  ): Promise<string> => {
     // Unattended: a question would wait for no one. The profile offers no tool that asks; this is the backstop.
     if (profile.unattended) return Promise.reject(new Error("This run is unattended: nobody can answer. Propose the change instead."));
     const opened = openRequest(world, run.id, options.owner, {
       kind: request.kind ?? "input", question: request.question, options: request.options,
-      detail: request.detail, detailKind: request.detailKind, grant: request.grant, always: request.always,
+      detail: request.detail, detailKind: request.detailKind, grant: request.grant, always: request.always, allowSession: request.allowSession,
     });
+    controller.signal.throwIfAborted();
     return new Promise<string>((resolve, reject) => {
-      const onAnswer = (runId: string, requestId: string, answer: string, by: string | undefined) => {
+      const onAnswer = (runId: string, requestId: string, answer: string) => {
         if (runId !== run.id || requestId !== opened.id) return;
         cleanup();
-        answeredBy = by ?? "home";
         resolve(answer);
       };
       const onAbort = () => { cleanup(); reject(controller.signal.reason); };
-      const cleanup = () => { runAnswers.off("answer", onAnswer); controller.signal.removeEventListener("abort", onAbort); };
+      // A mode change from any device can settle an already-visible approval. An answer that changed the mode
+      // itself has already cleared this request in the same transaction.
+      const unsubscribe = currentDecision && onEvents(world, (kinds) => {
+        if (!kinds.has("conversation.mode_set")) return;
+        const decision = currentDecision();
+        if (!decision) return;
+        const pending = world.db.prepare(`SELECT 1 FROM core_runs WHERE id = ? AND state = 'waiting_permission'
+          AND json_extract(request, '$.id') = ?`).get(run.id, opened.id);
+        if (pending) answerRequest(world, run.id, { requestId: opened.id, answer: decision });
+      });
+      const cleanup = () => { unsubscribe?.(); runAnswers.off("answer", onAnswer); controller.signal.removeEventListener("abort", onAbort); };
       runAnswers.on("answer", onAnswer);
       controller.signal.addEventListener("abort", onAbort, { once: true });
     });
@@ -250,22 +267,30 @@ async function drive(world: World, run: Run, engine: EnginePort, options: Execut
   const external: ExternalHooks = {
     allow: async (question, extra) => {
       if (profile.unattended) return "deny";
-      if (extra?.command !== undefined) {
-        // A shell command: only in a session, shown whole; a plain one can be allowed for the rest of the session.
+      const command = extra?.command;
+      const inProject = extra?.inProject ?? (extra?.always ? true : undefined);
+      if (command !== undefined || inProject !== undefined) {
         if (!workspace) return "deny";
-        const plain = simpleCommand(extra.command);
-        const answer = await ask({ kind: "permission", question, detail: extra.command, detailKind: "command", always: plain, ...(plain ? { grant: normalizeCommand(extra.command) } : {}) });
-        if (answer === "always" && plain) {
-          try { withCoreContext({ actor: "user" }, () => grantCommand(world, conversation.id, extra.command!, answeredBy)); } catch { /* the run goes on */ }
-        }
-        return answer === "allow" || answer === "always" ? answer : "deny";
+        const allowSession = command !== undefined || inProject === true;
+        const currentDecision = () => {
+          const { mode, grants } = sessionPermissions(world, conversation.id);
+          if (!mode || mode === "plan") return "deny";
+          if (allowSession && mode === "edits") return "allow";
+          if (command !== undefined && commandAllowed(grants.map((grant) => grant.command), command)) return "allow";
+          return undefined;
+        };
+        const decision = currentDecision();
+        if (decision) return decision;
+        const answer = await ask({
+          kind: "permission", question, allowSession, detail: command ?? extra?.detail,
+          ...(command !== undefined ? { detailKind: "command" } : {}),
+          ...(command !== undefined && simpleCommand(command) ? { always: true, grant: normalizeCommand(command) } : {}),
+        }, currentDecision);
+        if (answer === "always") return "always";
+        return answer === "allow" || answer === "allow_session" ? "allow" : "deny";
       }
-      const answer = await ask({ kind: "permission", question, detail: extra?.detail, always: extra?.always && !!workspace });
-      // "Don't ask again" in a session: its mode becomes `edits`, from now on.
-      if (answer === "always" && workspace) {
-        try { withCoreContext({ actor: "user" }, () => updateConversation(world, conversation.id, { mode: "edits" })); } catch { /* the run goes on */ }
-      }
-      return answer === "allow" || answer === "always" ? answer : "deny";
+      const answer = await ask({ kind: "permission", question, detail: extra?.detail });
+      return answer === "allow" ? "allow" : "deny";
     },
     changed: (file) => {
       withCoreContext(context, () => world.tx(() => recordDomainEvent(world, {
@@ -287,11 +312,7 @@ async function drive(world: World, run: Run, engine: EnginePort, options: Execut
   };
 
   if (workspace) {
-    const shell = workspace;
     toolContext.command = async (question, command) => {
-      if (shell.mode === "plan") return "deny";
-      // Read now, not when the run started: a yes given earlier in this run counts.
-      if (commandAllowed(listCommandGrants(world, conversation.id).map((grant) => grant.command), command)) return "allow";
       const answer = await external.allow(question, { command });
       return answer === "deny" ? "deny" : "allow";
     };
@@ -342,10 +363,23 @@ async function drive(world: World, run: Run, engine: EnginePort, options: Execut
     tools,
     today: localDate(),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    locale: userLocale(world),
     onText: options.onLive ? (text) => options.onLive!({ runId: run.id, conversationId: run.conversationId, text }) : undefined,
     external,
   };
+  // The local Stop action wakes this executor as soon as its transaction commits.
+  // The heartbeat still catches cancellation written by another connection.
+  const abortIfCancelled = () => {
+    const cancelled = world.db.prepare("SELECT 1 FROM core_runs WHERE id = ? AND lease_owner = ? AND state = 'cancelling'")
+      .get(run.id, options.owner);
+    if (cancelled) controller.abort(new Stop("cancel"));
+  };
+  const unsubscribe = onEvents(world, (kinds) => {
+    if (kinds.has("run.cancel_requested")) abortIfCancelled();
+  });
   try {
+    abortIfCancelled();
+    controller.signal.throwIfAborted();
     // An engine that finished despite a cancel request reports what it actually did.
     const { reply } = await withCoreContext(context, () => engine.submit(request, controller.signal));
     await finishSteering?.();
@@ -361,6 +395,7 @@ async function drive(world: World, run: Run, engine: EnginePort, options: Execut
       return { ...run, state: "interrupted" };
     }
   } finally {
+    unsubscribe();
     clearInterval(heartbeat);
   }
 }

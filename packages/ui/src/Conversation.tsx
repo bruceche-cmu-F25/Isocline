@@ -1,5 +1,6 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { fastSpeed, type ConversationDetail, type CoreEvent, type EngineModel, type FileInfo, type Run, type RunRequest, type SessionMode, type ThinkingLevel, type ViewContext } from "@alfred/protocol";
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
+import { fastSpeed, type ConversationDetail, type CoreEvent, type FileInfo, type Run, type RunRequest, type SessionMode, type ThinkingLevel, type ViewContext } from "@alfred/protocol";
 import { mergeHistory } from "./conversationHistory.ts";
 import { useLiveText } from "./live.ts";
 import { ApiError, api } from "./api.ts";
@@ -7,10 +8,15 @@ import { Logo, modelMark } from "./brand/Logo.tsx";
 import { intlLocale, t, type Key } from "./i18n/index.ts";
 import { describeReceipt } from "./receipts.ts";
 import { RunFailure } from "./RunFailure.tsx";
+import { StopRun, stoppableRun } from "./StopRun.tsx";
 import { Diff } from "./Diff.tsx";
 import { Linked } from "./Linked.tsx";
+import { MessageBubble } from "./MessageBubble.tsx";
+import { SelectionActions } from "./SelectionActions.tsx";
 import { ConversationReply } from "./ConversationReply.tsx";
+import { SkillInput } from "./SkillInput.tsx";
 import { Markdown } from "./Markdown.tsx";
+import { ModelPicker } from "./shell/ModelPicker.tsx";
 import { ChoicePicker } from "./shell/ChoicePicker.tsx";
 import { Icon } from "./shell/icons.tsx";
 import { MicButton } from "./voice/MicButton.tsx";
@@ -21,6 +27,9 @@ import { sends } from "./prefs.ts";
 const BUSY = new Set<Run["state"]>(["queued", "running", "cancelling"]);
 /** The same empty list each time, so a turn with nothing recorded is not redrawn for a new one. */
 const NO_EVENTS: CoreEvent[] = [];
+
+const MESSAGE_LIMIT = 8000;
+const quoteText = (text: string) => text.split("\n").map((line) => `> ${line}`).join("\n");
 
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 /** 950, 1.2k, 34k, 1.3M */
@@ -118,6 +127,9 @@ function CommandStep({ step }: { step: Step }) {
 }
 
 const STEP_MARK: Record<string, string> = { started: "…", done: "✓", failed: "✗", declined: "—" };
+const PERMISSION_ANSWER: Record<string, Key> = {
+  allow: "run.allowed", deny: "run.denied", always: "run.always", allow_session: "run.allowSession",
+};
 
 export function Request({ run, request, showQuestion = true, onAnswered }: {
   run: Run; request: RunRequest; showQuestion?: boolean; onAnswered?(): void;
@@ -141,10 +153,13 @@ export function Request({ run, request, showQuestion = true, onAnswered }: {
         {permission ? (
           <>
             <button type="button" disabled={busy} onClick={() => answer("allow")}>{t("common.allow")}</button>
-            <button type="button" className="ghost" disabled={busy} onClick={() => answer("deny")}>{t("common.deny")}</button>
             {request.options.includes("always") && (
               <button type="button" className="ghost" disabled={busy} onClick={() => answer("always")} title={command ? t("req.alwaysCommandTitle", { command: request.grant ?? "" }) : t("req.alwaysTitle")}>{t(command ? "req.alwaysCommand" : "req.always")}</button>
             )}
+            {request.options.includes("allow_session") && (
+              <button type="button" className="ghost" disabled={busy} onClick={() => answer("allow_session")} title={t("mode.edits.hint")}>{t("mode.edits")}</button>
+            )}
+            <button type="button" className="ghost" disabled={busy} onClick={() => answer("deny")}>{t("common.deny")}</button>
           </>
         ) : request.options.map((option) => (
           <button type="button" key={option} disabled={busy} onClick={() => answer(option)}>{option}</button>
@@ -202,9 +217,9 @@ const Turn = memo(function Turn({ run, receipts, activity, files, highlighted, a
     <li className="turn" data-highlighted={highlighted || undefined} id={`run-${run.id}`}>
       {askedOn && <p className="asked-on">{askedOn}</p>}
       {/* An automation's run: nobody said anything; say which automation started it, and when. */}
-      {startedBy ? <p className="asked-on auto-from" title={run.goal}>{startedBy}</p> : <p className="said"><Linked text={run.goal} /></p>}
+      {startedBy ? <p className="asked-on auto-from" title={run.goal}>{startedBy}</p> : <MessageBubble text={run.goal} />}
       <SentFiles files={files} />
-      {added.map((event) => <p className="said added" key={event.id}><Linked text={String(event.payload.text)} /></p>)}
+      {added.map((event) => <MessageBubble key={event.id} text={String(event.payload.text)} added />)}
       <div className="reply-row">
         <span className="turn-dot" data-phase={dot} data-latest={latest || undefined} aria-hidden="true" />
         <div className="reply-col">
@@ -217,7 +232,7 @@ const Turn = memo(function Turn({ run, receipts, activity, files, highlighted, a
               </ol>
             )}
             {answers.map((event) => (
-              <p className="answered small" key={event.id}>{String(event.payload.question)} → {event.payload.kind === "permission" ? t(event.payload.answer === "allow" ? "run.allowed" : event.payload.answer === "always" ? "run.always" : "run.denied") : String(event.payload.answer)}</p>
+              <p className="answered small" key={event.id}>{String(event.payload.question)} → {event.payload.kind === "permission" ? t(PERMISSION_ANSWER[String(event.payload.answer)] ?? "run.denied") : String(event.payload.answer)}</p>
             ))}
             {run.request && <Request key={run.request.id} run={run} request={run.request} />}
             {working && !run.request && (label || !live) && (
@@ -250,7 +265,6 @@ const Turn = memo(function Turn({ run, receipts, activity, files, highlighted, a
 
 const MODES: SessionMode[] = ["plan", "ask", "edits"];
 const THINKING: Array<[ThinkingLevel | "", Key]> = [["", "think.default"], ["off", "think.off"], ["low", "think.low"], ["medium", "think.medium"], ["high", "think.high"], ["xhigh", "think.xhigh"], ["max", "think.max"]];
-let modelList: Promise<EngineModel[]> | null = null;
 
 type SessionToolbar = (title: string, usage: ReactNode) => ReactNode;
 
@@ -332,51 +346,51 @@ function SessionUsage({ sample }: { sample?: CoreEvent["payload"] }) {
   );
 }
 
-/** Under the composer: what the next turn runs on, the conversation's model and thinking level. Unset means Pi's
- * defaults. A new conversation has none to set until its first message creates it. */
-function ComposerBar({ conversation, onError }: { conversation: ConversationDetail["conversation"] | undefined; onError(message: string | null): void }) {
-  const [models, setModels] = useState<EngineModel[]>([]);
-  const exists = !!conversation;
-  useEffect(() => {
-    if (!exists) return;
-    modelList ??= api.models().then((response) => response.models).catch(() => { modelList = null; return []; });
-    void modelList.then(setModels);
-  }, [exists]);
-  if (!conversation) return null;
+function SessionSettings({ conversation, preferredModel, onError }: { conversation: ConversationDetail["conversation"]; preferredModel?: string | null; onError(message: string | null): void }) {
+  const [expanded, setExpanded] = useState(false);
+  const optionsId = useId();
   const change = (patch: { model?: string | null; thinking?: ThinkingLevel | null; speed?: "fast" | null; mode?: SessionMode }) => {
     onError(null);
     api.updateConversation(conversation.id, patch).catch((reason: Error) => onError(reason.message));
   };
-  const modelOptions: Array<{ value: string; label: string; short?: string }> = models.map((model) => ({ value: `${model.provider}/${model.id}`, label: `${model.name} · ${model.provider}`, short: model.name }));
-  if (conversation.model && !modelOptions.some((option) => option.value === conversation.model)) {
-    modelOptions.unshift({ value: conversation.model, label: conversation.model.split("/").at(-1) || conversation.model });
-  }
-  modelOptions.unshift({ value: "", label: t("conv.defaultModel") });
-  const mark = modelMark(conversation.model);
   // Fast is offered where the chosen model can write faster; with the default model it is kept and used where it can.
   const slash = conversation.model?.indexOf("/") ?? -1;
   const canFast = !conversation.model || !!fastSpeed(conversation.model.slice(0, slash), conversation.model.slice(slash + 1));
+  const mode = conversation.mode ?? "plan";
+  const tuningLabel = t("conv.thinkingSpeed");
+  const thinking = conversation.thinking ?? "";
+  const thinkingOptions = THINKING.map(([value, label]) => ({ value, label: t(label) }));
+  const thinkingLabel = thinkingOptions.find((option) => option.value === thinking)?.label ?? thinking;
+  const tuningTitle = [thinkingLabel, t(conversation.speed === "fast" ? "speed.fast" : "speed.standard")].join(" · ");
   return (
-    <>
-      <ChoicePicker label={t("conv.model")} value={conversation.model ?? ""} options={modelOptions}
-        icon={mark ? <Logo name={mark} /> : <Icon name="model" />} onChange={(value) => change({ model: value || null })} />
-      <ChoicePicker label={t("conv.thinking")} value={conversation.thinking ?? ""} on={!!conversation.thinking} icon={<Icon name="bulb" />}
-        options={THINKING.map(([value, label]) => ({ value, label: t(label) }))}
-        onChange={(value) => change({ thinking: (value || null) as ThinkingLevel | null })} />
-      <ChoicePicker label={t("speed.title")} title={t(canFast ? "speed.hint" : "speed.none")}
-        value={conversation.speed ?? ""} fast={conversation.speed === "fast"}
-        icon={<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11 3 5 11h4.5L9 17l6-8h-4.5z" /></svg>}
-        options={[
-          { value: "", label: t("speed.standard") },
-          { value: "fast", label: t(canFast ? "speed.fast" : "speed.fastNone"), disabled: !canFast },
-        ]}
-        onChange={(value) => change({ speed: value === "fast" ? "fast" : null })} />
-      {conversation.projectId && (
-        <ChoicePicker label={t("mode.title")} value={conversation.mode ?? "plan"} mode={conversation.mode ?? "plan"} icon={<Icon name="shield" />}
-          options={MODES.map((value) => ({ value, label: t(`mode.${value}` as Key) }))}
-          onChange={(value) => change({ mode: value as SessionMode })} />
-      )}
-    </>
+    <div className="session-settings">
+      <div className="session-settings-row">
+        <ModelPicker model={conversation.model} preferred={preferredModel} onChange={(model) => change({ model })} />
+        {conversation.projectId && (
+          <ChoicePicker label={t("mode.title")} value={mode} mode={mode} icon={<Icon name="shield" />}
+            options={MODES.map((value) => ({ value, label: t(`mode.${value}` as Key), short: t(`mode.${value}.short` as Key) }))}
+            onChange={(value) => change({ mode: value as SessionMode })} />
+        )}
+        <button type="button" className="pick session-tuning" aria-expanded={expanded} aria-controls={optionsId}
+          aria-label={tuningLabel} title={`${tuningLabel} · ${tuningTitle}`} data-custom={!!(conversation.thinking || conversation.speed) || undefined}
+          onClick={() => setExpanded((open) => !open)}>
+          <Icon name="sliders" /><span>{tuningLabel}</span>
+        </button>
+      </div>
+      <div id={optionsId} className="session-tuning-options" role="group" aria-label={tuningLabel} hidden={!expanded}>
+        <ChoicePicker label={t("conv.thinking")} value={thinking} on={!!thinking} icon={<Icon name="bulb" />}
+          options={thinkingOptions}
+          onChange={(value) => change({ thinking: (value || null) as ThinkingLevel | null })} />
+        <ChoicePicker label={t("speed.title")} title={t(canFast ? "speed.hint" : "speed.none")}
+          value={conversation.speed ?? ""} fast={conversation.speed === "fast"}
+          icon={<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11 3 5 11h4.5L9 17l6-8h-4.5z" /></svg>}
+          options={[
+            { value: "", label: t("speed.standard") },
+            { value: "fast", label: t(canFast ? "speed.fast" : "speed.fastNone"), disabled: !canFast },
+          ]}
+          onChange={(value) => change({ speed: value === "fast" ? "fast" : null })} />
+      </div>
+    </div>
   );
 }
 
@@ -408,6 +422,7 @@ function Stats({ total, percent, window }: { total: Spent; percent: number | nul
 }
 
 export interface ConversationProps {
+  preferredModel?: string | null;
   /** null: a new conversation, started by the first message. */
   id: string | null;
   highlighted: ReadonlySet<string>;
@@ -429,7 +444,7 @@ export interface ConversationProps {
   sessionToolbar?: SessionToolbar;
 }
 
-export function Conversation({ id, highlighted, context, suggestions, pageTitle, automationTitle, onEvent, onView, onStarted, slim, sessionToolbar }: ConversationProps) {
+export function Conversation({ id, preferredModel, highlighted, context, suggestions, pageTitle, automationTitle, onEvent, onView, onStarted, slim, sessionToolbar }: ConversationProps) {
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const { store, text: draft, sending, attachments } = useComposer(sessionToolbar && id ? id : undefined);
   const setDraft = store.setText;
@@ -493,6 +508,7 @@ export function Conversation({ id, highlighted, context, suggestions, pageTitle,
 
   const runs = detail?.runs ?? [];
   const working = runs.find((run) => run.state === "running");
+  const stopTarget = stoppableRun(runs);
   // A turn waiting on the user holds the conversation: a new message would queue behind it and never start. So
   // words typed while it asks a question are the answer to that question; a yes-or-no on a change stays a button.
   const waitingOn = runs.find((run) => run.request);
@@ -540,8 +556,28 @@ export function Conversation({ id, highlighted, context, suggestions, pageTitle,
     }
   };
 
+  const followUp = (text: string) => {
+    const next = `${quoteText(text)}\n\n${store.snapshot().text}`;
+    if (next.length > MESSAGE_LIMIT) { setError(t("conv.quoteTooLong")); return; }
+    setError(null);
+    flushSync(() => setDraft(next));
+    field.current?.focus();
+    field.current?.setSelectionRange(next.length, next.length);
+  };
+
+  const explain = (text: string) => {
+    if (!id) return;
+    const goal = `${t("conv.explainPrompt")}\n\n${quoteText(text)}`;
+    if (goal.length > MESSAGE_LIMIT) { setError(t("conv.quoteTooLong")); return; }
+    setError(null);
+    atEnd.current = true;
+    // An explanation is its own turn. The draft, its files and any pending answer belong to the composer.
+    void api.submit(goal, id).catch((reason: Error) => setError(reason.message));
+  };
+
   const steerTarget = attachments.ids.length ? undefined : working;
   const answerTarget = attachments.ids.length ? undefined : asking;
+  const hasMessage = !!draft.trim() || attachments.items.length > 0;
   const sendDisabled = (!draft.trim() && !attachments.ids.length) || sending || attachments.busy;
   const sendLabel = t(answerTarget ? "req.answer" : steerTarget ? "composer.steer" : working ? "composer.afterTurn" : "composer.send");
   const send = (text = draft, timing: "default" | "afterTurn" = "default") => {
@@ -604,6 +640,7 @@ export function Conversation({ id, highlighted, context, suggestions, pageTitle,
           ))}
         </ol>
       )}
+      {id && runs.length > 0 && <SelectionActions list={list} onFollowUp={followUp} onExplain={explain} />}
       {offer && (
         <div className="suggestions" role="group" aria-label={t("chips.label")}>
           {suggestions.map((text) => <button type="button" key={text} className="suggestion" onClick={() => send(text)}>{text}</button>)}
@@ -611,31 +648,33 @@ export function Conversation({ id, highlighted, context, suggestions, pageTitle,
       )}
       <form className="composer" onSubmit={(event) => { event.preventDefault(); send(); }} onPaste={attachments.onPaste} onDrop={attachments.onDrop} onDragOver={attachments.onDragOver}>
         <AttachChips attachments={attachments} />
-        <textarea
-          ref={field}
+        <SkillInput
+          field={field}
+          skills={!!sessionToolbar && !asking}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onValueChange={setDraft}
           onKeyDown={onKey}
           rows={Math.min(6, Math.max(1, draft.split("\n").length))}
           placeholder={t(answerTarget ? "composer.answer" : steerTarget ? "composer.working" : id ? "composer.continue" : "composer.new")}
           aria-label={t("composer.label")}
-          maxLength={8000}
+          maxLength={MESSAGE_LIMIT}
         />
         <div className="composer-bar">
-          {!slim && <ComposerBar conversation={detail?.conversation} onError={setError} />}
           <span className="grow" />
           <AttachButton attachments={attachments} />
           <MicButton onText={(words) => { setDraft((now) => appendDictation(now, words)); field.current?.focus(); }} />
           <span className="composer-send-actions">
-            {steerTarget && <button type="button" className="send-after" disabled={sendDisabled} onClick={() => send(draft, "afterTurn")}>
+            {steerTarget && hasMessage && <button type="button" className="send-after" disabled={sendDisabled} onClick={() => send(draft, "afterTurn")}>
               {t("composer.afterTurn")}
             </button>}
-            <button type="submit" className="send" disabled={sendDisabled} aria-label={sendLabel} title={sendLabel}>
+            {stopTarget && <StopRun key={stopTarget.id} run={stopTarget} onError={setError} />}
+            {(!stopTarget || hasMessage) && <button type="submit" className="send" disabled={sendDisabled} aria-label={sendLabel} title={sendLabel}>
               <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
-            </button>
+            </button>}
           </span>
         </div>
       </form>
+      {!slim && detail && <SessionSettings conversation={detail.conversation} preferredModel={preferredModel} onError={setError} />}
       {error && <p className="problem small composer-error" role="alert">{error}</p>}
     </section>
   );

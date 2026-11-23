@@ -10,7 +10,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { EnginePort } from "@alfred/core";
 import { todoModule } from "@alfred/module-todo";
-import type { ConversationDetail, SessionBranch, SessionChanges, SessionProcess, SessionProcesses, SubmitRunResponse } from "@alfred/protocol";
+import { command } from "../src/commands.ts";
+import type { Conversation, ConversationDetail, ProjectBranches, SessionBranch, SessionChanges, SessionProcess, SessionProcesses, SubmitRunResponse } from "@alfred/protocol";
 import { ASSISTANT_PROFILE, createHttpServer, DEVELOPER_PROFILE, openHome, profiles, type Home } from "../src/index.ts";
 
 async function start(home: Home): Promise<{ server: Server; base: string }> {
@@ -119,6 +120,59 @@ test("a session in a worktree: its own folder and branch, committed, archived an
     server.close();
     home.close();
   }
+});
+
+test("selecting an existing branch uses its tip, keeps project edits and respects other checkouts", async () => {
+  const { folder, sh } = repo();
+  const branch = "feature/聊天";
+  sh("switch", "-qc", branch);
+  writeFileSync(join(folder, "a.txt"), "feature\n");
+  sh("commit", "-qam", "feature");
+  const tip = sh("rev-parse", "HEAD").trim();
+  sh("switch", "-q", "main");
+  writeFileSync(join(folder, "a.txt"), "my local edits\n");
+  const home = openHome({ dataDir: mkdtempSync(join(tmpdir(), "alfred-")), engine: { submit: async () => ({ reply: "ok" }) }, modules: [] });
+  const { server, base } = await start(home);
+  try {
+    const project = await (await post(base, "/api/projects", { path: folder })).json() as { id: string };
+    const list = `/api/projects/${project.id}/branches`;
+    assert.equal((await fetch(base + list)).status, 409);
+    await post(base, `/api/projects/${project.id}/trust`, {});
+    const branches = await get<ProjectBranches>(base, list);
+    assert.equal(branches.current, "main");
+    assert.deepEqual(branches.branches.find((candidate) => candidate.name === branch), { name: branch, checkedOut: false });
+    const startOn = (target: string, requestId: string) => post(base, "/api/conversations", { projectId: project.id, title: "Review", branch: target, requestId });
+    const local = await startOn("main", "current-1");
+    assert.equal(local.status, 201);
+    assert.equal((await local.json() as Conversation).worktree, null);
+
+    const requests = ["feature-1", "feature-2"];
+    const claims = await Promise.all(requests.map((id) => startOn(branch, id)));
+    assert.deepEqual(claims.map((res) => res.status).sort(), [201, 409]);
+    const winning = claims.findIndex((response) => response.status === 201);
+    const session = await claims[winning].json() as Conversation;
+    assert.equal((await claims[1 - winning].json() as { code: string }).code, "git_branch_in_use");
+    assert.equal(session.branch, branch);
+    assert.equal(session.base, tip);
+    assert.equal(readFileSync(join(session.worktree!, "a.txt"), "utf8"), "feature\n");
+    assert.equal(((await (await startOn(branch, requests[winning])).json()) as Conversation).id, session.id);
+    const update = (archived: boolean) => post(base, `/api/conversations/${session.id}`, { archived });
+    assert.equal((await update(true)).status, 200);
+    assert.equal(sh("rev-parse", `refs/heads/${branch}`).trim(), tip);
+    const external = join(mkdtempSync(join(tmpdir(), "alfred-other-")), "checkout");
+    sh("worktree", "add", "-q", external, branch);
+    assert.equal((await get<ProjectBranches>(base, list)).branches.find((candidate) => candidate.name === branch)?.checkedOut, true);
+    assert.equal((await (await update(false)).json() as { code: string }).code, "git_branch_in_use");
+    assert.ok(existsSync(join(external, "a.txt")));
+    sh("worktree", "remove", external);
+    assert.equal((await update(false)).status, 200);
+    assert.equal(readFileSync(join(session.worktree!, "a.txt"), "utf8"), "feature\n");
+    assert.equal((await update(true)).status, 200);
+    sh("branch", "-D", branch);
+    assert.equal((await (await update(false)).json() as { code: string }).code, "git_branch_missing");
+    assert.equal(sh("branch", "--show-current").trim(), "main");
+    assert.equal(readFileSync(join(folder, "a.txt"), "utf8"), "my local edits\n");
+  } finally { server.close(); home.close(); }
 });
 
 test("a worktree needs a git repository; a second session on the same title gets a branch of its own", async () => {
@@ -248,4 +302,47 @@ test("a conversation's speed is kept and reaches the engine; an unknown one is r
     server.close();
     home.close();
   }
+});
+
+test("checkout failures release only Alfred's allocations and simultaneous retries share one session", async () => {
+  const { folder, sh } = repo();
+  const home = openHome({ dataDir: mkdtempSync(join(tmpdir(), "alfred-")), modules: [], engine: { submit: async () => ({ reply: "ok" }) } });
+  try {
+    const { result } = await command(home, "project.add", { path: folder });
+    const { id: projectId } = result as { id: string };
+    await command(home, "project.trust", { id: projectId });
+    const branch = "topics/发布+v1.2";
+    sh("branch", branch);
+    const create = (options: object) => command(home, "conversation.start", { projectId, title: "Try this", ...options });
+    const hook = join(folder, ".git", "hooks", "post-checkout");
+    sh("config", "core.hooksPath", join(folder, ".git", "hooks"));
+    const branches = () => sh("for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads").trim().split("\n");
+    const count = () => sh("worktree", "list", "--porcelain").split("\n").filter((line) => line.startsWith("worktree ")).length;
+    writeFileSync(hook, "#!/bin/sh\nexit 3\n", { mode: 0o755 });
+    for (const options of [{ branch }, { worktree: true }]) {
+      await assert.rejects(create(options));
+      assert.equal(count(), 1);
+      assert.deepEqual(branches(), ["main", branch]);
+    }
+
+    writeFileSync(hook, "#!/bin/sh\nexit 0\n");
+    home.world.db.exec("CREATE TEMP TRIGGER refuse_session BEFORE INSERT ON core_conversations BEGIN SELECT RAISE(ABORT, 'write refused'); END");
+    for (const options of [{ branch }, { worktree: true }]) {
+      await assert.rejects(create(options), /write refused/);
+      assert.equal(count(), 1);
+      assert.deepEqual(branches(), ["main", branch]);
+    }
+    home.world.db.exec("DROP TRIGGER refuse_session");
+    const request = { branch, requestId: "same-branch-claim" };
+    const [first, retry] = await Promise.all([create(request), create(request)]);
+    assert.deepEqual(first.result, retry.result);
+    assert.deepEqual([first.replayed, retry.replayed], [false, true]);
+    assert.equal(count(), 2);
+
+    // A hook can fail after writing files. Keep that checkout with the edits and report where to find it.
+    writeFileSync(hook, "#!/bin/sh\necho hook-change >> a.txt\nexit 3\n");
+    await assert.rejects(create({ worktree: true }), /folder was kept at/);
+    assert.equal(count(), 3);
+    assert.equal(readFileSync(join(folder, "a.txt"), "utf8"), "one\n");
+  } finally { home.close(); }
 });

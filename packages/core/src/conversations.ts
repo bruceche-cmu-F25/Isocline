@@ -64,7 +64,7 @@ export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhig
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export const SPEEDS = ["fast"] as const;
 export type Speed = (typeof SPEEDS)[number];
-const MODEL = /^[A-Za-z0-9._-]{1,60}\/[A-Za-z0-9._:@\/-]{1,139}$/;
+export const CONVERSATION_MODEL = /^[A-Za-z0-9._-]{1,60}\/[A-Za-z0-9._:@\/-]{1,139}$/;
 
 /** A title from what the user first asked: the start of it, on one line. */
 export function titleFrom(goal: string): string {
@@ -102,12 +102,13 @@ function toConversation(row: Record<string, unknown>): Conversation {
 }
 
 /** Only inside a world transaction. */
-export function createConversation(db: DatabaseSync, input: { title: string; now: number; projectId?: string; mode?: SessionMode; base?: string | null; worktree?: SessionWorktree | null }): string {
+export function createConversation(db: DatabaseSync, input: { title: string; now: number; projectId?: string; mode?: SessionMode; base?: string | null; worktree?: SessionWorktree | null; model?: string | null }): string {
+  if (input.model != null && !CONVERSATION_MODEL.test(input.model)) throw new ConversationError("invalid", "A model is written provider/model");
   const id = newId();
   const worktree = input.projectId ? input.worktree ?? null : null;
-  db.prepare("INSERT INTO core_conversations (id, title, created_at, updated_at, project_id, mode, base, worktree, branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(id, input.title.slice(0, 200), iso(input.now), iso(input.now), input.projectId ?? null, input.projectId ? input.mode ?? "ask" : null, input.base ?? null,
-      worktree?.path ?? null, worktree?.branch ?? null);
+  db.prepare("INSERT INTO core_conversations (id, title, created_at, updated_at, project_id, mode, base, worktree, branch, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(id, input.title.slice(0, 200), iso(input.now), iso(input.now), input.projectId ?? null, input.projectId ? input.mode ?? "edits" : null, input.base ?? null,
+      worktree?.path ?? null, worktree?.branch ?? null, input.model ?? null);
   appendEvent(db, {
     kind: "conversation.created", subject: `conversation:${id}`, runId: null, now: input.now,
     payload: { title: input.title.slice(0, 200), ...(input.projectId ? { projectId: input.projectId } : {}), ...(worktree ? { branch: worktree.branch } : {}) },
@@ -119,19 +120,27 @@ export function createConversation(db: DatabaseSync, input: { title: string; now
 export interface SessionWorktree { path: string; branch: string }
 
 const COMMIT = /^[0-9a-f]{4,64}$/;
-const BRANCH = /^(?!-)(?!.*\.\.)[A-Za-z0-9._\/-]{1,200}$/;
+// A Git branch may contain Unicode and punctuation. Only the home node chooses the checkout path and
+// verifies the exact local ref with Git before passing it here.
+const BRANCH = /^(?![-/])(?!.*(?:\.\.|@\{|\/\/))(?!.*[./]$)[^\x00-\x20\x7f~^:?*\[\\]{1,4096}$/u;
 
 /** A development session in a trusted project, created before its first message (an everyday conversation is
  * created by its first message instead). The title comes from what the user is about to ask. `worktree`: the
  * worktree made for it (the home node makes it before this; the session then works there, not in the project). */
-export function startSession(world: World, input: { projectId: string; title: string; mode?: SessionMode; base?: string | null; worktree?: SessionWorktree | null; now?: number }): Conversation {
+export function startSession(world: World, input: { projectId: string; title: string; mode?: SessionMode; base?: string | null; worktree?: SessionWorktree | null; model?: string | null; now?: number }): Conversation {
   const now = input.now ?? Date.now();
-  const project = getProject(world, input.projectId);
-  if (!project.trustedAt) throw new ProjectError("untrusted");
   if (input.mode !== undefined && !SESSION_MODES.includes(input.mode)) throw new ConversationError("invalid", "Unknown permission mode");
   if (input.base !== undefined && input.base !== null && !COMMIT.test(input.base)) throw new ConversationError("invalid", "A base is a commit id");
   if (input.worktree && (!isAbsolute(input.worktree.path) || !BRANCH.test(input.worktree.branch))) throw new ConversationError("invalid", "A worktree is an absolute path and a branch");
-  const id = world.tx((db) => createConversation(db, { title: titleFrom(input.title), now, projectId: project.id, mode: input.mode, base: input.base, worktree: input.worktree }));
+  const id = world.tx((db) => {
+    const project = getProject(world, input.projectId);
+    if (!project.trustedAt) throw new ProjectError("untrusted");
+    if (input.mode && input.mode !== project.defaultMode) {
+      db.prepare("UPDATE core_projects SET default_mode = ? WHERE id = ?").run(input.mode, project.id);
+      appendEvent(db, { kind: "project.default_mode_set", subject: `project:${project.id}`, payload: { mode: input.mode }, runId: null, now });
+    }
+    return createConversation(db, { title: titleFrom(input.title), now, projectId: project.id, mode: input.mode ?? project.defaultMode, base: input.base, worktree: input.worktree, model: input.model });
+  });
   return getConversation(world, id);
 }
 
@@ -264,7 +273,7 @@ export function updateConversation(
   change: { title?: string; archived?: boolean; model?: string | null; thinking?: ThinkingLevel | null; speed?: Speed | null; mode?: SessionMode; now?: number },
 ): Conversation {
   const now = change.now ?? Date.now();
-  if (change.model !== undefined && change.model !== null && !MODEL.test(change.model)) throw new ConversationError("invalid", "A model is written provider/model");
+  if (change.model !== undefined && change.model !== null && !CONVERSATION_MODEL.test(change.model)) throw new ConversationError("invalid", "A model is written provider/model");
   if (change.thinking !== undefined && change.thinking !== null && !THINKING_LEVELS.includes(change.thinking)) throw new ConversationError("invalid", "Unknown thinking level");
   if (change.speed !== undefined && change.speed !== null && !SPEEDS.includes(change.speed)) throw new ConversationError("invalid", "Unknown speed");
   world.tx((db) => {

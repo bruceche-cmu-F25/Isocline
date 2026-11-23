@@ -32,6 +32,7 @@ import { ConversationReply } from "../ConversationReply.tsx";
 import { Markdown } from "../Markdown.tsx";
 import { describeReceipt } from "../receipts.ts";
 import { RunFailure } from "../RunFailure.tsx";
+import { StopRun, stoppableRun } from "../StopRun.tsx";
 import { MicButton } from "../voice/MicButton.tsx";
 import { AttachButton, AttachChips, useAttachments } from "../attach.tsx";
 import { appendDictation } from "../voice/wav.ts";
@@ -174,6 +175,7 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
   const hovered = useRef(false);
 
   const run = newestRun(state.runs, selected);
+  const stopTarget = selected && !about ? stoppableRun(state.runs.filter((item) => item.conversationId === selected).reverse()) : undefined;
   const where = run ? standing(run) : null;
   const proposal = run ? state.proposals?.find((candidate) => candidate.runId === run.id) : undefined;
 
@@ -386,6 +388,7 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
     else { setFocused(false); field.current?.blur(); if (dock && !draft) onBack?.(); }
   };
 
+  const hasMessage = !!draft.trim() || (!about && attachments.items.length > 0);
   const showCard = card && !!run;
   const chips = about ? about.chips ?? [] : suggestions;
   const offer = focused && !draft.trim() && !sending && !landed && (about ? true : !showCard && where !== "busy") && chips.length > 0;
@@ -478,11 +481,12 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
         {!dock && !draft && !focused && !about && <kbd aria-hidden="true">{MOD}J</kbd>}
         {!about && <AttachButton attachments={attachments} />}
         <MicButton onText={(text) => { setDraft((now) => appendDictation(now, text)); field.current?.focus(); }} />
-        <button type="submit" className="send" disabled={(!draft.trim() && !(attachments.ids.length && !about)) || sending || attachments.busy} aria-label={t("composer.send")}
+        {stopTarget && <StopRun key={stopTarget.id} run={stopTarget} onError={setError} />}
+        {(!stopTarget || hasMessage) && <button type="submit" className="send" disabled={(!draft.trim() && !(attachments.ids.length && !about)) || sending || attachments.busy} aria-label={t("composer.send")}
           // The cursor stays in the field, so the button does what Enter would: the row that is lit.
           onMouseDown={(event) => event.preventDefault()}>
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M11 5l5 5-5 5" /></svg>
-        </button>
+        </button>}
       </form>
     </div>
   );

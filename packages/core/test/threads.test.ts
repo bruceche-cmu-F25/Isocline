@@ -238,13 +238,14 @@ test("a run waiting on the user outlasts its lease (the machine slept) and goes 
   assert.deepEqual(toys(w), [], "what the answer allowed was done");
 });
 
-test("cancelling a run that waits on the user stops it without an answer", async () => {
+test("stopping a waiting run after sleep needs neither an answer nor a heartbeat", async () => {
   const w = world();
   const { run } = submitRun(w, { requestId: "r1", goal: "ask me", profile: "tasks" });
   const done = createRunDrain(w, { submit: async (request) => ({ reply: await tool(request, "ask_user").execute({ question: "?" }, new AbortController().signal) }) },
-    { owner: "home", profiles: profiles(w), heartbeatMs: 5 }).kick();
+    { owner: "home", profiles: profiles(w), heartbeatMs: 1e9 }).kick();
   await tick();
   assert.equal(getRun(w, run.id).run.state, "waiting_input");
+  w.db.prepare("UPDATE core_runs SET lease_until = ? WHERE id = ?").run(new Date(Date.now() - 3_600_000).toISOString(), run.id);
   requestCancel(w, run.id);
   await done;
   const final = getRun(w, run.id).run;

@@ -53,15 +53,14 @@ commands depends on the session's mode, given below. Answer from the code you re
 say so when you have not checked something. If a wrong guess would matter, ask with ask_user. Never claim a change
 you did not make with a tool. Reply in the language of the request, as long as the answer needs and no longer.`;
 
-/** How a session's run is told about the shell: every command is the user's to allow. */
-const COMMANDS = "You can run shell commands in the project with bash (tests, builds, git). The user sees each command whole and allows it first, unless they allowed that command for this session; so run one plain command at a time (no ;, &&, pipes or redirection unless needed), prefer commands that only read or check, and never run anything destructive, anything that pushes or publishes, or anything outside the project unless the user asked for exactly that. If they decline, accept it and do not try another way. Report a command's real result, including a failure.";
+const COMMANDS = "You can run shell commands in the project with bash (tests, builds, git). Alfred checks the user's current permission mode at each call. Prefer commands that only read or check. Only run destructive commands, push, publish or work outside the project when the user asked for exactly that. Respect a declined tool call. Report the command's real result, including a failure.";
 
 /** What each permission mode lets a session's run do in its folder (core projects.ts SESSION_MODES), as the run is
  * told. The engine enforces it; this only keeps the run's words in step with what its tools will do. */
 const SESSION_MODE: Record<SessionMode, string> = {
   plan: "This session is in plan mode: you can read but not change files, and you cannot run commands. When a change or a command is needed, say exactly what you would change or run, and where.",
-  ask: `This session is in ask mode: you can change files with your file tools. The user is shown each change as a diff and allows it first; if they decline, accept it and do not try another way. ${COMMANDS}`,
-  edits: `This session is in edits mode: you can change files inside the project with your file tools without asking; a change outside it asks the user first. Make only the changes the request needs, and say which files you changed. ${COMMANDS}`,
+  ask: `This session is in ask mode: you can change files and run commands. Alfred shows the user each file edit and each command for approval, unless they already allowed that command. ${COMMANDS}`,
+  edits: `In always allow mode, project file edits, shell commands and background commands can proceed without asking. File tools still ask before editing outside the project. Make only the changes the request needs, and say which files you changed. ${COMMANDS}`,
 };
 
 const UNATTENDED = `This run was started by one of the user's automations, on its schedule: nobody is watching
@@ -141,7 +140,7 @@ function processTools(world: World, processes: Processes): RunTool[] {
     label: "Start process",
     description: [
       "Start a command that keeps running in the background in this session's folder: a dev server, a watcher, a long build.",
-      "The user sees the command whole and allows it first, like bash. It keeps running after your turn; the user sees it in the session's panel and can stop it.",
+      "The session's current shell permissions apply. The process keeps running after your turn and the user can stop it from the session's panel.",
       "Returns what it printed in its first seconds and the local address it serves, if it printed one. Not available in plan mode.",
     ].join(" "),
     parameters: {

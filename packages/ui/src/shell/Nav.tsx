@@ -33,6 +33,7 @@ export interface NavProps {
   /** The development session open on the Code page, if any. */
   session: string | null;
   onSession(id: string | null): void;
+  onNewProjectSession(projectId: string): void;
   connection: Connection;
   onArchive(conversation: Conversation, worktree?: "keep" | "discard", archiveRuns?: "finish" | "stop"): Promise<void>;
   onShowArchive(): void;
@@ -60,7 +61,7 @@ export function ViewButtons({ onLanguage }: { onLanguage(): void }) {
   );
 }
 
-export function Nav({ state, pages, page, mode, selected, session, onSession, connection, onArchive, onShowArchive, onPage, onSelect, onClose, onLanguage }: NavProps) {
+export function Nav({ state, pages, page, mode, selected, session, onSession, onNewProjectSession, connection, onArchive, onShowArchive, onPage, onSelect, onClose, onLanguage }: NavProps) {
   const rename = (conversation: Conversation) => {
     const title = window.prompt(t("nav.rename"), conversation.title);
     if (title && title.trim() && title.trim() !== conversation.title) api.updateConversation(conversation.id, { title }).catch(() => {});
@@ -158,7 +159,13 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, co
           })}
           {items.some((item) => item.group === "dev") && projects.map((project) => (
             <div className="nav-project" key={project.id}>
-              <p className="nav-project-name" title={project.path}>{project.name}</p>
+              <div className="nav-project-head">
+                <p className="nav-project-name" title={project.path}>{project.name}</p>
+                <button type="button" className="icon-btn" aria-label={t("nav.newProjectConversation", { name: project.name })}
+                  title={t("nav.newProjectConversation", { name: project.name })} onClick={() => onNewProjectSession(project.id)}>
+                  <Icon name="plus" />
+                </button>
+              </div>
               <ul className="conv-list">
                 {sessionsIn(project.id).map((conversation) => (
                   <li key={conversation.id}>

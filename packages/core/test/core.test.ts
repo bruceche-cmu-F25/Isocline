@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
-  acknowledgeNotice, answerRequest, claimNextRun, claimNotice, CommandConflictError, CORE_MIGRATIONS, createNotice, createRunDrain, executeNextRun, finishRun, getRun,
+  acknowledgeNotice, answerRequest, claimNextRun, claimNotice, CommandConflictError, conversationRuns, CORE_MIGRATIONS, createNotice, createRunDrain, executeNextRun, finishRun, getRun,
   interruptOrphanedRuns, listEvents, listNotices, listRuns, NoticeStateError, onEvents, openRequest, openWorld, presentNotice, recordDomainEvent,
   requestCancel, resumeRun, runCommand, RunError, RunLeaseLostError, submitRun, withCoreContext,
   undeliveredNotices, type EnginePort, type RunProfile, type World,
@@ -119,18 +119,33 @@ test("a restart interrupts the dead executor's run; it is never re-run until res
   assert.equal(resumed.attempt, 2);
 });
 
-test("cancelling a running run waits for the engine's real result", async () => {
+test("a committed stop immediately signals only its run and waits for the engine's result", async () => {
   const w = world();
   const { run } = submitRun(w, { requestId: "r1", goal: "add a toy", profile: "tasks" });
+  const other = submitRun(w, { requestId: "r2", goal: "another", profile: "tasks" }).run;
+  const signals = new Map<string, AbortSignal>();
   const engine: EnginePort = {
-    submit: (_request, signal) => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")))),
+    submit: (request, signal) => new Promise((_resolve, reject) => {
+      signals.set(request.thread, signal);
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }),
   };
-  const pending = executeNextRun(w, engine, { owner: "node-a", profiles: profiles(w), heartbeatMs: 5 });
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  const options = { owner: "node-a", profiles: profiles(w), heartbeatMs: 1e9 };
+  const pending = executeNextRun(w, engine, options);
+  const otherPending = executeNextRun(w, engine, options);
+  assert.throws(() => w.tx(() => {
+    requestCancel(w, run.id);
+    throw new Error("rollback");
+  }), /rollback/);
+  assert.equal(signals.get(run.conversationId)?.aborted, false);
   assert.equal(requestCancel(w, run.id).state, "cancelling");
+  assert.equal(signals.get(run.conversationId)?.aborted, true);
+  assert.equal(signals.get(other.conversationId)?.aborted, false);
   assert.equal((await pending)?.state, "cancelled");
+  requestCancel(w, other.id);
+  assert.equal((await otherPending)?.state, "cancelled");
 
-  const queued = submitRun(w, { requestId: "r2", goal: "another", profile: "tasks" }).run;
+  const queued = submitRun(w, { requestId: "r3", goal: "later", profile: "tasks" }).run;
   assert.equal(requestCancel(w, queued.id).state, "cancelled");
 });
 
@@ -191,7 +206,7 @@ test("notices nobody dismissed do not keep a new one from being listed", () => {
   assert.equal(listed[0].id, old[11].id, "the oldest are the ones left out");
 });
 
-test("a device keeps unanswered runs beyond its visible recent history, until answered", () => {
+test("active runs stay visible outside recent history until they finish", () => {
   const w = world();
   const now = Date.now();
   const submit = (id: string, conversationId?: string) =>
@@ -209,6 +224,12 @@ test("a device keeps unanswered runs beyond its visible recent history, until an
   assert.deepEqual(listRuns(w, options).map((run) => run.id), [...visible, waiting.id]);
   assert.deepEqual(listRuns(w, { ...options, conversationId: waiting.conversationId }).map((run) => run.id), [...visible, waiting.id]);
   answerRequest(w, waiting.id, { requestId: question.id, answer: "Monday", now });
+  assert.equal(listRuns(w, options).at(-1)?.state, "running");
+  requestCancel(w, waiting.id, { now });
+  assert.equal(listRuns(w, options).at(-1)?.state, "cancelling");
+  const page = conversationRuns(w, waiting.conversationId, { limit: 2 });
+  assert.deepEqual(page.runs.map((run) => run.id), [waiting.id, recent[49].id, recent[50].id]);
+  finishRun(w, waiting.id, "home", { status: "cancelled" }, { now });
   assert.deepEqual(listRuns(w, options).map((run) => run.id), visible);
   w.close();
 });

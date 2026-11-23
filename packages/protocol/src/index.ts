@@ -15,6 +15,7 @@
  *                                           Add `&delta=1` to accept incremental live updates.
  *   GET  /api/conversations/archived        { conversations: ArchivedConversation[] }, most recently archived first
  *   GET  /api/conversations/:id             ConversationDetail (?before=<run id> for an older page, ?runs=<ids> to refresh changed turns)
+ *   GET  /api/projects/:id/branches         ProjectBranches (trusted project, development access)
  *   POST /api/conversations                 StartSessionRequest -> Conversation (a development session in a trusted project)
  *   POST /api/conversations/:id             UpdateConversationRequest -> Conversation
  *   GET  /api/conversations/:id/changes     SessionChanges (a development session's changed files)
@@ -84,9 +85,11 @@ export interface RunOutcome {
 /** What a waiting run asks the user. */
 export interface RunRequest {
   id: string;
-  /** `permission`: may it do this one action (answer `allow` or `deny`, or `always` when offered). `input`: a choice or a short answer. */
+  /** A permission request accepts only the answers it offers. An input request accepts a choice or free text. */
   kind: "input" | "permission";
   question: string;
+  /** For permissions, `allow` and `deny` apply once. `allow_session` selects the session's `edits` mode.
+   * A command offering `always` can save the narrower command grant below. */
   options: string[];
   /** For `permission`: exactly what would happen, such as a file's diff. */
   detail?: string;
@@ -159,8 +162,8 @@ export interface Conversation {
 
 export type ArchivedConversation = Pick<Conversation, "id" | "title" | "projectId"> & { archivedAt: string };
 
-/** What a development session may do in its folder without asking: `plan` reads only; `ask` changes files, asking
- * each time with the diff; `edits` changes files inside the project without asking. Outside it, always asks. */
+/** `plan` is read-only. `ask` requests approval for edits and commands, respecting saved command grants.
+ * `edits` allows project file edits and shell commands for this conversation. File tools ask before editing outside the project. */
 export type SessionMode = "plan" | "ask" | "edits";
 /** What a development session has changed since its snapshot (GET /api/conversations/:id/changes). */
 export interface SessionChanges {
@@ -212,6 +215,8 @@ export interface SessionProcesses { processes: SessionProcess[] }
 
 /** A folder on the home node Alfred may work in. Sessions start only once the user trusts it. */
 export interface Project {
+  /** Permission mode for new sessions. Older home nodes omit this field. */
+  defaultMode?: SessionMode;
   /** Whether the trusted folder itself has a Git administrative entry (home state). */
   gitRoot?: boolean;
   id: string;
@@ -222,7 +227,19 @@ export interface Project {
   trustedAt: string | null;
 }
 export interface AddProjectRequest { requestId?: string; path: string; name?: string }
-export interface StartSessionRequest { requestId?: string; projectId: string; title: string; mode?: SessionMode }
+/** Local branch names for a trusted repository. Paths to other worktrees stay on the home node. */
+export interface ProjectBranches { current: string | null; branches: Array<{ name: string; checkedOut: boolean }> }
+export interface StartSessionRequest {
+  requestId?: string;
+  projectId: string;
+  title: string;
+  mode?: SessionMode;
+  model?: string | null;
+  /** A fresh branch based on the project folder's HEAD. */
+  worktree?: boolean;
+  /** An existing local branch. Mutually exclusive with creating a fresh branch. */
+  branch?: string;
+}
 
 /** A development session's terminal: where it is open, and how much it has printed so far. */
 export interface TerminalInfo { cwd: string; exited: boolean; offset: number }
@@ -264,7 +281,7 @@ export interface UpdateConversationRequest {
 
 export interface SteerRequest { text: string }
 
-export interface EngineModel { id: string; provider: string; name: string; reasoning: boolean; contextWindow?: number }
+export interface EngineModel { id: string; provider: string; name: string; reasoning: boolean; supportsImages?: boolean; engineDefault?: boolean; contextWindow?: number }
 export interface ModelsResponse { models: EngineModel[] }
 
 /** A run's reply as it is being written. By default every update carries the full reply so far (`text`).

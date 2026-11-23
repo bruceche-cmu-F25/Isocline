@@ -13,14 +13,14 @@
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
-  acceptProposal, addProject, listRunReceipts, listRuns, commandReplay, coreContext, createAutomation, declineProposal, deleteAutomation, getConversation, getProject,
+  acceptProposal, addProject, listRunReceipts, listRuns, commandReplay, CONVERSATION_MODEL, coreContext, createAutomation, declineProposal, deleteAutomation, getConversation, getProject,
   ProjectError, recordCommit, recordPublished, removeProject, requestCancel, resumeRun, revokeCommand, runAutomationNow, sessionRoot, startSession, submitRun, supersedeProposal, trustProject,
   addArea, addPreference, removePreference, updatePreference, moveArea, updateArea, updateAutomation, updateConversation, updateSettings, userLocale, withCoreContext, type Locale, type SessionMode, type Speed, type ThinkingLevel, type World,
 } from "@alfred/core";
 import { applyStep, OpInputError, opInput, removeArea, runOp, Type, UnknownOpError, type Static, type TSchema } from "@alfred/module-kit";
 import type { Home } from "./home.ts";
 import { ASSISTANT_PROFILE, AUTOMATION_PROFILE, DEVELOPER_PROFILE } from "./profiles.ts";
-import { branchName, createWorktree, publish, restoreWorktree, snapshot, WorkspaceError, workspaceChanges, type ChangedFile } from "./workspace.ts";
+import { branchName, checkoutSessionBranch, createWorktree, publish, releaseNewBranch, removeWorktree, restoreWorktree, snapshot, WorkspaceError, workspaceChanges, type ChangedFile } from "./workspace.ts";
 import { reviewCommit } from "./commit-review.ts";
 
 interface Extra<X> {
@@ -40,6 +40,8 @@ interface HarnessOp<P extends TSchema = TSchema, X = undefined> {
   /** What must happen before the change and cannot happen inside a transaction (reading a repository). Not done
    * again when the command is a replay. */
   prepare?(home: Home, input: Static<P>): Promise<X>;
+  /** Release a checkout if the database fails to record the prepared command. */
+  rollback?(prepared: X): Promise<void>;
   /** The change. Synchronous; it runs inside the command's transaction. Returns JSON. */
   run(home: Home, input: Static<P>, extra: Extra<X>): unknown;
 }
@@ -171,22 +173,32 @@ const OPS: readonly HarnessOp[] = [
     name: "conversation.start", unnumbered: true,
     input: Type.Object({
       projectId: Id, title: Said, mode: Type.Optional(Type.Union([Type.Literal("plan"), Type.Literal("ask"), Type.Literal("edits")])),
+      model: Type.Optional(Type.Union([Type.String({ pattern: CONVERSATION_MODEL.source }), Type.Null()])),
       /** In a worktree of its own, on a new branch, instead of the project's folder. */
       worktree: Type.Optional(Type.Boolean()),
+      branch: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })),
     }),
     async prepare(home, input) {
       // Nothing runs in a folder, not even git, before the user has trusted it.
       const folder = getProject(home.world, input.projectId);
       if (!folder.trustedAt) throw new ProjectError("untrusted");
-      if (input.worktree) {
-        const made = await createWorktree(folder.path, home.worktreeDir(folder.id, randomBytes(6).toString("hex")), branchName(input.title));
-        // A fresh checkout of HEAD: that commit is what its changes are measured against.
-        return { base: made.base, worktree: { path: made.path, branch: made.branch } };
-      }
-      // The snapshot the session's changes are measured against, taken before it can change anything.
-      return { base: await snapshot(folder.path), worktree: null };
+      if (input.worktree && input.branch) throw new OpInputError("Choose an existing branch or create a new one");
+      const dir = home.worktreeDir(folder.id, randomBytes(6).toString("hex"));
+      const made = input.branch ? await checkoutSessionBranch(folder.path, dir, input.branch)
+        : input.worktree ? await createWorktree(folder.path, dir, branchName(input.title)) : null;
+      return {
+        projectPath: folder.path,
+        createdFrom: made?.createdFrom,
+        base: made?.base ?? await snapshot(folder.path),
+        worktree: made ? { path: made.path, branch: made.branch } : null,
+      };
     },
-    run: (home, input, { prepared }) => startSession(home.world, { projectId: input.projectId, title: input.title, mode: input.mode, base: prepared.base, worktree: prepared.worktree }),
+    async rollback(prepared) {
+      if (!prepared.worktree) return;
+      await removeWorktree(prepared.projectPath, prepared.worktree.path, false);
+      if (prepared.createdFrom) await releaseNewBranch(prepared.projectPath, prepared.worktree.branch, prepared.createdFrom);
+    },
+    run: (home, input, { prepared }) => startSession(home.world, { projectId: input.projectId, title: input.title, mode: input.mode, model: input.model, base: prepared.base, worktree: prepared.worktree }),
   }),
   define({
     name: "conversation.update", unnumbered: true,
@@ -281,6 +293,9 @@ const OPS: readonly HarnessOp[] = [
   }),
 ];
 const BY_NAME = new Map(OPS.map((op) => [op.name, op]));
+// Multiple trusted project folders may refer to the same repository. Serialize session checkout and restore on
+// the home node, covering the replay check through the database commit, so two phones cannot claim one branch.
+const checkouts = new WeakMap<Home, Promise<unknown>>();
 
 /** The names of the harness's commands. */
 export const HARNESS_COMMANDS: readonly string[] = OPS.map((op) => op.name);
@@ -297,13 +312,27 @@ export async function command(home: Home, name: string, sent: Record<string, unk
   if (given !== undefined && typeof given !== "string") throw new OpInputError("requestId must be text");
   if (given === undefined && !op.unnumbered) throw new OpInputError("requestId is required");
   const requestId = typeof given === "string" ? given : `home.${randomBytes(12).toString("hex")}`;
-  const input = opInput(op, { ...fields, ...where });
+  const input = opInput(op, { ...fields, ...where }) as Record<string, unknown>;
+  const execute = () => executeCommand(home, op, requestId, input);
+  if (name !== "conversation.start" && !(name === "conversation.update" && input.archived === false)) return execute();
+  const pending = (checkouts.get(home) ?? Promise.resolve()).then(execute, execute);
+  checkouts.set(home, pending);
+  try { return await pending; } finally { if (checkouts.get(home) === pending) checkouts.delete(home); }
+}
+
+async function executeCommand(home: Home, op: HarnessOp, requestId: string, input: Record<string, unknown>) {
   const done = commandReplay(home.world, { requestId, command: op.name, input });
   if (done) return { result: done.result, replayed: true };
-  const release = name === "session.commit" || name === "session.publish" ? home.archives.beginWorkspaceOperation((input as { id: string }).id) : undefined;
+  const release = op.name === "session.commit" || op.name === "session.publish" ? home.archives.beginWorkspaceOperation((input as { id: string }).id) : undefined;
   try {
     const prepared = op.prepare ? await op.prepare(home, input) : undefined;
-    const outcome = runOp(home.world, { name: op.name, input: op.input, run: () => op.run(home, input, { requestId, prepared }) }, { requestId, input });
+    let outcome;
+    try {
+      outcome = runOp(home.world, { name: op.name, input: op.input, run: () => op.run(home, input, { requestId, prepared }) }, { requestId, input });
+    } catch (error) {
+      await op.rollback?.(prepared);
+      throw error;
+    }
     // Whatever it was, there may now be a run to start or an accepted change to send.
     home.kick();
     home.deliver();

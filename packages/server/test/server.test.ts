@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
-import { request as httpRequest, type Server } from "node:http";
+import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { createServer, request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { ATTENTION, enqueueOutbound, listEvents, listOutbound, withCoreContext, type EnginePort } from "@alfred/core";
+import { createPiEngine } from "@alfred/engine-pi";
 import { defineModule } from "@alfred/module-kit";
 import { todoModule, type TodoSnapshot } from "@alfred/module-todo";
 import type { ConversationDetail, CoreEvent, RunDetail, SessionChanges, StateResponse, SubmitRunResponse } from "@alfred/protocol";
@@ -446,6 +447,64 @@ test("Alfred can list, make and change automations when asked; an automation's o
   }
 });
 
+test("the model picked when opening Code receives the first message and can switch back to the displayed default", { timeout: 20_000 }, async (t) => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alfred-code-model-"));
+  const agentDir = join(dataDir, "agent"), projectDir = join(dataDir, "project");
+  mkdirSync(agentDir);
+  mkdirSync(projectDir);
+  const requests: string[] = [];
+  const provider = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const { model } = JSON.parse(body) as { model: string };
+    requests.push(model);
+    const part = { id: "fixture", object: "chat.completion.chunk", created: 1, model,
+      choices: [{ index: 0, delta: { role: "assistant", content: "OK" }, finish_reason: "stop" }] };
+    res.writeHead(200, { "Content-Type": "text/event-stream" }).end(`data: ${JSON.stringify(part)}\n\ndata: [DONE]\n\n`);
+  });
+  await new Promise<void>((resolve, reject) => { provider.once("error", reject); provider.listen(0, "127.0.0.1", resolve); });
+  t.after(() => { provider.close(); provider.closeAllConnections(); });
+  const baseUrl = `http://127.0.0.1:${(provider.address() as AddressInfo).port}/v1`;
+  writeFileSync(join(agentDir, "models.json"), JSON.stringify({ providers: { fixture: { baseUrl, api: "openai-completions", apiKey: "fixture",
+    models: [{ id: "fast", input: ["text"] }, { id: "vision", input: ["text", "image"] }] } } }));
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "fixture", defaultModel: "fast" }));
+  const secrets = process.env.ALFRED_SECRETS;
+  process.env.ALFRED_SECRETS = "file";
+  const engine = createPiEngine({ cwd: join(dataDir, "engine"), agentDir, config: dataDir });
+  const home = openHome({ dataDir, engine, modules: [] });
+  const { server, base } = await start(home);
+  try {
+    const models = async () => ((await (await fetch(base + "/api/models")).json()) as { models: Array<{ id: string; engineDefault?: boolean; supportsImages?: boolean }> }).models;
+    const catalog = await models();
+    assert.equal(catalog.find((model) => model.engineDefault)?.id, "fast");
+    assert.equal(catalog.find((model) => model.id === "vision")?.supportsImages, true);
+    const project = await (await post(base, "/api/projects", { path: projectDir })).json() as { id: string };
+    await post(base, `/api/projects/${project.id}/trust`, {});
+    const startBody = { projectId: project.id, title: "Inspect this project" };
+    assert.equal((await post(base, "/api/conversations", { ...startBody, model: "invalid", worktree: true })).status, 400);
+    const session = await (await post(base, "/api/conversations", { ...startBody, model: "fixture/vision" })).json() as ConversationDetail["conversation"];
+    assert.equal(session.model, "fixture/vision");
+    const send = async (requestId: string) => {
+      assert.equal((await post(base, "/api/runs", { requestId, conversationId: session.id, goal: "Say OK." })).status, 202);
+      await home.idle();
+    };
+    await send("code-first");
+    assert.deepEqual(requests, ["vision"]);
+    assert.equal((await post(base, `/api/conversations/${session.id}`, { model: null })).status, 200);
+    await send("code-default");
+    assert.deepEqual(requests, ["vision", "fast"]);
+    writeFileSync(join(agentDir, "settings.json"), "{}");
+    const fallback = (await models()).filter((model) => model.engineDefault);
+    assert.equal(fallback.length, 1);
+    await send("code-fallback");
+    assert.equal(requests[2], fallback[0].id);
+  } finally {
+    server.close(); server.closeAllConnections(); home.close();
+    await engine.close();
+    if (secrets === undefined) delete process.env.ALFRED_SECRETS; else process.env.ALFRED_SECRETS = secrets;
+  }
+});
+
 test("a development session: add and trust a folder, start a session, and its runs read that folder", async () => {
   const seen: Array<{ workspace?: unknown; context?: unknown; tools: string[]; instructions: string }> = [];
   const coder: EnginePort = { async submit(request) { seen.push({ workspace: request.workspace, context: request.context, tools: request.tools.map((tool) => tool.name), instructions: request.instructions }); return { reply: "It is in src/" }; } };
@@ -468,7 +527,7 @@ test("a development session: add and trust a folder, start a session, and its ru
     await home.idle();
     const detail = await (await fetch(`${base}/api/conversations/${session.id}`)).json() as ConversationDetail;
     assert.equal(detail.runs[0].state, "completed");
-    assert.deepEqual(seen[0].workspace, { root: project.path, name: "Shop", mode: "ask", commands: [] });
+    assert.deepEqual(seen[0].workspace, { root: project.path, name: "Shop", mode: "edits", commands: [] });
     assert.equal(seen[0].context, undefined, "a session is not asked from a page");
     assert.ok(seen[0].tools.includes("ask_user"));
     for (const tool of todoModule.tools) {
@@ -477,11 +536,12 @@ test("a development session: add and trust a folder, start a session, and its ru
     for (const tool of ["propose", "automation_add", "automation_update", "show_view"]) {
       assert.ok(!seen[0].tools.includes(tool), `project run received assistant tool ${tool}`);
     }
-    assert.match(seen[0].instructions, /ask mode: you can change files/, "the run is told what its mode lets it do");
+    assert.match(seen[0].instructions, /always allow mode/, "the run is told what its mode lets it do");
     assert.doesNotMatch(seen[0].instructions, /cannot change files/);
 
     const state = await (await fetch(`${base}/api/state`)).json() as StateResponse;
     assert.deepEqual(state.projects.map((candidate) => candidate.name), ["Shop"]);
+    assert.equal(state.projects[0].defaultMode, "edits");
   } finally {
     server.close();
     home.close();
@@ -553,7 +613,7 @@ test("a session that edits: changes since its snapshot, one file's diff, and 'do
 
   const editing: EnginePort = {
     async submit(request) {
-      const answer = await request.external.allow("Change a.txt?", { detail: "--- a.txt\n+++ a.txt\n+two", always: true });
+      const answer = await request.external.allow("Change a.txt?", { detail: "--- a.txt\n+++ a.txt\n+two", inProject: true });
       if (answer === "deny") return { reply: "Left it." };
       appendFileSync(join(folder, "a.txt"), "two\n");
       request.external.changed?.({ path: "a.txt", added: 1, removed: 0, created: false });
@@ -584,13 +644,13 @@ test("a session that edits: changes since its snapshot, one file's diff, and 'do
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     const asked = detail.runs[0].request!;
-    assert.deepEqual(asked.options, ["allow", "deny", "always"]);
+    assert.deepEqual(new Set(asked.options), new Set(["allow", "deny", "allow_session"]));
     assert.match(String(asked.detail), /\+two/);
-    assert.equal((await post(base, `/api/runs/${run.id}/respond`, { requestId: asked.id, answer: "always" })).status, 200);
+    assert.equal((await post(base, `/api/runs/${run.id}/respond`, { requestId: asked.id, answer: "allow_session" })).status, 200);
     await home.idle();
 
     detail = await (await fetch(`${base}/api/conversations/${session.id}`)).json() as ConversationDetail;
-    assert.equal(detail.runs[0].outcome?.reply, "Done (always).");
+    assert.equal(detail.runs[0].outcome?.reply, "Done (allow).");
     assert.equal(detail.conversation.mode, "edits", "don't ask again: the session now changes files without asking");
     assert.deepEqual(detail.receipts[run.id].map((event) => event.kind), ["file.changed", "file.changed"]);
 

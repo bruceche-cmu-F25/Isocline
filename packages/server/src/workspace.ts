@@ -5,6 +5,7 @@
  * A folder that is not a git repository has no snapshot; its changes are the session's own receipts.
  */
 import { execFile } from "node:child_process";
+import type { ProjectBranches } from "@alfred/protocol";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, sep } from "node:path";
 
@@ -137,7 +138,7 @@ function merged(written: ChangedFile[]): ChangedFile[] {
 
 export class WorkspaceError extends Error {
   override name = "WorkspaceError";
-  readonly code: "not_git" | "subproject" | "no_commit" | "dirty" | "large_diff" | "changed" | "nothing" | "failed" | "default_branch" | "detached" | "no_remote" | "no_gh";
+  readonly code: "not_git" | "subproject" | "no_commit" | "dirty" | "large_diff" | "changed" | "nothing" | "failed" | "default_branch" | "branch_missing" | "branch_in_use" | "detached" | "no_remote" | "no_gh";
   /** For `dirty`: how many files are not committed. */
   readonly count?: number;
   constructor(code: WorkspaceError["code"], message: string, count?: number) { super(message); this.code = code; this.count = count; }
@@ -166,20 +167,95 @@ export function branchName(title: string): string {
   return `alfred/${slug || "session"}`;
 }
 
-/** Makes a worktree for a new session: a folder of its own at `dir`, on a new branch from the project's HEAD (what is
- * committed; the project's uncommitted changes stay where they are). The branch is `want`, or `want-2`… if taken. */
-export async function createWorktree(project: string, dir: string, want: string): Promise<{ path: string; branch: string; base: string }> {
-  if (!(await git(project, ["rev-parse", "--is-inside-work-tree"])).ok) throw new WorkspaceError("not_git", "This folder is not a git repository, so it cannot have a worktree");
+async function requireRepositoryRoot(project: string): Promise<void> {
   const top = await git(project, ["rev-parse", "--show-toplevel"]);
-  if (!top.ok || realpathSync(top.out.trim()) !== realpathSync(project)) throw new WorkspaceError("subproject", "To create a worktree, select the root of the Git repository");
+  if (!top.ok) throw new WorkspaceError("not_git", "This folder is not a Git working tree");
+  if (realpathSync(top.out.replace(/\n$/, "")) !== realpathSync(project)) throw new WorkspaceError("subproject", "Select the root of the Git repository");
+}
+
+export async function projectBranches(project: string): Promise<ProjectBranches> {
+  await requireRepositoryRoot(project);
+  const [symbolic, refs] = await Promise.all([
+    git(project, ["symbolic-ref", "--quiet", "HEAD"]),
+    git(project, ["for-each-ref", "--format=%(refname:lstrip=2)%09%(if)%(worktreepath)%(then)1%(end)", "refs/heads/"]),
+  ]);
+  if (!refs.ok) throw new WorkspaceError("failed", "Could not list local Git branches");
+  const current = symbolic.ok ? symbolic.out.replace(/\n$/, "").replace(/^refs\/heads\//, "") : null;
+  const branches = refs.out.split("\n").filter(Boolean).map((row) => {
+    const [name, occupied] = row.split("\t");
+    return { name, checkedOut: occupied === "1" };
+  });
+  return { current, branches };
+}
+
+/** Checking an exact name in the local catalog also excludes tags, revisions and remote-only names. */
+function requireFreeBranch(refs: ProjectBranches, branch: string) {
+  const ref = refs.branches.find((candidate) => candidate.name === branch);
+  if (!ref) throw new WorkspaceError("branch_missing", "That local branch no longer exists");
+  if (ref.checkedOut) throw new WorkspaceError("branch_in_use", "That branch is already checked out in another folder");
+}
+
+/** Work on an existing local branch. Only the project folder may be reused. Every other checkout made here
+ * belongs to this session and is safe for the normal archive lifecycle to remove. */
+export async function checkoutSessionBranch(project: string, dir: string, branch: string) {
+  const refs = await projectBranches(project);
+  return refs.current === branch ? null : checkoutExistingBranch(project, dir, branch, refs);
+}
+
+interface Checkout { path: string; branch: string; base: string; createdFrom?: string }
+
+async function checkoutExistingBranch(project: string, dir: string, branch: string, refs?: ProjectBranches): Promise<Checkout> {
+  requireFreeBranch(refs ?? await projectBranches(project), branch);
+  if (existsSync(dir)) throw new WorkspaceError("failed", "The checkout folder already exists");
+  mkdirSync(dirname(dir), { recursive: true });
+  const made = await tool("git", project, ["worktree", "add", "--no-guess-remote", "--", dir, branch]);
+  if (!made.ok) {
+    // A failing post-checkout hook can leave the checkout registered even when Git reports failure.
+    if (existsSync(join(dir, ".git"))) {
+      try { await removeWorktree(project, dir, false); }
+      catch { throw new WorkspaceError("failed", `Checkout failed. The folder was kept at ${dir}. ${said(made.err)}`); }
+    }
+    // An external Git client may have claimed or deleted the branch since the list was read.
+    requireFreeBranch(await projectBranches(project), branch);
+    throw new WorkspaceError("failed", said(made.err) || "The branch could not be checked out");
+  }
+  const [actual, head] = await Promise.all([git(dir, ["symbolic-ref", "--quiet", "HEAD"]), git(dir, ["rev-parse", "HEAD"])]);
+  if (!actual.ok || actual.out.replace(/\n$/, "") !== `refs/heads/${branch}` || !head.ok) {
+    await removeWorktree(project, dir, false);
+    throw new WorkspaceError("changed", "The branch changed during checkout. Choose it again.");
+  }
+  return { path: realpathSync(dir), branch, base: head.out.trim() };
+}
+
+/** Makes a worktree for a new session: a folder of its own at `dir`, on a new branch from the project's HEAD. */
+export async function createWorktree(project: string, dir: string, want: string) {
+  await requireRepositoryRoot(project);
   const head = await git(project, ["rev-parse", "HEAD"]);
   if (!head.ok) throw new WorkspaceError("no_commit", "The repository has no commit yet");
-  let branch = want;
-  for (let n = 2; (await git(project, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`])).ok; n++) branch = `${want}-${n}`;
-  mkdirSync(dirname(dir), { recursive: true });
-  const made = await tool("git", project, ["worktree", "add", "-b", branch, dir, "HEAD"]);
-  if (!made.ok) throw new WorkspaceError("failed", said(made.err) || "The worktree could not be made");
-  return { path: realpathSync(dir), branch, base: head.out.trim() };
+  const base = head.out.trim();
+  for (let n = 1; ; n++) {
+    const branch = n === 1 ? want : `${want}-${n}`;
+    // Claim the ref first. This establishes ownership for rollback and also handles a concurrent branch creation.
+    const created = await tool("git", project, ["branch", "--", branch, base]);
+    if (!created.ok) {
+      if ((await git(project, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`])).ok) continue;
+      throw new WorkspaceError("failed", said(created.err) || "The branch could not be created");
+    }
+    try {
+      const made = await checkoutExistingBranch(project, dir, branch);
+      return { ...made, createdFrom: base };
+    } catch (error) {
+      await releaseNewBranch(project, branch, base);
+      throw error;
+    }
+  }
+}
+
+/** Undo only Alfred's newly allocated ref when it still points at the original commit. Git's normal
+ * branch deletion additionally protects checked-out branches and commits that have not been merged. */
+export async function releaseNewBranch(project: string, branch: string, createdFrom: string) {
+  const tip = await git(project, ["rev-parse", "--verify", `refs/heads/${branch}`]);
+  if (tip.ok && tip.out.trim() === createdFrom) await tool("git", project, ["branch", "-d", "--", branch]);
 }
 
 /** How many files in a folder are not committed (changed, new or deleted). */
@@ -204,9 +280,7 @@ export async function removeWorktree(project: string, dir: string, force: boolea
 export async function restoreWorktree(project: string, dir: string, branch: string): Promise<void> {
   if (existsSync(dir)) return;
   await git(project, ["worktree", "prune"]);
-  mkdirSync(dirname(dir), { recursive: true });
-  const made = await tool("git", project, ["worktree", "add", dir, branch]);
-  if (!made.ok) throw new WorkspaceError("failed", said(made.err) || "The worktree could not be brought back");
+  await checkoutExistingBranch(project, dir, branch);
 }
 
 /** Where a session's branch stands towards its remote and pull request, for the changes panel. */

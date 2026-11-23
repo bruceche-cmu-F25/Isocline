@@ -173,10 +173,27 @@ export class Skills {
     };
   }
 
-  content(id: string): SkillContent {
-    const { skill } = this.#find(id);
+  #instructions(skill: Skill): string {
     if (statSync(skill.filePath).size > MAX_CONTENT) throw new SkillError("too_large", "This skill's instructions are larger than 1 MB");
-    return { content: stripFrontmatter(readFileSync(skill.filePath, "utf8")).trim() };
+    return stripFrontmatter(readFileSync(skill.filePath, "utf8")).trim();
+  }
+
+  content(id: string): SkillContent {
+    return { content: this.#instructions(this.#find(id).skill) };
+  }
+
+  /** Expand only the command at the start of the user's own Code message. Look up the enabled copy
+   * in Alfred each time so a skill added or switched since the session opened takes effect. */
+  expandCommand(text: string): string {
+    const command = /^\/skill:(\S+)(?:\s+|$)/u.exec(text);
+    if (!command) return text;
+    const name = command[1];
+    const entry = this.#loaded().skills.find(({ skill }) => skill.name === name && !skill.disableModelInvocation);
+    if (!entry) throw new SkillError("not_found", `Skill "${name}" is not installed and enabled in Alfred.`);
+    const { skill } = entry;
+    const instructions = this.#instructions(skill);
+    const request = text.slice(command[0].length);
+    return `The user selected the ${JSON.stringify(name)} skill. Its relative paths are under ${JSON.stringify(skill.baseDir)}.\n<skill>\n${instructions}\n</skill>${request ? `\n\n${request}` : ""}`;
   }
 
   setEnabled(id: string, enabled: boolean): SkillInfo {

@@ -341,7 +341,7 @@ test("a paired device stays out of development sessions until the user lets it i
     assert.equal(listed.lastGoal, null);
     assert.equal(seen.runs.some((candidate) => candidate.id === run.id), false);
     for (const [path, body] of [
-      [`/api/conversations/${session.id}`, undefined], [`/api/conversations/${session.id}/changes`, undefined], [`/api/runs/${run.id}`, undefined],
+      [`/api/projects/${project.id}/branches`, undefined], [`/api/conversations/${session.id}`, undefined], [`/api/conversations/${session.id}/changes`, undefined], [`/api/runs/${run.id}`, undefined],
       [`/api/runs/${run.id}/respond`, { requestId: "x", answer: "allow" }], [`/api/runs/${run.id}/cancel`, {}],
       ["/api/runs", { requestId: "p-9", goal: "rm -rf", conversationId: session.id }],
       ["/api/conversations", { projectId: project.id, title: "Another" }], [`/api/conversations/${session.id}`, { mode: "edits" }],

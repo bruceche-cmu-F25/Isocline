@@ -99,6 +99,26 @@ test("a skill found in another agent's folder is copied whole; only the listed o
   assert.deepEqual(t.changes, ["added pdf"]);
 });
 
+test("Code loads an explicitly named, enabled Alfred skill and keeps its request separate", () => {
+  const t = setup();
+  t.put(join(t.home, ".pi", "agent", "skills"), "layout", "apple-design");
+  const invoke = (text: string) => t.skills.expandCommand(text);
+  assert.equal(invoke("explain /skill:apple-design"), "explain /skill:apple-design");
+  assert.equal(invoke("Example:\n/skill:apple-design"), "Example:\n/skill:apple-design");
+  assert.throws(() => invoke("/skill:apple-design"), { name: "SkillError" }, "discovery alone does not install it");
+  assert.throws(() => invoke("/skill:../../outside"), { name: "SkillError" });
+
+  const [found] = t.skills.list().found;
+  const skill = t.skills.addFound(found.path);
+  const expanded = invoke("/skill:apple-design\nReview the layout\nthen the type.");
+  assert.ok(expanded.includes(join(t.dir, "layout")), "references point to the installed copy");
+  assert.match(expanded, /<skill>\n# apple-design\n\nDo the thing\.\n<\/skill>\n\nReview the layout\nthen the type\.$/);
+  assert.ok(!expanded.includes("description:"));
+  assert.match(invoke("/skill:apple-design"), /<\/skill>$/);
+  t.skills.setEnabled(skill.id, false);
+  assert.throws(() => invoke("/skill:apple-design more"), { name: "SkillError" });
+});
+
 test("a skill from skills.sh is searched for, downloaded, checked for a newer version and updated", async () => {
   const files = (body: string) => [{ path: "SKILL.md", contents: skillText("pdf").replace("Do the thing.", body) }, { path: "scripts/fill.py", contents: "print('fill')\n" }];
   const site: Record<string, unknown> = {

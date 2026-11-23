@@ -16,8 +16,8 @@
  *   the home node (Settings), and a server that needs it is simply not reached.
  * - Skills from `<config>/skills/`, and the `read` tool to load them.
  * - In a development session (a job with a workspace): the session works in the
- *   project's folder, with `read`, `grep`, `find` and `ls`, and, unless the
- *   session is in `plan` mode, `edit`, `write` and `bash`, and the project's
+ *   project's folder, with `read`, `grep`, `find` and `ls`, plus `edit`, `write`
+ *   and `bash` gated by the current session mode, and the project's
  *   AGENTS.md / CLAUDE.md as context. Its `.pi/` settings, extensions and MCP
  *   servers are not loaded.
  * - The files the user sent with a turn: an image is shown to the model (when
@@ -30,11 +30,9 @@
  * A gate checks every call to a tool Alfred did not define. MCP tools their
  * server marks read-only, reading Alfred's skills, and reading, searching or
  * listing inside a session's project folder (or another project the user
- * trusted) run freely, and so do changes inside the session's own project in
- * `edits` mode; anything else asks the user first, through the
- * home node, once per call (a change shows its diff). A shell command always
- * asks, shown whole, unless the user allowed that command for the rest of the
- * session; it is not sandboxed and runs as the user. A permitted call that may
+ * trusted) run freely. For project edits and shell commands the home node checks
+ * the current session mode before each call. A command runs as the user from the
+ * session folder, without a shell sandbox. A permitted call that may
  * have changed something outside Alfred is kept as a receipt.
  * Credentials and the default model come from the user's Pi setup.
  *
@@ -55,8 +53,9 @@ import { fasterPayload } from "./speed.ts";
 import { LOOKERS, look, real } from "./looking.ts";
 import { loadAlfredMcpConfig, mcpPath } from "./mcp-config.ts";
 import { createMcpTransport, createMcpVault, type McpSecrets } from "./mcp-store.ts";
-import type { ExternalStep, ModelInfo, RunJob, ToParent, ToWorker } from "./protocol.ts";
-import { commandAllowed, defaultSecretStore, normalizeCommand, simpleCommand, type Attachment } from "@alfred/core";
+import { composePrompt, type ExternalStep, type ModelInfo, type RunJob, type ToParent, type ToWorker } from "./protocol.ts";
+import { Skills } from "./skills.ts";
+import { defaultSecretStore, normalizeCommand, type Attachment } from "@alfred/core";
 import { createCredentialStore } from "./credentials.ts";
 
 const { values } = parseArgs({ options: { cwd: { type: "string" }, sessions: { type: "string" }, config: { type: "string" }, "agent-dir": { type: "string" } } });
@@ -68,6 +67,7 @@ const agentDir = values["agent-dir"];
 // happens; a fresh runtime per session sees the latest. Custom models from Pi's models.json still apply.
 const modelOptions = { credentials: createCredentialStore({ secrets: defaultSecretStore(config), lockDir: config }), ...(agentDir ? { modelsPath: join(agentDir, "models.json") } : {}) };
 const skillsDir = join(config, "skills");
+const skills = new Skills({ dataDir: config });
 // The secrets and sign-ins of MCP servers: the same store the home node writes when the user connects one.
 const mcpVault = createMcpVault({ secrets: defaultSecretStore(config), lockDir: config });
 const textOf = (path: string) => { try { return readFileSync(path, "utf8"); } catch { return ""; } };
@@ -98,17 +98,15 @@ interface Warm {
   session: AgentSession;
   /** Instructions and tools it was opened with; a change reopens it. */
   shape: string;
+  development: boolean;
   run: string | null;
   idle: NodeJS.Timeout | null;
-  /** The session's mode for this turn; `always` once the user said "don't ask again" during it. */
-  mode: string | null;
-  always: boolean;
-  /** The commands the user allowed for the rest of the session: as the turn started, plus those allowed during it. */
-  commands: Set<string>;
   /** The long files the user sent with this turn, by resolved path: the model may read these without asking. */
   files: Set<string>;
   /** This turn's speed: `fast` asks the provider for it in every request the turn makes. */
   speed: "fast" | null;
+  /** This turn's language, for the questions asked before a tool. */
+  locale: Language;
 }
 const warm = new Map<string, Warm>();
 let busy = false;
@@ -156,7 +154,22 @@ function exitOf(event: { isError?: boolean; details?: unknown; content?: unknown
 }
 
 /** The gate: every call to a tool Alfred did not define passes here first. `root` is a development session's project folder. */
-function gate(state: { run: string | null; mode: string | null; always: boolean; commands: Set<string>; files: Set<string> }, ours: ReadonlySet<string>, root: string | null, others: readonly string[] = []): ExtensionFactory {
+type Language = "zh" | "en";
+/** What the user is asked before a tool goes further, in their language. */
+const ASK: Record<Language, {
+  command: string; create: string; rewrite: string; edit: string; read: string; look: string; call(tool: string, server?: string): string;
+}> = {
+  zh: {
+    command: "允许 Alfred 运行这条命令吗？", create: "允许 Alfred 新建这个文件吗？", rewrite: "允许 Alfred 重写这个文件吗？", edit: "允许 Alfred 改这个文件吗？",
+    read: "允许 Alfred 读取这个文件吗？", look: "允许 Alfred 查看这个位置吗？", call: (tool, server) => `允许 Alfred 调用${server ? ` ${server} 的` : ""}「${tool}」吗？`,
+  },
+  en: {
+    command: "Let Alfred run this command?", create: "Let Alfred create this file?", rewrite: "Let Alfred rewrite this file?", edit: "Let Alfred change this file?",
+    read: "Let Alfred read this file?", look: "Let Alfred look in this place?", call: (tool, server) => `Let Alfred use ${server ? `${server}'s ` : ""}“${tool}”?`,
+  },
+};
+
+function gate(state: Pick<Warm, "run" | "files" | "locale">, ours: ReadonlySet<string>, root: string | null, others: readonly string[] = []): ExtensionFactory {
   return (pi) => {
     const open = new Map<string, { step: ExternalStep; changes: boolean; run: string; file?: Change; command?: { started: number } }>();
     pi.on("tool_call", async (event) => {
@@ -170,29 +183,21 @@ function gate(state: { run: string | null; mode: string | null; always: boolean;
       let changes: boolean;
       let file: Change | undefined;
       let detail: string | undefined;
-      let always = false;
       let command: string | undefined;
       if (name === "bash") {
-        // A shell command: only in a session that may change things, and it asks every time, shown whole, unless
-        // the user allowed this command (or one it starts with) for the rest of the session.
-        if (!root || state.mode === "plan") return { block: true, reason: "This session cannot run commands." };
+        if (!root) return { block: true, reason: "This session cannot run commands." };
         command = String(input.command ?? "");
         step.label = "Run command";
         step.about = normalizeCommand(command).slice(0, 200);
-        question = commandAllowed(state.commands, command) ? null : "允许 Alfred 运行这条命令吗？";
-        always = simpleCommand(command);
+        question = ASK[state.locale].command;
         changes = false;
       } else if (Object.hasOwn(CHANGERS, name)) {
-        // Changing a file: inside the project, as the session's mode says (`edits`, or "don't ask again" this turn,
-        // goes ahead); anything else asks, with the diff. Outside the project it always asks.
+        if (!root) return { block: true, reason: "This session cannot change files." };
         file = change(name, input, { root, cwd });
         step.label = CHANGERS[name];
         step.about = file.shown;
-        const free = file.inProject && (state.mode === "edits" || state.always);
-        const verb = file.created ? "新建这个文件" : name === "write" ? "重写这个文件" : "改这个文件";
-        question = free ? null : `允许 Alfred ${verb}吗？\n${file.path}`;
+        question = `${file.created ? ASK[state.locale].create : name === "write" ? ASK[state.locale].rewrite : ASK[state.locale].edit}\n${file.path}`;
         detail = file.patch ? (file.patch.length > MAX_DIFF ? `${file.patch.slice(0, MAX_DIFF)}\n… (diff truncated)` : file.patch) : undefined;
-        always = file.inProject;
         changes = false;
       } else if (Object.hasOwn(LOOKERS, name)) {
         // Alfred's own skills are instructions, and a session's project is the user's to read in it, as are the
@@ -201,26 +206,22 @@ function gate(state: { run: string | null; mode: string | null; always: boolean;
         step.label = seen.label;
         step.about = seen.about;
         // A file the user sent with this very turn is theirs to have read.
-        question = seen.free || (name === "read" && state.files.has(seen.path)) ? null : `允许 Alfred ${name === "read" ? "读取这个文件" : "查看这个位置"}吗？\n${seen.path}`;
+        question = seen.free || (name === "read" && state.files.has(seen.path)) ? null : `${name === "read" ? ASK[state.locale].read : ASK[state.locale].look}\n${seen.path}`;
         changes = false;
       } else {
         const hints = pi.getAllTools().find((tool) => tool.name === name)?.annotations;
         const readOnly = hints?.readOnlyHint === true && hints?.destructiveHint !== true;
         const { server, tool } = describeTool(name);
-        question = readOnly ? null : `允许 Alfred 调用${server ? ` ${server} 的` : ""}「${tool}」吗？${step.about ? `\n${step.about}` : ""}`;
+        question = readOnly ? null : `${ASK[state.locale].call(tool, server)}${step.about ? `\n${step.about}` : ""}`;
         changes = !readOnly;
       }
       if (question !== null) {
         const call = next();
-        const answer = await waitFor<boolean | "always">(call, { type: "allow", run, call, question, ...(detail ? { detail } : {}), ...(always ? { always } : {}), ...(command !== undefined ? { command } : {}) });
+        const answer = await waitFor<boolean>(call, { type: "allow", run, call, question, ...(detail ? { detail } : {}), ...(file ? { inProject: file.inProject } : {}), ...(command !== undefined ? { command } : {}) });
         if (!answer) {
           send({ type: "step", run, step: { ...step, status: "declined" } });
           return { block: true, reason: DENIED };
         }
-        // "Allow for this session": this command goes ahead from now on (the home node keeps it for later turns).
-        if (answer === "always" && command !== undefined) state.commands.add(normalizeCommand(command));
-        // "Don't ask again": the rest of this turn's changes in the project go ahead (the session is now `edits`).
-        else if (answer === "always") state.always = true;
       }
       send({ type: "step", run, step });
       open.set(event.toolCallId, { step, changes, run, file, ...(command !== undefined ? { command: { started: Date.now() } } : {}) });
@@ -283,8 +284,7 @@ async function close(thread: string): Promise<void> {
 }
 
 async function open(job: RunJob): Promise<Warm> {
-  // What the session is opened with. The commands allowed for the session are not part of it: they are read by the
-  // gate each turn, so allowing one does not reopen the session.
+  // The gate checks the home node's live permissions for each command and file edit.
   const place = job.workspace ? { root: job.workspace.root, name: job.workspace.name, mode: job.workspace.mode, others: job.workspace.others ?? [] } : null;
   const shape = createHash("sha256").update(JSON.stringify({ instructions: job.instructions, tools: job.tools, workspace: place, mcp: mcpRevision(), skills: skillsRevision() })).digest("hex");
   const existing = warm.get(job.thread);
@@ -293,7 +293,7 @@ async function open(job: RunJob): Promise<Warm> {
 
   const dir = join(sessions, job.thread);
   mkdirSync(dir, { recursive: true });
-  const state: Warm = { session: null as unknown as AgentSession, shape, run: null, idle: null, mode: job.workspace?.mode ?? null, always: false, commands: new Set(), files: new Set(), speed: null };
+  const state: Warm = { session: null as unknown as AgentSession, shape, development: Boolean(job.workspace), run: null, idle: null, files: new Set(), speed: null, locale: "en" };
   const definitions = alfredTools(state, job);
   const root = job.workspace ? real(job.workspace.root) : null;
   // The user's other trusted projects: free to look in, and named so "my other repo" needs no question.
@@ -341,11 +341,10 @@ async function open(job: RunJob): Promise<Warm> {
     settingsManager: SettingsManager.create(cwd, agentDir),
     modelRuntime: await ModelRuntime.create(modelOptions),
     customTools: definitions,
-    // Of Pi's built-in tools: `read` (skills; other files ask first), and in a development session also grep,
-    // find and ls, and, unless it is in `plan` mode, edit, write and bash (the gate asks as the mode says, and for
-    // every command). Outside a session there is no shell and no changing files.
+    // Keep a development session's tool set available across live mode changes. The home node denies edits and
+    // shell calls in plan mode. Outside a development session those tools are excluded altogether.
     ...(root ? { tools: ["+grep", "+find", "+ls"] } : {}),
-    excludeTools: root && job.workspace?.mode !== "plan" ? ["powershell"] : ["bash", "edit", "write", "powershell"],
+    excludeTools: root ? ["powershell"] : ["bash", "edit", "write", "powershell"],
   });
   state.session = session;
   // Each request to the provider passes through here just before it is sent: a fast turn asks for speed.
@@ -358,6 +357,19 @@ async function open(job: RunJob): Promise<Warm> {
   await session.bindExtensions({});
   warm.set(job.thread, state);
   return state;
+}
+
+/** Resolve the same default for the picker and a chat that switches back to it, even after Pi restores a
+ * previous model from the transcript. Pi owns its fallback order when no usable default is configured. */
+async function engineDefault(runtime: ModelRuntime, settings: SettingsManager) {
+  const provider = settings.getDefaultProvider(), id = settings.getDefaultModel();
+  const configured = provider && id && runtime.hasConfiguredAuth(provider) ? runtime.getModel(provider, id) : undefined;
+  if (configured) return configured;
+  const { session } = await createAgentSession({
+    cwd, modelRuntime: runtime, settingsManager: settings, sessionManager: SessionManager.inMemory(cwd),
+    resourceLoader: new DefaultResourceLoader({ cwd, agentDir: resourcesDir }), noTools: "all",
+  });
+  try { return session.model; } finally { session.dispose(); }
 }
 
 /** The conversation's chosen model and thinking level, when they differ from what the session uses. */
@@ -373,6 +385,10 @@ async function choose(session: AgentSession, job: RunJob): Promise<void> {
       if (!model) throw new Error(`Model not available: ${job.model}`);
       await session.setModel(model);
     }
+  } else if (job.workspace) {
+    await session.settingsManager.reload();
+    const model = await engineDefault(session.modelRuntime, session.settingsManager);
+    if (model && (model.provider !== session.model?.provider || model.id !== session.model?.id)) await session.setModel(model);
   }
   if (job.thinking && session.thinkingLevel !== job.thinking) session.setThinkingLevel(job.thinking as never);
 }
@@ -434,23 +450,25 @@ async function runTurn(run: string, job: RunJob): Promise<string> {
   const { session } = entry;
   await choose(session, job);
   entry.run = run;
-  entry.always = false;
-  entry.commands = new Set(job.workspace?.commands ?? []);
   entry.speed = job.speed ?? null;
+  entry.locale = job.locale ?? "en";
   const sent = await attached(job.attachments ?? [], Array.isArray(session.model?.input) && session.model.input.includes("image"));
   entry.files = sent.files;
   let aborted = false;
   currentAbort = () => { aborted = true; void session.abort(); };
-  // The reply as it is written, whole each time, at most every 80 ms.
+  // The reply as it is written, whole each time, at most every 80 ms. The reply is everything the model wrote this
+  // turn: what it said before a tool call ("I can't delete events; I opened the calendar…") is part of it, not only
+  // the words after its last call.
   let latest: string | null = null;
   let timer: NodeJS.Timeout | null = null;
+  const written: string[] = [];
   const flush = () => { timer = null; if (latest !== null) { send({ type: "text", run, text: latest }); latest = null; } };
   const unsubscribe = session.subscribe((event) => {
-    if (event.type !== "message_update" || event.message.role !== "assistant") return;
-    const content = (event.message as { content?: unknown }).content;
-    const text = Array.isArray(content) ? content.filter((part) => part?.type === "text").map((part) => String(part.text ?? "")).join("") : "";
+    if ((event.type !== "message_update" && event.type !== "message_end") || event.message.role !== "assistant") return;
+    const text = wordsOf(event.message).trim();
     if (!text) return;
-    latest = text;
+    if (event.type === "message_end") { written.push(text); return; }
+    latest = [...written, text].join("\n\n");
     timer ??= setTimeout(flush, 80);
   });
   try {
@@ -458,7 +476,10 @@ async function runTurn(run: string, job: RunJob): Promise<string> {
     const fresh = session.messages.length === 0;
     const before = session.messages.length;
     const started = Date.now();
-    await session.prompt(`${fresh && job.history ? `${job.history}\n\n---\n\n${job.prompt}` : job.prompt}${sent.text}`, sent.images.length ? { images: sent.images } : undefined);
+    const goal = entry.development ? skills.expandCommand(job.prompt.goal) : job.prompt.goal;
+    const prompt = composePrompt({ ...job.prompt, goal });
+    const history = fresh && job.history ? `${job.history}\n\n---\n\n` : "";
+    await session.prompt(history + prompt + sent.text, sent.images.length ? { images: sent.images } : undefined);
     if (aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
     const usage = session.getContextUsage();
     const model = session.model;
@@ -472,7 +493,7 @@ async function runTurn(run: string, job: RunJob): Promise<string> {
         ...(usage ? { tokens: usage.tokens ?? undefined, contextWindow: usage.contextWindow, percent: usage.percent ?? undefined } : {}),
       },
     });
-    return session.getLastAssistantText()?.trim() ?? "";
+    return session.messages.slice(before).filter((message) => message.role === "assistant").map((message) => wordsOf(message).trim()).filter(Boolean).join("\n\n");
   } finally {
     unsubscribe();
     if (timer) clearTimeout(timer);
@@ -486,12 +507,22 @@ async function runTurn(run: string, job: RunJob): Promise<string> {
   }
 }
 
+/** The words of one of the model's messages (not its thinking or tool calls). */
+function wordsOf(message: unknown): string {
+  const content = (message as { content?: unknown }).content;
+  return Array.isArray(content) ? content.filter((part) => part?.type === "text").map((part) => String(part.text ?? "")).join("") : "";
+}
+
 let currentAbort: (() => void) | null = null;
 
 async function models(): Promise<ModelInfo[]> {
   const runtime = await ModelRuntime.create(modelOptions);
-  return (await runtime.getAvailable()).map((model) => ({
-    id: model.id, provider: model.provider, name: model.name ?? model.id, reasoning: Boolean(model.reasoning),
+  const settings = SettingsManager.create(cwd, agentDir);
+  const available = await runtime.getAvailable();
+  const preferred = await engineDefault(runtime, settings);
+  return available.map((model) => ({
+    id: model.id, provider: model.provider, name: model.name ?? model.id, reasoning: Boolean(model.reasoning), supportsImages: model.input.includes("image"),
+    ...(model.id === preferred?.id && model.provider === preferred.provider ? { engineDefault: true } : {}),
     ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
   }));
 }
@@ -502,7 +533,7 @@ async function shutdown(): Promise<never> {
   process.exit(0);
 }
 
-process.on("message", (message: ToWorker) => {
+process.on("message", async (message: ToWorker) => {
   if (message.type === "run") {
     if (busy) { send({ type: "error", run: message.run, message: "Worker is busy" }); return; }
     busy = true;
@@ -518,7 +549,7 @@ process.on("message", (message: ToWorker) => {
     const waiting = pending.get(message.call);
     if (!waiting) return;
     pending.delete(message.call);
-    if (message.type === "allow_result") waiting.resolve(message.allowed && message.always ? "always" : message.allowed);
+    if (message.type === "allow_result") waiting.resolve(message.allowed);
     else if (message.ok) waiting.resolve(message.text);
     else waiting.reject(new Error(message.error));
   } else if (message.type === "abort") {
@@ -527,10 +558,12 @@ process.on("message", (message: ToWorker) => {
   } else if (message.type === "steer") {
     const entry = [...warm.values()].find((candidate) => candidate.run === message.run);
     if (!entry) { send({ type: "steered", run: message.run, ok: false }); return; }
-    entry.session.steer(message.text).then(
-      () => send({ type: "steered", run: message.run, ok: true }),
-      () => send({ type: "steered", run: message.run, ok: false }),
-    );
+    try {
+      await entry.session.steer(entry.development ? skills.expandCommand(message.text) : message.text);
+      send({ type: "steered", run: message.run, ok: true });
+    } catch {
+      send({ type: "steered", run: message.run, ok: false });
+    }
   } else if (message.type === "release") {
     void close(message.thread);
   } else if (message.type === "models") {

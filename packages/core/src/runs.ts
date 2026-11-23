@@ -9,7 +9,8 @@
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { DatabaseSync } from "node:sqlite";
-import { CONVERSATION_ID, ConversationError, createConversation, requireOpenSession, recordUnreadReply, titleFrom, touchConversation } from "./conversations.ts";
+import { withCoreContext } from "./context.ts";
+import { CONVERSATION_ID, ConversationError, createConversation, requireOpenSession, recordUnreadReply, titleFrom, touchConversation, updateConversation } from "./conversations.ts";
 import { appendEvent, readRunEvents, type CoreEvent } from "./events.ts";
 import { attachFiles } from "./files.ts";
 import { iso, newId } from "./ids.ts";
@@ -18,6 +19,7 @@ import { resultDestination, retirePreviousEditions } from "./result-delivery.ts"
 import { TEMPLATE_TEXT, type AutomationTemplate } from "./automation-templates.ts";
 import { localeOf } from "./settings.ts";
 import { RUN_STATES } from "./schema.ts";
+import { grantCommand } from "./shell.ts";
 import type { World } from "./world.ts";
 
 export type RunState = (typeof RUN_STATES)[number];
@@ -40,7 +42,7 @@ export interface RunRequest {
   /** `permission`: may it do this one action (answers `allow` / `deny`). `input`: a choice or a short answer. */
   kind: "input" | "permission";
   question: string;
-  /** Suggested answers; for `permission` `allow` and `deny`, and `always` when the request offers it. */
+  /** Suggested answers. A permission request can also offer a command grant or session-wide approval. */
   options: string[];
   /** For `permission`: exactly what would happen (a diff, a command), shown with the question. */
   detail?: string;
@@ -342,7 +344,9 @@ export function requestCancel(world: World, id: string, options: { now?: number 
       closeWaitingNotices(db, id, now);
       runEvent(db, run, "cancelled", now);
     } else {
-      setState(db, run, "cancelling", now, { cancel_requested: 1, request: null });
+      // A waiting executor still owns the run after sleep. Give it time to record the engine's stop.
+      const lapsed = WAITING.includes(run.state) && Date.parse(run.leaseUntil!) <= now;
+      setState(db, run, "cancelling", now, { cancel_requested: 1, request: null, ...(lapsed ? { lease_until: iso(now + RUN_LEASE_MS) } : {}) });
       closeWaitingNotices(db, id, now);
       runEvent(db, run, "cancel_requested", now);
     }
@@ -375,17 +379,17 @@ runAnswers.setMaxListeners(0);
 const MAX_QUESTION = 1000;
 const MAX_OPTION = 120;
 const MAX_ANSWER = 8000;
-/** `always`: allow this, and the rest of its kind in this conversation (offered only where it means something). */
-export const PERMISSION_ANSWERS = ["allow", "deny", "always"] as const;
+/** `always` grants a plain command prefix. `allow_session` switches the development session's mode. */
+export const PERMISSION_ANSWERS = ["allow", "deny", "always", "allow_session"] as const;
 const MAX_DETAIL = 12_000;
 
 /** The executor stops the run to ask. Only the lease holder of a running run may. */
-export function openRequest(world: World, id: string, owner: string, input: { kind: RunRequest["kind"]; question: string; options?: string[]; detail?: string; detailKind?: "command"; grant?: string; always?: boolean; now?: number }): RunRequest {
+export function openRequest(world: World, id: string, owner: string, input: { kind: RunRequest["kind"]; question: string; options?: string[]; detail?: string; detailKind?: "command"; grant?: string; always?: boolean; allowSession?: boolean; now?: number }): RunRequest {
   const now = input.now ?? Date.now();
   const question = input.question.trim().slice(0, MAX_QUESTION);
   if (!question) throw new Error("A request needs a question");
   const options = input.kind === "permission"
-    ? (input.always ? ["allow", "deny", "always"] : ["allow", "deny"])
+    ? ["allow", "deny", ...(input.always ? ["always"] : []), ...(input.allowSession ? ["allow_session"] : [])]
     : [...new Set((input.options ?? []).map((option) => String(option).trim().slice(0, MAX_OPTION)).filter(Boolean))].slice(0, 6);
   return world.tx((db) => {
     const run = owned(db, id, owner, now);
@@ -418,6 +422,18 @@ export function answerRequest(world: World, id: string, input: { requestId: stri
     if (run.request.id !== input.requestId) throw new RunError("conflict", "That question was already answered or replaced");
     if (run.request.kind === "permission" && !run.request.options.includes(answer)) throw new RunError("state", "Answer allow or deny");
     if (!answer) throw new RunError("state", "An answer is needed");
+    if (run.request.kind === "permission" && (answer === "allow_session" || answer === "always")) {
+      const { detailKind, grant } = run.request;
+      withCoreContext({ actor: "user" }, () => {
+        if (answer === "always" && detailKind === "command") {
+          if (!grant) throw new RunError("state", "This command has no prefix grant");
+          grantCommand(world, run.conversationId, grant, input.by ?? "home", now);
+        } else {
+          // Older in-project edit prompts used "always" for the mode switch.
+          updateConversation(world, run.conversationId, { mode: "edits", now });
+        }
+      });
+    }
     // The run works again from here. If it waited past its lease (the machine slept), the answer starts the lease
     // anew, so what the answer allows is not refused before the executor's next heartbeat.
     const lapsed = Date.parse(run.leaseUntil!) <= now;
@@ -458,8 +474,8 @@ export function getRun(world: World, id: string): { run: Run; events: CoreEvent[
   return { run: detailRun(world.db, id), events: readRunEvents(world.db, id) };
 }
 
-/** Chronological transcript pages, with the insertion order breaking timestamp ties. Older unanswered
- * requests and the running turn accompany the first page, so a long queue cannot hide the steer target. */
+/** Chronological transcript pages, with the insertion order breaking timestamp ties. The turn held by
+ * the executor accompanies the first page, so it stays visible even after many messages queue behind it. */
 export function conversationRuns(world: World, id: string, options: { before?: string; changed?: string[]; limit?: number } = {}) {
   const scope = `${DETAIL_ROWS} WHERE r.conversation_id = ?`;
   const order = " ORDER BY r.created_at DESC, r.rowid DESC";
@@ -479,14 +495,14 @@ export function conversationRuns(world: World, id: string, options: { before?: s
   const boundary = page.at(-1);
   const nextCursor = rows.length > size && boundary ? String(boundary.id) : null;
   if (!before && nextCursor && boundary) {
-    page.push(...world.db.prepare(`${scope} AND (r.state = 'running' OR r.request IS NOT NULL)
+    page.push(...world.db.prepare(`${scope} AND r.state IN (${LEASED_SQL})
       AND (r.created_at, r.rowid) < (?, ?)${order}`)
       .all(id, boundary.created_at, boundary.history_order));
   }
   return { runs: page.map(turn).reverse(), nextCursor };
 }
 
-/** Newest first. A device can keep unanswered requests visible beyond its window of recent runs. */
+/** Newest first. A device can keep turns held by executors visible beyond its window of recent runs. */
 export function listRuns(world: World, options: {
   conversationId?: string; limit?: number; includeWaiting?: boolean; hiddenConversations?: readonly string[];
 } = {}): Run[] {
@@ -497,9 +513,9 @@ export function listRuns(world: World, options: {
   const recent = world.db.prepare(`SELECT *, rowid AS position ${scope} ORDER BY created_at DESC, rowid DESC LIMIT ?`).all(...args, limit);
   if (options.includeWaiting && recent.length === limit) {
     const boundary = recent[limit - 1];
-    const waiting = world.db.prepare(`SELECT * ${scope} AND request IS NOT NULL AND (created_at, rowid) < (?, ?)
+    const active = world.db.prepare(`SELECT * ${scope} AND state IN (${LEASED_SQL}) AND (created_at, rowid) < (?, ?)
       ORDER BY created_at DESC, rowid DESC`).all(...args, boundary.created_at, boundary.position);
-    return [...recent, ...waiting].map(toRun);
+    return [...recent, ...active].map(toRun);
   }
   return recent.map(toRun);
 }

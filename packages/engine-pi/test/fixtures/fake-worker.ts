@@ -58,7 +58,7 @@ process.on("message", async (message: ToWorker) => {
   }
   const { run, job } = message;
   warm.add(job.thread);
-  const goal = job.prompt.split("\n\n").at(-1)!;
+  const goal = job.prompt.goal;
   send({ type: "text", run, text: "thinking" });
   send({ type: "usage", run, usage: { model: job.model ?? "fake/default", thinking: job.thinking ?? "off", tokens: 1200, contextWindow: 100000, percent: 1.2 } });
   if (goal.startsWith("tool ")) {

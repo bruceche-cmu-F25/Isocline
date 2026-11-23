@@ -1,10 +1,9 @@
-/** Shell commands in a development session (docs/design/dev-mode.md 4.3): every command asks the user first, and a
- * plain one can be allowed for the rest of the session. That grant belongs to one conversation and one command: it
- * covers the same command with more arguments after it (`npm test` also allows `npm test -- foo`), and nothing that
- * chains, pipes, substitutes or redirects, which always asks.
- */
+/** Command-specific grants in a development session's ask mode. A grant covers a plain command with optional
+ * trailing arguments (`npm test` also allows `npm test -- foo`). Chains, pipes and redirects require separate
+ * approval unless the user switches the whole session to `edits`. */
 import { appendEvent } from "./events.ts";
 import { ConversationError } from "./conversations.ts";
+import type { SessionMode } from "./projects.ts";
 import type { World } from "./world.ts";
 
 /** What a shell reads as more than one command, or as somewhere else to read from or write to. */
@@ -39,15 +38,16 @@ export interface CommandGrant {
   at: string;
 }
 
-function read(world: World, conversationId: string): { projectId: string | null; grants: CommandGrant[] } {
-  const row = world.db.prepare("SELECT project_id, commands FROM core_conversations WHERE id = ?").get(conversationId);
+/** The current session policy, read before each edit or command. */
+export function sessionPermissions(world: World, conversationId: string): { projectId: string | null; mode: SessionMode | null; grants: CommandGrant[] } {
+  const row = world.db.prepare("SELECT project_id, mode, commands FROM core_conversations WHERE id = ?").get(conversationId);
   if (!row) throw new ConversationError("missing");
-  return { projectId: (row.project_id as string | null) ?? null, grants: JSON.parse(row.commands as string) as CommandGrant[] };
+  return { projectId: row.project_id as string | null, mode: row.mode as SessionMode | null, grants: JSON.parse(row.commands as string) as CommandGrant[] };
 }
 
 /** The commands the user allowed for the rest of this session, oldest first. */
 export function listCommandGrants(world: World, conversationId: string): CommandGrant[] {
-  return read(world, conversationId).grants;
+  return sessionPermissions(world, conversationId).grants;
 }
 
 /** The user allowed this command for the rest of the session. Only a plain command can be; granting twice is a no-op. */
@@ -55,7 +55,7 @@ export function grantCommand(world: World, conversationId: string, command: stri
   if (!simpleCommand(command)) throw new ConversationError("invalid", "Only a plain command can be allowed for a session");
   const text = normalizeCommand(command);
   return world.tx((db) => {
-    const { projectId, grants } = read(world, conversationId);
+    const { projectId, grants } = sessionPermissions(world, conversationId);
     if (!projectId) throw new ConversationError("invalid", "Only a development session runs commands");
     if (grants.some((grant) => grant.command === text)) return grants;
     const next = [...grants, { command: text, by, at: new Date(now).toISOString() }].slice(-MAX_GRANTS);
@@ -69,7 +69,7 @@ export function grantCommand(world: World, conversationId: string, command: stri
 export function revokeCommand(world: World, conversationId: string, command: string, now: number = Date.now()): CommandGrant[] {
   const text = normalizeCommand(command);
   return world.tx((db) => {
-    const { grants } = read(world, conversationId);
+    const { grants } = sessionPermissions(world, conversationId);
     const next = grants.filter((grant) => grant.command !== text);
     if (next.length === grants.length) return grants;
     db.prepare("UPDATE core_conversations SET commands = ? WHERE id = ?").run(JSON.stringify(next), conversationId);

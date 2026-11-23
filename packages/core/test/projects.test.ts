@@ -52,8 +52,8 @@ test("a session's runs get the project's folder; a wrong profile or a removed pr
   const ok = submitRun(w, { requestId: "r1", goal: "Where is checkout?", profile: "developer", conversationId: session.id }).run;
   await drain.kick();
   assert.equal(getRun(w, ok.id).run.state, "completed");
-  assert.deepEqual(seen[0].workspace, { root: project.path, name: "Shop", mode: "ask", commands: [] });
-  assert.equal(seen[0].instructions, "Work in the project.\n\nAsk before each change.", "the run is told what its mode allows");
+  assert.deepEqual(seen[0].workspace, { root: project.path, name: "Shop", mode: "edits", commands: [] });
+  assert.equal(seen[0].instructions, "Work in the project.\n\nChange freely.", "the run is told what its mode allows");
   // The user's other trusted projects go along (free to look in); an untrusted one does not.
   const site = trustProject(w, addProject(w, { path: folder(), name: "Site" }).id);
   addProject(w, { path: folder(), name: "Unread" });
@@ -79,6 +79,31 @@ test("a session's runs get the project's folder; a wrong profile or a removed pr
   await drain.kick();
   assert.equal(getRun(w, gone.id).run.outcome?.error, "project_unavailable");
   assert.equal(seen.length, 1);
+});
+
+test("a new coding session uses its project's last startup choice, including after restart", (t) => {
+  const path = join(folder(), "world.sqlite");
+  const old = openWorld(path, CORE_MIGRATIONS.filter((migration) => migration.id !== "core:32"));
+  const app = trustProject(old, addProject(old, { path: folder() }).id);
+  old.db.prepare("INSERT INTO core_conversations (id, title, created_at, updated_at, project_id, mode) VALUES ('legacy', 'Review', ?, ?, ?, 'ask')")
+    .run(app.createdAt, app.createdAt, app.id);
+  old.close();
+  const w = openWorld(path, CORE_MIGRATIONS);
+  assert.equal(getConversation(w, "legacy").mode, "ask", "upgrading a project preserves permissions for open sessions");
+  const site = trustProject(w, addProject(w, { path: folder() }).id);
+  const first = startSession(w, { projectId: app.id, title: "Build a feature" });
+  assert.equal(first.mode, "edits");
+  assert.equal(startSession(w, { projectId: app.id, title: "Review", mode: "ask" }).mode, "ask");
+  updateConversation(w, first.id, { mode: "plan" });
+  w.close();
+
+  const reopened = openWorld(path, CORE_MIGRATIONS);
+  t.after(() => reopened.close());
+  assert.equal(getConversation(reopened, first.id).mode, "plan", "a mid-session change is local to that session");
+  assert.equal(startSession(reopened, { projectId: app.id, title: "Another review" }).mode, "ask");
+  assert.equal(startSession(reopened, { projectId: site.id, title: "Other project" }).mode, "edits");
+  assert.equal(startSession(reopened, { projectId: app.id, title: "Plan", mode: "plan" }).mode, "plan");
+  assert.equal(startSession(reopened, { projectId: app.id, title: "Continue planning" }).mode, "plan");
 });
 
 test("what belongs to a development session can be told from what does not", () => {

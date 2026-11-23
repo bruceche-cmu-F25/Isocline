@@ -11,7 +11,7 @@
 import { fork, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { EngineModel, EnginePort, RunTool } from "@alfred/core";
-import { composeHistory, composePrompt, type RunJob, type ToParent, type ToWorker } from "./protocol.ts";
+import { composeHistory, type RunJob, type ToParent, type ToWorker } from "./protocol.ts";
 
 export class EngineCrashedError extends Error {
   override name = "EngineCrashedError";
@@ -173,12 +173,13 @@ export function createWorkerEngine(options: WorkerEngineOptions): WorkerEngine {
       const job: RunJob = {
         thread: request.thread,
         instructions: request.instructions,
-        prompt: composePrompt(request),
+        prompt: { today: request.today, ...(request.now ? { now: request.now } : {}), timezone: request.timezone, goal: request.goal, context: request.context },
         history: composeHistory(request),
         tools: request.tools.map((tool) => ({ name: tool.name, label: tool.label, description: tool.description, parameters: tool.parameters })),
         ...(request.model ? { model: request.model } : {}),
         ...(request.thinking ? { thinking: request.thinking } : {}),
         ...(request.speed ? { speed: request.speed } : {}),
+        ...(request.locale ? { locale: request.locale } : {}),
         ...(request.workspace ? { workspace: request.workspace } : {}),
         ...(request.attachments?.length ? { attachments: request.attachments } : {}),
       };
@@ -201,7 +202,9 @@ export function createWorkerEngine(options: WorkerEngineOptions): WorkerEngine {
           outcome();
         };
         const onMessage = (message: ToParent) => {
-          if (!("run" in message) || message.run !== run) return;
+          // Buffered IPC can arrive between SIGKILL and exit. Only exit may settle this run now,
+          // otherwise a late reply would release the dying worker for the next turn.
+          if (worker.child.killed || !("run" in message) || message.run !== run) return;
           if (message.type === "text") request.onText?.(message.text);
           else if (message.type === "usage") request.onUsage?.(message.usage);
           else if (message.type === "done") finish(() => resolve({ reply: message.reply }));
@@ -211,9 +214,9 @@ export function createWorkerEngine(options: WorkerEngineOptions): WorkerEngine {
           else if (message.type === "changed") request.external.changed?.(message.file);
           else if (message.type === "allow") {
             // Anything but an explicit yes, including a failure to ask, is a no.
-            request.external.allow(message.question, { detail: message.detail, always: message.always, ...(message.command !== undefined ? { command: message.command } : {}) })
+            request.external.allow(message.question, { detail: message.detail, inProject: message.inProject, command: message.command })
               .catch(() => "deny" as const)
-              .then((answer) => to({ type: "allow_result", run, call: message.call, allowed: answer !== "deny", always: answer === "always" }));
+              .then((answer) => to({ type: "allow_result", run, call: message.call, allowed: answer === "allow" || answer === "always" }));
           } else if (message.type === "tool") {
             const tool = tools.get(message.name);
             if (!tool) { to({ type: "tool_result", run, call: message.call, ok: false, error: `Unknown tool ${message.name}` }); return; }

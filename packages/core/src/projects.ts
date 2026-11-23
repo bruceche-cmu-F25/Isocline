@@ -1,8 +1,8 @@
 /** Projects: folders on the home node that Alfred may work in. A conversation either belongs to no project (an
  * everyday conversation) or to one (a development session), fixed when it is created (docs/design/dev-mode.md).
  *
- * A project is added untrusted; the user trusts it once, which is what lets Alfred read it (and later change it)
- * in a session. The path is the home node's; only the home node's own machine may add one.
+ * A project is added untrusted. Trust allows coding sessions to start there under their selected permission mode.
+ * The path is the home node's; only the home node's own machine may add one.
  */
 import { realpathSync, statSync } from "node:fs";
 import { basename, isAbsolute } from "node:path";
@@ -18,6 +18,8 @@ export interface Project {
   createdAt: string;
   /** When the user trusted it; null until then, and no session can start. */
   trustedAt: string | null;
+  /** Permission mode for the next new session in this project. */
+  defaultMode: SessionMode;
 }
 
 export class ProjectError extends Error {
@@ -31,14 +33,14 @@ export class ProjectError extends Error {
 
 export const PROJECT_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
-/** What a development session may do in its folder without asking (docs/design/dev-mode.md 4.3):
- * `plan` reads only; `ask` may change files, asking each time with the diff; `edits` changes files inside the
- * project without asking. Anything outside the project always asks. */
+/** In a development session, `plan` blocks edits and shell calls, `ask` prompts, and `edits` allows
+ * project file edits and commands launched from the session folder. External file edits still ask. */
 export const SESSION_MODES = ["plan", "ask", "edits"] as const;
 export type SessionMode = (typeof SESSION_MODES)[number];
 
 function toProject(row: Record<string, unknown>): Project {
-  return { id: row.id as string, name: row.name as string, path: row.path as string, createdAt: row.created_at as string, trustedAt: (row.trusted_at as string | null) ?? null };
+  return { id: row.id as string, name: row.name as string, path: row.path as string, createdAt: row.created_at as string,
+    trustedAt: (row.trusted_at as string | null) ?? null, defaultMode: row.default_mode as SessionMode };
 }
 
 /** Projects not removed, most recently added first. */
@@ -73,7 +75,7 @@ export function addProject(world: World, input: { path: string; name?: string },
   });
 }
 
-/** The user trusts the folder: Alfred may read it (and, with later permission modes, change it) in a session. */
+/** The user allows coding sessions to work in this folder under their selected permission mode. */
 export function trustProject(world: World, id: string, now: number = Date.now()): Project {
   return world.tx((db) => {
     const project = getProject(world, id);

@@ -36,7 +36,7 @@ import { handleConnections, MODEL_USAGE_PATH } from "./connections-http.ts";
 import { handleSkills } from "./skills-http.ts";
 import { sourcesToday, runSources } from "./run-sources.ts";
 import { reviewCommit } from "./commit-review.ts";
-import { branchState, pullRequest, workspaceChanges, workspaceDiff } from "./workspace.ts";
+import { branchState, projectBranches, pullRequest, workspaceChanges, workspaceDiff } from "./workspace.ts";
 import type { GoogleConnections } from "./google.ts";
 import type { McpConnectors, ModelAccounts, Skills } from "@alfred/engine-pi";
 import { DEVICE_COOKIE, type RemoteAccess } from "./remote.ts";
@@ -408,6 +408,13 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
   if (method === "POST" && path === "/api/conversations") { needDev(true); return send(res, 201, (await ask("conversation.start")).result); }
   if (method === "GET" && path === "/api/conversations/archived") {
     return send(res, 200, { conversations: listArchivedConversations(home.world, { includeSessions: dev }) });
+  }
+  const branchList = /^\/api\/projects\/([A-Za-z0-9_-]{1,64})\/branches$/.exec(path);
+  if (method === "GET" && branchList) {
+    needDev(true);
+    const project = getProject(home.world, branchList[1]);
+    if (!project.trustedAt) throw new HttpError(409, "This folder is not trusted yet", "untrusted");
+    return send(res, 200, await projectBranches(project.path));
   }
   // Projects: only from the home node's own machine (dispatch refuses other devices).
   if (method === "POST" && path === "/api/projects") return send(res, 200, (await ask("project.add")).result);
