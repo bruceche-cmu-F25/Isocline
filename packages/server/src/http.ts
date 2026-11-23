@@ -32,7 +32,7 @@ import { PROTOCOL_VERSION } from "@alfred/protocol";
 import type { Home } from "./home.ts";
 import { DEVELOPER_PROFILE } from "./profiles.ts";
 import { command, profileFor, sessionWrites } from "./commands.ts";
-import { handleConnections, MODEL_USAGE_PATH } from "./connections-http.ts";
+import { handleConnections } from "./connections-http.ts";
 import { handleSkills } from "./skills-http.ts";
 import { sourcesToday, runSources } from "./run-sources.ts";
 import { reviewCommit } from "./commit-review.ts";
@@ -45,6 +45,7 @@ import type { PushService } from "./push.ts";
 import { MAX_VOICE_BYTES, type Transcriber } from "./voice.ts";
 import { MAX_FILE_BYTES } from "./files.ts";
 import { encodingFor, HttpError, overTheWire, pack, parseObject, readBytes, readJson, send, statusOf, type Encoding } from "./wire.ts";
+import { checkAccess, NEEDS_DEV } from "./access.ts";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const TYPES: Record<string, string> = {
@@ -96,7 +97,6 @@ const automationView = (world: World, id: string) => listAutomations(world).find
 
 /** Whether whoever asks may go into development sessions: this machine, or a device the user gave `dev`. */
 const mayDev = (peer: Peer) => peer.local || !!peer.device?.scopes.includes("dev");
-const NEEDS_DEV = "This device needs permission to use development sessions.";
 
 /** What a device says it already holds of the modules' snapshots: `have=todo.<revision>,mail.<revision>` (the
  * revisions are the ones the last state came with), or `modules=0` from a caller that reads none of them. */
@@ -257,7 +257,6 @@ function serveFile(res: ServerResponse, uiDir: string, pathname: string): void {
   }, plain);
 }
 
-const LOCAL_ONLY = "Only on the machine Alfred runs on";
 const guessKind = (kind: unknown): DeviceKind => (DEVICE_KINDS as readonly unknown[]).includes(kind) ? kind as DeviceKind : "browser";
 
 /** The device list, with which devices get push notifications. */
@@ -324,7 +323,8 @@ async function remoteRoute(home: Home, options: ServeOptions, peer: Peer, req: I
       res.setHeader("Set-Cookie", `${DEVICE_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`);
       return send(res, 200, {}), true;
     }
-    throw new HttpError(403, LOCAL_ONLY, "local_only");
+    // The rest is this machine's (access.ts has already refused it to devices).
+    throw new HttpError(404, "Not found");
   }
   if (method === "GET" && path === "/api/remote") return send(res, 200, withPush(await remote.describe(), options.push) satisfies RemoteResponse), true;
   if (method === "POST" && path === "/api/remote") {
@@ -405,18 +405,17 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     stored.stream().on("error", () => res.destroy()).pipe(res);
     return;
   }
-  if (method === "POST" && path === "/api/conversations") { needDev(true); return send(res, 201, (await ask("conversation.start")).result); }
+  if (method === "POST" && path === "/api/conversations") { return send(res, 201, (await ask("conversation.start")).result); }
   if (method === "GET" && path === "/api/conversations/archived") {
     return send(res, 200, { conversations: listArchivedConversations(home.world, { includeSessions: dev }) });
   }
   const branchList = /^\/api\/projects\/([A-Za-z0-9_-]{1,64})\/branches$/.exec(path);
   if (method === "GET" && branchList) {
-    needDev(true);
     const project = getProject(home.world, branchList[1]);
     if (!project.trustedAt) throw new HttpError(409, "This folder is not trusted yet", "untrusted");
     return send(res, 200, await projectBranches(project.path));
   }
-  // Projects: only from the home node's own machine (dispatch refuses other devices).
+  // Project registration and trust are only changed from the home node's own machine.
   if (method === "POST" && path === "/api/projects") return send(res, 200, (await ask("project.add")).result);
   const project = /^\/api\/projects\/([A-Za-z0-9_-]{1,64})\/(trust|remove)$/.exec(path);
   if (project && method === "POST") return send(res, 200, (await ask(`project.${project[2]}`, { id: project[1] })).result);
@@ -436,7 +435,6 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
   // Whether the Mac app is there to be asked (it is running and comes for requests).
   if (method === "GET" && path === "/api/desktop") return send(res, 200, { present: home.desk.present });
   if (path === "/api/desktop/requests" || path.startsWith("/api/desktop/requests/")) {
-    if (!peer.local) throw new HttpError(403, LOCAL_ONLY, "local_only");
     if (method === "GET" && path === "/api/desktop/requests") {
       const gone = new AbortController();
       req.on("close", () => gone.abort());
@@ -455,7 +453,6 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
   // machine opens one, types into it or watches it. No device scope lets another device in.
   const terminal = /^\/api\/conversations\/([A-Za-z0-9_-]{1,64})\/terminal(?:\/(stream|input|resize|close))?$/.exec(path);
   if (terminal) {
-    if (!peer.local) throw new HttpError(403, LOCAL_ONLY, "local_only");
     const [, id, action] = terminal;
     const found = getConversation(home.world, id);
     if (!found.projectId) throw new HttpError(404, "Not a development session");
@@ -484,7 +481,6 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
   // request, which asks GitHub); committing them, and pushing them with a pull request.
   const session = /^\/api\/conversations\/([A-Za-z0-9_-]{1,64})\/(changes|diff|branch|pr|commit|commit-preview|publish)$/.exec(path);
   if (session) {
-    needDev(true);
     const found = getConversation(home.world, session[1]);
     if (!found.projectId) throw new HttpError(404, "Not a development session");
     if (method === "POST" && (session[2] === "commit" || session[2] === "publish")) return send(res, 200, (await ask(`session.${session[2]}`, { id: found.id })).result);
@@ -518,7 +514,6 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
   // may (like the terminal); seeing, reading and stopping them is a development session's business.
   const proc = /^\/api\/conversations\/([A-Za-z0-9_-]{1,64})\/processes(?:\/([A-Za-z0-9_-]{1,64})(?:\/(logs|stop))?)?$/.exec(path);
   if (proc) {
-    needDev(true);
     const [, id, processId, action] = proc;
     const found = getConversation(home.world, id);
     if (!found.projectId) throw new HttpError(404, "Not a development session");
@@ -526,7 +521,6 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     if (method === "GET" && action === "logs") return send(res, 200, home.processes.logs(id, processId, Number(url.searchParams.get("lines")) || 400, url.searchParams.has("seen") ? Number(url.searchParams.get("seen")) : undefined));
     if (method === "POST" && action === "stop") { await readJson(req); home.processes.stop(id, processId); return send(res, 200, {}); }
     if (method === "POST" && !processId) {
-      if (!peer.local) throw new HttpError(403, LOCAL_ONLY, "local_only");
       const body = await readJson<{ command?: unknown; name?: unknown }>(req);
       const root = sessionRoot(home.world, found);
       if (!root || typeof body.command !== "string") throw new HttpError(400, "command is required");
@@ -783,15 +777,11 @@ function dispatch(home: Home, options: ServeOptions, peer: Peer, req: IncomingMe
       if (!peer.device) throw new HttpError(401, "This device is not paired with Alfred yet", "unpaired");
       if (await authorizeBrowser(options.remote!.webLock, peer.device, req, res, path)) return;
     }
+    // Who may use which address is decided here, once, for every address (access.ts).
+    if (path.startsWith("/api/")) checkAccess({ local: peer.local, dev: mayDev(peer) }, req.method ?? "GET", path);
     if (await remoteRoute(home, options, peer, req, res, path)) return;
     if (!peer.local) {
       if (!peer.device) throw new HttpError(401, "This device is not paired with Alfred yet", "unpaired");
-      const readingUsage = path === MODEL_USAGE_PATH && req.method === "GET";
-      if (path.startsWith("/api/connections") && !readingUsage) throw new HttpError(403, LOCAL_ONLY, "local_only");
-      // Skills are files on the home node's machine, and adding one reads its other folders.
-      if (path === "/api/skills" || path.startsWith("/api/skills/")) throw new HttpError(403, LOCAL_ONLY, "local_only");
-      // A folder path means something only on the home node's machine, and trusting one lets Alfred read it.
-      if (path.startsWith("/api/projects") && req.method === "POST") throw new HttpError(403, LOCAL_ONLY, "local_only");
       if (path === "/api/events" && req.method === "GET" && options.remote) {
         // The reconnect checks the device's current scopes and rejects a revoked device.
         const id = peer.device.id;

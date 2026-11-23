@@ -171,6 +171,8 @@ test("a device pairs with a one-time code, then reaches everything but credentia
       assert.equal(reply.status, 403, path);
       assert.equal(reply.body.code, "local_only", path);
     }
+    // An address Alfred does not list is not reachable, whatever the device may do.
+    assert.equal((await ask(ingress, "/api/not-an-address", { headers: as, body: {} })).status, 404);
 
     // Another tailnet account's device is turned away even with a token; so is a foreign Host or Origin.
     assert.equal((await ask(ingress, "/api/state", { headers: viaServe({ Cookie: token, "Tailscale-User-Login": "friend@example.com" }) })).status, 403);
