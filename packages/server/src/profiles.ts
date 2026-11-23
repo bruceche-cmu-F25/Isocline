@@ -2,8 +2,8 @@
  * assistant's (an everyday conversation), a development session's, and an automation's (nobody is there).
  * The home node hands these to the run drain; commands.ts says which profile a new run gets.
  */
-import { coreContext, getConversation, getRun, sessionRoot, type RunProfile, type RunTool, type SessionMode, type World } from "@alfred/core";
-import { askUserTool, assistantTools, runTools, type AlfredModule } from "@alfred/module-kit";
+import { coreContext, describePreferences, userLocale, type Locale, getConversation, getRun, sessionRoot, type RunProfile, type RunTool, type SessionMode, type World } from "@alfred/core";
+import { askUserTool, assistantTools, moduleGuidance, runTools, type AlfredModule } from "@alfred/module-kit";
 import { isLocalPage, type BrowserPage, type Desk } from "./desk.ts";
 import type { Processes } from "./processes.ts";
 import type { Terminals } from "./terminals.ts";
@@ -14,7 +14,12 @@ export const DEVELOPER_PROFILE = "developer";
 /** What an automation's runs get: nobody is there, so only reading and reversible changes; the rest is proposed. */
 export const AUTOMATION_PROFILE = "automation";
 /** Not for an automation's own runs: asking (nobody answers), and making or changing automations (only the user does). */
-const UNATTENDED_EXCLUDED = new Set(["ask_user", "automation_add", "automation_update"]);
+/** What the user is asked before a tool of a session goes further, in their language. */
+const ASK: Record<Locale, { readPage: string; background: string }> = {
+  zh: { readPage: "允许 Alfred 读浏览器里这个页面吗？", background: "允许 Alfred 在后台运行这条命令吗？" },
+  en: { readPage: "Let Alfred read this page in the browser?", background: "Let Alfred run this command in the background?" },
+};
+const UNATTENDED_EXCLUDED = new Set(["ask_user", "automation_add", "automation_update", "area_add", "preference_add", "preference_remove"]);
 
 const PERSONA = `You are Alfred, the user's personal assistant, carrying out one request in a conversation.
 Use only the tools you have. Make exactly the changes the request asks for. If the request needs something
@@ -88,7 +93,7 @@ function terminalTool(world: World, terminals: Terminals): RunTool {
 
 /** What a development session's run may see of the Mac app's browser pane: the page that is open in it, as text,
  * with what it logged. A page on this machine (the app being built) is read freely; any other site asks first. */
-function browserTool(desk: Desk): RunTool {
+function browserTool(world: World, desk: Desk): RunTool {
   return {
     name: "browser_read",
     label: "Read browser",
@@ -103,7 +108,7 @@ function browserTool(desk: Desk): RunTool {
       try { page = await desk.ask<BrowserPage>("browser.where"); } catch { return "The browser pane is not available: it exists only in the Mac app, and the app is not answering."; }
       if (!page.open || !page.url) return "The browser pane is not open, or shows no page. Ask the user to open it on the page.";
       if (!isLocalPage(page.url)) {
-        const answer = context ? await context.ask({ kind: "permission", question: `允许 Alfred 读浏览器里这个页面吗？\n${page.url}` }) : "deny";
+        const answer = context ? await context.ask({ kind: "permission", question: `${ASK[userLocale(world)].readPage}\n${page.url}` }) : "deny";
         if (answer !== "allow") return "The user did not allow reading this page. Nothing was read; do not try it another way.";
       }
       try { page = await desk.ask<BrowserPage>("browser.read"); } catch { return "The page could not be read."; }
@@ -152,7 +157,7 @@ function processTools(world: World, processes: Processes): RunTool[] {
       if (!here) return "There is no development session here to start a process in.";
       const command = String(params.command ?? "").trim();
       if (!command) return "Give the command to run.";
-      const answer = context?.command ? await context.command(`允许 Alfred 在后台运行这条命令吗？`, command) : "deny";
+      const answer = context?.command ? await context.command(ASK[userLocale(world)].background, command) : "deny";
       if (answer !== "allow") return "The user did not allow this command (or the session is in plan mode). Nothing was started; do not try it another way.";
       const started = processes.start(here.conversationId, { command, cwd: here.root, name: typeof params.name === "string" ? params.name : undefined, by: "alfred" });
       // A few seconds for it to say whether it came up, and where.
@@ -211,27 +216,30 @@ function processTools(world: World, processes: Processes): RunTool[] {
 
 export function profiles(world: World, modules: readonly AlfredModule[], devices: { terminals?: Terminals; desk?: Desk; processes?: Processes } = {}): Record<string, RunProfile> {
   const { terminals, desk, processes } = devices;
-  const guidance = modules.map((module) => module.guidance).filter(Boolean).join("\n\n");
+  // Read for each run: some modules' guidance names the user's own data (their areas).
+  const guidance = () => moduleGuidance(world, modules);
+  // The user's name and what they have said about how they like things (core preferences.ts), read for each run too.
+  const user = () => describePreferences(world);
   return {
     [ASSISTANT_PROFILE]: {
-      instructions: guidance ? `${PERSONA}\n\n${guidance}` : PERSONA,
+      get instructions() { return [PERSONA, user(), guidance()].filter(Boolean).join("\n\n"); },
       tools: [...runTools(world, modules), ...assistantTools(world, modules)],
     },
     [DEVELOPER_PROFILE]: {
       // A session is about its project's code, kept apart from the everyday: none of the modules' tools (todos,
       // calendar, mail…) or their guidance, no proposals or automations, no page to open. Only asking the user.
-      instructions: DEVELOPER,
+      get instructions() { return [DEVELOPER, user()].filter(Boolean).join("\n\n"); },
       tools: [
         askUserTool(),
         ...(terminals ? [terminalTool(world, terminals)] : []),
-        ...(desk ? [browserTool(desk)] : []),
+        ...(desk ? [browserTool(world, desk)] : []),
         ...(processes ? processTools(world, processes) : []),
       ],
       workspace: true,
       modes: SESSION_MODE,
     },
     [AUTOMATION_PROFILE]: {
-      instructions: [PERSONA, UNATTENDED, guidance].filter(Boolean).join("\n\n"),
+      get instructions() { return [PERSONA, UNATTENDED, user(), guidance()].filter(Boolean).join("\n\n"); },
       // Nothing irreversible is offered at all (not even to ask about), and nothing that asks.
       tools: [...runTools(world, modules, { askFor: [] }), ...assistantTools(world, modules).filter((tool) => !UNATTENDED_EXCLUDED.has(tool.name))],
       unattended: true,

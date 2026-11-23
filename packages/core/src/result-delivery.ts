@@ -41,9 +41,12 @@ export function completionNotification(text: string): boolean | undefined {
 }
 
 type DeliveryRun = { id: string; goal: string; automationId: string | null };
-export function resultDestination(db: DatabaseSync, run: DeliveryRun, status: string): { delivery: "inbox"; template?: AutomationTemplate } | null {
-  const rule = run.automationId ? db.prepare("SELECT template FROM core_automations WHERE id = ?").get(run.automationId) : undefined;
+/** Where a finished run's result goes, and for an automation's, how it is drawn and kept (its options). */
+export function resultDestination(db: DatabaseSync, run: DeliveryRun, status: string): { delivery: "inbox"; template?: AutomationTemplate; layout?: "sections"; keep?: "latest" } | null {
+  const rule = run.automationId ? db.prepare("SELECT * FROM core_automations WHERE id = ?").get(run.automationId) : undefined;
   const template = rule?.template as AutomationTemplate | undefined;
+  // Columns a world at an older migration does not have yet read as their defaults.
+  const options = { layout: rule?.layout ?? "text", keep: rule?.keep ?? (template === "brief" ? "latest" : "all"), notify: rule?.notify ?? (template === "mail_todos" ? "changes" : "always") };
   let requested = template ? undefined : completionNotification(run.goal);
   const steers = db.prepare("SELECT json_extract(payload, '$.text') AS text, json_extract(payload, '$.notifyOnCompletion') AS requested FROM core_events WHERE run_id = ? AND kind = 'run.steered' AND actor = 'user' ORDER BY seq").all(run.id);
   for (const steer of steers) {
@@ -51,9 +54,13 @@ export function resultDestination(db: DatabaseSync, run: DeliveryRun, status: st
     else if (typeof steer.text === "string") requested = completionNotification(steer.text) ?? requested;
   }
   if (requested === false || (!run.automationId && !requested)) return null;
-  if (template === "mail_todos" && status === "completed" && !requested &&
-      !db.prepare("SELECT 1 FROM core_events WHERE run_id = ? AND kind = 'todo.suggested' LIMIT 1").get(run.id)) return null;
-  return { delivery: "inbox", ...(template ? { template } : {}) };
+  // "Only when there is something": a run that changed nothing and proposed nothing stays quiet.
+  if (options.notify === "changes" && status === "completed" && !requested &&
+      !db.prepare("SELECT 1 FROM core_events WHERE run_id = ? AND kind NOT LIKE 'run.%' LIMIT 1").get(run.id)) return null;
+  return {
+    delivery: "inbox", ...(template ? { template } : {}),
+    ...(options.layout === "sections" ? { layout: "sections" as const } : {}), ...(options.keep === "latest" ? { keep: "latest" as const } : {}),
+  };
 }
 
 export function awayResults(db: DatabaseSync, since: string, until: string): AwayDigest["runs"] {
@@ -79,14 +86,15 @@ export function awayResults(db: DatabaseSync, since: string, until: string): Awa
   };
 }
 
-/** Keep one successful edition per brief in Inbox. Failed editions leave the last good one available.
+/** For an automation that keeps only its latest result (`keep: latest`, like the morning brief): one successful
+ * edition in the Inbox. Failed editions leave the last good one available.
  * A return summary covers a time interval; refresh affected summaries so an old link cannot restore a retired edition. */
-export function retirePreviousBriefs(db: DatabaseSync, automationId: string, latestRunId: string, updateWelcomes = true): void {
+export function retirePreviousEditions(db: DatabaseSync, automationId: string, latestRunId: string, updateWelcomes = true): void {
   const retired = db.prepare(`UPDATE core_notices SET payload = json_set(payload, '$.delivery', 'history'),
       state = CASE WHEN state IN ('pending','claimed','presented') THEN 'expired' ELSE state END,
       claimed_by = NULL, claim_until = NULL
     WHERE kind = 'run_result' AND json_extract(payload, '$.automationId') = ? AND json_extract(payload, '$.delivery') = 'inbox'
-      AND json_extract(payload, '$.template') = 'brief' AND json_extract(payload, '$.status') = 'completed'
+      AND json_extract(payload, '$.status') = 'completed'
       AND json_extract(payload, '$.runId') != ? RETURNING created_at`).all(automationId, latestRunId);
   if (retired.length && updateWelcomes) refreshResultRecaps(db, retired.map((row) => String(row.created_at)));
 }
@@ -118,7 +126,7 @@ export function migrateResultDelivery(db: DatabaseSync): void {
   const briefs = db.prepare("SELECT id FROM core_automations WHERE template = 'brief'").all();
   for (const brief of briefs) {
     const latest = db.prepare("SELECT id FROM core_runs WHERE automation_id = ? AND state = 'completed' ORDER BY updated_at DESC, rowid DESC LIMIT 1").get(brief.id);
-    if (latest) retirePreviousBriefs(db, String(brief.id), String(latest.id), false);
+    if (latest) retirePreviousEditions(db, String(brief.id), String(latest.id), false);
   }
   const welcomes = db.prepare("SELECT id, payload, created_at, event_seq FROM core_notices WHERE kind = 'welcome' AND state IN ('pending','claimed','presented')").all();
   // Only the upgrade reconstructs sequence cursors from timestamps. Keep the lookup cheap

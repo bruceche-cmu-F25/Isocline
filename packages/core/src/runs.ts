@@ -14,7 +14,7 @@ import { appendEvent, readRunEvents, type CoreEvent } from "./events.ts";
 import { attachFiles } from "./files.ts";
 import { iso, newId } from "./ids.ts";
 import { createNotice } from "./notices.ts";
-import { resultDestination, retirePreviousBriefs } from "./result-delivery.ts";
+import { resultDestination, retirePreviousEditions } from "./result-delivery.ts";
 import { TEMPLATE_TEXT, type AutomationTemplate } from "./automation-templates.ts";
 import { localeOf } from "./settings.ts";
 import { RUN_STATES } from "./schema.ts";
@@ -321,7 +321,7 @@ export function finishRun(world: World, id: string, owner: string, result: Omit<
           ...(outcome.reply ? { reply: outcome.reply.slice(0, 280) } : {}),
         },
       });
-      if (destination.template === "brief" && result.status === "completed" && run.automationId) retirePreviousBriefs(db, run.automationId, id);
+      if (destination.keep === "latest" && result.status === "completed" && run.automationId) retirePreviousEditions(db, run.automationId, id);
     } else if (!run.automationId && result.status === "completed" && outcome.reply) {
       recordUnreadReply(db, run.conversationId, id);
     }

@@ -64,14 +64,6 @@ npm start          # builds the interface, then serves it on http://127.0.0.1:74
 
 The world is stored in `~/Library/Application Support/Alfred/` on macOS. Use `--data-dir` or `ALFRED_DATA_DIR` to put it somewhere else. Only one home node can run on a data directory at a time.
 
-If you used Robin, you can copy its todos across. Robin's data is opened read-only:
-
-```bash
-npm run alfred -- import-robin --dry-run   # count Robin's todos without writing anything
-npm run alfred -- import-robin             # import them; already-imported ids are skipped
-npm run alfred -- import-robin --check     # compare Alfred's copy with Robin, record by record
-```
-
 ## What is guaranteed so far
 
 - A sentence becomes a **run**. Submitting a run returns immediately, and the conversation never blocks while a run works.

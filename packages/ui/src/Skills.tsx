@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import { createPortal } from "react-dom";
 import type { FoundSkill, SkillContent, SkillInfo, SkillSearchResponse, SkillSearchResult, SkillsResponse, SkillUpdatesResponse } from "@alfred/protocol";
 import { request as call } from "./api.ts";
-import { getLocale, t } from "./i18n/index.ts";
+import { intlLocale, t } from "./i18n/index.ts";
 import { Markdown } from "./Markdown.tsx";
 
 /** How many skills a list shows before "show all": Alfred's own, and the ones found on this Mac. */
@@ -112,7 +112,7 @@ export function Skills() {
   /** The first ten, and any past them that an update was found for (its button is the reason to look). */
   const shown = all ? skills : skills.filter((skill, at) => at < FEW || updates?.updates.includes(skill.id));
   const fromSite = skills.some((skill) => skill.source);
-  const count = new Intl.NumberFormat(getLocale() === "zh" ? "zh-CN" : "en-US", { notation: "compact", maximumFractionDigits: 1 });
+  const count = new Intl.NumberFormat(intlLocale(), { notation: "compact", maximumFractionDigits: 1 });
   const needle = query.trim().toLowerCase();
   const found = (data?.found ?? []).filter((skill) => !needle || skill.name.toLowerCase().includes(needle) || skill.description.toLowerCase().includes(needle));
   const foundShown = allFound || needle ? found : found.slice(0, FEW);

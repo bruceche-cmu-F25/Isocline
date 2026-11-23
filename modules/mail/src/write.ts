@@ -4,7 +4,7 @@
  * idempotent, so it is tried once: anything other than a clear answer from Gmail leaves it `unknown`, and the user is
  * asked to look in Sent.
  */
-import { enqueueOutbound, localeOf, userLocale, type Outbound, type World } from "@alfred/core";
+import { enqueueOutbound, localeOf, userLocale, type Locale, type Outbound, type World } from "@alfred/core";
 import { defineOp, defineTool, Type, type Delivered, type GoogleSession, type ModuleServices } from "@alfred/module-kit";
 import { getMail } from "./index.ts";
 import type { SendInput } from "./types.ts";
@@ -39,12 +39,14 @@ export function buildRaw(input: SendInput, thread?: { messageId?: string; refere
   return Buffer.from(`${headers.join("\r\n")}\r\n\r\n${body}\r\n`, "utf8").toString("base64url");
 }
 
-const SAY = {
+const SAY: Record<Locale, { preview(input: SendInput): string; detail(input: SendInput): string; noPermission: string }> = {
   zh: {
+    noPermission: "没有发信的权限：在设置里打开「Gmail：替你发」",
     preview: (input: SendInput) => `${input.replyTo ? "回复" : "发邮件给"} ${input.to.join("、")}：${input.subject}`,
     detail: (input: SendInput) => [`收件人：${input.to.join(", ")}`, ...(input.cc.length ? [`抄送：${input.cc.join(", ")}`] : []), `主题：${input.subject}`, "", input.body].join("\n"),
   },
   en: {
+    noPermission: "No permission to send: turn on “Gmail: send for you” in Settings",
     preview: (input: SendInput) => `${input.replyTo ? "Reply to" : "Email"} ${input.to.join(", ")}: ${input.subject}`,
     detail: (input: SendInput) => [`To: ${input.to.join(", ")}`, ...(input.cc.length ? [`Cc: ${input.cc.join(", ")}`] : []), `Subject: ${input.subject}`, "", input.body].join("\n"),
   },
@@ -142,7 +144,7 @@ export async function deliverMail(world: World, outbound: Outbound, services: Mo
   const google = services.google;
   const account = (outbound.payload as SendInput).account;
   if (!google?.accounts().find((candidate) => candidate.email === account)?.capabilities.includes("mailSend")) {
-    return { state: "failed", error: localeOf(world.db) === "zh" ? "没有发信的权限：在设置里打开「Gmail：替你发」" : "No permission to send: turn on “Gmail: send for you” in Settings" };
+    return { state: "failed", error: SAY[localeOf(world.db)].noPermission };
   }
   let session: GoogleSession;
   try {

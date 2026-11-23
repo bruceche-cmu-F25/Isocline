@@ -1,16 +1,16 @@
 /** The client side of @alfred/protocol. Every write carries a request id, so a
  * retry after a dropped connection can never do the same thing twice.
  */
-import type {
-  ArchivedConversation, Automation, AutomationHistory, MorningBriefEvidence, Schedule,
+import type { Area, Preference,
+  ArchivedConversation, Automation, AutomationHistory, RunSources, Schedule,
   Conversation, ConversationDetail, CoreEvent, DeviceInfo, FileInfo, DeviceKind, DeviceScopeRequest, LiveUpdate, ModelsResponse, Notice, OpResponse, PairingCode, ProposalResponse,
   Project, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, ViewContext, WebLockStatus,
 } from "@alfred/protocol";
-import type { LinksSnapshot } from "@alfred/module-links/types";
 import "./desktop.ts";
-
-export interface LinkSampleState { snapshot: LinksSnapshot; revision: number }
 import { t } from "./i18n/dict.ts";
+
+/** The options every automation has (core automations.ts). */
+export type AutomationOptions = Pick<Automation, "layout" | "keep" | "notify" | "k">;
 
 const DEVICE_KEY = "alfred.device";
 
@@ -117,10 +117,6 @@ export async function request<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
-  linkSample: () => call<LinkSampleState>("/api/link-sample"),
-  linkSampleOp: (op: string, input: unknown) => post<OpResponse & LinkSampleState>(
-    `/api/link-sample/ops/${encodeURIComponent(op)}`, { requestId: newRequestId(), input }),
-  restoreLinkSample: () => post<LinkSampleState>("/api/link-sample/restore", { requestId: newRequestId() }),
   /** `have`: the revisions of the module snapshots this device already holds (the last state's `revisions`); the
    * home node leaves those snapshots out when they still say the same. `have: null`: no snapshots at all. */
   state: (have?: Readonly<Record<string, string>> | null) => {
@@ -170,7 +166,8 @@ export const api = {
     `/api/conversations/${id}/processes/${processId}/logs${seen === undefined ? "" : `?seen=${seen}`}`),
   respond: (runId: string, requestId: string, answer: string) => post<Run>(`/api/runs/${runId}/respond`, { requestId, answer }),
   run: (runId: string) => call<{ run: Run }>(`/api/runs/${runId}`),
-  morningBrief: (runId: string) => call<{ evidence: MorningBriefEvidence | null }>(`/api/runs/${encodeURIComponent(runId)}/morning-brief`),
+  /** What an automation's run actually read (its calendar, todos and opened mail), for a result shown in sections. */
+  runSources: (runId: string) => call<{ evidence: RunSources | null }>(`/api/runs/${encodeURIComponent(runId)}/sources`),
   cancel: (runId: string) => post<Run>(`/api/runs/${runId}/cancel`, { requestId: newRequestId() }),
   resume: (runId: string) => post<Run>(`/api/runs/${runId}/resume`, { requestId: newRequestId() }),
   op: (op: string, input: unknown, requestId = newRequestId()) => post<OpResponse>(`/api/ops/${op}`, { requestId, input }),
@@ -194,10 +191,19 @@ export const api = {
   syncModule: (id: string) => post<Record<string, never>>(`/api/modules/${id}/sync`, {}),
   setMailFavorite: (account: string, id: string, starred: boolean) =>
     request<{ starred: boolean; scope: "gmail" | "local" }>("/api/modules/mail/favorite", { account, id, starred }),
+  /** The user's areas: each answers with the whole list, in order. `moveTo`: where what was in a removed one goes. */
+  addArea: (name: string, k?: string) => post<{ areas: Area[] }>("/api/areas", { requestId: newRequestId(), name, ...(k ? { k } : {}) }),
+  updateArea: (id: string, patch: { name?: string; k?: string }) => post<{ areas: Area[] }>(`/api/areas/${id}`, { requestId: newRequestId(), patch }),
+  moveArea: (id: string, index: number) => post<{ areas: Area[] }>(`/api/areas/${id}/move`, { requestId: newRequestId(), index }),
+  removeArea: (id: string, moveTo: string | null) => post<{ areas: Area[] }>(`/api/areas/${id}/delete`, { requestId: newRequestId(), moveTo }),
+  /** What the user said about how they like things; each answers with the whole list. */
+  addPreference: (text: string) => post<{ preferences: Preference[] }>("/api/preferences", { requestId: newRequestId(), text }),
+  updatePreference: (id: string, text: string) => post<{ preferences: Preference[] }>(`/api/preferences/${id}`, { requestId: newRequestId(), text }),
+  removePreference: (id: string) => post<{ preferences: Preference[] }>(`/api/preferences/${id}/delete`, { requestId: newRequestId() }),
   /** Automations: make one, change it (or switch it on and off), run it now, delete it. */
-  createAutomation: (input: { name: string; goal: string; schedule: Schedule; enabled?: boolean }) =>
+  createAutomation: (input: { name: string; goal: string; schedule: Schedule; enabled?: boolean } & Partial<AutomationOptions>) =>
     post<Automation>("/api/automations", { requestId: newRequestId(), ...input }),
-  updateAutomation: (id: string, patch: { name?: string; goal?: string; schedule?: Schedule; enabled?: boolean }) =>
+  updateAutomation: (id: string, patch: { name?: string; goal?: string; schedule?: Schedule; enabled?: boolean } & Partial<AutomationOptions>) =>
     post<Automation>(`/api/automations/${id}`, { requestId: newRequestId(), patch }),
   automationRuns: (id: string, before?: string) => call<AutomationHistory>(`/api/automations/${id}/runs${before ? `?before=${encodeURIComponent(before)}` : ""}`),
   runAutomation: (id: string) => post<Run>(`/api/automations/${id}/run`, { requestId: newRequestId() }),

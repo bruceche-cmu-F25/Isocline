@@ -24,7 +24,7 @@
  *                                           for a day unless a message takes it (SubmitRunRequest.attachments)
  *   GET  /api/files/:id                     the file's bytes (an image shows; anything else downloads)
  *   POST /api/runs                          SubmitRunRequest -> SubmitRunResponse (202); no conversationId starts one
- *   GET  /api/runs/:id/morning-brief        { evidence: MorningBriefEvidence | null }
+ *   GET  /api/runs/:id/sources               { evidence: RunSources | null }
  *   GET  /api/runs/:id                      RunDetail
  *   POST /api/runs/:id/cancel               -> Run
  *   POST /api/runs/:id/resume               -> Run
@@ -138,8 +138,8 @@ export interface Conversation {
   lastGoal: string | null;
   /** Latest ordinary reply still to be read, shared across the user's devices. */
   unreadReplyId?: string | null;
-  /** The built-in brief transcript without a user turn. Readable through its result or history. */
-  briefOnly?: boolean;
+  /** An automation's transcript without a user turn. Readable through its result or history. */
+  automationOnly?: boolean;
   /** The project it works in (a development session); null for an everyday conversation. Fixed at creation. */
   projectId: string | null;
   /** A development session's permission mode; null for an everyday conversation. */
@@ -338,6 +338,8 @@ export interface UserSettings {
   thinking: ThinkingLevel | null;
   /** When the first-run walkthrough was finished or skipped (ISO time). Null: it is still owed. */
   firstRunAt: string | null;
+  /** The sidebar's pages as the user arranged them (page keys); null: as they come. */
+  pages?: { order: string[]; hidden: string[] } | null;
 }
 export interface SettingsRequest { requestId: string; patch: Partial<UserSettings> }
 
@@ -376,7 +378,10 @@ export interface ReviseRequest { requestId: string; text: string; context?: View
 export interface ProposalResponse { proposal: Proposal; replayed: boolean; run?: Run }
 
 /** A part of life things belong to (work, health…), shared by the modules that sort by it; `k` is its colour slot. */
-export interface Area { id: string; name: Record<Locale, string>; k: string }
+/** One of the user's areas (core areas.ts). `name` is in the user's language for a sample they have not renamed. */
+export interface Area { id: string; name: string; k: string; sample: boolean }
+/** Something the user said about how they like things; Alfred reads all of them each run (core preferences.ts). */
+export interface Preference { id: string; text: string; by: "user" | "alfred"; createdAt: string; updatedAt: string }
 export interface StateResponse {
   protocol: typeof PROTOCOL_VERSION;
   /** Development-session access for the caller. Older home nodes omit this. */
@@ -401,8 +406,9 @@ export interface StateResponse {
   revisions?: Record<string, string>;
   /** The views devices can open, by module id. */
   views: Record<string, Array<{ id: string; title: string }>>;
-  /** The areas things can belong to, in their fixed order. */
+  /** The user's areas, in their order. */
   areas: Area[];
+  preferences?: Preference[];
   /** Proposals waiting for the user's decision, oldest first. */
   proposals: Proposal[];
   settings: UserSettings;
@@ -420,7 +426,7 @@ export interface SubmitRunRequest {
 export interface SubmitRunResponse { run: Run; replayed: boolean }
 /** Sources consulted during this edition. Null means there is no attributable successful read of that source.
  * `k` and `cited` are not part of that record: they say where a thing is today, and are absent once it is gone. */
-export interface MorningBriefEvidence {
+export interface RunSources {
   date: string;
   timezone: string;
   /** `k`: the event's colour slot in the calendar now (tokens.css `data-k`). */
@@ -591,7 +597,16 @@ export interface Automation {
   id: string;
   /** Null for a template (the morning brief), which is named in the user's language. */
   name: string | null;
+  /** The sample it came from, if any: only for its name and words in the user's language. Nothing else depends on it. */
   template: "brief" | "mail_todos" | null;
+  /** How its results are drawn: plain text, or one block per heading with linked rows. */
+  layout: "text" | "sections";
+  /** Which results stay in the Inbox: all, or only the latest that worked. */
+  keep: "all" | "latest";
+  /** When a result goes to the Inbox: always, or only when the run changed or proposed something. */
+  notify: "always" | "changes";
+  /** Colour slot (`data-k`). */
+  k: string;
   /** What Alfred is told each time; null for a template. */
   goal: string | null;
   schedule: Schedule;
@@ -601,6 +616,8 @@ export interface Automation {
   lastRunId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** What Alfred is told each time, in the user's language: its own words, or its sample's. */
+  instruction: string;
   /** When it fires next; null when it is off. */
   nextAt: string | null;
   lastRun: { id: string; state: RunState; at: string; reply: string | null } | null;

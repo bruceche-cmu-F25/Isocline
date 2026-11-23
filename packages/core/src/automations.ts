@@ -15,7 +15,8 @@ import { recordDomainEvent } from "./events.ts";
 import { iso, newId } from "./ids.ts";
 import { submitRun, type Run, type RunState } from "./runs.ts";
 import { userLocale, type Locale } from "./settings.ts";
-import { AUTOMATION_TEMPLATES, TEMPLATE_SCHEDULE, TEMPLATE_TEXT, type AutomationTemplate } from "./automation-templates.ts";
+import { AUTOMATION_TEMPLATES, SECTIONS_GUIDE, TEMPLATE_OPTIONS, TEMPLATE_SCHEDULE, TEMPLATE_TEXT, type AutomationTemplate } from "./automation-templates.ts";
+import { AREA_COLOURS, type AreaColour } from "./areas.ts";
 import type { World } from "./world.ts";
 
 /** Every day is all seven; weekdays are 1 (Monday) to 7 (Sunday). */
@@ -26,11 +27,28 @@ export const CATCH_UP_MS = 12 * 60 * 60 * 1000;
 /** Fired this much after its slot, a run says it is late. */
 const LATE_MS = 5 * 60 * 1000;
 
+/** How a result is drawn: plain text, or one block per Markdown heading with its rows linked (docs/design/user-defined.md §3.3). */
+export const AUTOMATION_LAYOUTS = ["text", "sections"] as const;
+/** Which of its results stay in the Inbox: every one, or only the latest that worked. */
+export const AUTOMATION_KEEPS = ["all", "latest"] as const;
+/** When a result goes to the Inbox: every time, or only when the run changed or proposed something. */
+export const AUTOMATION_NOTIFIES = ["always", "changes"] as const;
+export type AutomationLayout = (typeof AUTOMATION_LAYOUTS)[number];
+export type AutomationKeep = (typeof AUTOMATION_KEEPS)[number];
+export type AutomationNotify = (typeof AUTOMATION_NOTIFIES)[number];
+
 export interface Automation {
   id: string;
   /** The user's name for it; null for a template that keeps its own name in the user's language. */
   name: string | null;
+  /** The sample it was made from, if any: only so its name and words follow the language until the user changes them,
+   * and so a deleted sample is not made again. Nothing else depends on it. */
   template: AutomationTemplate | null;
+  layout: AutomationLayout;
+  keep: AutomationKeep;
+  notify: AutomationNotify;
+  /** Colour slot in tokens.css (`data-k`). */
+  k: AreaColour;
   /** What Alfred is told each time; null for a template, whose words follow the user's language. */
   goal: string | null;
   schedule: Schedule;
@@ -46,6 +64,8 @@ export interface Automation {
 
 /** An automation as a page shows it: when it next fires and how its last run went. */
 export interface AutomationView extends Automation {
+  /** What Alfred is told each time, in the user's language: its own words, or its sample's. For editing and copying. */
+  instruction: string;
   nextAt: string | null;
   lastRun: { id: string; state: RunState; at: string; reply: string | null } | null;
 }
@@ -109,6 +129,7 @@ export function nextSlot(schedule: Schedule, now: number): number | null {
 function toAutomation(row: Record<string, unknown>): Automation {
   return {
     id: row.id as string, name: row.name as string | null, template: row.template as AutomationTemplate | null, goal: row.goal as string | null,
+    layout: row.layout as AutomationLayout, keep: row.keep as AutomationKeep, notify: row.notify as AutomationNotify, k: row.k as AreaColour,
     schedule: JSON.parse(row.schedule as string) as Schedule, enabled: row.enabled === 1, conversationId: row.conversation_id as string | null,
     lastSlot: row.last_slot as string | null, lastRunId: row.last_run_id as string | null,
     createdAt: row.created_at as string, updatedAt: row.updated_at as string,
@@ -125,22 +146,36 @@ export function getAutomation(world: World, id: string): Automation {
   return load(world.db, id);
 }
 
+/** A result in sections keeps enough of its start for its lead (the 「今天」 page shows it) to be read whole. */
+const LEAD_CHARS = 1200;
+
 export function listAutomations(world: World, now: number = Date.now()): AutomationView[] {
   const rows = world.db.prepare("SELECT * FROM core_automations ORDER BY created_at, id").all().map(toAutomation);
   const lastRun = world.db.prepare("SELECT id, state, updated_at, outcome FROM core_runs WHERE id = ?");
+  const locale = userLocale(world);
   return rows.map((automation) => {
     const run = automation.lastRunId ? lastRun.get(automation.lastRunId) : undefined;
     const next = automation.enabled ? nextSlot(automation.schedule, now) : null;
     const outcome = run?.outcome ? JSON.parse(run.outcome as string) as { reply?: string } : null;
     return {
       ...automation,
+      instruction: automationGoal(automation, locale),
       nextAt: next === null ? null : iso(next),
-      lastRun: run ? { id: run.id as string, state: run.state as RunState, at: run.updated_at as string, reply: outcome?.reply?.slice(0, 280) ?? null } : null,
+      lastRun: run ? { id: run.id as string, state: run.state as RunState, at: run.updated_at as string, reply: outcome?.reply?.slice(0, automation.layout === "sections" ? LEAD_CHARS : 280) ?? null } : null,
     };
   });
 }
 
-export interface NewAutomation { name?: string; goal?: string; template?: AutomationTemplate; schedule: unknown; enabled?: boolean }
+export interface NewAutomation {
+  name?: string; goal?: string; template?: AutomationTemplate; schedule: unknown; enabled?: boolean;
+  layout?: unknown; keep?: unknown; notify?: unknown; k?: unknown;
+}
+
+function option<T extends string>(value: unknown, allowed: readonly T[], field: string): T {
+  if (!allowed.includes(value as T)) throw new AutomationError("invalid", `${field} must be one of: ${allowed.join(", ")}`);
+  return value as T;
+}
+const OPTIONS = { layout: AUTOMATION_LAYOUTS, keep: AUTOMATION_KEEPS, notify: AUTOMATION_NOTIFIES, k: AREA_COLOURS } as const;
 
 export function createAutomation(world: World, input: NewAutomation, now: number = Date.now()): Automation {
   const template = input.template ?? null;
@@ -149,21 +184,26 @@ export function createAutomation(world: World, input: NewAutomation, now: number
   const goal = input.goal === undefined && template ? null : text(input.goal, "goal", 2000);
   const when = schedule(input.schedule);
   const enabled = input.enabled ?? true;
+  const preset = template ? TEMPLATE_OPTIONS[template] : {};
+  const layout = option(input.layout ?? preset.layout ?? "text", AUTOMATION_LAYOUTS, "layout");
+  const keep = option(input.keep ?? preset.keep ?? "all", AUTOMATION_KEEPS, "keep");
+  const notify = option(input.notify ?? preset.notify ?? "always", AUTOMATION_NOTIFIES, "notify");
+  const k = option(input.k ?? preset.k ?? "green", AREA_COLOURS, "k");
   return world.tx((db) => {
     const id = newId();
     const last = latestSlot(when, now);
-    db.prepare(`INSERT INTO core_automations (id, name, template, goal, schedule, enabled, last_slot, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, template, goal, JSON.stringify(when), enabled ? 1 : 0, last === null ? null : iso(last), iso(now), iso(now));
+    db.prepare(`INSERT INTO core_automations (id, name, template, goal, schedule, enabled, last_slot, created_at, updated_at, layout, keep, notify, k)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, template, goal, JSON.stringify(when), enabled ? 1 : 0, last === null ? null : iso(last), iso(now), iso(now), layout, keep, notify, k);
     recordDomainEvent(world, { kind: "automation.created", subject: `automation:${id}`, payload: { name, template, schedule: when, enabled }, now });
     return load(db, id);
   });
 }
 
-export interface AutomationPatch { name?: unknown; goal?: unknown; schedule?: unknown; enabled?: unknown }
+export interface AutomationPatch { name?: unknown; goal?: unknown; schedule?: unknown; enabled?: unknown; layout?: unknown; keep?: unknown; notify?: unknown; k?: unknown }
 
 /** Rename, reword, reschedule, or turn on and off. Turning on or rescheduling starts from the next slot. */
 export function updateAutomation(world: World, id: string, patch: AutomationPatch, now: number = Date.now()): Automation {
-  const unknown = Object.keys(patch).filter((key) => !["name", "goal", "schedule", "enabled"].includes(key));
+  const unknown = Object.keys(patch).filter((key) => !["name", "goal", "schedule", "enabled", "layout", "keep", "notify", "k"].includes(key));
   if (unknown.length) throw new AutomationError("invalid", `Unknown field: ${unknown.join(", ")}`);
   if (patch.enabled !== undefined && typeof patch.enabled !== "boolean") throw new AutomationError("invalid", "enabled must be true or false");
   return world.tx((db) => {
@@ -174,17 +214,19 @@ export function updateAutomation(world: World, id: string, patch: AutomationPatc
       ...(patch.goal !== undefined ? { goal: text(patch.goal, "goal", 2000) } : {}),
       ...(patch.schedule !== undefined ? { schedule: schedule(patch.schedule) } : {}),
       ...(patch.enabled !== undefined ? { enabled: patch.enabled as boolean } : {}),
+      ...Object.fromEntries((Object.keys(OPTIONS) as Array<keyof typeof OPTIONS>).filter((key) => patch[key] !== undefined)
+        .map((key) => [key, option(patch[key], OPTIONS[key] as readonly string[], key)])),
     };
     const rescheduled = JSON.stringify(after.schedule) !== JSON.stringify(before.schedule);
     const switchedOn = after.enabled && !before.enabled;
     const changes: Record<string, [unknown, unknown]> = {};
-    for (const key of ["name", "goal", "schedule"] as const) {
+    for (const key of ["name", "goal", "schedule", "layout", "keep", "notify", "k"] as const) {
       if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) changes[key] = [before[key], after[key]];
     }
     if (!Object.keys(changes).length && after.enabled === before.enabled) return before;
     const last = rescheduled || switchedOn ? latestSlot(after.schedule, now) : null;
-    db.prepare(`UPDATE core_automations SET name = ?, goal = ?, schedule = ?, enabled = ?, updated_at = ?${rescheduled || switchedOn ? ", last_slot = ?" : ""} WHERE id = ?`)
-      .run(after.name, after.goal, JSON.stringify(after.schedule), after.enabled ? 1 : 0, iso(now), ...(rescheduled || switchedOn ? [last === null ? null : iso(last)] : []), id);
+    db.prepare(`UPDATE core_automations SET name = ?, goal = ?, schedule = ?, enabled = ?, layout = ?, keep = ?, notify = ?, k = ?, updated_at = ?${rescheduled || switchedOn ? ", last_slot = ?" : ""} WHERE id = ?`)
+      .run(after.name, after.goal, JSON.stringify(after.schedule), after.enabled ? 1 : 0, after.layout, after.keep, after.notify, after.k, iso(now), ...(rescheduled || switchedOn ? [last === null ? null : iso(last)] : []), id);
     if (Object.keys(changes).length) recordDomainEvent(world, { kind: "automation.updated", subject: `automation:${id}`, payload: { changes }, now });
     if (after.enabled !== before.enabled) recordDomainEvent(world, { kind: "automation.toggled", subject: `automation:${id}`, payload: { enabled: after.enabled }, now });
     return load(db, id);
@@ -211,7 +253,8 @@ function fire(world: World, automation: Automation, input: { requestId: string; 
     const locale = userLocale(world);
     const late = input.slot !== null && input.now - input.slot > LATE_MS;
     const slotTime = input.slot === null ? "" : new Date(input.slot).toTimeString().slice(0, 5);
-    const goal = automationGoal(automation, locale) + (late ? `\n\n(Scheduled for ${slotTime}; running late because Alfred was not running then.)` : "");
+    const goal = automationGoal(automation, locale) + (automation.layout === "sections" ? `\n\n${SECTIONS_GUIDE[locale]}` : "")
+      + (late ? `\n\n(Scheduled for ${slotTime}; running late because Alfred was not running then.)` : "");
     const conversationId = automation.conversationId && db.prepare("SELECT 1 FROM core_conversations WHERE id = ?").get(automation.conversationId)
       ? automation.conversationId
       : createConversation(db, { title: automationName(automation, locale), now: input.now });

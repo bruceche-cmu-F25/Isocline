@@ -1,13 +1,14 @@
-/** Read the sources a completed Morning brief actually used from its persisted Pi turn.
+/** Read the sources a completed automation run actually used (the morning brief's, or any other's shown in
+ * sections) from its persisted Pi turn.
  * The rule, attempt timestamps, exact prompt, returned reply and tool call IDs all come from that edition.
  * The live mail/calendar mirrors and today's timezone are never consulted. */
 import { createReadStream } from "node:fs";
 import { lstat, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
-import { CONVERSATION_ID, type Run, type World } from "@alfred/core";
-import type { MorningBriefEvidence } from "@alfred/protocol";
-import { briefSources, type BriefRead } from "./brief-sources.ts";
+import { CONVERSATION_ID, listAreas, type Area, type Run, type World } from "@alfred/core";
+import type { RunSources } from "@alfred/protocol";
+import { readSources, type SourceRead } from "./source-reads.ts";
 
 interface Part { type?: string; text?: string; id?: string; name?: string; arguments?: Record<string, unknown> }
 interface Message { role?: string; content?: Part[]; toolName?: string; toolCallId?: string; isError?: boolean }
@@ -26,7 +27,7 @@ function promptDate(prompt: string, goal: string): { date: string; timezone: str
   return { date: header[1], timezone: header[2] };
 }
 
-function fromBranch(entries: Map<string, SessionEntry>, end: SessionEntry, goal: string): MorningBriefEvidence | null {
+function fromBranch(entries: Map<string, SessionEntry>, end: SessionEntry, goal: string, areas: readonly Area[]): RunSources | null {
   const branch: Message[] = [], seen = new Set<string>();
   for (let entry: SessionEntry | undefined = end; entry && !seen.has(entry.id); entry = entry.parentId ? entries.get(entry.parentId) : undefined) {
     seen.add(entry.id);
@@ -36,7 +37,7 @@ function fromBranch(entries: Map<string, SessionEntry>, end: SessionEntry, goal:
       const header = promptDate(words(message), goal);
       if (!header) continue; // A user's steer can follow the initial prompt within the same attempt.
       const calls = new Map<string, { name: string; args: Record<string, unknown> }>();
-      const reads: BriefRead[] = [];
+      const reads: SourceRead[] = [];
       for (const item of branch.reverse()) {
         if (item.role === "assistant") {
           for (const p of parts(item)) {
@@ -47,7 +48,7 @@ function fromBranch(entries: Map<string, SessionEntry>, end: SessionEntry, goal:
           if (call && call.name === item.toolName) reads.push({ ...call, text: words(item) });
         }
       }
-      return briefSources(header.date, header.timezone, reads);
+      return readSources(header.date, header.timezone, reads, areas);
     }
     branch.push(message);
   }
@@ -55,7 +56,7 @@ function fromBranch(entries: Map<string, SessionEntry>, end: SessionEntry, goal:
 }
 
 /** Streams a single session without loading its whole history. Only the completed attempt's entries are retained. */
-async function sessionEvidence(file: string, run: Run, started: string, ended: string): Promise<MorningBriefEvidence | null> {
+async function sessionEvidence(file: string, run: Run, started: string, ended: string, areas: readonly Area[]): Promise<RunSources | null> {
   const entries = new Map<string, SessionEntry>();
   const final: SessionEntry[] = [];
   const saved = run.outcome?.reply;
@@ -78,14 +79,11 @@ async function sessionEvidence(file: string, run: Run, started: string, ended: s
       }
     }
   } finally { lines.close(); input.destroy(); }
-  return final.length === 1 ? fromBranch(entries, final[0], run.goal) : null;
+  return final.length === 1 ? fromBranch(entries, final[0], run.goal, areas) : null;
 }
 
-export async function morningBriefEvidence(world: Pick<World, "db" | "path">, run: Run): Promise<MorningBriefEvidence | null> {
+export async function runSources(world: Pick<World, "db" | "path">, run: Run): Promise<RunSources | null> {
   if (run.state !== "completed" || !run.automationId || !CONVERSATION_ID.test(run.conversationId) || world.path === ":memory:") return null;
-  // The creation event survives deleting a rule. A custom rule with the same title has no brief identity.
-  const rule = world.db.prepare("SELECT json_extract(payload, '$.template') AS template FROM core_events WHERE kind = 'automation.created' AND subject = ? ORDER BY seq LIMIT 1").get(`automation:${run.automationId}`);
-  if (rule?.template !== "brief") return null;
   const times = world.db.prepare(`SELECT
     (SELECT at FROM core_events WHERE run_id = ? AND kind = 'run.started' ORDER BY seq DESC LIMIT 1) AS started,
     (SELECT at FROM core_events WHERE run_id = ? AND kind = 'run.completed' ORDER BY seq DESC LIMIT 1) AS ended`).get(run.id, run.id);
@@ -94,10 +92,10 @@ export async function morningBriefEvidence(world: Pick<World, "db" | "path">, ru
   const dir = join(dirname(world.path), "engine", "sessions", run.conversationId);
   try {
     if (!(await lstat(dir)).isDirectory()) return null;
-    let found: MorningBriefEvidence | null = null;
+    let found: RunSources | null = null;
     for (const item of await readdir(dir, { withFileTypes: true })) {
       if (!item.isFile() || !item.name.endsWith(".jsonl")) continue;
-      const evidence = await sessionEvidence(join(dir, item.name), run, times.started, times.ended);
+      const evidence = await sessionEvidence(join(dir, item.name), run, times.started, times.ended, listAreas(world as World));
       if (evidence && found) return null;
       if (evidence) found = evidence;
     }
@@ -111,10 +109,10 @@ export async function morningBriefEvidence(world: Pick<World, "db" | "path">, ru
 /** Where the edition's things are today. What the run read stays as it was read; this only adds identity for
  * things that still exist: an event's colour slot, and the Mail page key of each message the reply names by id.
  * A message or event that has since gone gets nothing, and the page shows it without colour or link. */
-export function briefToday(evidence: MorningBriefEvidence, reply: string, now: {
+export function sourcesToday(evidence: RunSources, reply: string, now: {
   events?: Array<{ id: string; k: string }>;
   messages?: Array<{ id: string; account: string; from: string; subject: string }>;
-}): MorningBriefEvidence {
+}): RunSources {
   const colours = new Map(now.events?.map((event) => [event.id, event.k]));
   const calendar = evidence.calendar?.map((event) => (colours.has(event.id) ? { ...event, k: colours.get(event.id)! } : event)) ?? null;
   const ids = new Set(evidence.mail?.map((message) => message.id));

@@ -4,7 +4,7 @@
  */
 import { useState, type FormEvent } from "react";
 import { api } from "./api.ts";
-import { setLocale, t, useLocale, type Key, type Locale } from "./i18n/index.ts";
+import { LOCALE_INFO, LOCALES, setLocale, t, useLocale, type Key, type Locale } from "./i18n/index.ts";
 import { SEND_KEYS, setDockShortcut, setSendKey, setTextSize, TEXT_SIZES, useDockShortcut, useSendKey, useTextSize } from "./prefs.ts";
 import { origin, setAppearance, useAppearance, type Appearance } from "./scheme.ts";
 import { PHONE, useMedia } from "./shell/layout.ts";
@@ -18,7 +18,7 @@ export interface GeneralProps extends NamePreference {
 export { SHOW_FIRST_RUN };
 
 /** Each language named in itself. */
-const LANGUAGES: Array<[Locale, string]> = [["zh", "中文"], ["en", "English"]];
+const LANGUAGES: Array<[Locale, string]> = LOCALES.map((id) => [id, LOCALE_INFO[id].name]);
 const APPEARANCES: Appearance[] = ["system", "light", "dark"];
 /** ⌘ on a Mac or an iPhone, Ctrl elsewhere. */
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
@@ -87,7 +87,7 @@ export function General({ name: savedName, saveName, dockOptions }: GeneralProps
             <span className="chips set-chips" role="radiogroup" aria-label={t("settings.language")}>
               {LANGUAGES.map(([id, name]) => (
                 <button type="button" key={id} className="chip" role="radio" aria-checked={locale === id} aria-pressed={locale === id}
-                  lang={id === "zh" ? "zh-CN" : "en"} onClick={() => chooseLanguage(id)}>{name}</button>
+                  lang={LOCALE_INFO[id].tag} onClick={() => chooseLanguage(id)}>{name}</button>
               ))}
             </span>
           </span>

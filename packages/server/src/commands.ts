@@ -15,9 +15,9 @@ import { existsSync } from "node:fs";
 import {
   acceptProposal, addProject, listRunReceipts, listRuns, commandReplay, coreContext, createAutomation, declineProposal, deleteAutomation, getConversation, getProject,
   ProjectError, recordCommit, recordPublished, removeProject, requestCancel, resumeRun, revokeCommand, runAutomationNow, sessionRoot, startSession, submitRun, supersedeProposal, trustProject,
-  updateAutomation, updateConversation, updateSettings, userLocale, withCoreContext, type SessionMode, type Speed, type ThinkingLevel, type World,
+  addArea, addPreference, removePreference, updatePreference, moveArea, updateArea, updateAutomation, updateConversation, updateSettings, userLocale, withCoreContext, type Locale, type SessionMode, type Speed, type ThinkingLevel, type World,
 } from "@alfred/core";
-import { applyStep, OpInputError, opInput, runOp, Type, UnknownOpError, type Static, type TSchema } from "@alfred/module-kit";
+import { applyStep, OpInputError, opInput, removeArea, runOp, Type, UnknownOpError, type Static, type TSchema } from "@alfred/module-kit";
 import type { Home } from "./home.ts";
 import { ASSISTANT_PROFILE, AUTOMATION_PROFILE, DEVELOPER_PROFILE } from "./profiles.ts";
 import { branchName, createWorktree, publish, restoreWorktree, snapshot, WorkspaceError, workspaceChanges, type ChangedFile } from "./workspace.ts";
@@ -75,11 +75,48 @@ const OPS: readonly HarnessOp[] = [
     run: (home, input) => updateSettings(home.world, input.patch),
   }),
 
+  // Areas: the parts of life todos and topics belong to, the user's own list (Settings › General).
+  define({
+    name: "area.create", input: Type.Object({ name: Type.String(), k: Type.Optional(Type.String()) }),
+    run: (home, input) => addArea(home.world, input),
+  }),
+  define({
+    name: "area.update", input: Type.Object({ id: Id, patch: Type.Object({ name: Type.Optional(Type.String()), k: Type.Optional(Type.String()) }) }),
+    run: (home, input) => updateArea(home.world, input.id, input.patch),
+  }),
+  define({
+    name: "area.move", input: Type.Object({ id: Id, index: Type.Integer() }),
+    run: (home, input) => moveArea(home.world, input.id, input.index),
+  }),
+  define({
+    // What was in it goes to `moveTo`, or to no area; every module moves its own.
+    name: "area.delete", input: Type.Object({ id: Id, moveTo: Type.Optional(Type.Union([Id, Type.Null()])) }),
+    run: (home, input) => { removeArea(home.world, home.modules, input.id, input.moveTo ?? null); return {}; },
+  }),
+
+  // Preferences: what the user has said about how they like things (core preferences.ts). Alfred writes its own
+  // through its tools; these are the user's hand.
+  define({
+    name: "preference.create", input: Type.Object({ text: Type.String() }),
+    run: (home, input) => addPreference(home.world, { text: input.text, by: "user" }),
+  }),
+  define({
+    name: "preference.update", input: Type.Object({ id: Id, text: Type.String() }),
+    run: (home, input) => updatePreference(home.world, input.id, input.text),
+  }),
+  define({
+    name: "preference.delete", input: Type.Object({ id: Id }),
+    run: (home, input) => { removePreference(home.world, input.id); return {}; },
+  }),
+
   // Automations: the user's own rules. Their runs are unattended.
   define({
     name: "automation.create",
-    input: Type.Object({ name: Type.Optional(Type.String()), goal: Type.Optional(Type.String()), schedule: Type.Unknown(), enabled: Type.Optional(Type.Boolean()) }),
-    run: (home, input) => createAutomation(home.world, { name: input.name, goal: input.goal, schedule: input.schedule, ...(input.enabled !== undefined ? { enabled: input.enabled } : {}) }),
+    input: Type.Object({
+      name: Type.Optional(Type.String()), goal: Type.Optional(Type.String()), schedule: Type.Unknown(), enabled: Type.Optional(Type.Boolean()),
+      layout: Type.Optional(Type.String()), keep: Type.Optional(Type.String()), notify: Type.Optional(Type.String()), k: Type.Optional(Type.String()),
+    }),
+    run: (home, input) => createAutomation(home.world, input),
   }),
   define({
     name: "automation.update", input: Type.Object({ id: Id, patch: Patch }),
@@ -115,9 +152,11 @@ const OPS: readonly HarnessOp[] = [
       const superseded = supersedeProposal(home.world, input.id, input.text);
       // The whole of each step (an email's text), so the new version starts from what the user saw.
       const steps = superseded.steps.map((step) => (step.detail ? `${step.preview}\n${step.detail}` : step.preview));
-      const goal = userLocale(home.world) === "zh"
-        ? `修改你之前的提议「${superseded.title}」：${input.text.trim()}\n原来的提议：${superseded.summary}\n步骤：${steps.join("；")}\n请按修改意见重新提议（用 propose），不要直接改。`
-        : `Change your earlier proposal "${superseded.title}": ${input.text.trim()}\nThe proposal was: ${superseded.summary}\nSteps: ${steps.join("; ")}\nPropose again with the change (use propose); do not make the changes directly.`;
+      const revise: Record<Locale, () => string> = {
+        zh: () => `修改你之前的提议「${superseded.title}」：${input.text.trim()}\n原来的提议：${superseded.summary}\n步骤：${steps.join("；")}\n请按修改意见重新提议（用 propose），不要直接改。`,
+        en: () => `Change your earlier proposal "${superseded.title}": ${input.text.trim()}\nThe proposal was: ${superseded.summary}\nSteps: ${steps.join("; ")}\nPropose again with the change (use propose); do not make the changes directly.`,
+      };
+      const goal = revise[userLocale(home.world)]();
       const profile = profileFor(home.world, superseded.conversationId);
       const { run } = submitRun(home.world, {
         requestId: `${requestId}.revise`, goal, profile, conversationId: superseded.conversationId ?? undefined,

@@ -22,19 +22,40 @@ export interface TodoSource {
   repeat?: TodoRepeat;
 }
 
+/** The words an all-day event that is a day off is named by. These are samples: the user keeps their own list
+ * (todo settings `offWords`, on the todo page's sources), and once they change it, theirs is used. */
+export const SAMPLE_OFF_WORDS: readonly string[] = [
+  "holiday", "break", "recess", "no classes", "classes cancelled", "classes canceled", "university closed", "day off",
+  "放假", "假期", "假日", "停课", "休假", "节假日",
+];
+export const MAX_OFF_WORDS = 50, MAX_OFF_WORD = 40;
+
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** A word in a Latin script matches as a whole word (and its plural); any other (Chinese) wherever it appears. */
+export function offMatcher(words: readonly string[]): (title: string) => boolean {
+  const parts = words.map((word) => word.trim()).filter(Boolean)
+    .map((word) => (/^[\p{Script=Latin}\d\s'-]+$/u.test(word) ? `\\b${escape(word).replace(/\s+/g, "\\s+")}(?:s|es)?\\b` : escape(word)));
+  if (!parts.length) return () => false;
+  const pattern = new RegExp(parts.join("|"), "iu");
+  return (title) => pattern.test(title);
+}
+
 /** A day off: an event of a holiday calendar (Google's are `…#holiday@group.v.calendar.google.com`), or an all-day
- * event that says it is a holiday, a break or a day without classes (a lunch break has a time, so it is not one).
- * It is never made a todo; the todo page labels its days with it. */
-const OFF_WORDS = /\b(holidays?|break|recess|no classes|classes cancel+ed|university closed|day off)\b|放假|假期|假日|停课|休假|节假日/i;
-export function isDayOff(event: { allDay: boolean; title: string; calendarId?: string }): boolean {
+ * event whose name has one of the user's day-off words (a lunch break has a time, so it is not one). It is never made
+ * a todo; the todo page labels its days with it. */
+export function isDayOff(event: { allDay: boolean; title: string; calendarId?: string }, words: readonly string[] = SAMPLE_OFF_WORDS): boolean {
   if (!event.allDay) return false;
-  return (event.calendarId ?? "").includes("#holiday@") || OFF_WORDS.test(event.title);
+  return (event.calendarId ?? "").includes("#holiday@") || offMatcher(words)(event.title);
 }
 
 /** Which calendar events become todos by themselves: none, the all-day ones (deadlines, days to remember), or all. */
 export const CALENDAR_MODES = ["off", "allday", "all"] as const;
 export type CalendarMode = (typeof CALENDAR_MODES)[number];
-export interface TodoSettings { fromCalendar: CalendarMode }
+export interface TodoSettings {
+  fromCalendar: CalendarMode;
+  /** The words a day off is named by: the samples until the user changes them. */
+  offWords: string[];
+}
 
 export interface Todo {
   id: string;
@@ -53,14 +74,14 @@ export interface Todo {
   /** Abandoned, not completed; reversible and left out of ordinary lists. */
   archivedAt?: string;
   url?: string;
-  /** The area of life it belongs to (core's AREAS ids, e.g. `work`). */
+  /** The area of life it belongs to: one of the user's areas (core listAreas), by id. */
   area?: string;
   createdAt: string;
   completedAt?: string;
   source?: TodoSource;
   /** Alfred's suggestion (from mail), not yet the user's todo: kept with a yes or any edit, dropped with a no. */
   suggested?: boolean;
-  /** Fields from Robin this version keeps but does not edit. */
+  /** Fields written by another version, kept as they are but not edited. */
   [kept: string]: unknown;
 }
 

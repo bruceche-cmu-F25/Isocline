@@ -24,12 +24,11 @@ import { DevAccessApproval } from "./DevAccessApproval.tsx";
 import { ArchiveNotice } from "./shell/ArchiveNotice.tsx";
 import { MOD, Nav } from "./shell/Nav.tsx";
 import { Topbar, type Mode } from "./shell/Topbar.tsx";
-import { useLinkSample } from "./LinkSample.tsx";
-import { availablePages, linkSamplePage, moduleOf, pageView } from "./shell/pages.tsx";
+import { availablePages, listedPages, moduleOf, pageView } from "./shell/pages.tsx";
 import { automationTitle } from "./automationText.ts";
 import { Palette } from "./shell/Palette.tsx";
 import { Pair } from "./Pair.tsx";
-import { detectLocale, getLocale, setLocale, t, useLocale, type Locale } from "./i18n/index.ts";
+import { detectLocale, getLocale, nextLocale, setLocale, t, useLocale, type Locale } from "./i18n/index.ts";
 import { getScheme, setAppearance } from "./scheme.ts";
 import { useAlfred, type Alfred } from "./useAlfred.ts";
 import { handed } from "./handed.ts";
@@ -221,16 +220,17 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
   const [greeting, setGreeting] = useState(true);
   const [highlighted, setHighlighted] = useState<ReadonlySet<string>>(new Set());
   const inboxFocus = route.item;
-  const switchLanguage = useCallback(() => {
-    const next: Locale = getLocale() === "zh" ? "en" : "zh";
+  /** To the language named, or (a quick switch) to the next one. */
+  const switchLanguage = useCallback((to?: Locale) => {
+    const next: Locale = to ?? nextLocale(getLocale());
     setLocale(next);
     api.settings({ locale: next }).catch(() => {});
   }, []);
+  // Every page can be opened; the sidebar and the dock list the ones the user has not hidden.
   const pages = availablePages(state);
-  const sampleActive = route.page === linkSamplePage.key && pages.some((page) => page.key === "link.list");
-  const linkSample = useLinkSample(sampleActive);
-  const current = sampleActive ? linkSamplePage : pages.find((page) => page.key === route.page) ?? pages[0];
-  const navigationPage = sampleActive ? "link.list" : current?.key ?? "";
+  const listed = listedPages(state, pages);
+  const current = pages.find((page) => page.key === route.page) ?? pages[0];
+  const navigationPage = current?.key ?? "";
   const inInbox = current?.key === "core.inbox";
   const savedName = state.settings?.preferredName ?? null;
   const [name, setName] = useState(savedName);
@@ -241,7 +241,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     setName(saved.preferredName);
   };
   // Opened on a thing a notification pointed at: nothing is put in front of it.
-  const direct = useRef(sampleActive || !!new URLSearchParams(window.location.hash.slice(1)).get("item"));
+  const direct = useRef(!!new URLSearchParams(window.location.hash.slice(1)).get("item"));
   // The first run (shell/FirstRun.tsx): owed until the home node says it was finished or skipped; and again, on this
   // device, when Settings asks for it.
   const [firstRunOver, setFirstRunOver] = useState(false);
@@ -367,9 +367,8 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     if (layout.nav === "full" && navMode === "hidden") setLayout({ alfred: "closed" });
     else setLayout({ nav: layout.nav === "full" ? "hidden" : "full" });
   }, [layout.nav, navMode, setLayout]);
-  // Daily or Code: follows the page. 今天 is above both and Settings belongs to both, so each keeps the sidebar it was
-  // opened from. Each side remembers its last page, so switching back lands where the user was.
-  const pageMode: Mode | null = current?.group === "dev" ? "dev" : current?.group === "system" || current?.group === "alfred" ? null : current ? "daily" : null;
+  // Settings keeps the current workspace. Each workspace remembers its last page.
+  const pageMode: Mode | null = !current || current.group === "system" ? null : current.group === "dev" ? "dev" : "daily";
   const lastMode = useRef<Mode>("daily");
   const lastPage = useRef<Record<Mode, string>>({ daily: "", dev: "" });
   if (pageMode && current) { lastMode.current = pageMode; lastPage.current[pageMode] = current.key; }
@@ -377,7 +376,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
   const accessRequest = state.devAccessRequests?.[0];
   const hasDev = pages.some((page) => page.group === "dev");
   const switchMode = (next: Mode) => {
-    const first = pages.find((page) => (next === "dev" ? page.group === "dev" : page.group === "work" || page.group === "modules"));
+    const first = listed.find((page) => (next === "dev" ? page.group === "dev" : page.group === "alfred" || page.group === "work" || page.group === "modules"));
     const key = lastPage.current[next] || first?.key;
     if (key) goPage(key);
   };
@@ -511,15 +510,15 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
     { id: "new", label: t("cmd.new"), icon: "plus", run: () => select(null) },
     { id: "alfred", label: t(alfredMode === "closed" ? "cmd.openAlfred" : "cmd.closeAlfred"), icon: "panel", hint: `${MOD}.`, run: toggleAlfred },
     ...(phone ? [] : [{ id: "nav", label: t(navMode === "full" ? "cmd.foldNav" : "cmd.unfoldNav"), icon: "rail" as const, hint: `${MOD}\\`, run: toggleNav }]),
-    { id: "language", label: t("cmd.language"), icon: "chat", run: switchLanguage },
+    { id: "language", label: t("cmd.language"), icon: "chat", run: () => switchLanguage() },
     getScheme() === "dark"
       ? { id: "scheme", label: t("scheme.to.light"), icon: "sun" as const, run: () => setAppearance("light") }
       : { id: "scheme", label: t("scheme.to.dark"), icon: "moon" as const, run: () => setAppearance("dark") },
   ];
   const find: FindSources = {
     pages, commands, conversations: state.conversations, onPage: goPage, onSelect: select,
-    links: sampleActive ? linkSample.data?.snapshot : state.modules.link as LinksSnapshot | undefined,
-    onFolder: (id) => goTo(sampleActive ? linkSamplePage.key : "link.list", id),
+    links: state.modules.link as LinksSnapshot | undefined,
+    onFolder: (id) => goTo("link.list", id),
     onPlace: (url) => { window.open(url, "_blank", "noopener,noreferrer"); },
   };
 
@@ -549,7 +548,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
         system={pages.filter((page) => page.group === "system")} page={current?.key ?? ""} onPage={goPage} />}
       <div className="sidebar" data-visible={navVisible || undefined}>
         {navVisible && (
-          <Nav state={state} pages={pages} page={alfredMode === "wide" ? "" : navigationPage} mode={phone ? "all" : mode} selected={selected} session={bare ? route.session : null}
+          <Nav state={state} pages={listed} page={alfredMode === "wide" ? "" : navigationPage} mode={phone ? "all" : mode} selected={selected} session={bare ? route.session : null}
             onSession={openSession} connection={connection} onArchive={archiveConversation} onShowArchive={() => setShowArchive(true)}
             onPage={goPage} onSelect={(id) => { setSheet(null); selectFromList(id); }} onClose={phone ? () => setSheet(null) : undefined} onLanguage={switchLanguage} />
         )}
@@ -579,7 +578,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
               </header>
             )}
             <div className="page-body">{current.render({
-              linkSample, snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName,
+              snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName,
               focus: inboxFocus, onFocused, openConversation, line, refresh: alfred.refresh,
               go: goTo, item: route.item, onItem: clearItem,
               dev: { session: route.session, onSession: openSession, refresh: alfred.refresh, highlighted, onEvent, pageTitle, automationTitle: automationOf },
@@ -613,7 +612,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
       )}
 
       {phone && sheet !== "alfred" && (
-        <Dock state={state} pages={pages} page={navigationPage} figure={figure} onPage={goPage}
+        <Dock state={state} pages={listed} page={navigationPage} figure={figure} onPage={goPage}
           onAlfred={() => (asking || bare ? setSheet("alfred") : setAsking(true))} onMenu={() => setSheet("nav")}
           ask={asking && !bare ? (
             <AskBar dock state={state} selected={selected} figure={figure} suggestions={view?.suggestions ?? []} find={find} page={current?.key} about={about} onAbout={setAbout}

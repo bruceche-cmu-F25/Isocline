@@ -35,7 +35,7 @@ test("a question asked before is asked again, not taken for a search for the old
 
 
 test("chat search skips a brief-only transcript and finds a brief with a follow-up", () => {
-  const chats = [{ id: "automatic", title: "Morning brief", briefOnly: true }, { id: "discussed", title: "Morning brief", briefOnly: false }];
+  const chats = [{ id: "automatic", title: "Morning brief", automationOnly: true }, { id: "discussed", title: "Morning brief", automationOnly: false }];
   const found = findItems("Morning brief", { ...sources, conversations: chats });
   assert.deepEqual(found.map((item) => item.id), ["conv:discussed"]);
 });

@@ -450,6 +450,13 @@ button.ghost, .notice-actions button.ghost { background: none; color: var(--copy
 .todo-sources-pop .grow { flex: 1; }
 .todo-sources-pop .switch { transform: scale(.8); }
 .todo-sources-pop p { margin: 0; font-size: .75rem; }
+.off-words { display: flex; flex-wrap: wrap; gap: 4px; }
+.off-word { display: inline-flex; align-items: center; gap: 2px; height: 22px; padding: 0 2px 0 8px; border-radius: 11px; background: var(--wash); color: var(--copy); font-size: .75rem; }
+.off-word button { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; color: var(--muted); font-size: .875rem; line-height: 1; }
+.off-word button:hover { color: var(--ink); background: var(--line-soft); }
+.off-words form { flex: 1 1 6rem; min-width: 6rem; }
+.off-words input { width: 100%; height: 22px; border: 0; border-radius: 11px; padding: 0 8px; background: none; color: var(--ink); font: inherit; font-size: .75rem; box-shadow: inset 0 0 0 1px var(--line); }
+.off-words input:focus { outline: none; box-shadow: inset 0 0 0 1px var(--alf); }
 .todo-pick .pick-now { color: var(--copy); font-size: .75rem; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; white-space: nowrap; }
 .todo-pick .pick-now:hover { color: var(--ink); text-decoration-color: currentColor; }
 .todos .add-bar { margin: 0 16px 4px; }
@@ -462,13 +469,13 @@ button.ghost, .notice-actions button.ghost { background: none; color: var(--copy
 .todo-panel h4 { display: flex; gap: 8px; margin: 0 0 8px; color: var(--muted); font-size: .75rem; font-weight: 500; }
 .todo-panel h4 span { margin-left: auto; }
 .todo-panel p { margin: 0; font-size: .75rem; }
-.todo-progress { display: flex; align-items: center; gap: 14px; }
-.todo-progress svg { width: 52px; height: 52px; flex: none; }
+.todo-panel-today { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; }
+.todo-panel-today h4 { margin: 0; }
+.todo-progress { display: inline-flex; align-items: center; gap: 6px; color: var(--copy); font-size: .8125rem; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.todo-progress svg { width: 20px; height: 20px; flex: none; }
 .todo-progress circle { fill: none; stroke-width: 6; }
-.todo-progress .bg { stroke: var(--wash); }
+.todo-progress .bg { stroke: var(--line); }
 .todo-progress .fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset 400ms var(--ease); }
-.todo-progress b { display: block; color: var(--ink); font-size: 1.0625rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-.todo-progress small { color: var(--muted); font-size: .75rem; }
 .todo-big { color: var(--k-text); font-size: 1.25rem !important; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
 .todo-next-what { margin-top: 2px !important; color: var(--ink); font-size: .8125rem !important; overflow-wrap: anywhere; }
 .todo-panel .quiet { margin-top: 4px; }
@@ -499,6 +506,14 @@ button.ghost, .notice-actions button.ghost { background: none; color: var(--copy
 .todo-day-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 0 8px 6px; border-bottom: 1px solid var(--line-soft); }
 .todo-day-head h3 { display: flex; gap: 8px; align-items: baseline; margin: 0; color: var(--ink); font-size: .9375rem; font-weight: 600; }
 .todo-day-head h3 .count { color: var(--muted); font-size: .75rem; font-weight: 400; }
+.todo-summary > summary { min-height: 36px; cursor: pointer; list-style: none; }
+.todo-summary > summary::-webkit-details-marker { display: none; }
+.todo-summary > summary::after { content: ""; width: 7px; height: 7px; margin-left: auto; margin-right: 2px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); }
+.todo-summary[open] > summary::after { transform: rotate(225deg); }
+.todo-summary .todo-progress { margin-left: auto; }
+.todo-summary > summary:has(.todo-progress)::after { margin-left: 0; }
+.todo-summary .todo-rail { display: grid; grid-template-columns: minmax(0, 1fr); padding: 8px 0; }
+.todo-summary .todo-panel-tl { display: block; }
 .todo-day-head .date { color: var(--muted); font-size: .8125rem; }
 .todo-day-head .cal-n { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--muted); font-size: .75rem; white-space: nowrap; }
 .todo-day[data-today] .todo-day-head h3 { color: var(--accent); }
@@ -607,7 +622,7 @@ button.ghost, .notice-actions button.ghost { background: none; color: var(--copy
 
 @container page (max-width: 860px) {
   .todo-split { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .todo-rail { position: static; order: -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); padding-top: 0; }
+  .todo-rail { position: static; order: -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 256px), 1fr)); padding-top: 0; }
   .todo-panel-tl { display: none; }
 }
 @container page (max-width: 640px) {
@@ -625,6 +640,13 @@ button.ghost, .notice-actions button.ghost { background: none; color: var(--copy
   .todo-byday .todo-end:empty { display: none; }
   .todo-at { font-size: .75rem; }
   .todo-day-empty { padding-left: 54px; }
+  /* On a phone the "range / all day" word costs the title its width; only an hour keeps the column. */
+  .todo-at small { display: none; }
+  .todo-byday .todo:has(.todo-at:empty) { grid-template-columns: 20px minmax(0, 1fr); }
+  .todo-byday .todo:has(.todo-at:empty) .todo-at { display: none; }
+  .todo-byday .todo:has(.todo-at:empty) .todo-end { grid-column: 2; }
+  .todo-day-empty { padding-left: 30px; }
+  .todo-cell[data-off] + .todo-cell[data-off] .off { visibility: hidden; }
 }
 @media (hover: none) { .remove { opacity: .7; } }
 
@@ -1620,3 +1642,13 @@ html.desktop .dev-browser-bar { -webkit-app-region: no-drag; }
   .conv-list .archive { position: static; flex: none; opacity: 1; }
   .conv-list .conv { min-width: 0; }
 }
+/* An automation's options (Automations.tsx): folded away until wanted. */
+.auto-more > summary { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--copy); font-size: .8125rem; list-style: none; }
+.auto-more > summary::-webkit-details-marker { display: none; }
+.auto-more > summary svg { width: 14px; height: 14px; transition: transform .15s; }
+.auto-more[open] > summary svg { transform: rotate(180deg); }
+.auto-options { display: flex; flex-direction: column; gap: 12px; padding-top: 10px; }
+.auto-options .day-picks { flex-wrap: wrap; }
+.auto-colours { display: flex; flex-wrap: wrap; gap: 12px; padding: 4px 2px; }
+.auto-colour { width: 16px; height: 16px; border-radius: 50%; padding: 0; background: var(--k-solid); box-shadow: 0 0 0 4px transparent; }
+.auto-colour[aria-checked="true"], .auto-colour:focus-visible { box-shadow: 0 0 0 3px var(--k-fill), 0 0 0 4px var(--k-solid); }

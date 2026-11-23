@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
-import { getLocale, t } from "../i18n/index.ts";
+import { getLocale, LOCALE_INFO, LOCALES, t, type Locale } from "../i18n/index.ts";
 import { origin, setAppearance, useAppearance, type Appearance } from "../scheme.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { MOD } from "./Nav.tsx";
 import type { PageDef } from "./pages.tsx";
 
 export type Mode = "daily" | "dev";
-const MODE_ICON: Record<Mode, IconName> = { daily: "home", dev: "code" };
+const MODE_ICON: Record<Mode, IconName> = { daily: "layers", dev: "code" };
 
 export interface TopbarProps {
   pageHistory: ReactElement;
@@ -15,7 +15,7 @@ export interface TopbarProps {
   mode: Mode;
   /** Absent when this device has no Code page: then there is nothing to switch. */
   onMode?: (mode: Mode) => void;
-  onLanguage(): void;
+  onLanguage(to?: Locale): void;
   /** The page in view: its name is the bar's title, its facts the quiet line beside it. Absent when no page is in sight. */
   heading?: { title: string; icon: IconName; k: string; summary?: string };
   /** The app's own pages (Settings), as buttons at the right. */
@@ -117,9 +117,9 @@ function SettingsMenu({ system, page, onPage, onLanguage }: Pick<TopbarProps, "s
           <div className="top-menu-row">
             <span>{t("settings.language")}</span>
             <span className="seg" role="radiogroup" aria-label={t("settings.language")}>
-              {(["zh", "en"] as const).map((id) => (
-                <button type="button" key={id} role="radio" aria-checked={locale === id} lang={id}
-                  onClick={() => { if (locale !== id) onLanguage(); }}>{id === "zh" ? "中文" : "EN"}</button>
+              {LOCALES.map((id) => (
+                <button type="button" key={id} role="radio" aria-checked={locale === id} lang={LOCALE_INFO[id].tag}
+                  onClick={() => { if (locale !== id) onLanguage(id); }}>{LOCALE_INFO[id].short}</button>
               ))}
             </span>
           </div>

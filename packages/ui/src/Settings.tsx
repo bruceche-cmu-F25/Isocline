@@ -6,13 +6,16 @@
  * looking at another tab. The tab last looked at is where the page opens next time, on this device.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { RemoteResponse } from "@alfred/protocol";
+import type { RemoteResponse, StateResponse } from "@alfred/protocol";
 import { api, ApiError } from "./api.ts";
 import type { Alfred } from "./useAlfred.ts";
 import { Accounts } from "./Accounts.tsx";
 import { Connectors } from "./Connectors.tsx";
 import { Devices } from "./Devices.tsx";
 import { General, type GeneralProps } from "./General.tsx";
+import { Areas } from "./Areas.tsx";
+import { Preferences } from "./Preferences.tsx";
+import { PagesSetting } from "./PagesSetting.tsx";
 import { ModelSettings } from "./ModelSettings.tsx";
 import { SubscriptionUsage } from "./SubscriptionUsage.tsx";
 import { Skills } from "./Skills.tsx";
@@ -33,7 +36,7 @@ const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
 const KEY = "alfred.settings.tab";
 const saved = (): Tab => { try { const value = localStorage.getItem(KEY); return TABS.some((tab) => tab.id === value) ? value as Tab : "general"; } catch { return "general"; } };
 
-export function Settings({ name, saveName, dockOptions, onEvent }: GeneralProps & Pick<Alfred, "onEvent">) {
+export function Settings({ name, saveName, dockOptions, onEvent, state }: GeneralProps & Pick<Alfred, "onEvent"> & { state: StateResponse }) {
   useLocale();
   /** Null until known; an older home node without remote access answers 404, which is treated as the Mac. */
   const [remote, setRemote] = useState<RemoteResponse | null | "old" | "unavailable">(null);
@@ -87,7 +90,7 @@ export function Settings({ name, saveName, dockOptions, onEvent }: GeneralProps 
           </button>
         ))}
       </div>
-      {pane("general", <General name={name} saveName={saveName} dockOptions={dockOptions} />)}
+      {pane("general", <><General name={name} saveName={saveName} dockOptions={dockOptions} /><Preferences state={state} /><Areas state={state} /><PagesSetting state={state} /></>)}
       {pane("models", local ? <ModelSettings /> : remote === null
         ? <p className="quiet" role="status">{t("models.usage.checking")}</p>
         : <SubscriptionUsage />)}

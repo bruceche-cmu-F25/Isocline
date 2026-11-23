@@ -20,7 +20,7 @@ async function drag(page, source, target) {
   await page.mouse.up();
 }
 
-test("the five-video demo can be edited, reopened and restored independently of personal Links", async (t) => {
+test("Links and old demo bookmarks open the personal library and keep shelf and folder edits", async (t) => {
   const browser = await chromium.launch({ channel: "chrome" });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1180, height: 790 }, locale: "en-US" });
@@ -37,12 +37,17 @@ test("the five-video demo can be edited, reopened and restored independently of 
     rmSync(dataDir, { recursive: true, force: true });
   });
   updateSettings(home.world, { locale: "en", firstRunAt: new Date().toISOString() });
-  saveClip(home.world, { url: "https://www.youtube.com/watch?v=aaaaaaaaaaa", title: "Personal video" });
+  for (const id of ["a", "b", "c", "d", "e"]) {
+    saveClip(home.world, { url: `https://www.youtube.com/watch?v=${id.repeat(11)}`, title: `Personal video ${id}` });
+  }
   await new Promise((resolve, reject) => server.once("error", reject).listen(0, "127.0.0.1", resolve));
-  await page.goto(`http://127.0.0.1:${server.address().port}/#p=core.today`);
+  const base = `http://127.0.0.1:${server.address().port}`;
+  await page.goto(base + "/#p=core.today");
   await page.locator('nav [data-page="link.list"]').click();
-  await page.getByText("Personal video", { exact: true }).waitFor();
-  await page.getByRole("link", { name: "5-video demo" }).click();
+  await page.locator(".lk-shelf .lk-card").first().waitFor();
+  assert.equal(await page.getByRole("link", { name: "5-video demo" }).count(), 0);
+  await page.goto("about:blank");
+  await page.goto(base + "/#p=link.sample");
 
   const shelf = page.locator(".lk-shelf");
   const cards = shelf.locator(".lk-card");
@@ -50,7 +55,8 @@ test("the five-video demo can be edited, reopened and restored independently of 
   await all.waitFor();
   assert.equal(await cards.count(), 3);
   await all.click();
-  assert.equal(await cards.count(), 5);
+  assert.deepEqual((await cards.locator(".lk-title").allTextContents()).sort(),
+    ["Personal video a", "Personal video b", "Personal video c", "Personal video d", "Personal video e"]);
   const last = cards.last();
   const title = await last.locator(".lk-title").innerText();
   await last.locator(".lk-card-delete").click();
@@ -59,9 +65,7 @@ test("the five-video demo can be edited, reopened and restored independently of 
   await page.reload();
   await all.click();
   assert.equal(await cards.count(), 4);
-  await page.getByRole("button", { name: "Restore demo videos" }).click();
-  await shelf.getByText(title, { exact: true }).waitFor();
-  assert.equal(await cards.count(), 5);
+  assert.equal(await shelf.getByText(title, { exact: true }).count(), 0);
 
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   const organizer = page.locator(".lk-place-band > .lk-organizer");
@@ -78,9 +82,6 @@ test("the five-video demo can be edited, reopened and restored independently of 
   await organizer.getByRole("link", { name: "Gmail" }).waitFor();
   await folderTile.click();
   await folder.getByRole("link", { name: "YouTube" }).waitFor();
-  await page.getByRole("link", { name: "My links" }).click();
-  await page.getByText("Personal video", { exact: true }).waitFor();
-  assert.equal(await page.locator(".lk-card").count(), 1);
-  assert.equal(await organizer.getByRole("link").count(), 3);
-  assert.equal(await organizer.locator(".lk-folder-preview").count(), 0);
+  await folder.getByRole("link", { name: "Google" }).waitFor();
+  assert.equal(await organizer.getByRole("link").count(), 1);
 });

@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /** alfred serve            run the home node (loopback; other devices come in through Tailscale Serve)
- *  alfred import-robin     copy Robin's todos into Alfred (read-only on Robin)
  *
- *  Options: --data-dir <dir>  --port <n>  --ingress-port <n> (default port + 10)  --robin-dir <dir>  --dry-run  --check
+ *  Options: --data-dir <dir>  --port <n>  --ingress-port <n> (default port + 10)
  */
 import { parseArgs } from "node:util";
 import { join } from "node:path";
 import { createPiEngine } from "@alfred/engine-pi";
-import { compareTodos, importTodos, readRobinTodos, robinDataDir, todoModule } from "@alfred/module-todo";
+import { todoModule } from "@alfred/module-todo";
 import { calendarModule } from "@alfred/module-calendar";
 import { mailModule } from "@alfred/module-mail";
 import { linksModule } from "@alfred/module-links";
@@ -35,9 +34,6 @@ const { values, positionals } = parseArgs({
     "data-dir": { type: "string" },
     port: { type: "string" },
     "ingress-port": { type: "string" },
-    "robin-dir": { type: "string" },
-    "dry-run": { type: "boolean" },
-    check: { type: "boolean" },
   },
 });
 const dataDir = values["data-dir"] ?? defaultDataDir();
@@ -129,27 +125,7 @@ if (command === "serve") {
   };
   process.on("SIGINT", () => void stop());
   process.on("SIGTERM", () => void stop());
-} else if (command === "import-robin") {
-  const { todos, from } = readRobinTodos(values["robin-dir"] ?? robinDataDir());
-  log(`read ${todos.length} todo(s) from ${from} (read-only)`);
-  if (values["dry-run"]) {
-    log("dry run: nothing written");
-    process.exit(0);
-  }
-  // Holds the home node lock: refuses while a home node is running on this data dir.
-  const home = openHome({ dataDir, engine: { submit: () => Promise.reject(new Error("no engine")) }, modules: MODULES, log });
-  try {
-    if (!values.check) {
-      const result = importTodos(home.world, todos, "robin");
-      log(`imported ${result.imported}, skipped ${result.skipped} already present`);
-    }
-    const comparison = compareTodos(home.world, todos);
-    log(`compared with Robin: ${comparison.same} same, ${comparison.differ.length} differ, ${comparison.missing.length} missing, ${comparison.extra.length} only in Alfred`);
-    process.exitCode = comparison.differ.length || comparison.missing.length ? 1 : 0;
-  } finally {
-    home.close();
-  }
 } else {
-  console.error(`Unknown command: ${command}\nUsage: alfred serve | alfred import-robin [--dry-run] [--check]`);
+  console.error(`Unknown command: ${command}\nUsage: alfred serve`);
   process.exit(2);
 }

@@ -148,11 +148,3 @@ input.lk-pick.lk-new { width: 150px; color: var(--ink); outline: none; box-shado
 @container page (max-width: 420px) {
   .lk-shelf .lk-card[data-open] .lk-cover { width: 27%; }
 }
-
-.lk-library { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin: 12px 0 2px; }
-.lk-library nav { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--wash); }
-.lk-library a { padding: 5px 10px; border-radius: 8px; color: var(--muted); font-size: .8125rem; text-decoration: none; }
-.lk-library a:hover, .lk-library a:focus-visible { color: var(--ink); }
-.lk-library a[aria-current] { color: var(--ink); background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); }
-.lk-library > button { margin-left: auto; }
-.lk-library > [role="status"] { flex-basis: 100%; color: var(--muted); font-size: .75rem; }

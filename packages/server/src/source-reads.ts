@@ -1,12 +1,12 @@
-import { AREAS } from "@alfred/core";
-import type { MorningBriefEvidence } from "@alfred/protocol";
+import type { Area } from "@alfred/core";
+import type { RunSources } from "@alfred/protocol";
 
 /** Source formats emitted by the calendar, todo and mail modules. Read the stored tool results,
  * never the model's interpretation or today's mirrors, and do not return mail bodies or snippets. */
-export interface BriefRead { name: string; args: Record<string, unknown>; text: string }
+export interface SourceRead { name: string; args: Record<string, unknown>; text: string }
 
-function dayEvents(text: string, date: string): MorningBriefEvidence["calendar"] {
-  const events: NonNullable<MorningBriefEvidence["calendar"]> = [];
+function dayEvents(text: string, date: string): RunSources["calendar"] {
+  const events: NonNullable<RunSources["calendar"]> = [];
   let day = "", matched = false, explicitlyEmpty = false;
   for (const line of text.split("\n")) {
     if (line.startsWith("Could not read ")) return null;
@@ -27,11 +27,11 @@ function dayEvents(text: string, date: string): MorningBriefEvidence["calendar"]
 }
 
 const deadline = /^(.*) \((?:due (today|tomorrow|\d{4}-\d\d-\d\d)|overdue, was due (\d{4}-\d\d-\d\d)|\d{4}-\d\d-\d\d – (\d{4}-\d\d-\d\d)(?:, overdue)?)\)$/;
-function dueTodos(text: string, date: string): MorningBriefEvidence["todos"] {
+function dueTodos(text: string, date: string, areas: readonly Area[]): RunSources["todos"] {
   const [header, ...lines] = text.split("\n");
   if (header !== `Today is ${date} (user's local date).` || !lines.some((line) => line.trim())) return null;
   if (lines.length === 1 && /^No (?:open )?todos\.$/.test(lines[0])) return [];
-  const todos: NonNullable<MorningBriefEvidence["todos"]> = [];
+  const todos: NonNullable<RunSources["todos"]> = [];
   for (const line of lines) {
     if (!line.trim() || line.startsWith("[x] ")) continue;
     const row = /^\[ \] ([\w-]+)  (.+)$/.exec(line);
@@ -47,23 +47,23 @@ function dueTodos(text: string, date: string): MorningBriefEvidence["todos"] {
     if (!match || match[2] === "tomorrow") continue;
     const due = match[2] === "today" ? date : match[2] ?? match[3] ?? match[4];
     if (due > date) continue;
-    const named = / \[area: ([a-z]+)\]$/.exec(match[1].replace(/ \(in progress\)$/, ""));
-    const title = match[1].replace(/ \(in progress\)$/, "").replace(/ \[area: [a-z]+\]$/, "");
-    const area = named && AREAS.find((candidate) => candidate.id === named[1]);
+    const named = / \[area: ([\w-]+)\]$/.exec(match[1].replace(/ \(in progress\)$/, ""));
+    const title = match[1].replace(/ \(in progress\)$/, "").replace(/ \[area: [\w-]+\]$/, "");
+    const area = named && areas.find((candidate) => candidate.id === named[1]);
     todos.push({ id: row[1], title, due, overdue: due < date, ...(by ? { at: by[1] } : {}), ...(area ? { area: { ...area } } : {}) });
   }
   return todos;
 }
 
-export function briefSources(date: string, timezone: string, reads: BriefRead[]): MorningBriefEvidence {
-  const result: MorningBriefEvidence = { date, timezone, calendar: null, todos: null, mail: null };
-  const opened = new Map<string, NonNullable<MorningBriefEvidence["mail"]>[number]>();
+export function readSources(date: string, timezone: string, reads: SourceRead[], areas: readonly Area[] = []): RunSources {
+  const result: RunSources = { date, timezone, calendar: null, todos: null, mail: null };
+  const opened = new Map<string, NonNullable<RunSources["mail"]>[number]>();
   for (const { name, args, text } of reads) {
     if (name === "calendar_list") {
       const events = dayEvents(text, date);
       if (events !== null) result.calendar = events;
     } else if (name === "todo_list") {
-      const todos = dueTodos(text, date);
+      const todos = dueTodos(text, date, areas);
       if (todos !== null) result.todos = todos;
     } else if (name === "mail_list" && /^(?:No mail matches\.|\[[\w-]+\] )/.test(text) && !/^Could not read /m.test(text)) {
       result.mail ??= [];

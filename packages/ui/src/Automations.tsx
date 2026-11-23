@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Automation, Run, StateResponse } from "@alfred/protocol";
-import { api } from "./api.ts";
+import { api, type AutomationOptions } from "./api.ts";
 import { automationTitle, scheduleText, whenText } from "./automationText.ts";
 import { AutomationHistory } from "./AutomationHistory.tsx";
 import { Linked } from "./Linked.tsx";
@@ -19,17 +19,41 @@ function lastText(automation: Automation): string {
   return t("auto.last", { when: whenText(run.at) });
 }
 
-/** Making or changing one: what to do (unless it is a template), and when. */
+/** The options every automation has, and the colours it can take (core automations.ts). */
+const LAYOUTS = ["text", "sections"] as const;
+const KEEPS = ["all", "latest"] as const;
+const NOTIFIES = ["always", "changes"] as const;
+const COLOURS = ["blue", "green", "violet", "orange", "teal", "yellow", "pink", "gray"] as const;
+
+function Choices<T extends string>({ label, value, options, onChange, text }: { label: string; value: T; options: readonly T[]; onChange(value: T): void; text(value: T): string }) {
+  return (
+    <div className="field" role="radiogroup" aria-label={label}>
+      <span>{label}</span>
+      <div className="day-picks">
+        {options.map((option) => <button type="button" key={option} className="day-pick" role="radio" aria-checked={value === option} aria-pressed={value === option} onClick={() => onChange(option)}>{text(option)}</button>)}
+      </div>
+    </div>
+  );
+}
+
+/** Making or changing one: its name, what to do, when, and how its results are shown and told. A sample (the morning
+ * brief) is changed like any other: its words are shown in full, and kept as the user's once they change them. */
 function AutomationForm({ automation, onDone }: { automation?: Automation; onDone(): void }) {
   const template = automation?.template ?? null;
-  const [name, setName] = useState(automation?.name ?? "");
-  const [goal, setGoal] = useState(automation?.goal ?? "");
+  const shownName = automation ? automationTitle(automation) : "";
+  const shownGoal = automation?.instruction ?? automation?.goal ?? "";
+  const [name, setName] = useState(shownName);
+  const [goal, setGoal] = useState(shownGoal);
+  const [options, setOptions] = useState<AutomationOptions>({
+    layout: automation?.layout ?? "text", keep: automation?.keep ?? "all", notify: automation?.notify ?? "always", k: automation?.k ?? "green",
+  });
+  const option = <K extends keyof AutomationOptions>(key: K) => (value: AutomationOptions[K]) => setOptions((current) => ({ ...current, [key]: value }));
   const [at, setAt] = useState(automation?.schedule.at ?? "08:00");
   const [days, setDays] = useState<number[]>(automation?.schedule.days ?? EVERY_DAY);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const names = t("auto.dayNames").split(",");
-  const ready = /^\d\d:\d\d$/.test(at) && days.length > 0 && (template !== null || (name.trim() && goal.trim()));
+  const ready = /^\d\d:\d\d$/.test(at) && days.length > 0 && !!name.trim() && !!goal.trim();
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -37,30 +61,31 @@ function AutomationForm({ automation, onDone }: { automation?: Automation; onDon
     setBusy(true);
     setError(null);
     const schedule = { at, days };
+    // A sample keeps following the language until its words are changed.
+    const words = {
+      ...(!template || name.trim() !== shownName ? { name: name.trim() } : {}),
+      ...(!template || goal.trim() !== shownGoal.trim() ? { goal: goal.trim() } : {}),
+    };
     const request = automation
-      ? api.updateAutomation(automation.id, template ? { schedule } : { name: name.trim(), goal: goal.trim(), schedule })
-      : api.createAutomation({ name: name.trim(), goal: goal.trim(), schedule });
+      ? api.updateAutomation(automation.id, { ...words, schedule, ...options })
+      : api.createAutomation({ name: name.trim(), goal: goal.trim(), schedule, ...options });
     request.then(onDone).catch((reason: Error) => { setError(reason.message); setBusy(false); });
   };
   const toggleDay = (day: number) => setDays((current) => current.includes(day) ? current.filter((value) => value !== day) : [...current, day].sort());
 
   return (
     <form className="auto-form" onSubmit={submit} aria-label={automation ? automationTitle(automation) : t("auto.newTitle")}>
-      {template === null && (
-        <>
-          <label className="field">
-            <span>{t("auto.name")}</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("auto.namePlaceholder")} maxLength={60} autoFocus={!automation} />
-          </label>
-          <label className="field">
-            <span>{t("auto.goal")}</span>
-            <span className="with-mic">
-              <textarea value={goal} onChange={(event) => setGoal(event.target.value)} placeholder={t("auto.goalPlaceholder")} maxLength={2000} rows={3} />
-              <MicButton className="small" onText={(words) => setGoal((now) => appendDictation(now, words))} />
-            </span>
-          </label>
-        </>
-      )}
+      <label className="field">
+        <span>{t("auto.name")}</span>
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("auto.namePlaceholder")} maxLength={60} autoFocus={!automation} />
+      </label>
+      <label className="field">
+        <span>{t("auto.goal")}</span>
+        <span className="with-mic">
+          <textarea value={goal} onChange={(event) => setGoal(event.target.value)} placeholder={t("auto.goalPlaceholder")} maxLength={2000} rows={3} />
+          <MicButton className="small" onText={(words) => setGoal((now) => appendDictation(now, words))} />
+        </span>
+      </label>
       <div className="auto-when">
         <label className="field">
           <span>{t("auto.time")}</span>
@@ -76,6 +101,20 @@ function AutomationForm({ automation, onDone }: { automation?: Automation; onDon
         </div>
       </div>
       {days.length === 0 && <p className="quiet small">{t("auto.daysNeeded")}</p>}
+      <details className="auto-more" open={!!automation && (options.layout !== "text" || options.keep !== "all" || options.notify !== "always")}>
+        <summary><Icon name="down" />{t("auto.more")}</summary>
+        <div className="auto-options">
+          <Choices label={t("auto.layout")} value={options.layout} options={LAYOUTS} onChange={option("layout")} text={(value) => t(`auto.layout.${value}`)} />
+          <Choices label={t("auto.keep")} value={options.keep} options={KEEPS} onChange={option("keep")} text={(value) => t(`auto.keep.${value}`)} />
+          <Choices label={t("auto.notify")} value={options.notify} options={NOTIFIES} onChange={option("notify")} text={(value) => t(`auto.notify.${value}`)} />
+          <div className="field" role="radiogroup" aria-label={t("auto.colour")}>
+            <span>{t("auto.colour")}</span>
+            <div className="auto-colours">
+              {COLOURS.map((k) => <button type="button" key={k} data-k={k} className="auto-colour" role="radio" aria-checked={options.k === k} aria-label={t(`areas.k.${k}`)} onClick={() => option("k")(k)} />)}
+            </div>
+          </div>
+        </div>
+      </details>
       {error && <p className="problem small" role="alert">{error}</p>}
       <div className="auto-form-actions">
         <button type="submit" disabled={!ready || busy}>{t(automation ? "auto.save" : "auto.create")}</button>
@@ -113,7 +152,7 @@ function AutomationRow({ automation, recent, onOpenConversation }: { automation:
   if (editing) return <li className="auto-row editing"><AutomationForm automation={automation} onDone={() => setEditing(false)} /></li>;
   return (
     <li className="auto-row" data-enabled={automation.enabled || undefined}>
-      <div className="auto-name" data-k={automation.template === "brief" ? "orange" : automation.template === "mail_todos" ? "blue" : "green"}>
+      <div className="auto-name" data-k={automation.k}>
         <i><Icon name="clock" /></i>
         <span>
           <b>{title}</b>
@@ -135,6 +174,10 @@ function AutomationRow({ automation, recent, onOpenConversation }: { automation:
         <button type="button" className="ghost small" disabled={busy}
           onClick={() => act(() => api.runAutomation(automation.id), (run) => setHistory(run.id))}>{t("auto.runNow")}</button>
         <button type="button" className="ghost small" disabled={busy} onClick={() => setEditing(true)}>{t("auto.edit")}</button>
+        <button type="button" className="ghost small" disabled={busy} title={t("auto.copy.note")} onClick={() => act(() => api.createAutomation({
+          name: t("auto.copyName", { name: title }).slice(0, 60), goal: automation.instruction, schedule: automation.schedule, enabled: false,
+          layout: automation.layout, keep: automation.keep, notify: automation.notify, k: automation.k,
+        }))}>{t("auto.copy")}</button>
         <button type="button" className={confirming ? "ghost small danger" : "ghost small"} disabled={busy} onClick={remove}>{t(confirming ? "auto.confirmDelete" : "auto.delete")}</button>
       </div>
       {history && <AutomationHistory key={history} automation={automation} recent={recent} onOpenConversation={onOpenConversation} />}

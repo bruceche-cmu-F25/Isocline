@@ -1,15 +1,14 @@
-import { AREAS, areaName, lastChangesOf, localDate, userLocale, type World } from "@alfred/core";
+import { areaName, describeAreas, lastChangesOf, localDate, userLocale, type World } from "@alfred/core";
 import { defineModule, defineOp, defineTool, Type } from "@alfred/module-kit";
 import {
-  acceptTodo, addTodo, completeTodo, deleteTodo, formatTodo, getTodoSettings, listTodos, MIGRATIONS, resolveTodo, setTodoSettings, suggestTodo, todoRevision,
+  acceptTodo, addTodo, completeTodo, deleteTodo, formatTodo, getTodoSettings, listTodos, MIGRATIONS, moveTodosOutOfArea, resolveTodo, setTodoSettings, suggestTodo, todoRevision,
   updateTodo, type Todo,
 } from "./domain.ts";
 import type { TodoSnapshot } from "./types.ts";
 
 export * from "./domain.ts";
 export type { TodoSnapshot } from "./types.ts";
-export { isDayOff } from "./types.ts";
-export { readRobinTodos, compareTodos, robinDataDir, type TodoComparison } from "./import-robin.ts";
+export { isDayOff, offMatcher, SAMPLE_OFF_WORDS } from "./types.ts";
 
 const Ref = {
   id: Type.Optional(Type.String({ description: "Todo id from todo_list" })),
@@ -53,7 +52,7 @@ const SAY = {
 const say = (world: World) => SAY[userLocale(world)];
 
 const AreaField = Type.Optional(Type.String({
-  description: `The area of life it belongs to: ${AREAS.map((area) => `${area.id} (${area.name.en} / ${area.name.zh})`).join(", ")}. An empty string removes it.`,
+  description: "The id of one of the user's areas (the parts of life their todos belong to; your instructions list them). An empty string removes it.",
 }));
 
 function snapshot(world: World): TodoSnapshot {
@@ -95,15 +94,16 @@ export const todoModule = defineModule({
   migrations: MIGRATIONS,
   snapshot,
   views: [{ id: "list", title: "Todos" }],
-  guidance: [
+  guidance: (world) => [
     "Todos: when the user mentions something they intend to do later, record it with todo_add instead of only acknowledging it.",
     "A todo has a due date, never a time. Resolve relative dates (\"Friday\", \"tomorrow\") against the local date you were given.",
     "For a task spanning several days, set startDate to its first day and due to its last day: one ranged todo, not one per day.",
     "Before editing or completing a todo you have not seen in this run, call todo_list to find its id.",
     "todo_suggest is for something you found yourself, in a mail, that the user did not ask you to add: it waits on the Todos page as a suggestion for them to keep or drop. When the user asks for a todo, use todo_add.",
     "Todos marked \"from the calendar\" follow the user's calendar by themselves; do not add a todo for a calendar event.",
-    `Set a todo's area when it is clear which part of life it belongs to (${AREAS.map((area) => area.id).join(", ")}); leave it out when unsure.`,
+    `Set a todo's area when it is clear which part of life it belongs to; leave it out when unsure. The user's areas (id and name): ${describeAreas(world)}.`,
   ].join("\n"),
+  areaRemoved: (world, id, moveTo) => { moveTodosOutOfArea(world, id, moveTo); },
 
   ops: [
     defineOp({
@@ -139,9 +139,13 @@ export const todoModule = defineModule({
       run: (world, input) => acceptTodo(world, input),
     }),
     defineOp({
-      // What becomes a todo by itself: which calendar events.
+      // What becomes a todo by itself: which calendar events, and which of them are days off instead.
       name: "todo.sources",
-      input: Type.Object({ fromCalendar: Type.Optional(Type.Union([Type.Literal("off"), Type.Literal("allday"), Type.Literal("all")])) }),
+      input: Type.Object({
+        fromCalendar: Type.Optional(Type.Union([Type.Literal("off"), Type.Literal("allday"), Type.Literal("all")])),
+        // The words a day off is named by.
+        offWords: Type.Optional(Type.Array(Type.String({ maxLength: 40 }), { maxItems: 50 })),
+      }),
       run: (world, input) => setTodoSettings(world, input),
     }),
     defineOp({
@@ -238,7 +242,7 @@ export const todoModule = defineModule({
         if (patch.due !== undefined) said.push(text.due(String(patch.due)));
         if (patch.at !== undefined) said.push(text.at(String(patch.at)));
         if (patch.startDate !== undefined) said.push(text.start(String(patch.startDate)));
-        if (patch.area !== undefined) said.push(text.area(patch.area ? areaName(String(patch.area), locale) ?? String(patch.area) : ""));
+        if (patch.area !== undefined) said.push(text.area(patch.area ? areaName(world, String(patch.area), locale) ?? String(patch.area) : ""));
         if (patch.status !== undefined) said.push(text.status(String(patch.status)));
         if (patch.url !== undefined) said.push(text.link(String(patch.url)));
         return pinned(world, { id, title }, (todo, revision) => ({ op: "todo.update", input: { id: todo.id, revision, patch }, preview: text.update(todo.title, said) }));

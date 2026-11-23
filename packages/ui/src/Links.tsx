@@ -10,22 +10,22 @@ import { classify, parseLinkPaste } from "@alfred/module-links/url";
 import { clipSections, playbackTime } from "./clipSections.ts";
 import { legacyShareClip, linkSaveFields } from "./linkShareCompat.ts";
 import { AddBar, Pill } from "./AddBar.tsx";
-import { SiteIcon, useLinkFile, useOp } from "./linkControls.tsx";
+import { SiteIcon, linkFileUrl, useOp } from "./linkControls.tsx";
 import { Places } from "./Places.tsx";
 import { LinkDeleteDialog, onDeleteKey } from "./LinkDeleteDialog.tsx";
 import { Icon } from "./shell/icons.tsx";
 import { Select } from "./shell/Select.tsx";
 import { OutLink } from "./Linked.tsx";
-import { getLocale, t, type Key } from "./i18n/index.ts";
+import { getLocale, t, type Key, type Locale } from "./i18n/index.ts";
 import { when } from "./shell/Nav.tsx";
 import "./links-page.css";
 
 /** How a platform is called; anything else goes by its site. */
-const PLATFORM: Record<string, string | [string, string]> = {
-  youtube: "YouTube", bilibili: ["B 站", "Bilibili"], xiaohongshu: ["小红书", "Xiaohongshu"], github: "GitHub", arxiv: "arXiv", wechat: ["公众号", "WeChat"],
-  zhihu: ["知乎", "Zhihu"], x: "X", weibo: ["微博", "Weibo"], reddit: "Reddit", hackernews: "Hacker News", douyin: ["抖音", "TikTok"], vimeo: "Vimeo",
+const PLATFORM: Record<string, string | Record<Locale, string>> = {
+  youtube: "YouTube", bilibili: { zh: "B 站", en: "Bilibili" }, xiaohongshu: { zh: "小红书", en: "Xiaohongshu" }, github: "GitHub", arxiv: "arXiv", wechat: { zh: "公众号", en: "WeChat" },
+  zhihu: { zh: "知乎", en: "Zhihu" }, x: "X", weibo: { zh: "微博", en: "Weibo" }, reddit: "Reddit", hackernews: "Hacker News", douyin: { zh: "抖音", en: "TikTok" }, vimeo: "Vimeo",
 };
-const platformName = (id: string): string | undefined => { const name = PLATFORM[id]; return Array.isArray(name) ? name[getLocale() === "en" ? 1 : 0] : name; };
+const platformName = (id: string): string | undefined => { const name = PLATFORM[id]; return typeof name === "object" ? name[getLocale()] : name; };
 const TYPES: LinkType[] = ["video", "article", "post", "repo", "doc"];
 /** Why a page could not be looked up, in the user's words, by the home node's short code. */
 const WHY: Record<string, Key> = { login: "links.why.login", status: "links.why.status", timeout: "links.why.timeout", network: "links.why.timeout", not_html: "links.why.notPage" };
@@ -53,7 +53,7 @@ function TopicPick({ topics, areas, value, disabled, label, onPick }: {
         onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); done(); } if (event.key === "Escape") { setNaming(false); setName(""); } }} />
     );
   }
-  const areaName = (id: string | undefined) => areas.find((area) => area.id === id)?.name[getLocale()];
+  const areaName = (id: string | undefined) => areas.find((area) => area.id === id)?.name;
   return (
     <Select className="lk-pick" value={value} disabled={disabled} label={label}
       onChange={(next) => { if (next === NEW_TOPIC) setNaming(true); else onPick({ topicId: next }); }}
@@ -88,7 +88,7 @@ function TopicPill({ topics, areas, pick, onPick }: {
   const chosen = "topicId" in pick ? topics.find((topic) => topic.id === pick.topicId) : undefined;
   const k = chosen ? areas.find((area) => area.id === chosen.area)?.k : "alfred";
   const text = "topic" in pick ? `${pick.topic} · ${t("links.topic.isNew")}` : chosen?.name ?? t("links.topic.none");
-  const areaName = (id: string | undefined) => areas.find((area) => area.id === id)?.name[getLocale()];
+  const areaName = (id: string | undefined) => areas.find((area) => area.id === id)?.name;
   return (
     <Pill icon="tag" text={text} set={"topic" in pick || !!chosen} k={k} label={t("links.topic.pick")} onClear={() => onPick({ topicId: "" })}>
       <Select cover value={"topicId" in pick ? pick.topicId : ""} label={t("links.topic.pick")}
@@ -114,7 +114,7 @@ function Card({ clip, topics, areas, open, fresh, onOpen, onError }: {
   const [failedCover, setFailedCover] = useState<string>();
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const mainButton = useRef<HTMLButtonElement>(null);
-  const coverUrl = useLinkFile(clip.cover);
+  const coverUrl = linkFileUrl(clip.cover);
   const topic = topics.find((candidate) => candidate.id === clip.topicId);
   const area = areas.find((candidate) => candidate.id === topic?.area);
   const untitled = clip.titleSource === "url";
@@ -204,7 +204,7 @@ function Card({ clip, topics, areas, open, fresh, onOpen, onError }: {
   );
 }
 
-export function Links({ snapshot, fresh, areas, focus, onFocused, libraryControls }: { libraryControls?: ReactNode; snapshot: LinksSnapshot | undefined; fresh: ReadonlySet<string>; areas: Area[]; focus?: string | null; onFocused?(): void }) {
+export function Links({ snapshot, fresh, areas, focus, onFocused }: { snapshot: LinksSnapshot | undefined; fresh: ReadonlySet<string>; areas: Area[]; focus?: string | null; onFocused?(): void }) {
   const { places = [], folders = [], clips = [], topics = [] } = snapshot ?? {};
   const [draft, setDraft] = useState("");
   const [pick, setPick] = useState<{ topicId: string } | { topic: string }>({ topicId: "" });
@@ -242,9 +242,6 @@ export function Links({ snapshot, fresh, areas, focus, onFocused, libraryControl
     <section className="links" aria-label={t("page.links")}>
       {/* One scroll for the whole page: on a small screen nothing is pinned above the cards. */}
       <div className="lk-scroll">
-      {libraryControls}
-      <Places places={places} folders={folders} focus={focus} onFocused={onFocused} onError={setError} />
-
       <div className="lk-save">
         <AddBar value={draft} onChange={setDraft} onSubmit={save} ready={!!found} busy={busy} maxLength={2400} spellCheck={false}
           placeholder={t("links.paste")} label={t("links.paste")} submitLabel={t("links.save")} showSubmitLabel>
@@ -262,6 +259,7 @@ export function Links({ snapshot, fresh, areas, focus, onFocused, libraryControl
       )}
       {draft.trim() && !found && <p className="lk-will quiet">{t("links.noUrl")}</p>}
       {error && <p className="problem small" role="alert">{error}</p>}
+      <Places places={places} folders={folders} focus={focus} onFocused={onFocused} onError={setError} />
 
         {clips.length > 0 && (showTypes || only !== "all" || clips.some((clip) => clip.state !== "unread")) && (
           <div className="lk-filters" role="group" aria-label={t("links.filter")}>
@@ -298,7 +296,7 @@ export function Links({ snapshot, fresh, areas, focus, onFocused, libraryControl
           const area = areas.find((candidate) => candidate.id === topic.area);
           return (
             <section className="lk-band lk-topic" key={topic.id} data-k={area?.k ?? "gray"}>
-              <h3><span className="mark" />{topic.name}{area && <span className="lk-area">{area.name[getLocale()]}</span>}<span className="count">{items.length}</span></h3>
+              <h3><span className="mark" />{topic.name}{area && <span className="lk-area">{area.name}</span>}<span className="count">{items.length}</span></h3>
               <ul className="lk-cards">{items.map(card)}</ul>
             </section>
           );

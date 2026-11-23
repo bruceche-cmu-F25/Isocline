@@ -18,7 +18,6 @@ import { SessionArchives } from "./archives.ts";
 import { Processes } from "./processes.ts";
 import { Desk } from "./desk.ts";
 import { modulePasses } from "./passes.ts";
-import { openLinkSample } from "./link-sample.ts";
 import { AUTOMATION_PROFILE, profiles } from "./profiles.ts";
 
 /** How often the home node's clock looks for automations that are due and proposals past their time. */
@@ -46,7 +45,6 @@ export interface HomeOptions {
 
 export interface Home {
   world: World;
-  readonly linkSample: ReturnType<typeof openLinkSample> | undefined;
   modules: readonly AlfredModule[];
   presence: PresenceOptions;
   owner: string;
@@ -184,17 +182,12 @@ export function openHome(options: HomeOptions): Home {
   tidying.unref();
 
   const passes = modulePasses({ world, modules: options.modules, services: options.services, log: options.log });
-  let sample: ReturnType<typeof openLinkSample> | undefined;
   // Who tells the user about a notice, where and when: decided here, once, for every device.
   const outlets = new Outlets();
   const reaches: Array<() => Reach[]> = [];
   const attention = watchAttention({ world, outlets, reaches: () => reaches.flatMap((list) => list()), policy: options.attention, presence: options.presence, log: options.log });
   return {
     world,
-    get linkSample() {
-      const links = options.modules.find((module) => module.id === "link");
-      return links ? sample ??= openLinkSample(options.dataDir, links, options.log) : undefined;
-    },
     modules: options.modules,
     presence: options.presence ?? {},
     owner,
@@ -222,7 +215,6 @@ export function openHome(options: HomeOptions): Home {
       clearInterval(clock);
       clearTimeout(firstTidy);
       clearInterval(tidying);
-      sample?.close();
       archives.close();
       passes.close();
       files.close();

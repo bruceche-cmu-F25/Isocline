@@ -11,7 +11,7 @@ export interface FindSources {
   pages: ReadonlyArray<{ key: string; title: string; icon: IconName }>;
   /** Extra commands, e.g. "new conversation", "close Alfred". */
   commands: readonly FindCommand[];
-  conversations: ReadonlyArray<Pick<Conversation, "id" | "title" | "unreadReplyId" | "briefOnly">>;
+  conversations: ReadonlyArray<Pick<Conversation, "id" | "title" | "unreadReplyId" | "automationOnly">>;
   links?: Pick<LinksSnapshot, "places" | "folders">;
   onFolder?(id: string): void;
   onPlace?(url: string): void;
@@ -30,7 +30,7 @@ export function findItems(query: string, { pages, commands, conversations, links
     })),
     ...commands.filter((command) => match(command.label)).map((command) => ({ ...command, kind: "command" as const })),
     ...findPlaces(q, links, onFolder, onPlace),
-    ...conversations.filter((conversation) => !conversation.briefOnly && match(conversation.title)).slice(0, q ? 8 : 5).map((conversation) => ({
+    ...conversations.filter((conversation) => !conversation.automationOnly && match(conversation.title)).slice(0, q ? 8 : 5).map((conversation) => ({
       kind: "conversation" as const, id: `conv:${conversation.id}`, label: conversation.title, unread: !!conversation.unreadReplyId, icon: "chat" as const, hint: t("pal.conversation"), run: () => onSelect(conversation.id),
     })),
   ];

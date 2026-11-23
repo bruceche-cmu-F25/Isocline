@@ -29,8 +29,8 @@ export interface Conversation {
   attention: number;
   /** Latest ordinary reply the user has yet to see, shared across devices. */
   unreadReplyId: string | null;
-  /** The transcript of the built-in brief before the user has spoken in it. */
-  briefOnly: boolean;
+  /** An automation's transcript before the user has spoken in it: kept out of the conversation list and search. */
+  automationOnly: boolean;
   /** The newest request in it, for a list preview. */
   lastGoal: string | null;
   /** The project it works in (a development session); null for an everyday conversation. Fixed at creation. */
@@ -73,10 +73,10 @@ export function titleFrom(goal: string): string {
 }
 
 const SELECT = `SELECT c.*,
-  EXISTS (SELECT 1 FROM core_automations a WHERE a.template = 'brief' AND a.conversation_id = c.id
+  EXISTS (SELECT 1 FROM core_automations a WHERE a.conversation_id = c.id
     AND NOT EXISTS (SELECT 1 FROM core_runs r WHERE r.conversation_id = c.id AND
       (r.automation_id IS NOT a.id OR EXISTS (SELECT 1 FROM core_events e WHERE e.run_id = r.id
-        AND e.actor = 'user' AND e.kind IN ('run.steered', 'run.answered'))))) AS brief_only,
+        AND e.actor = 'user' AND e.kind IN ('run.steered', 'run.answered'))))) AS automation_only,
   (SELECT count(*) FROM core_runs r WHERE r.conversation_id = c.id AND r.state IN ('queued', 'running', 'cancelling')) AS busy,
   (SELECT count(*) FROM core_runs r WHERE r.conversation_id = c.id AND r.state IN ('waiting_input', 'waiting_permission', 'interrupted')) AS attention,
   (SELECT r.goal FROM core_runs r WHERE r.conversation_id = c.id ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS last_goal
@@ -90,7 +90,7 @@ function toConversation(row: Record<string, unknown>): Conversation {
     speed: (row.speed as Speed | null) ?? null,
     busy: row.busy as number, attention: row.attention as number,
     unreadReplyId: (row.unread_reply_id as string | null) ?? null,
-    briefOnly: row.brief_only === 1,
+    automationOnly: row.automation_only === 1,
     lastGoal: row.last_goal ? String(row.last_goal).slice(0, 120) : null,
     projectId: (row.project_id as string | null) ?? null,
     mode: (row.mode as SessionMode | null) ?? null,

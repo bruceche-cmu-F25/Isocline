@@ -8,6 +8,8 @@
 import {
   coreContext, getRun, openProposal, runCommand, withCoreContext, type Actor, type Migration, type ProposalStep, type RunTool, type World,
   automationName, createAutomation, listAutomations, updateAutomation, userLocale, type AutomationView,
+  addArea, deleteAreaRow, describeAreas, listAreas, type Area,
+  addPreference, listPreferences, removePreference, MAX_PREFERENCE,
   claimOutbound, finishOutbound, retryOutbound, type Outbound,
 } from "@alfred/core";
 import { Type, type Static, type TSchema } from "typebox";
@@ -71,8 +73,12 @@ export interface AlfredModule {
   tools: readonly ModuleTool[];
   /** Views devices know how to draw from the snapshot. */
   views?: readonly ModuleView[];
-  /** How a run should use this module's tools. Appended to the run's instructions. */
-  guidance?: string;
+  /** How a run should use this module's tools. Appended to the run's instructions. A function for words that depend
+   * on the user's own data (their areas), read again for each run. */
+  guidance?: string | ((world: World) => string);
+  /** The user removed an area: move what of this module's was in it to `moveTo`, or to no area. Runs in the same
+   * transaction as the removal (`removeArea`). */
+  areaRemoved?(world: World, id: string, moveTo: string | null): void;
   /** What a device needs to draw this module right now. JSON. */
   snapshot?(world: World): unknown;
   /** For a module that mirrors an outside service (a calendar, a mailbox): the home node calls `run` now and then,
@@ -316,6 +322,20 @@ export function askUserTool(): RunTool {
   };
 }
 
+/** A module's guidance as a run reads it now. */
+export function moduleGuidance(world: World, modules: readonly AlfredModule[]): string {
+  return modules.map((module) => (typeof module.guidance === "function" ? module.guidance(world) : module.guidance)).filter(Boolean).join("\n\n");
+}
+
+/** Removes one of the user's areas, and moves what every module had in it to `moveTo` or to no area, at once. */
+export function removeArea(world: World, modules: readonly AlfredModule[], id: string, moveTo: string | null = null): Area {
+  return world.tx(() => {
+    const removed = deleteAreaRow(world, id, moveTo);
+    for (const module of modules) module.areaRemoved?.(world, id, moveTo);
+    return removed;
+  });
+}
+
 /** The everyday assistant's tools for questions, proposals, automations and opening views. */
 export function assistantTools(world: World, modules: readonly AlfredModule[]): RunTool[] {
   const tools = [askUserTool()];
@@ -373,10 +393,17 @@ export function assistantTools(world: World, modules: readonly AlfredModule[]): 
   // The user's automations, so "every Monday morning, go over my todos" can be said, not only clicked.
   const days = Type.Optional(Type.Array(Type.Integer({ minimum: 1, maximum: 7 }), { minItems: 1, maxItems: 7, description: "Weekdays, 1 Monday to 7 Sunday; every day if left out" }));
   const at = Type.String({ pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", description: "Time of day, HH:MM, 24-hour, the user's local time" });
+  const options = {
+    layout: Type.Optional(Type.Union([Type.Literal("text"), Type.Literal("sections")], { description: "sections: its results are shown like the morning brief, a lead then one block per heading, rows linked to what they are about; for a digest or review. text otherwise" })),
+    keep: Type.Optional(Type.Union([Type.Literal("all"), Type.Literal("latest")], { description: "latest: only its newest result stays in the inbox; for something that replaces itself, like a daily digest" })),
+    notify: Type.Optional(Type.Union([Type.Literal("always"), Type.Literal("changes")], { description: "changes: tell the user only when a run changed or proposed something; for a watcher that is usually quiet" })),
+  };
+  const chosen = (params: Record<string, unknown>) => Object.fromEntries((["layout", "keep", "notify"] as const).filter((key) => params[key] !== undefined).map((key) => [key, params[key]]));
   const sayAutomation = (automation: AutomationView) => [
     `${automation.id}: ${automationName(automation, userLocale(world))}`,
     `${automation.schedule.days.length === 7 ? "every day" : `weekdays ${automation.schedule.days.join(",")}`} at ${automation.schedule.at}`,
     automation.enabled ? `on, next ${automation.nextAt}` : "off",
+    `results ${automation.layout === "sections" ? "in sections" : "as text"}, ${automation.keep === "latest" ? "only the latest kept" : "all kept"}, ${automation.notify === "changes" ? "told only on changes" : "told every time"}`,
     ...(automation.goal ? [`does: ${automation.goal}`] : []),
   ].join(" | ");
   const attempt = (action: () => string) => { try { return action(); } catch (error) { return `Not done: ${(error as Error).message}`; } };
@@ -396,13 +423,13 @@ export function assistantTools(world: World, modules: readonly AlfredModule[]): 
     parameters: Type.Object({
       name: Type.String({ maxLength: 60, description: "A short name, in the user's language" }),
       goal: Type.String({ maxLength: 2000, description: "What to do each time, as the instruction you will be given then, in the user's language" }),
-      at, days,
+      at, days, ...options,
     }) as unknown as Record<string, unknown>,
     describe: (params) => String(params.name ?? "").slice(0, 60),
     execute: (params) => attempt(() => {
       const made = createAutomation(world, {
         name: String(params.name ?? ""), goal: String(params.goal ?? ""),
-        schedule: { at: params.at, days: Array.isArray(params.days) ? params.days : [1, 2, 3, 4, 5, 6, 7] },
+        schedule: { at: params.at, days: Array.isArray(params.days) ? params.days : [1, 2, 3, 4, 5, 6, 7] }, ...chosen(params),
       });
       return `Made the automation "${made.name}" (${made.id}). It is on; the user can change or switch it off on the Automations page.`;
     }),
@@ -415,7 +442,7 @@ export function assistantTools(world: World, modules: readonly AlfredModule[]): 
       name: Type.Optional(Type.String({ maxLength: 60 })),
       goal: Type.Optional(Type.String({ maxLength: 2000 })),
       at: Type.Optional(at), days,
-      enabled: Type.Optional(Type.Boolean()),
+      enabled: Type.Optional(Type.Boolean()), ...options,
     }) as unknown as Record<string, unknown>,
     describe: (params) => String(params.id ?? ""),
     execute: (params) => attempt(() => {
@@ -425,9 +452,59 @@ export function assistantTools(world: World, modules: readonly AlfredModule[]): 
         ...(params.name !== undefined ? { name: params.name } : {}),
         ...(params.goal !== undefined ? { goal: params.goal } : {}),
         ...(params.at !== undefined || params.days !== undefined ? { schedule: { at: params.at ?? current.schedule.at, days: params.days ?? current.schedule.days } } : {}),
-        ...(params.enabled !== undefined ? { enabled: params.enabled } : {}),
+        ...(params.enabled !== undefined ? { enabled: params.enabled } : {}), ...chosen(params),
       });
       return `Changed: ${sayAutomation({ ...current, ...changed })}.`;
+    }),
+  });
+  // The user's areas: the parts of life todos and topics belong to. Making one is easy to undo, so it needs no question;
+  // renaming and removing are the user's, in Settings.
+  tools.push({
+    name: "area_list",
+    label: "Areas",
+    description: "List the user's areas (the parts of life their todos and link topics belong to): id and name, in their order.",
+    parameters: Type.Object({}) as unknown as Record<string, unknown>,
+    execute: () => listAreas(world).map((area) => `${area.id}: ${area.name}`).join("\n") || "The user has no areas.",
+  }, {
+    name: "area_add",
+    label: "New area",
+    description: "Make a new area when the user asks for one (\"add an area for my kids\"). Not for sorting a single thing: use an area the user already has, or none.",
+    parameters: Type.Object({
+      name: Type.String({ minLength: 1, maxLength: 40, description: "Its name, in the user's language" }),
+    }) as unknown as Record<string, unknown>,
+    describe: (params) => String(params.name ?? "").slice(0, 40),
+    execute: (params) => attempt(() => {
+      const made = addArea(world, { name: params.name });
+      return `Made the area "${made.name}" (${made.id}). The user can rename, recolour or remove it in Settings. Areas now: ${describeAreas(world)}.`;
+    }),
+  }, {
+    name: "preference_add",
+    label: "Remember",
+    description: [
+      "Write down something lasting the user has said about how they like things: how to answer, what to call things, habits and rules",
+      "(\"keep answers short\", \"my week starts on Monday\", \"no meetings before 10\"). Only what they said or plainly asked you to remember,",
+      "in their words and language, one thing each; not a one-off request, not a guess about them, never a secret.",
+      "The user sees every one in Settings and can change or remove it. Say in your reply that you noted it.",
+    ].join(" "),
+    parameters: Type.Object({
+      text: Type.String({ minLength: 1, maxLength: MAX_PREFERENCE, description: "The preference, one sentence, in the user's language" }),
+    }) as unknown as Record<string, unknown>,
+    describe: (params) => String(params.text ?? "").slice(0, 80),
+    execute: (params) => attempt(() => {
+      const kept = addPreference(world, { text: params.text, by: "alfred" });
+      return `Noted (${kept.id}): ${kept.text}. The user can change or remove it in Settings.`;
+    }),
+  }, {
+    name: "preference_remove",
+    label: "Forget",
+    description: "Remove a preference when the user says it no longer holds or asks you to forget it. Ids are in the list at the start of your instructions.",
+    parameters: Type.Object({
+      id: Type.String({ minLength: 1, maxLength: 64 }),
+    }) as unknown as Record<string, unknown>,
+    describe: (params) => listPreferences(world).find((preference) => preference.id === params.id)?.text.slice(0, 80) ?? "",
+    execute: (params) => attempt(() => {
+      const gone = removePreference(world, String(params.id), "alfred");
+      return `Removed: ${gone.text}.`;
     }),
   });
   const views = modules.flatMap((module) => (module.views ?? []).map((view) => ({ key: `${module.id}.${view.id}`, module: module.id, view: view.id, title: view.title })));

@@ -18,7 +18,6 @@ import { lazyPage } from "./lazyPage.tsx";
 import type { NamePreference } from "../General.tsx";
 import { Inbox } from "../Inbox.tsx";
 import { Links } from "../Links.tsx";
-import { LibrarySwitcher, SampleLinks, type useLinkSample } from "../LinkSample.tsx";
 import { Today } from "../Today.tsx";
 import { Todos } from "../Todos.tsx";
 import { intlLocale, t, type Key } from "../i18n/index.ts";
@@ -32,7 +31,6 @@ const Dev = lazyPage(() => import("../Dev.tsx").then((module) => module.Dev));
 const Settings = lazyPage(() => import("../Settings.tsx").then((module) => module.Settings));
 
 export interface PageProps extends NamePreference {
-  linkSample: ReturnType<typeof useLinkSample>;
   snapshot: unknown;
   /** Reload the current snapshot after a user action. */
   refresh(): void;
@@ -63,8 +61,7 @@ export interface PageDef {
   icon: IconName;
   /** Category colour slot (tokens.css `data-k`). */
   k: string;
-  /** Where it lives: above the workspaces (今天: Alfred's note about all of them, alone at the top of the sidebar,
-   * whichever workspace is in it), the daily workspace, the other modules, coding, or the app itself (settings). */
+  /** Sidebar group. Today ("alfred") has its own row at the top of daily navigation. */
   group: "alfred" | "work" | "modules" | "dev" | "system";
   /** The page draws its own top (no title and summary above it), and Alfred's panel steps aside for it. */
   bare?: boolean;
@@ -130,7 +127,7 @@ function todoCounts(snapshot: unknown) {
 const PAGES: PageDef[] = [
   // First, so it is where the app opens: what is next and where to go in (docs/design/today-and-inbox.md).
   {
-    key: "core.today", get title() { return t("page.today"); }, icon: "alfred", k: "alfred", group: "alfred",
+    key: "core.today", get title() { return t("page.today"); }, icon: "home", k: "alfred", group: "alfred",
     summary: (_, state) => todaySummary(state),
     topline: (state) => {
       const [y, m, d] = todayModel(state).date.split("-").map(Number);
@@ -226,7 +223,7 @@ const PAGES: PageDef[] = [
       const unread = clips.filter((clip) => clip.state === "unread").length;
       return unread ? t("head.links.unread", { n: unread }) : t("head.links.clear");
     },
-    render: ({ snapshot, fresh, areas, item, onItem }) => <Links libraryControls={<LibrarySwitcher />} snapshot={snapshot as LinksSnapshot | undefined} fresh={fresh} areas={areas} focus={item} onFocused={onItem} />,
+    render: ({ snapshot, fresh, areas, item, onItem }) => <Links snapshot={snapshot as LinksSnapshot | undefined} fresh={fresh} areas={areas} focus={item} onFocused={onItem} />,
   },
   {
     key: "core.automations", get title() { return t("page.automations"); }, icon: "clock", k: "green", group: "modules",
@@ -240,10 +237,7 @@ const PAGES: PageDef[] = [
       if (!state.automations?.length) return t("head.auto.empty");
       return next ? t("head.auto.next", { name: automationTitle(next), when: whenText(next.nextAt!) }) : t("head.auto.off");
     },
-    suggestions: (_, state) => [
-      ...(state.automations?.some((automation) => automation.template === "brief") ? ["sug.auto.brief" as const] : []),
-      "sug.auto.weekly", "sug.auto.which",
-    ],
+    suggestions: () => ["sug.auto.weekly", "sug.auto.which"],
     render: ({ state, openConversation }) => <Automations state={state} onOpenConversation={openConversation} />,
   },
   {
@@ -255,19 +249,28 @@ const PAGES: PageDef[] = [
   {
     key: "core.settings", get title() { return t("page.settings"); }, icon: "gear", k: "gray", group: "system",
     summary: () => t("page.settings.summary"),
-    render: ({ name, saveName, dev, state }) => <Settings name={name} saveName={saveName} onEvent={dev.onEvent} dockOptions={dockPages(availablePages(state)).options} />,
+    render: ({ name, saveName, dev, state }) => <Settings name={name} saveName={saveName} onEvent={dev.onEvent} state={state} dockOptions={dockPages(listedPages(state)).options} />,
   },
 ];
 
-export const linkSamplePage: PageDef = {
-  key: "link.sample", get title() { return t("links.sample.title"); }, icon: "link", k: "violet", group: "modules",
-  render: ({ linkSample, item, onItem }) => <SampleLinks model={linkSample} focus={item} onFocused={onItem} />,
-};
-
-/** The pages this home node actually has, in registry order: the core's, then each module view it offers. */
+/** The pages this home node actually has: the core's, then each module view it offers, in the order the user put
+ * them in (Settings → General → Pages), else in registry order. A page keeps its group; the order is within it. */
 export function availablePages(state: StateResponse): PageDef[] {
   const offered = new Set(Object.entries(state.views).flatMap(([module, views]) => views.map((view) => `${module}.${view.id}`)));
-  return PAGES.filter((page) => page.key.startsWith("core.") || offered.has(page.key));
+  const order = state.settings?.pages?.order ?? [];
+  const rank = (page: PageDef) => { const index = order.indexOf(page.key); return index < 0 ? order.length + PAGES.indexOf(page) : index; };
+  return PAGES.filter((page) => page.key.startsWith("core.") || offered.has(page.key)).sort((a, b) => rank(a) - rank(b));
+}
+
+/** Which pages the user may take out of the sidebar: everything in the daily workspace but the Inbox (where Alfred's
+ * questions wait). The Today page, coding and Settings stay. */
+export const canHide = (page: PageDef): boolean => (page.group === "work" || page.group === "modules") && page.key !== "core.inbox";
+
+/** The pages the sidebar and the dock list: the available ones the user has not hidden. A hidden page can still be
+ * opened from a link to it. */
+export function listedPages(state: StateResponse, pages: PageDef[] = availablePages(state)): PageDef[] {
+  const hidden = new Set(state.settings?.pages?.hidden ?? []);
+  return pages.filter((page) => !(hidden.has(page.key) && canHide(page)));
 }
 
 /** Keep the first three daily pages in the dock and offer the remaining pages for the extra shortcut. */

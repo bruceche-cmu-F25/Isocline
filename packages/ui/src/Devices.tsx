@@ -9,7 +9,7 @@ import { api } from "./api.ts";
 import { DevAccessApproval } from "./DevAccessApproval.tsx";
 import { RequestDevAccess } from "./RequestDevAccess.tsx";
 import { Logo } from "./brand/Logo.tsx";
-import { getLocale, t, type Key } from "./i18n/index.ts";
+import { intlLocale, t, type Key } from "./i18n/index.ts";
 import { disablePush, enablePush, pushSupport } from "./push.ts";
 
 type Local = Extract<RemoteResponse, { local: true }>;
@@ -31,7 +31,7 @@ function Qr({ text }: { text: string }) {
   );
 }
 
-const when = (iso: string) => new Date(iso).toLocaleString(getLocale() === "zh" ? "zh-CN" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const when = (iso: string) => new Date(iso).toLocaleString(intlLocale(), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
 function DeviceRow({ device, onRevoke, onDev }: { device: DeviceInfo; onRevoke?: () => void; onDev?: (enabled: boolean) => void }) {
   const [confirming, setConfirming] = useState(false);

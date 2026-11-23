@@ -2,11 +2,11 @@
  * internet, filed by topic. L1: saving looks the page up for its title and what it says about itself; reading the
  * page and writing a summary come later.
  */
-import { AREAS, lastChangesOf, userLocale, type World } from "@alfred/core";
+import { acceptLanguage, describeAreas, lastChangesOf, userLocale, type World } from "@alfred/core";
 import { defineModule, defineOp, defineTool, Type, type AlfredModule } from "@alfred/module-kit";
 import {
   ensureTopic, formatClip, getIcon, groupPlaces, hostOf, iconsToFetch, listClips, listFolders, listPlaces, listTopics, MIGRATIONS, movePlace, noteIcons, orderPlaces, pendingClips, pinPlace,
-  recordIcon, recordPage, recordPageFailure, refetchClip, removeLink, removeTopic, renamePlace, saveClip, ungroupPlaces, updateClip, updateTopic,
+  moveTopicsOutOfArea, recordIcon, recordPage, recordPageFailure, refetchClip, removeLink, removeTopic, renamePlace, saveClip, ungroupPlaces, updateClip, updateTopic,
 } from "./domain.ts";
 import { getCover, largeCovers, pendingCovers, recordCover, replaceCover } from "./covers.ts";
 import { fetchCover, fetchIcon, shrinkCover, fetchPage, PageFetchError, type IconFetcher, type PageFetcher, type PageInfo } from "./fetch.ts";
@@ -22,7 +22,7 @@ export {
 
 const failed = (result: object): result is { error: string } => "error" in result;
 const State = Type.Union(CLIP_STATES.map((state) => Type.Literal(state)));
-const AreaField = Type.Optional(Type.String({ description: `For a NEW topic: the area of life it sits in: ${AREAS.map((area) => `${area.id} (${area.name.en})`).join(", ")}.` }));
+const AreaField = Type.Optional(Type.String({ description: "For a NEW topic: the id of the user's area it sits in (your instructions list them)." }));
 
 const SAY = {
   zh: { remove: (title: string) => `永久删除链接「${title}」？删除后不能恢复。` },
@@ -49,10 +49,12 @@ function lookUp(fetcher: PageFetcher, icons: IconFetcher, covers: typeof fetchCo
     /** The icons each page named, by host, for the icon step below. */
     const named = new Map<string, string[]>();
     const pages = new Map<string, PageInfo>();
+    // A site is asked for its title in the user's language, as their own browser would.
+    const language = acceptLanguage(userLocale(world));
     for (const clip of pendingClips(world)) {
       if (signal.aborted) return;
       try {
-        const page = await fetcher(clip.url, signal);
+        const page = await fetcher(clip.url, signal, language);
         if (page.icons?.length) named.set(hostOf(page.url), page.icons);
         pages.set(clip.id, page);
         recordPage(world, clip.id, page);
@@ -68,7 +70,7 @@ function lookUp(fetcher: PageFetcher, icons: IconFetcher, covers: typeof fetchCo
       let page = pages.get(clip.id);
       // Existing videos predate the cache. Backfill just their covers, keeping saved metadata and reading state.
       if (!page) {
-        try { page = await fetcher(clip.url, signal); } catch { /* try again after the cache interval */ }
+        try { page = await fetcher(clip.url, signal, language); } catch { /* try again after the cache interval */ }
       }
       const cover = page?.cover && !signal.aborted ? await covers(page.cover, signal).catch(() => null) : null;
       if (signal.aborted) return;
@@ -105,13 +107,15 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
     migrations: MIGRATIONS,
     snapshot,
     views: [{ id: "list", title: "Links" }],
-    guidance: [
+    guidance: (world) => [
       "Links: the user's places (addresses they keep going to, shown as tiles) and clips (things they saved from the internet: a video, an article, a post), filed by topic.",
       "When the user gives you an address to keep, or says to save something they are looking at, use link_save, with their reason as the note in their own words. File it under one of their topics when one fits (link_list shows them); name a new topic, with its area, only when none does. Leave the topic out when unsure.",
       "Use link_pin only for a site they want at hand every day (\"pin Canvas\"), not for something to read or watch.",
       "You have not read a saved page: its title and description are the page's own words. Do not describe what a clip says beyond them.",
+      `A topic's area is one of the user's areas (id and name): ${describeAreas(world)}.`,
     ].join("\n"),
-    sync: { everyMs: 5 * 60_000, onEvents: ["link.saved", "link.refetch", "link.pinned"], run: lookUp(options.fetcher ?? fetchPage, options.icons ?? fetchIcon, options.covers ?? fetchCover) },
+    areaRemoved: (world, id, moveTo) => { moveTopicsOutOfArea(world, id, moveTo); },
+    sync: { everyMs: 5 * 60_000, onEvents: ["link.saved", "link.refetch", "link.pinned"], run: lookUp(options.fetcher ?? ((url, signal, language) => fetchPage(url, signal, undefined, language)), options.icons ?? fetchIcon, options.covers ?? fetchCover) },
     // Both covers and site icons are served locally through module files.
     file: (world, name) => /^cover_[\w-]+$/.test(name) ? getCover(world, name.slice(6)) : getIcon(world, name),
 

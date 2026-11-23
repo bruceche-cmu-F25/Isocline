@@ -125,6 +125,8 @@ const REFUSALS: Record<string, Refusal> = {
   // Core.
   SettingsError: { otherwise: 400 },
   AutomationError: { by: { missing: 404 }, otherwise: 400 },
+  AreaError: { by: { missing: 404, taken: 409 }, otherwise: 400, code: "area_" },
+  PreferenceError: { by: { missing: 404, full: 409 }, otherwise: 400, code: "preference_" },
   DeviceError: { by: { missing: 404 }, otherwise: 400, code: "" },
   ProjectError: { by: { missing: 404, untrusted: 409 }, otherwise: 400, code: "" },
   FileError: { by: { missing: 404, taken: 409 }, otherwise: 400, code: "file_" },

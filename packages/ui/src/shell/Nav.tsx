@@ -2,7 +2,7 @@ import { ConversationStatus } from "./ConversationStatus.tsx";
 import type { Conversation, StateResponse } from "@alfred/protocol";
 import { useState } from "react";
 import { ApiError, api, type Connection } from "../api.ts";
-import { getLocale, intlLocale, t } from "../i18n/index.ts";
+import { getLocale, intlLocale, localeTag, nextLocale, t } from "../i18n/index.ts";
 import { origin, setAppearance, useScheme } from "../scheme.ts";
 import { Icon } from "./icons.tsx";
 import { Pop } from "./Pop.tsx";
@@ -55,7 +55,7 @@ export function ViewButtons({ onLanguage }: { onLanguage(): void }) {
         aria-label={t(`scheme.to.${other}`)} title={t(`scheme.to.${other}`)}>
         <Icon name={other === "dark" ? "moon" : "sun"} />
       </button>
-      <button type="button" className="lang" onClick={onLanguage} title={t("nav.languageTitle")} lang={getLocale() === "zh" ? "en" : "zh"}>{t("nav.language")}</button>
+      <button type="button" className="lang" onClick={onLanguage} title={t("nav.languageTitle")} lang={localeTag(nextLocale(getLocale()))}>{t("nav.language")}</button>
     </span>
   );
 }
@@ -111,7 +111,7 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, co
     </details>
   );
   // Everyday conversations here; development sessions are listed under their projects in the Code group.
-  const daily = state.conversations.filter((conversation) => !conversation.projectId && !conversation.briefOnly);
+  const daily = state.conversations.filter((conversation) => !conversation.projectId && !conversation.automationOnly);
   const groups: Array<[string, PageDef[]]> = [
     [t("nav.g.work"), mode === "dev" ? [] : pages.filter((item) => item.group === "work")],
     [t("nav.g.modules"), mode === "dev" ? [] : pages.filter((item) => item.group === "modules")],
@@ -131,14 +131,15 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, co
         </div>
       )}
 
-      {/* 今天 is above the workspaces: alone at the top, whichever workspace the sidebar is showing. */}
-      <div className="nav-group nav-above">
-        {pages.filter((item) => item.group === "alfred").map((item) => (
-          <button type="button" key={item.key} className="nav-item" data-k={item.k} data-page={item.key} aria-current={page === item.key ? "page" : undefined} onClick={() => onPage(item.key)}>
-            <Icon name={item.icon} /><span className="label">{item.title}</span>
-          </button>
-        ))}
-      </div>
+      {mode !== "dev" && (
+        <div className="nav-group nav-above">
+          {pages.filter((item) => item.group === "alfred").map((item) => (
+            <button type="button" key={item.key} className="nav-item" data-k={item.k} data-page={item.key} aria-current={page === item.key ? "page" : undefined} onClick={() => onPage(item.key)}>
+              <Icon name={item.icon} /><span className="label">{item.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {groups.map(([label, items]) => items.length > 0 && (
         <div className="nav-group" key={label}>

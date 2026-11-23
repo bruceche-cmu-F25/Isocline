@@ -33,12 +33,12 @@ const IDENTITY = ["openid", "email"];
 const FLOW_TIMEOUT_MS = 10 * 60_000;
 
 export const GOOGLE_CAPABILITIES = {
-  calRead: { scope: `${SCOPE}calendar.readonly`, label: "日历：读" },
-  calWrite: { scope: `${SCOPE}calendar.events`, label: "日历：替你加和改" },
-  mailRead: { scope: `${SCOPE}gmail.readonly`, label: "Gmail：读" },
-  mailModify: { scope: `${SCOPE}gmail.modify`, label: "Gmail：同步星标" },
-  mailSend: { scope: `${SCOPE}gmail.send`, label: "Gmail：替你发" },
-} as const satisfies Record<GoogleCapability, { scope: string; label: string }>;
+  calRead: { scope: `${SCOPE}calendar.readonly` },
+  calWrite: { scope: `${SCOPE}calendar.events` },
+  mailRead: { scope: `${SCOPE}gmail.readonly` },
+  mailModify: { scope: `${SCOPE}gmail.modify` },
+  mailSend: { scope: `${SCOPE}gmail.send` },
+} as const satisfies Record<GoogleCapability, { scope: string }>;
 export const isGoogleCapability = (value: unknown): value is GoogleCapability => typeof value === "string" && Object.hasOwn(GOOGLE_CAPABILITIES, value);
 export type GoogleStatus = ConnectionsResponse["google"];
 type FlowStatus = ConnectFlow;

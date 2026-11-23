@@ -11,6 +11,16 @@ import type { World } from "./world.ts";
 export const LOCALES = ["zh", "en"] as const;
 export type Locale = (typeof LOCALES)[number];
 
+/** Each language's tag, for dates, numbers and what a web page is asked for. Adding a language starts here (and in
+ * the UI's dict.ts); every text the node writes itself is a table keyed by Locale, so the compiler lists the rest. */
+export const LOCALE_TAGS: Record<Locale, string> = { zh: "zh-CN", en: "en-US" };
+export const localeTag = (locale: Locale): string => LOCALE_TAGS[locale];
+/** What a web page is asked for, as a browser set to this language would: it, then English. */
+export function acceptLanguage(locale: Locale): string {
+  const tag = LOCALE_TAGS[locale], base = tag.split("-")[0]!;
+  return base === "en" ? `${tag},en;q=0.9` : `${tag},${base};q=0.9,en;q=0.8`;
+}
+
 export interface UserSettings {
   /** The language Alfred speaks on every device. Null until a device sets it from its system language. */
   locale: Locale | null;
@@ -22,13 +32,19 @@ export interface UserSettings {
   thinking: ThinkingLevel | null;
   /** When the first-run walkthrough was finished or skipped (ISO time). Null: it is still owed, on whichever device opens next. */
   firstRunAt: string | null;
+  /** The sidebar's pages as the user arranged them: `order` lists page keys in the order wanted (a page not in it
+   * keeps its place after them), `hidden` the ones taken out of the sidebar. Null: as they come. Which pages can be
+   * hidden is the app's to say (the Today page and Settings cannot); this only keeps the choice. */
+  pages: PageLayout | null;
 }
+export interface PageLayout { order: string[]; hidden: string[] }
 
 export class SettingsError extends Error {
   override name = "SettingsError";
 }
 
-const DEFAULTS: UserSettings = { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null };
+const DEFAULTS: UserSettings = { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null };
+const PAGE_KEY = /^[a-z][a-z0-9_-]{0,31}\.[a-z][a-z0-9_-]{0,31}$/;
 const MODEL = /^[A-Za-z0-9._-]{1,64}\/[^\s/][^\s]{0,199}$/;
 
 export function getSettings(world: World): UserSettings {
@@ -77,6 +93,12 @@ function pick(value: Record<string, unknown>): Partial<UserSettings> {
     const at = value.firstRunAt;
     if (at !== null && (typeof at !== "string" || at.length > 40 || Number.isNaN(Date.parse(at)))) throw new SettingsError("firstRunAt is a time, or null");
     out.firstRunAt = at === null ? null : new Date(at as string).toISOString();
+  }
+  if ("pages" in value) {
+    const pages = value.pages as Partial<PageLayout> | null;
+    const keys = (list: unknown) => Array.isArray(list) && list.length <= 64 && list.every((key) => typeof key === "string" && PAGE_KEY.test(key));
+    if (pages !== null && (typeof pages !== "object" || !keys(pages.order) || !keys(pages.hidden))) throw new SettingsError("pages is { order, hidden }, lists of page keys, or null");
+    out.pages = pages === null ? null : { order: [...new Set(pages.order!)], hidden: [...new Set(pages.hidden!)] };
   }
   return out;
 }

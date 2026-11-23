@@ -53,7 +53,8 @@ export interface PageInfo {
   /** The icons the page names for itself, as addresses, the best for a tile first. */
   icons?: string[];
 }
-export type PageFetcher = (url: string, signal?: AbortSignal) => Promise<PageInfo>;
+/** `language`: the Accept-Language to ask with, the user's (core acceptLanguage), so a site answers in it. */
+export type PageFetcher = (url: string, signal?: AbortSignal, language?: string) => Promise<PageInfo>;
 
 /** A site's own icon, as it was served. */
 export interface SiteIcon { type: string; bytes: Uint8Array }
@@ -83,11 +84,14 @@ const publicLookup: Lookup = (hostname, options, callback) => {
   });
 };
 
-function get(url: URL, signal: AbortSignal | undefined, lookup: Lookup): Promise<IncomingMessage> {
+/** Asked for as a browser in English would be, unless the caller says the user's language. */
+const ENGLISH = "en-US,en;q=0.9";
+
+function get(url: URL, signal: AbortSignal | undefined, lookup: Lookup, language: string = ENGLISH): Promise<IncomingMessage> {
   return new Promise((resolve, reject) => {
     const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, {
       method: "GET", lookup: lookup as never, signal, timeout: TIMEOUT_MS,
-      headers: { "User-Agent": agentFor(url), Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8", "Accept-Encoding": "identity" },
+      headers: { "User-Agent": agentFor(url), Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", "Accept-Language": language, "Accept-Encoding": "identity" },
     }, resolve);
     request.on("timeout", () => request.destroy(new PageFetchError("timeout", "The page took too long")));
     request.on("error", (error) => reject(error instanceof PageFetchError ? error : new PageFetchError((error as NodeJS.ErrnoException).name === "AbortError" ? "timeout" : "network", error.message)));
@@ -229,7 +233,7 @@ async function youtube(target: URL, signal: AbortSignal | undefined, lookup: Loo
 }
 
 /** Looks one page up. `lookup` is the DNS the connection uses; tests pass their own to reach a local server. */
-export async function fetchPage(input: string, signal?: AbortSignal, lookup: Lookup = publicLookup): Promise<PageInfo> {
+export async function fetchPage(input: string, signal?: AbortSignal, lookup: Lookup = publicLookup, language: string = ENGLISH): Promise<PageInfo> {
   const deadline = AbortSignal.timeout(TIMEOUT_MS);
   signal = signal ? AbortSignal.any([signal, deadline]) : deadline;
   let target = new URL(input);
@@ -242,7 +246,7 @@ export async function fetchPage(input: string, signal?: AbortSignal, lookup: Loo
     // An address written as a number is checked here; a name is checked when it is resolved.
     const literal = target.hostname.replace(/^\[|\]$/g, "");
     if (isIP(literal) && lookup === publicLookup && !isPublicAddress(literal, isIP(literal))) throw new PageFetchError("private", "Refusing a private address");
-    const response = await get(target, signal, lookup);
+    const response = await get(target, signal, lookup, language);
     const status = response.statusCode ?? 0;
     const location = status >= 300 && status < 400 ? response.headers.location : undefined;
     if (location) {

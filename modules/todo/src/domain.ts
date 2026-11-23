@@ -3,8 +3,8 @@
  * not edit yet (colour, estimate, work plan…) survive an import untouched.
  */
 import { createHash } from "node:crypto";
-import { AREA_IDS, changedFields, isArea, localDate, newId, recordDomainEvent, withDefaultActor, type World } from "@alfred/core";
-import { CALENDAR_MODES, isDayOff, TODO_STATUSES, type CalendarMode, type Todo, type TodoRepeat, type TodoSettings, type TodoSource, type TodoStatus } from "./types.ts";
+import { changedFields, isArea, localDate, unknownArea, newId, recordDomainEvent, withDefaultActor, type World } from "@alfred/core";
+import { CALENDAR_MODES, isDayOff, MAX_OFF_WORD, MAX_OFF_WORDS, SAMPLE_OFF_WORDS, TODO_STATUSES, type CalendarMode, type Todo, type TodoRepeat, type TodoSettings, type TodoSource, type TodoStatus } from "./types.ts";
 
 export { CALENDAR_MODES, TODO_STATUSES, type CalendarMode, type Todo, type TodoRepeat, type TodoSettings, type TodoSource, type TodoStatus };
 
@@ -23,7 +23,7 @@ export interface TodoPatch {
   plannedOn?: string;
   /** Empty string clears it. */
   url?: string;
-  /** An area id (work, life…); empty string clears it. */
+  /** One of the user's area ids (core `listAreas`); empty string clears it. */
   area?: string;
 }
 export type TodoResult<T> = T | { error: string };
@@ -125,7 +125,7 @@ export function resolveTodo(world: World, ref: TodoRef): TodoResult<Todo> {
   return findTodo(readAll(world), ref);
 }
 
-function applyPatch(todo: Todo, patch: TodoPatch): void {
+function applyPatch(world: World, todo: Todo, patch: TodoPatch): void {
   if (patch.status !== undefined && !TODO_STATUSES.includes(patch.status)) throw new Error("Unknown todo status");
   if (patch.status !== undefined && patch.done !== undefined && (patch.status === "done") !== patch.done) throw new Error("status and done conflict");
   if (patch.status !== undefined || patch.done !== undefined) {
@@ -168,7 +168,7 @@ function applyPatch(todo: Todo, patch: TodoPatch): void {
   }
   if (patch.area !== undefined) {
     const area = patch.area.trim();
-    if (area && !isArea(area)) throw new Error(`area must be one of: ${AREA_IDS.join(", ")}`);
+    if (area && area !== todo.area && !isArea(world, area)) throw new Error(unknownArea(world));
     if (area) todo.area = area; else delete todo.area;
   }
 }
@@ -197,7 +197,7 @@ const seenOf = (todo: Todo) => ({ title: todo.title, due: todo.due ?? null, star
 function insertTodo(world: World, input: { title: string } & TodoPatch, op: "added" | "suggested", from?: { source: TodoSource; account?: string; after?: string }): { todo: Todo; open: number } {
   if (!input.title?.trim()) throw new Error("title is required");
   const todo: Todo = { id: newId(), title: input.title.trim().slice(0, 500), done: false, status: "todo", createdAt: new Date().toISOString() };
-  applyPatch(todo, input);
+  applyPatch(world, todo, input);
   if (from) todo.source = from.source;
   if (op === "suggested") todo.suggested = true;
   return world.tx((db) => {
@@ -236,7 +236,7 @@ function changeTodo<T>(world: World, ref: TodoRef, op: TodoOp, change: (todo: To
 }
 
 export function updateTodo(world: World, ref: TodoRef, patch: TodoPatch): TodoResult<Todo> {
-  return changeTodo(world, ref, "updated", (todo) => { applyPatch(todo, patch); return todo; });
+  return changeTodo(world, ref, "updated", (todo) => { applyPatch(world, todo, patch); return todo; });
 }
 
 /** Finishes a todo. The next time of something that repeats can be finished only once its day has come: finishing
@@ -249,7 +249,7 @@ export function completeTodo(world: World, ref: TodoRef, today = localDate(new D
   }
   return changeTodo(world, ref, "completed", (todo) => {
     const alreadyDone = todo.done;
-    applyPatch(todo, { done: true });
+    applyPatch(world, todo, { done: true });
     return { todo, alreadyDone };
   });
 }
@@ -265,21 +265,47 @@ export function acceptTodo(world: World, ref: TodoRef): TodoResult<Todo> {
 
 // ---- where todos come from, besides the user's own words ---------------------------------------------------
 
-const DEFAULT_SETTINGS: TodoSettings = { fromCalendar: "allday" };
+const DEFAULT_MODE: CalendarMode = "allday";
 
 export function getTodoSettings(world: World): TodoSettings {
-  const row = world.db.prepare("SELECT value FROM todo_settings WHERE key = 'fromCalendar'").get();
-  const mode = row ? JSON.parse(row.value as string) as CalendarMode : DEFAULT_SETTINGS.fromCalendar;
-  return { fromCalendar: CALENDAR_MODES.includes(mode) ? mode : DEFAULT_SETTINGS.fromCalendar };
+  const read = (key: string) => {
+    const row = world.db.prepare("SELECT value FROM todo_settings WHERE key = ?").get(key);
+    return row ? JSON.parse(row.value as string) as unknown : undefined;
+  };
+  const mode = read("fromCalendar") as CalendarMode | undefined;
+  const words = read("offWords");
+  return {
+    fromCalendar: mode && CALENDAR_MODES.includes(mode) ? mode : DEFAULT_MODE,
+    offWords: Array.isArray(words) ? words.filter((word): word is string => typeof word === "string") : [...SAMPLE_OFF_WORDS],
+  };
+}
+
+function cleanWords(words: unknown): string[] {
+  if (!Array.isArray(words) || words.length > MAX_OFF_WORDS) throw new Error(`offWords is a list of at most ${MAX_OFF_WORDS} words`);
+  const seen = new Set<string>();
+  return words.flatMap((word) => {
+    if (typeof word !== "string") throw new Error("offWords is a list of words");
+    const text = word.replace(/\s+/g, " ").trim();
+    if (!text) return [];
+    if (text.length > MAX_OFF_WORD || /\p{Cc}/u.test(text)) throw new Error(`A day-off word is at most ${MAX_OFF_WORD} characters`);
+    const key = text.toLowerCase();
+    return seen.has(key) ? [] : (seen.add(key), [text]);
+  });
 }
 
 export function setTodoSettings(world: World, patch: Partial<TodoSettings>): TodoSettings {
   if (patch.fromCalendar !== undefined && !CALENDAR_MODES.includes(patch.fromCalendar)) throw new Error(`fromCalendar must be one of: ${CALENDAR_MODES.join(", ")}`);
+  const words = patch.offWords !== undefined ? cleanWords(patch.offWords) : undefined;
   return world.tx((db) => {
     const before = getTodoSettings(world);
+    const put = db.prepare("INSERT INTO todo_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
     if (patch.fromCalendar !== undefined && patch.fromCalendar !== before.fromCalendar) {
-      db.prepare("INSERT INTO todo_settings (key, value) VALUES ('fromCalendar', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(patch.fromCalendar));
+      put.run("fromCalendar", JSON.stringify(patch.fromCalendar));
       recordDomainEvent(world, { kind: "todo.sources_set", subject: "todo:settings", payload: { fromCalendar: patch.fromCalendar, was: before.fromCalendar } });
+    }
+    if (words && JSON.stringify(words) !== JSON.stringify(before.offWords)) {
+      put.run("offWords", JSON.stringify(words));
+      recordDomainEvent(world, { kind: "todo.off_words_set", subject: "todo:settings", payload: { offWords: words, was: before.offWords } });
     }
     return getTodoSettings(world);
   });
@@ -378,7 +404,9 @@ export function mirrorCalendar(
   const refOf = (event: SourceEvent) => `calendar:${event.account}:${event.id}`;
   const repeatRef = (event: SourceEvent) => `calendar:${event.account}:repeat:${event.recurring}`;
   // A day off (a holiday, a break) is not a thing to do: it labels its day (`daysOff`), it is never a todo.
-  const covered = (event: SourceEvent) => !(options.mode === "allday" && !event.allDay) && event.response !== "declined" && !!event.title.trim() && !isDayOff(event);
+  const words = getTodoSettings(world).offWords;
+  const dayOff = (event: SourceEvent) => isDayOff(event, words);
+  const covered = (event: SourceEvent) => !(options.mode === "allday" && !event.allDay) && event.response !== "declined" && !!event.title.trim() && !dayOff(event);
   const coming = (event: SourceEvent) => event.endDate >= options.today && event.startDate <= horizon;
   const shape = (event: SourceEvent) => {
     const title = event.title.trim().slice(0, 500);
@@ -418,7 +446,7 @@ export function mirrorCalendar(
       for (const event of all) folded.add(refOf(event));
     }
     // Todos made of days off before they were told apart go, unless the user has made them theirs.
-    const offRefs = new Set(events.filter(isDayOff).map(refOf));
+    const offRefs = new Set(events.filter(dayOff).map(refOf));
     const wanted = new Map<string, SourceEvent>();
     for (const event of events) {
       if (!covered(event) || !coming(event) || folded.has(refOf(event))) continue;
@@ -511,25 +539,6 @@ export function mirrorCalendar(
   }));
 }
 
-/** Adds todos from another store with their own ids, in their order. Skips
- * ids already present; never overwrites. One event for the whole import.
- */
-export function importTodos(world: World, todos: readonly Todo[], source: string): { imported: number; skipped: number } {
-  return world.tx((db) => {
-    const exists = db.prepare("SELECT 1 FROM todo_items WHERE id = ?");
-    const insert = db.prepare("INSERT INTO todo_items (id, position, payload) VALUES (?, (SELECT COALESCE(MAX(position), -1) + 1 FROM todo_items), ?)");
-    let imported = 0;
-    let skipped = 0;
-    for (const todo of todos) {
-      if (exists.get(todo.id)) { skipped++; continue; }
-      insert.run(todo.id, JSON.stringify(todo));
-      imported++;
-    }
-    if (imported) recordDomainEvent(world, { kind: "todo.imported", subject: `import:${source}`.slice(0, 160), payload: { source, imported, skipped } });
-    return { imported, skipped };
-  });
-}
-
 const DUE: Record<string, (due: string) => string> = {
   overdue: (due) => ` (overdue, was due ${due})`, today: () => " (due today)", tomorrow: () => " (due tomorrow)",
   upcoming: (due) => ` (due ${due})`,
@@ -559,4 +568,14 @@ export function formatTodo(todo: Todo, today: string = localDate()): string {
   const repeats = repeat ? `; repeats ${repeat.days.length === 7 ? "every day" : repeat.days.map((day) => WEEKDAYS[day]).join(", ")}${repeat.at ? ` at ${repeat.at}` : ""}, this is its next time` : "";
   const from = todo.suggested ? " (your suggestion; the user has not kept it yet)" : todo.source?.kind === "calendar" ? ` (from the calendar${repeats})` : todo.source?.kind === "mail" ? " (from mail)" : "";
   return `${box} ${todo.id}  ${todo.title}${area}${progress}${date}${by}${plan}${from}${link}`;
+}
+
+/** The user removed an area: its todos move to `moveTo`, or to no area. */
+export function moveTodosOutOfArea(world: World, id: string, moveTo: string | null): number {
+  const rows = world.db.prepare("SELECT id FROM todo_items WHERE json_extract(payload, '$.area') = ?").all(id);
+  const set = moveTo
+    ? world.db.prepare("UPDATE todo_items SET payload = json_set(payload, '$.area', ?) WHERE id = ?")
+    : world.db.prepare("UPDATE todo_items SET payload = json_remove(payload, '$.area') WHERE id = ?");
+  for (const row of rows) moveTo ? set.run(moveTo, row.id as string) : set.run(row.id as string);
+  return rows.length;
 }

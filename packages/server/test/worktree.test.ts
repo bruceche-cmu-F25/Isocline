@@ -224,7 +224,7 @@ test("a development session is kept apart from the everyday: no module tools or 
     assert.ok(names.includes("ask_user"));
     assert.ok(!names.some((name) => name.startsWith("todo_") || name === "propose" || name.startsWith("automation_")), names.join(", "));
     assert.ok(all[ASSISTANT_PROFILE].tools.some((tool) => tool.name === "todo_add"), "the everyday still has them");
-    if (todoModule.guidance) assert.ok(!all[DEVELOPER_PROFILE].instructions.includes(todoModule.guidance));
+    assert.ok(all[ASSISTANT_PROFILE].instructions.includes("Todos:") && !all[DEVELOPER_PROFILE].instructions.includes("Todos:"));
     assert.match(all[DEVELOPER_PROFILE].instructions, /about this project/);
   } finally {
     home.close();

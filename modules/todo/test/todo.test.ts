@@ -1,13 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { acceptProposal, CORE_MIGRATIONS, listEvents, listOpenProposals, openWorld, updateSettings, withCoreContext, type World } from "@alfred/core";
 import { applyStep, assistantTools, invokeOp, moduleMigrations, OpInputError, runTools } from "@alfred/module-kit";
 import {
-  addTodo, compareTodos, completeTodo, formatTodo, importTodos, listTodos, readRobinTodos, TodoConflictError, todoModule,
+  addTodo, completeTodo, formatTodo, listTodos, TodoConflictError, todoModule,
   todoRevision, updateTodo, type Todo, type TodoSnapshot,
 } from "../src/index.ts";
 
@@ -76,31 +72,6 @@ test("runs use reversible tools directly; deleting asks the user, naming the tod
   updateSettings(w, { locale: "zh" });
   assert.equal(remove.permission!({ id: todo.id }), "永久删除待办「Old receipt」？删除后不能恢复。", "in the user's language once it is set");
   assert.equal(remove.describe!({ id: todo.id }), "Old receipt");
-});
-
-test("an import keeps Robin's records exactly, reads Robin without writing, and never overwrites", () => {
-  const robin = mkdtempSync(join(tmpdir(), "robin-"));
-  const records: Todo[] = [
-    { id: "a1", title: "Old task", done: false, status: "todo", createdAt: "2026-10-01T00:00:00.000Z", color: "blue", workPlan: { slots: [] } },
-    { id: "b2", title: "Done task", done: true, status: "done", createdAt: "2026-10-02T00:00:00.000Z", completedAt: "2026-10-03T00:00:00.000Z" },
-  ];
-  const db = new DatabaseSync(join(robin, "tasks.sqlite"));
-  db.exec("CREATE TABLE todos (id TEXT PRIMARY KEY, position INTEGER NOT NULL, payload TEXT NOT NULL)");
-  records.forEach((todo, index) => db.prepare("INSERT INTO todos VALUES (?, ?, ?)").run(todo.id, index, JSON.stringify(todo)));
-  db.close();
-  writeFileSync(join(robin, "task-storage.json"), JSON.stringify({ backend: "sqlite", schemaVersion: 4 }));
-
-  const w = world();
-  const { todos } = readRobinTodos(robin);
-  assert.deepEqual(importTodos(w, todos, "robin"), { imported: 2, skipped: 0 });
-  assert.deepEqual(compareTodos(w, todos), { same: 2, differ: [], missing: [], extra: [] });
-  assert.deepEqual(importTodos(w, todos, "robin"), { imported: 0, skipped: 2 });
-
-  updateTodo(w, { id: "a1" }, { title: "Changed in Alfred" });
-  addTodo(w, { title: "New in Alfred" });
-  const drift = compareTodos(w, todos);
-  assert.deepEqual([drift.same, drift.differ, drift.missing, drift.extra.length], [1, ["a1"], [], 1]);
-  assert.equal(listEvents(w).events.filter((event) => event.kind === "todo.imported").length, 1);
 });
 
 test("a todo can belong to an area; unknown areas are refused and an empty one clears it", () => {

@@ -7,7 +7,9 @@ const first: Visit = { index: 0, hasNext: false };
 
 function readRoute(): Route {
   const params = new URLSearchParams(location.hash.slice(1));
-  return { page: params.get("p"), selected: params.get("c"), session: params.get("s"), item: params.get("item") };
+  const page = params.get("p");
+  if (page === "link.sample") return { page: "link.list", selected: null, session: null, item: null };
+  return { page, selected: params.get("c"), session: params.get("s"), item: params.get("item") };
 }
 
 function address(route: Route) {

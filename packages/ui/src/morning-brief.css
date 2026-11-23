@@ -133,5 +133,5 @@
 }
 @container brief (min-width: 610px) {
   .brief-day[data-paired] { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 24px; }
-  .brief-day[data-paired] .brief-due { padding-inline-start: 20px; border-inline-start: 1px solid var(--line-soft); }
+  .brief-day[data-paired] > .brief-section + .brief-section { padding-inline-start: 20px; border-inline-start: 1px solid var(--line-soft); }
 }

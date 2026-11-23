@@ -11,6 +11,7 @@
  */
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import webpush from "web-push";
 import { isSession, listDevices, userLocale, type DeviceScope, type Outlet, type World } from "@alfred/core";
 import { translate, type Key } from "@alfred/ui/i18n";
@@ -50,8 +51,23 @@ export class PushError extends Error {
   override name = "PushError";
 }
 
+/** Who sends these, as push services ask (the VAPID subject): `ALFRED_PUSH_SUBJECT` when the person running the node
+ * sets it (their own site, or `mailto:` an address of theirs), else the project's home page from the repository's
+ * package.json, so a copy of Alfred under another name says its own. Nothing about the user goes here. */
 export function subject(): string {
-  return process.env.ALFRED_PUSH_SUBJECT?.trim() || "https://github.com/bruceche-cmu-F25/Alfred";
+  const set = process.env.ALFRED_PUSH_SUBJECT?.trim();
+  if (set) return set;
+  subject.homepage ??= projectHomepage();
+  if (!subject.homepage) throw new PushError("Set ALFRED_PUSH_SUBJECT (a https:// address or mailto:) to send notifications");
+  return subject.homepage;
+}
+subject.homepage = undefined as string | null | undefined;
+
+function projectHomepage(): string | null {
+  try {
+    const root = JSON.parse(readFileSync(fileURLToPath(new URL("../../../package.json", import.meta.url)), "utf8")) as { homepage?: unknown };
+    return typeof root.homepage === "string" && /^https:\/\/\S+$/.test(root.homepage) ? root.homepage : null;
+  } catch { return null; }
 }
 
 const defaultSender: PushSender = async (subscription, payload, keys) => {

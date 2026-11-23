@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { CORE_MIGRATIONS, listEvents, openWorld, withCoreContext, type World } from "@alfred/core";
 import { invokeOp, runTools } from "@alfred/module-kit";
 import {
-  acceptTodo, addTodo, completeTodo, deleteTodo, isDayOff, getTodoSettings, listTodos, mirrorCalendar, suggestTodo, todoModule, updateTodo, type SourceEvent, type TodoSnapshot,
+  acceptTodo, addTodo, completeTodo, deleteTodo, isDayOff, getTodoSettings, listTodos, mirrorCalendar, SAMPLE_OFF_WORDS, setTodoSettings, suggestTodo, todoModule, updateTodo, type SourceEvent, type TodoSnapshot,
 } from "../src/index.ts";
 
 const world = (): World => openWorld(":memory:", [...CORE_MIGRATIONS, ...todoModule.migrations]);
@@ -77,7 +77,7 @@ test("a suggestion from mail waits to be kept; kept, edited or finished it is th
 
   const snapshot = todoModule.snapshot!(w) as TodoSnapshot;
   assert.equal(snapshot.todos.filter((todo) => todo.suggested).length, 3);
-  assert.deepEqual(snapshot.settings, { fromCalendar: "allday" });
+  assert.deepEqual(snapshot.settings, { fromCalendar: "allday", offWords: [...SAMPLE_OFF_WORDS] });
 
   // Keep one (the device's op), edit one, drop one.
   const [lease, dana, thing] = listTodos(w);
@@ -100,7 +100,7 @@ test("a run suggests through todo_suggest, unattended too, and sees suggestions 
   assert.throws(() => suggest.execute({ title: "x", mailId: "../etc", subject: "s" }, new AbortController().signal), /Invalid parameters/);
 
   invokeOp(w, [todoModule], { op: "todo.sources", requestId: "r2", input: { fromCalendar: "all" } });
-  assert.deepEqual(getTodoSettings(w), { fromCalendar: "all" });
+  assert.deepEqual(getTodoSettings(w).fromCalendar, "all");
   assert.deepEqual(listEvents(w).events.filter((entry) => entry.kind === "todo.sources_set").map((entry) => entry.payload), [{ fromCalendar: "all", was: "allday" }]);
 });
 
@@ -226,4 +226,19 @@ test("a day off (a holiday calendar's day, a break, no classes) is never a todo,
   // The break is read again under its own title: it is a day off now, so its untouched todo goes.
   mirror(w, [ordinary, ...offs], "all");
   assert.deepEqual(titles(w).sort(), ["Lunch Break", "Tax return due"]);
+});
+
+test("the words a day off goes by are the user's: theirs replace the samples, in any language, and are checked", () => {
+  const w = world();
+  const fair = event("fair", { title: "Sommerferien", startDate: "2026-11-25", endDate: "2026-11-25" });
+  const brk = event("brk", { title: "Spring Break", startDate: "2026-11-26", endDate: "2026-11-26" });
+  mirror(w, [fair, brk], "all");
+  assert.deepEqual(titles(w), ["Sommerferien"], "a sample word takes the break out");
+  const saved = setTodoSettings(w, { offWords: [" Sommerferien ", "sommerferien", "", "Brückentag"] });
+  assert.deepEqual(saved.offWords, ["Sommerferien", "Brückentag"], "trimmed, once each, blanks dropped");
+  mirror(w, [fair, brk], "all");
+  assert.deepEqual(titles(w), ["Spring Break"], "the user's list replaces the samples");
+  assert.ok(isDayOff(fair, saved.offWords) && !isDayOff({ ...fair, allDay: false }, saved.offWords));
+  assert.throws(() => setTodoSettings(w, { offWords: ["x".repeat(41)] }));
+  assert.equal(listEvents(w).events.filter((e) => e.kind === "todo.off_words_set").length, 1);
 });

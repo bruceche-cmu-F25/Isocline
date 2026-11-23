@@ -1,6 +1,8 @@
 /** The core's own tables. Modules add theirs through their own migrations, in
  * the same database, so a module change and its core event share a transaction.
  */
+import { PREFERENCE_MIGRATION_SQL } from "./preferences.ts";
+import { AREA_MIGRATION_SQL } from "./areas.ts";
 import { migrateResultDelivery } from "./result-delivery.ts";
 import type { Migration } from "./world.ts";
 
@@ -380,4 +382,27 @@ INSERT INTO core_upkeep (id) VALUES (1);
 }, {
   id: "core:27",
   sql: "ALTER TABLE core_outbound ADD COLUMN after_id TEXT REFERENCES core_outbound(id);",
+}, {
+  // The user's areas, with the seven samples written in once (areas.ts).
+  id: "core:28",
+  sql: AREA_MIGRATION_SQL,
+}, {
+  // What made the morning brief different becomes options every automation has (automations.ts,
+  // docs/design/user-defined.md §3.3); the two samples keep how they behaved. Results already in the Inbox say how
+  // they are drawn, so an edition does not depend on which sample it came from.
+  id: "core:29",
+  sql: `
+ALTER TABLE core_automations ADD COLUMN layout TEXT NOT NULL DEFAULT 'text' CHECK (layout IN ('text', 'sections'));
+ALTER TABLE core_automations ADD COLUMN keep TEXT NOT NULL DEFAULT 'all' CHECK (keep IN ('all', 'latest'));
+ALTER TABLE core_automations ADD COLUMN notify TEXT NOT NULL DEFAULT 'always' CHECK (notify IN ('always', 'changes'));
+ALTER TABLE core_automations ADD COLUMN k TEXT NOT NULL DEFAULT 'green' CHECK (k IN ('blue', 'green', 'violet', 'orange', 'teal', 'yellow', 'pink', 'gray'));
+UPDATE core_automations SET layout = 'sections', keep = 'latest', k = 'orange' WHERE template = 'brief';
+UPDATE core_automations SET notify = 'changes', k = 'blue' WHERE template = 'mail_todos';
+UPDATE core_notices SET payload = json_set(payload, '$.layout', 'sections', '$.keep', 'latest')
+  WHERE kind = 'run_result' AND json_extract(payload, '$.template') = 'brief';
+`,
+}, {
+  // What the user has said about how they like things (preferences.ts; ARCHITECTURE.md §8's USER.md).
+  id: "core:30",
+  sql: PREFERENCE_MIGRATION_SQL,
 }];

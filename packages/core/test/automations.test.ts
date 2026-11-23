@@ -8,6 +8,7 @@ import {
   listAutomationRuns, listAutomations, listDevices, listEvents, listNotices, listRuns, nextSlot, openWorld, runAutomationNow, submitRun, updateAutomation, updateSettings,
   type EnginePort, type RunProfile, type World,
 } from "../src/index.ts";
+import { oldAutomation } from "./old-world.ts";
 
 const world = (): World => openWorld(":memory:", CORE_MIGRATIONS);
 /** Local time, as the home node's clock reads it. 2026-11-19 is a Thursday. */
@@ -36,7 +37,7 @@ test("history pages through the same rule's runs even when two start at the same
   } finally { w.close(); }
 });
 
-test("only the built-in brief transcript stays out of chat pickers until the user follows up", () => {
+test("an automation's transcript stays out of chat pickers until the user follows up", () => {
   const w = world();
   try {
     const schedule = { at: "07:30", days: EVERY_DAY };
@@ -45,12 +46,12 @@ test("only the built-in brief transcript stays out of chat pickers until the use
     const auto = { profile: "automation" };
     const result = runAutomationNow(w, brief.id, "one", auto);
     const other = runAutomationNow(w, custom.id, "custom", auto);
-    assert.equal(getConversation(w, result.conversationId).briefOnly, true);
+    assert.equal(getConversation(w, result.conversationId).automationOnly, true);
     assert.equal(listAutomationRuns(w, brief.id, null).runs[0].id, result.id);
-    assert.equal(getConversation(w, other.conversationId).briefOnly, false);
+    assert.equal(getConversation(w, other.conversationId).automationOnly, true, "any automation, not only the sample");
     submitRun(w, { conversationId: result.conversationId, requestId: "followup", goal: "Why do that one first?", profile: "assistant" });
     runAutomationNow(w, brief.id, "tomorrow", auto);
-    assert.equal(getConversation(w, result.conversationId).briefOnly, false);
+    assert.equal(getConversation(w, result.conversationId).automationOnly, false);
   } finally { w.close(); }
 });
 
@@ -191,9 +192,9 @@ test("upgrading a world keeps its automations, devices and sessions as they were
   const path = join(dir, "world.sqlite");
   // A world from before commands, device scopes and the second shipped automation (core:12).
   const before = openWorld(path, CORE_MIGRATIONS.filter((migration) => Number(migration.id.split(":")[1]) <= 12));
-  const brief = createAutomation(before, { template: "brief", schedule: { at: "07:30", days: EVERY_DAY }, enabled: false }, at(19, 6));
-  updateAutomation(before, brief.id, { enabled: true, schedule: { at: "06:45", days: [1, 2, 3] } }, at(19, 6));
-  const mine = createAutomation(before, { name: "Sweep", goal: "Look over my todos", schedule: { at: "08:00", days: [1] } }, at(19, 6));
+  oldAutomation(before, { id: "brief1", template: "brief", schedule: { at: "06:45", days: [1, 2, 3] }, enabled: true, at: at(19, 6) });
+  oldAutomation(before, { id: "mine1", name: "Sweep", goal: "Look over my todos", schedule: { at: "08:00", days: [1] }, enabled: true, at: at(19, 6) });
+  const brief = { id: "brief1", createdAt: new Date(at(19, 6)).toISOString() }, mine = { id: "mine1" };
   before.db.prepare("INSERT INTO core_devices (id, name, kind, token_hash, paired_at) VALUES ('d1', 'Phone', 'phone', ?, ?)").run("a".repeat(64), new Date().toISOString());
   before.close();
 
@@ -204,6 +205,8 @@ test("upgrading a world keeps its automations, devices and sessions as they were
   const kept = all.find((automation) => automation.id === brief.id)!;
   assert.deepEqual([kept.enabled, kept.schedule, kept.createdAt], [true, { at: "06:45", days: [1, 2, 3] }, brief.createdAt]);
   assert.equal(all.find((automation) => automation.id === mine.id)!.goal, "Look over my todos");
+  assert.deepEqual([kept.layout, kept.keep, kept.k], ["sections", "latest", "orange"], "the brief keeps how it behaved, now as its options");
+  assert.deepEqual([all.find((automation) => automation.template === "mail_todos")!.notify, all.find((automation) => automation.id === mine.id)!.layout], ["changes", "text"]);
   assert.deepEqual(listDevices(after).map((device) => [device.name, device.scopes, device.devAccessRequested]), [["Phone", [], false]]);
   after.close();
 });

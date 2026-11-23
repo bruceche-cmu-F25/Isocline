@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectFlow, ConnectStart, ConnectionsResponse, GoogleAccount, GoogleCapability, GoogleCheck as Check } from "@alfred/protocol";
 import { request as call } from "./api.ts";
 import { Logo } from "./brand/Logo.tsx";
-import { t, useLocale, type Key } from "./i18n/index.ts";
+import { localeTag, t, useLocale, type Key } from "./i18n/index.ts";
 
 const CAPS: GoogleCapability[] = ["calRead", "calWrite", "mailRead", "mailModify", "mailSend"];
 const capName = (id: GoogleCapability) => t(`settings.cap.${id}` as Key);
@@ -99,7 +99,7 @@ export function Accounts({ setup, onConfigured }: { setup?: boolean; onConfigure
     if ("error" in state) return [t("settings.check.failed", { error: state.error })];
     const lines = [
       ...(state.result.calendar !== undefined ? [`✓ ${t("settings.check.calendar", { n: state.result.calendar })}`] : []),
-      ...(state.result.gmail !== undefined ? [`✓ ${t("settings.check.gmail", { n: state.result.gmail.toLocaleString(locale === "zh" ? "zh-CN" : "en-US") })}`] : []),
+      ...(state.result.gmail !== undefined ? [`✓ ${t("settings.check.gmail", { n: state.result.gmail.toLocaleString(localeTag(locale)) })}`] : []),
     ];
     return lines.length ? lines : [t("settings.check.none")];
   };

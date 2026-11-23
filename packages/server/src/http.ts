@@ -17,7 +17,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { extname, join, normalize, sep } from "node:path";
 import {
-  AREAS, getSettings, listOpenProposals, userLocale, withCoreContext, listAutomations, type World,
+  listAreas, listPreferences, getSettings, listOpenProposals, userLocale, withCoreContext, listAutomations, type Locale, type World,
   acknowledgeNotice, answerRequest, claimNotice, getConversation, markConversationReplyRead, getRun, listAutomationRuns, getAutomation, latestEventSeq, listConversations, listArchivedConversations, listEvents, listNotices,
   listRunActivity, listRunReceipts, listRuns, conversationRuns, presentNotice, reportPresence, submitRun,
   deviceForToken, listDevices, requestDevAccess, DEVICE_KINDS, DEVICE_SCOPES, type Device, type DeviceKind, type DeviceScope, type LiveUpdate,
@@ -34,7 +34,7 @@ import { DEVELOPER_PROFILE } from "./profiles.ts";
 import { command, profileFor, sessionWrites } from "./commands.ts";
 import { handleConnections, MODEL_USAGE_PATH } from "./connections-http.ts";
 import { handleSkills } from "./skills-http.ts";
-import { briefToday, morningBriefEvidence } from "./morning-brief.ts";
+import { sourcesToday, runSources } from "./run-sources.ts";
 import { reviewCommit } from "./commit-review.ts";
 import { branchState, pullRequest, workspaceChanges, workspaceDiff } from "./workspace.ts";
 import type { GoogleConnections } from "./google.ts";
@@ -142,7 +142,8 @@ function state(home: Home, peer: Peer, has: ReturnType<typeof held> = { none: fa
     modules,
     revisions,
     views,
-    areas: [...AREAS],
+    areas: listAreas(home.world),
+    preferences: listPreferences(home.world),
     proposals: listOpenProposals(home.world),
     settings: getSettings(home.world),
     automations: listAutomations(home.world),
@@ -267,7 +268,7 @@ function withPush<T extends RemoteResponse>(response: T, push: PushService | und
 }
 
 /** Push notifications for the device asking (only other devices: this machine shows its own). */
-async function pushRoute(push: PushService | undefined, device: Device, req: IncomingMessage, res: ServerResponse, path: string, locale: string): Promise<void> {
+async function pushRoute(push: PushService | undefined, device: Device, req: IncomingMessage, res: ServerResponse, path: string, locale: Locale): Promise<void> {
   const method = req.method ?? "GET";
   if (!push) throw new HttpError(404, "Not found");
   const info = async (): Promise<PushInfo> => ({ publicKey: await push.publicKey(), subscribed: push.subscribed(device.id) });
@@ -285,8 +286,8 @@ async function pushRoute(push: PushService | undefined, device: Device, req: Inc
   if (method === "POST" && path === "/api/push/test") {
     await readJson(req);
     if (!push.subscribed(device.id)) throw new HttpError(409, "Turn notifications on first");
-    const zh = locale === "zh";
-    return send(res, 200, await push.sendTo({ title: "Alfred", body: zh ? "推送通知能用了。" : "Notifications work.", url: "/", tag: "test" }, [device.id]) satisfies PushResult);
+    const works: Record<Locale, string> = { zh: "推送通知能用了。", en: "Notifications work." };
+    return send(res, 200, await push.sendTo({ title: "Alfred", body: works[locale], url: "/", tag: "test" }, [device.id]) satisfies PushResult);
   }
   throw new HttpError(404, "Not found");
 }
@@ -532,14 +533,14 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     return send(res, 200, { models: await home.models() } satisfies ModelsResponse);
   }
 
-  const run = /^\/api\/runs\/([A-Za-z0-9_-]+)(?:\/(cancel|resume|respond|steer|morning-brief))?$/.exec(path);
+  const run = /^\/api\/runs\/([A-Za-z0-9_-]+)(?:\/(cancel|resume|respond|steer|sources))?$/.exec(path);
   if (run) needDev(runInSession(home.world, run[1]));
   if (run && method === "GET" && !run[2]) return send(res, 200, getRun(home.world, run[1]));
-  if (run && method === "GET" && run[2] === "morning-brief") {
+  if (run && method === "GET" && run[2] === "sources") {
     const detail = getRun(home.world, run[1]);
-    const evidence = await morningBriefEvidence(home.world, detail.run);
-    const now = (id: string) => home.modules.find((module) => module.id === id)?.snapshot?.(home.world) as Parameters<typeof briefToday>[2] | undefined;
-    return send(res, 200, { evidence: evidence && briefToday(evidence, detail.run.outcome?.reply ?? "", { events: now("calendar")?.events, messages: now("mail")?.messages }) });
+    const evidence = await runSources(home.world, detail.run);
+    const now = (id: string) => home.modules.find((module) => module.id === id)?.snapshot?.(home.world) as Parameters<typeof sourcesToday>[2] | undefined;
+    return send(res, 200, { evidence: evidence && sourcesToday(evidence, detail.run.outcome?.reply ?? "", { events: now("calendar")?.events, messages: now("mail")?.messages }) });
   }
   if (run && method === "POST" && run[2] === "steer") {
     const body = await readJson<SteerRequest>(req);
@@ -554,20 +555,6 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     return send(res, 200, answerRequest(home.world, run[1], { requestId: body.requestId, answer: body.answer, by: peer.local ? "home" : peer.device?.id }));
   }
   if (run && method === "POST" && run[2]) return send(res, 200, (await ask(`run.${run[2]}`, { id: run[1] })).result);
-
-  if (method === "GET" && path === "/api/link-sample") {
-    const sample = home.linkSample;
-    if (!sample) throw new HttpError(404, "Links is unavailable");
-    return send(res, 200, sample.read());
-  }
-  const sampleOp = /^\/api\/link-sample\/ops\/(link\.[a-z][a-z_]*)$/.exec(path);
-  if (method === "POST" && (sampleOp || path === "/api/link-sample/restore")) {
-    const body = await readJson<OpRequest>(req);
-    if (typeof body.requestId !== "string") throw new HttpError(400, "requestId is required");
-    const sample = home.linkSample;
-    if (!sample) throw new HttpError(404, "Links is unavailable");
-    return send(res, 200, sampleOp ? sample.op(sampleOp[1], body.requestId, body.input) : sample.restore(body.requestId));
-  }
 
   const op = /^\/api\/ops\/([a-z][a-z0-9]*\.[a-z][a-z_]*)$/.exec(path);
   if (op && method === "POST") {
@@ -588,11 +575,8 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
   // A small image a module keeps (a site's icon). It came from the web, so it is served as an image and nothing
   // else: its type is one of a few, never sniffed by the browser, and it may load and run nothing.
   const file = /^\/api\/modules\/([a-z][a-z0-9]*)\/files\/([A-Za-z0-9._-]{1,255})$/.exec(path);
-  const sampleFile = /^\/api\/link-sample\/files\/([A-Za-z0-9._-]{1,255})$/.exec(path);
-  if (method === "GET" && (file || sampleFile)) {
-    const found = file
-      ? home.modules.find((module) => module.id === file[1])?.file?.(home.world, file[2])
-      : home.linkSample?.file(sampleFile![1]);
+  if (method === "GET" && file) {
+    const found = home.modules.find((module) => module.id === file[1])?.file?.(home.world, file[2]);
     if (!found || !/^image\/(png|jpeg|gif|webp|x-icon|svg\+xml)$/.test(found.type)) throw new HttpError(404, "Not found");
     res.writeHead(200, {
       "Content-Type": found.type, "Content-Length": found.bytes.byteLength, "Cache-Control": peer.local ? "private, max-age=86400" : "no-store",
@@ -635,6 +619,26 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
   }
 
   if (method === "POST" && path === "/api/settings") return send(res, 200, (await ask("settings.update")).result);
+
+  // The user's areas; each answers with the whole list, in order.
+  if (method === "POST" && path === "/api/areas") {
+    await ask("area.create");
+    return send(res, 200, { areas: listAreas(home.world) });
+  }
+  const area = /^\/api\/areas\/([A-Za-z0-9_-]{1,64})(?:\/(move|delete))?$/.exec(path);
+  if (area && method === "POST") {
+    await ask(area[2] === "move" ? "area.move" : area[2] === "delete" ? "area.delete" : "area.update", { id: area[1] });
+    return send(res, 200, { areas: listAreas(home.world) });
+  }
+  if (method === "POST" && path === "/api/preferences") {
+    await ask("preference.create");
+    return send(res, 200, { preferences: listPreferences(home.world) });
+  }
+  const preference = /^\/api\/preferences\/([A-Za-z0-9_-]{1,64})(?:\/(delete))?$/.exec(path);
+  if (preference && method === "POST") {
+    await ask(preference[2] === "delete" ? "preference.delete" : "preference.update", { id: preference[1] });
+    return send(res, 200, { preferences: listPreferences(home.world) });
+  }
 
   // Automations answer as devices see one (with its next time and its last run).
   if (method === "POST" && path === "/api/automations") {

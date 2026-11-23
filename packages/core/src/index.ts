@@ -6,7 +6,14 @@ export { openWorld, type Migration, type World } from "./world.ts";
 export { CORE_MIGRATIONS, ACTORS, RUN_STATES, NOTICE_STATES, PROPOSAL_STATES } from "./schema.ts";
 export { withCoreContext, withDefaultActor, coreContext, type Actor, type CoreContext } from "./context.ts";
 export { newId } from "./ids.ts";
-export { AREAS, AREA_IDS, isArea, areaName, type Area } from "./areas.ts";
+export {
+  AREA_COLOURS, SAMPLE_AREAS, listAreas, isArea, areaName, describeAreas, unknownArea, addArea, updateArea, moveArea, deleteAreaRow, AreaError,
+  type Area, type AreaColour,
+} from "./areas.ts";
+export {
+  addPreference, describePreferences, listPreferences, removePreference, updatePreference, PreferenceError, MAX_PREFERENCE, MAX_PREFERENCES,
+  type Preference,
+} from "./preferences.ts";
 export {
   recordDomainEvent, changedFields, listEvents, latestEventSeq, onEvents, lastChanges, lastChangesOf, listRunReceipts, listRunActivity, RunLeaseLostError,
   type CoreEvent, type EventInput, type EventQuery,
@@ -39,7 +46,7 @@ export {
   openProposal, getProposal, listOpenProposals, acceptProposal, declineProposal, supersedeProposal, amendProposal, expireProposals, ProposalStateError, PROPOSAL_TTL_MS,
   type Proposal, type ProposalState, type ProposalStep,
 } from "./proposals.ts";
-export { getSettings, updateSettings, userLocale, localeOf, LOCALES, SettingsError, type Locale, type UserSettings } from "./settings.ts";
+export { getSettings, updateSettings, userLocale, localeOf, LOCALES, LOCALE_TAGS, localeTag, acceptLanguage, SettingsError, type Locale, type PageLayout, type UserSettings } from "./settings.ts";
 export {
   createAutomation, updateAutomation, deleteAutomation, getAutomation, listAutomations, fireDueAutomations, runAutomationNow, ensureTemplates,
   latestSlot, nextSlot, automationName, automationGoal, AutomationError, AUTOMATION_TEMPLATES, CATCH_UP_MS,

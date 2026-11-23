@@ -3,6 +3,7 @@
   "private": true,
   "description": "An open-source personal agent: one home node, every device a window onto it.",
   "license": "MIT",
+  "homepage": "https://github.com/bruceche-cmu-F25/Alfred",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"

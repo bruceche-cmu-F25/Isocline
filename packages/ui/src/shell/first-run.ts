@@ -2,7 +2,7 @@
  * who was using Alfred before the walkthrough existed sees only what is new to them. */
 import type { Automation } from "@alfred/protocol";
 
-export type FirstRunStep = "name" | "model" | "google" | "morning" | "tour";
+export type FirstRunStep = "name" | "model" | "google" | "samples" | "tour";
 
 export interface FirstRunFacts {
   name: string | null;
@@ -10,22 +10,22 @@ export interface FirstRunFacts {
   models: number | null;
   /** `ready`: this Alfred can start a Google sign-in at all. Null: could not be read. */
   google: { accounts: number; ready: boolean } | null;
-  /** The morning brief, when this Alfred has one. */
-  brief: Pick<Automation, "enabled"> | undefined;
+  /** The automations Alfred ships with (the morning brief among them), as they are now. */
+  samples: ReadonlyArray<Pick<Automation, "enabled">>;
 }
 
 /** In order. The walk round always is. */
-export function owedSteps({ name, models, google, brief }: FirstRunFacts): FirstRunStep[] {
+export function owedSteps({ name, models, google, samples }: FirstRunFacts): FirstRunStep[] {
   const steps: FirstRunStep[] = [];
   if (!name) steps.push("name");
   if (models === 0) steps.push("model");
   if (google?.ready && google.accounts === 0) steps.push("google");
-  if (brief && !brief.enabled) steps.push("morning");
+  if (samples.some((sample) => !sample.enabled)) steps.push("samples");
   steps.push("tour");
   return steps;
 }
 
-/** Leaving the model step with none connected: there is nothing to run each morning, so that question waits. */
-export function withoutMorning(steps: FirstRunStep[]): FirstRunStep[] {
-  return steps.filter((step) => step !== "morning");
+/** Leaving the model step with none connected: there is nothing to run on a schedule, so that question waits. */
+export function withoutSamples(steps: FirstRunStep[]): FirstRunStep[] {
+  return steps.filter((step) => step !== "samples");
 }

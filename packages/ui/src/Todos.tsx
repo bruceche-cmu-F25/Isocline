@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Area, Automation } from "@alfred/protocol";
 import type { CalendarEvent, CalendarSnapshot } from "@alfred/module-calendar/types";
-import { isDayOff, type CalendarMode, type TodoSnapshot } from "@alfred/module-todo/types";
+import { isDayOff, SAMPLE_OFF_WORDS, type CalendarMode, type TodoSnapshot } from "@alfred/module-todo/types";
 import { api } from "./api.ts";
 import { AddBar, Pill, PickerPill } from "./AddBar.tsx";
 import { Linked, OutLink } from "./Linked.tsx";
 import { getLocale, t, type Key } from "./i18n/index.ts";
 import type { PageLine } from "./shell/about.ts";
 import { todoChange } from "./shell/say.ts";
+import { PHONE, useMedia } from "./shell/layout.ts";
 import { Select } from "./shell/Select.tsx";
 
 type Item = TodoSnapshot["todos"][number];
@@ -34,7 +35,7 @@ function dayWord(date: string, today: string): string {
   if (days === 1) return t("todo.tomorrow");
   if (days < 0) return t("todo.overdue", { date: md(date) });
   const end = toSunday(today);
-  if (days <= end) return weekdayName(date);
+  if (days <= end || days < 7) return weekdayName(date);
   if (days <= end + 7) return t("todo.nextWeekday", { day: weekdayName(date) });
   return md(date);
 }
@@ -157,7 +158,7 @@ function Meta({ todo, today, all, areas, when }: { todo: Item; today: string; al
   return (
     <span className="todo-meta">
       {todo.suggested && <span className="by"><Icon name="alfred" />{t("todo.g.suggested")}</span>}
-      {area && <span className="tag" data-k={area.k}>{area.name[getLocale()]}</span>}
+      {area && <span className="tag" data-k={area.k}>{area.name}</span>}
       {due && <span className="due">{due}</span>}
       {!when && todo.startDate && todo.due && todo.startDate !== todo.due && <span className="due">{md(todo.startDate)} – {md(todo.due)}</span>}
       {todo.status === "doing" && !todo.done && <span className="doing">{t("todo.doing")}</span>}
@@ -298,7 +299,7 @@ function TodoCard({ todo, today, all, areas, now, onClose, onError, onSay }: { t
           <div className="todo-card-row">
             {areas.map((candidate) => (
               <button type="button" key={candidate.id} className="mini" data-k={candidate.k} aria-pressed={todo.area === candidate.id} disabled={busy}
-                onClick={() => patch({ area: todo.area === candidate.id ? "" : candidate.id })}>{candidate.name[getLocale()]}</button>
+                onClick={() => patch({ area: todo.area === candidate.id ? "" : candidate.id })}>{candidate.name}</button>
             ))}
           </div>
         </div>
@@ -352,6 +353,7 @@ interface ViewProps {
   onOpen(id: string): void;
   onError: OnError;
 }
+type TodayHeading = (title: ReactNode) => ReactNode;
 interface DayOff { from: string; to: string; title: string }
 const offOn = (daysOff: DayOff[], date: string) => daysOff.filter((off) => off.from <= date && off.to >= date);
 const byHour = (a: Item, b: Item) => (a.at ?? "99").localeCompare(b.at ?? "99") || a.title.localeCompare(b.title);
@@ -362,7 +364,7 @@ const timedOn = (events: CalendarEvent[], date: string) => events.filter((event)
 
 /** A: by day. The next two weeks as a strip (how full each day is, the days off), then the todos day by day, each
  * with its hour. */
-function ByDay({ open, suggested, all, today, now, areas, fresh, daysOff, events, onOpen, onError }: ViewProps) {
+function ByDay({ open, suggested, all, today, now, areas, fresh, daysOff, events, onOpen, onError, todayHeading }: ViewProps & { todayHeading?: TodayHeading }) {
   const days = Array.from({ length: 14 }, (_, index) => addDays(today, index));
   const shown = [...open, ...suggested];
   const groups = new Map<string, Item[]>();
@@ -398,7 +400,7 @@ function ByDay({ open, suggested, all, today, now, areas, fresh, daysOff, events
   };
   const section = (key: string, head: ReactNode, items: Item[], extra?: { today?: boolean; late?: boolean; empty?: string }) => (
     <section key={key} id={`todo-day-${key}`} className="todo-day" data-today={extra?.today || undefined} data-late={extra?.late || undefined}>
-      <div className="todo-day-head">{head}</div>
+      {extra?.today && todayHeading ? todayHeading(head) : <div className="todo-day-head">{head}</div>}
       {items.length > 0 ? <ul>{items.map(row)}</ul> : extra?.empty && <p className="quiet todo-day-empty">{extra.empty}</p>}
     </section>
   );
@@ -435,7 +437,7 @@ function ByDay({ open, suggested, all, today, now, areas, fresh, daysOff, events
             {off.map((x) => <span className="ctx" key={x.title}><Icon name="off" />{x.title}</span>)}
             {busy.length > 0 && <span className="cal-n" title={busy.map((event) => `${hhmm(event.start!)} ${event.title}`).join("\n")}><Icon name="cal" />{t("todo.events", { n: busy.length })}</span>}
           </>
-        ), (groups.get(date) ?? []).sort(byHour), { today: date === today, empty: date === today ? t("todo.todayClear") : t("todo.nothing") });
+        ), (groups.get(date) ?? []).sort(byHour), { today: date === today, empty: date === today ? t("todo.todayClear") : undefined });
       })}
       {groups.has("later") && section("later", <h3>{t("todo.g.afterTwoWeeks")}<span className="count">{groups.get("later")!.length}</span></h3>, groups.get("later")!.sort(byDue))}
       {groups.has("any") && section("any", <h3>{t("todo.g.someday")}<span className="count">{groups.get("any")!.length}</span></h3>, groups.get("any")!)}
@@ -447,7 +449,7 @@ const hhmm = (instant: string) => { const at = new Date(instant); return `${Stri
 const minuteOf = (instant: string) => { const at = new Date(instant); return at.getHours() * 60 + at.getMinutes(); };
 
 /** B: a board. Today, tomorrow, the rest of this week, later, any time; a card dragged to another column moves there. */
-function Board({ open, suggested, all, today, now, areas, fresh, daysOff, onOpen, onError }: ViewProps) {
+function Board({ open, suggested, all, today, now, areas, fresh, daysOff, onOpen, onError, todayHeading }: ViewProps & { todayHeading?: TodayHeading }) {
   const { run } = useRun(onError);
   const [over, setOver] = useState<string | null>(null);
   const end = toSunday(today);
@@ -475,12 +477,13 @@ function Board({ open, suggested, all, today, now, areas, fresh, daysOff, onOpen
           const to = lane.id === "today" ? today : lane.id === "tomorrow" ? addDays(today, 1) : lane.id === "week" ? addDays(today, end) : "9999";
           return off.from <= to && off.to >= from;
         });
+        const heading = <h3>{lane.name}<span className="date">{lane.sub}</span><span className="count">{items.length}</span></h3>;
         return (
           <section key={lane.id} className="todo-lane" data-today={lane.id === "today" || undefined} data-over={over === lane.id || undefined}
             onDragOver={(event) => { if (event.dataTransfer.types.includes("text/todo")) { event.preventDefault(); setOver(lane.id); } }}
             onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setOver(null); }}
             onDrop={(event) => { event.preventDefault(); setOver(null); move(event.dataTransfer.getData("text/todo"), lane.to); }}>
-            <h3>{lane.name}<span className="date">{lane.sub}</span><span className="count">{items.length}</span></h3>
+            {lane.id === "today" && todayHeading ? todayHeading(heading) : heading}
             {laneOff.map((off) => <span className="ctx" key={off.from + off.title}><Icon name="off" />{lane.id === "today" || lane.id === "tomorrow" ? "" : `${md(off.from)}${off.to !== off.from ? `–${md(off.to)}` : ""} `}{off.title}</span>)}
             <ul>
               {items.map((todo) => {
@@ -506,13 +509,22 @@ function Board({ open, suggested, all, today, now, areas, fresh, daysOff, onOpen
   );
 }
 
-/** Beside the list: today. How much of it is done, the next deadline and the time left before it, and the hours
- * left between the calendar's events. */
-function TodayRail({ open, all, today, now, areas, events }: ViewProps) {
-  // Today, beside the list.
+/** Open work carried into today and work completed today, including tasks spanning several days. */
+function TodayProgress({ all, today, hideEmpty }: { all: Item[]; today: string; hideEmpty?: boolean }) {
   const ofToday = all.filter((todo) => !todo.suggested && !todo.archivedAt && (todo.done ? (todo.completedAt ? iso(new Date(todo.completedAt)) === today : todo.due === today) : runsOn(todo, today) || (!!todo.due && todo.due < today)));
+  if (hideEmpty && !ofToday.length) return null;
   const doneN = ofToday.filter((todo) => todo.done).length;
   const ring = 2 * Math.PI * 24;
+  return (
+    <span className="todo-progress">
+      <svg viewBox="0 0 56 56" aria-hidden="true"><circle className="bg" cx="28" cy="28" r="24" /><circle className="fg" cx="28" cy="28" r="24" strokeDasharray={ring} strokeDashoffset={ring * (1 - (ofToday.length ? doneN / ofToday.length : 0))} transform="rotate(-90 28 28)" /></svg>
+      <span>{t("todo.doneToday", { done: doneN, total: ofToday.length })}</span>
+    </span>
+  );
+}
+
+/** The next deadline and the hours left between calendar events. A phone includes progress in the heading. */
+function TodayRail({ open, all, today, now, areas, events, inHeading }: ViewProps & { inHeading?: boolean }) {
   const next = open.filter((todo) => todo.at && (dueTime(todo) ?? 0) > now).sort((a, b) => dueTime(a)! - dueTime(b)!)[0];
   const nowMin = new Date(now).getHours() * 60 + new Date(now).getMinutes();
   const from = Math.max(0, Math.floor(nowMin / 60) * 60), to = 24 * 60;
@@ -532,17 +544,14 @@ function TodayRail({ open, all, today, now, areas, events }: ViewProps) {
 
   return (
       <aside className="todo-rail" aria-label={t("todo.g.today")}>
-        <div className="todo-panel">
+        {!inHeading && <div className="todo-panel todo-panel-today">
           <h4>{t("todo.g.today")} · {md(today)} {weekdayName(today)}</h4>
-          <div className="todo-progress">
-            <svg viewBox="0 0 56 56" aria-hidden="true"><circle className="bg" cx="28" cy="28" r="24" /><circle className="fg" cx="28" cy="28" r="24" strokeDasharray={ring} strokeDashoffset={ring * (1 - (ofToday.length ? doneN / ofToday.length : 0))} transform="rotate(-90 28 28)" /></svg>
-            <div><b>{doneN} / {ofToday.length}</b><small>{t("todo.doneToday")}</small></div>
-          </div>
-        </div>
+          <TodayProgress all={all} today={today} />
+        </div>}
         {next && (
           <div className="todo-panel" data-k={nextLeft <= 180 ? "now" : "warm"}>
             <h4>{t("todo.nextDeadline")}</h4>
-            <p className="todo-big">{t("todo.left", { span: span(nextLeft) })}</p>
+            {!inHeading && <p className="todo-big">{t("todo.left", { span: span(nextLeft) })}</p>}
             <p className="todo-next-what">{dueLabel(next, today)} · {next.title}</p>
             {next.due === today && <p className="quiet">{t("todo.freeBefore", { span: span(free) })}</p>}
           </div>
@@ -606,7 +615,8 @@ const MODES: CalendarMode[] = ["off", "allday", "all"];
 
 /** What becomes a todo without the user writing it: calendar events (which ones), and what Alfred picks out of
  * mail (an automation, switched on and off here and run on its schedule). */
-function Sources({ mode, picking, onError }: { mode: CalendarMode; picking?: Automation; onError: OnError }) {
+function Sources({ mode, words, picking, onError }: { mode: CalendarMode; words: string[]; picking?: Automation; onError: OnError }) {
+  const [word, setWord] = useState("");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const act = (action: () => Promise<unknown>) => {
@@ -646,6 +656,22 @@ function Sources({ mode, picking, onError }: { mode: CalendarMode; picking?: Aut
             </span>
           )}
           <p className="quiet">{t("todo.daysOffHint")}</p>
+          {/* The words a day off is named by: the user's own list (samples until they change it). */}
+          <div className="off-words" role="group" aria-label={t("todo.offWords")}>
+            {words.map((one) => (
+              <span key={one} className="off-word">{one}
+                <button type="button" aria-label={t("todo.offWords.remove", { word: one })} disabled={busy}
+                  onClick={() => act(() => api.op("todo.sources", { offWords: words.filter((other) => other !== one) }))}>×</button>
+              </span>
+            ))}
+            <form onSubmit={(event) => {
+              event.preventDefault();
+              const next = word.trim();
+              if (next) act(() => api.op("todo.sources", { offWords: [...words, next] }).then(() => setWord("")));
+            }}>
+              <input value={word} maxLength={40} placeholder={t("todo.offWords.add")} aria-label={t("todo.offWords.add")} disabled={busy} onChange={(event) => setWord(event.target.value)} />
+            </form>
+          </div>
         </div>
       )}
     </div>
@@ -672,6 +698,7 @@ export function Todos({ snapshot, fresh, areas, automations, calendar, line }: {
   const [opened, setOpened] = useState<string | null>(null);
   const { busy: adding, run } = useRun(setError);
   const now = useNow();
+  const phone = useMedia(PHONE);
   const { today, todos } = snapshot;
   /** Puts a todo in the line under the page: a day, an hour or "done" changes it at once (shell/say.ts); words that
    * say more go to Alfred with the todo. */
@@ -702,7 +729,7 @@ export function Todos({ snapshot, fresh, areas, automations, calendar, line }: {
     const used = areas.filter((area) => open.some((todo) => todo.area === area.id) || filter === area.id);
     return [
       { id: "all", label: t("common.all"), k: undefined as string | undefined, count: open.length },
-      ...used.map((area) => ({ id: area.id, label: area.name[getLocale()], k: area.k, count: open.filter((todo) => todo.area === area.id).length })),
+      ...used.map((area) => ({ id: area.id, label: area.name, k: area.k, count: open.filter((todo) => todo.area === area.id).length })),
       ...(open.some((todo) => !todo.area) && used.length ? [{ id: "none", label: t("todo.noAreaChip"), k: "gray", count: open.filter((todo) => !todo.area).length }] : []),
     ];
   }, [areas, open, filter, getLocale()]);
@@ -713,10 +740,11 @@ export function Todos({ snapshot, fresh, areas, automations, calendar, line }: {
   const events = calendar?.events ?? [];
   const daysOff = useMemo(() => {
     const seen = new Set<string>();
-    return events.filter(isDayOff).map((event) => ({ from: event.startDate, to: event.endDate, title: event.title.trim() }))
+    const words = snapshot.settings?.offWords ?? SAMPLE_OFF_WORDS;
+    return events.filter((event) => isDayOff(event, words)).map((event) => ({ from: event.startDate, to: event.endDate, title: event.title.trim() }))
       .filter((off) => { const key = `${off.from}|${off.to}|${off.title}`; if (seen.has(key)) return false; seen.add(key); return true; })
       .sort((a, b) => a.from.localeCompare(b.from));
-  }, [events]);
+  }, [events, snapshot.settings?.offWords]);
 
   // New todos go into the area being looked at.
   useEffect(() => { setNewArea(areas.some((area) => area.id === filter) ? filter : ""); }, [filter, areas]);
@@ -731,6 +759,19 @@ export function Todos({ snapshot, fresh, areas, automations, calendar, line }: {
   };
   const openedTodo = todos.find((todo) => todo.id === opened);
   const nothing = props.open.length === 0 && props.suggested.length === 0;
+  const todayHeading: TodayHeading | undefined = phone ? (heading) => (
+    <details className="todo-summary">
+      <summary className="todo-day-head" title={t("todo.restOfToday")}>
+        {heading}
+        <TodayProgress all={todos.filter(shown)} today={today} hideEmpty />
+      </summary>
+      <TodayRail {...props} inHeading />
+    </details>
+  ) : undefined;
+  const emptyList = nothing && <>
+    {todayHeading?.(<><h3>{t("todo.today")}</h3><span className="date">{md(today)} {weekdayName(today)}</span></>)}
+    <p className="quiet empty-list">{t(filter === "all" ? "todo.emptyAll" : "todo.emptyArea")}</p>
+  </>;
 
   return (
     <section className="todos" data-view={current} aria-label={t("todo.label")}>
@@ -747,7 +788,7 @@ export function Todos({ snapshot, fresh, areas, automations, calendar, line }: {
             <button type="button" key={id} aria-pressed={current === id} onClick={() => pickView(id)} title={id === "week" ? t("todo.view.weekHint") : undefined}>{t(key)}</button>
           ))}
         </div>
-        <Sources mode={snapshot.settings?.fromCalendar ?? "allday"} picking={automations?.find((automation) => automation.template === "mail_todos")} onError={setError} />
+        <Sources mode={snapshot.settings?.fromCalendar ?? "allday"} words={snapshot.settings?.offWords ?? [...SAMPLE_OFF_WORDS]} picking={automations?.find((automation) => automation.template === "mail_todos")} onError={setError} />
       </div>
 
       <AddBar value={title} onChange={setTitle} onSubmit={add} ready={!!title.trim()} busy={adding} maxLength={500}
@@ -755,9 +796,9 @@ export function Todos({ snapshot, fresh, areas, automations, calendar, line }: {
         <PickerPill type="date" icon="day" value={due} onChange={(value) => { setDue(value); if (!value) setAt(""); }} empty={t("todo.pickDay")}
           text={due ? dayWord(due, today) : undefined} label={t("todo.due")} />
         {due && <PickerPill type="time" icon="hour" value={at} onChange={setAt} empty={t("todo.pickHour")} label={t("todo.at")} />}
-        <Pill icon="tag" text={addArea ? addArea.name[getLocale()] : t("todo.pickArea")} set={!!addArea} k={addArea?.k} label={t("todo.newArea")} onClear={() => setNewArea("")}>
+        <Pill icon="tag" text={addArea ? addArea.name : t("todo.pickArea")} set={!!addArea} k={addArea?.k} label={t("todo.newArea")} onClear={() => setNewArea("")}>
           <Select cover value={newArea} onChange={setNewArea} label={t("todo.newArea")}
-            options={[{ value: "", label: t("todo.noArea") }, ...areas.map((area) => ({ value: area.id, label: area.name[getLocale()] }))]} />
+            options={[{ value: "", label: t("todo.noArea") }, ...areas.map((area) => ({ value: area.id, label: area.name }))]} />
         </Pill>
       </AddBar>
       {error && <p className="problem small" role="alert">{error}</p>}
@@ -769,12 +810,12 @@ export function Todos({ snapshot, fresh, areas, automations, calendar, line }: {
               {current === "list" && (
                 <div className="todo-split">
                   <div className="todo-split-list">
-                    {nothing ? <p className="quiet empty-list">{t(filter === "all" ? "todo.emptyAll" : "todo.emptyArea")}</p> : <ByDay {...props} />}
+                    {nothing ? emptyList : <ByDay {...props} todayHeading={todayHeading} />}
                   </div>
-                  <TodayRail {...props} />
+                  {!phone && <TodayRail {...props} />}
                 </div>
               )}
-              {current === "board" && (nothing ? <p className="quiet empty-list">{t(filter === "all" ? "todo.emptyAll" : "todo.emptyArea")}</p> : <Board {...props} />)}
+              {current === "board" && (nothing ? emptyList : <Board {...props} todayHeading={todayHeading} />)}
             </>}
         {done.length > 0 && current !== "week" && (
           <div className="todo-group todo-done">

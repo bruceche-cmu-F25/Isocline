@@ -5,7 +5,7 @@
  * web for its title (fetch.ts, later), filed under at most one topic, and marked unread, seen or to do.
  * One address is one place and one clip at most.
  */
-import { changedFields, isArea, AREA_IDS, newId, recordDomainEvent, type Migration, type World } from "@alfred/core";
+import { changedFields, isArea, newId, unknownArea, recordDomainEvent, type Migration, type World } from "@alfred/core";
 import { CLIP_STATES, type Clip, type ClipState, type Place, type PlaceFolder, type Topic } from "./types.ts";
 import { classify, isShortener, nameFromUrl, normalizeUrl, parseShareText } from "./url.ts";
 import { COVER_MIGRATION } from "./covers.ts";
@@ -176,7 +176,7 @@ const said = (kind: string, id: string, payload: Record<string, unknown>) => ({ 
 export function ensureTopic(world: World, input: { name: string; area?: string }): LinkResult<Topic> {
   const name = text(input.name, 60);
   if (!name) return { error: "A topic needs a name." };
-  if (input.area && !isArea(input.area)) return { error: `area must be one of: ${AREA_IDS.join(", ")}` };
+  if (input.area && !isArea(world, input.area)) return { error: unknownArea(world) };
   return world.tx((db) => {
     const found = db.prepare("SELECT * FROM link_topics WHERE lower(name) = lower(?)").get(name);
     if (found) return { id: found.id as string, name: found.name as string, ...(found.area ? { area: found.area as string } : {}) };
@@ -194,7 +194,7 @@ export function updateTopic(world: World, id: string, patch: { name?: string; ar
     const name = patch.name === undefined ? found.name as string : text(patch.name, 60);
     if (!name) return { error: "A topic needs a name." };
     const area = patch.area === undefined ? (found.area as string | null) : patch.area.trim() || null;
-    if (area && !isArea(area)) return { error: `area must be one of: ${AREA_IDS.join(", ")}` };
+    if (area && area !== found.area && !isArea(world, area)) return { error: unknownArea(world) };
     const taken = db.prepare("SELECT id FROM link_topics WHERE lower(name) = lower(?) AND id != ?").get(name, id);
     if (taken) return { error: `There is already a topic named "${name}".` };
     if (name !== found.name || area !== found.area) {
@@ -576,4 +576,9 @@ export function formatClip(clip: Clip, topics: readonly Topic[]): string {
     `${clip.id}  ${clip.title}`, `${clip.type} on ${clip.platform === "web" ? clip.site : clip.platform}`,
     ...(topic ? [`topic: ${topic.name}`] : ["no topic"]), clip.state, ...(clip.note ? [`note: ${clip.note}`] : []), clip.url,
   ].join(" | ");
+}
+
+/** The user removed an area: its topics move to `moveTo`, or to no area. */
+export function moveTopicsOutOfArea(world: World, id: string, moveTo: string | null): number {
+  return Number(world.db.prepare("UPDATE link_topics SET area = ? WHERE area = ?").run(moveTo, id).changes);
 }

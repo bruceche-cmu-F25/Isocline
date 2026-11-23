@@ -12,10 +12,10 @@ import { ModelSettings } from "../ModelSettings.tsx";
 import { api, request as call } from "../api.ts";
 import { t, type Key } from "../i18n/index.ts";
 import { Figure } from "./Figure.tsx";
-import { owedSteps, withoutMorning, type FirstRunStep } from "./first-run.ts";
+import { owedSteps, withoutSamples, type FirstRunStep } from "./first-run.ts";
+import { automationTitle } from "../automationText.ts";
 import "./first-run.css";
 
-const TIMES = ["07:00", "07:30", "08:00"];
 /** How long "nice to meet you" is up before the next step. */
 const MET_MS = 1500;
 
@@ -116,9 +116,11 @@ export function FirstRun({ state, name, saveName, place, onDone }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
-  const brief = (state.automations ?? []).find((automation) => automation.template === "brief");
-  const [time, setTime] = useState(() => (brief && TIMES.includes(brief.schedule.at) ? brief.schedule.at : "07:30"));
-  const opened = useRef({ name, brief });
+  // The automations Alfred ships with, still off when this opened: each can be switched on here, at a time of its own.
+  const [samples] = useState(() => (state.automations ?? []).filter((automation) => automation.template && !automation.enabled));
+  const [picked, setPicked] = useState<Record<string, { on: boolean; at: string }>>(() =>
+    Object.fromEntries(samples.map((sample) => [sample.id, { on: true, at: sample.schedule.at }])));
+  const opened = useRef({ name, samples: (state.automations ?? []).filter((automation) => automation.template) });
 
   useEffect(() => {
     let alive = true;
@@ -140,7 +142,7 @@ export function FirstRun({ state, name, saveName, place, onDone }: {
     setError(null);
     setConnected(false);
     // Without a model there is nothing to run each morning: that question waits until one is connected.
-    if (step === "model" && !connected) setSteps((owed) => owed && withoutMorning(owed));
+    if (step === "model" && !connected) setSteps((owed) => owed && withoutSamples(owed));
     setAt((n) => n + 1);
   }, [step, connected]);
 
@@ -170,12 +172,15 @@ export function FirstRun({ state, name, saveName, place, onDone }: {
     }
   }
 
-  async function setMorning() {
-    if (!brief || busy) return;
+  async function startSamples() {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      if (time !== "off") await api.updateAutomation(brief.id, { schedule: { at: time, days: brief.schedule.days }, enabled: true });
+      for (const sample of samples) {
+        const choice = picked[sample.id];
+        if (choice?.on) await api.updateAutomation(sample.id, { schedule: { at: choice.at, days: sample.schedule.days }, enabled: true });
+      }
       forward();
     } catch (reason) {
       setError((reason as Error).message);
@@ -222,17 +227,24 @@ export function FirstRun({ state, name, saveName, place, onDone }: {
             <div className="first-set"><Accounts setup onConfigured={(n) => setConnected(n > 0)} /></div>
             {connected && <button type="button" className="first-go" onClick={forward}>{t("common.continue")}</button>}
           </>
-        ) : step === "morning" ? (
+        ) : step === "samples" ? (
           <>
-            <h2>{t("first.morning.title")}</h2>
-            <p>{t("first.morning.text")}</p>
-            <div className="chips first-times" role="radiogroup" aria-label={t("first.morning.title")}>
-              {[...TIMES, "off"].map((value) => (
-                <button type="button" key={value} className="chip" role="radio" aria-checked={time === value} aria-pressed={time === value}
-                  onClick={() => setTime(value)}>{value === "off" ? t("first.morning.off") : value}</button>
-              ))}
-            </div>
-            <button type="button" className="first-go" disabled={busy} onClick={setMorning}>{t("first.morning.go")}</button>
+            <h2>{t("first.samples.title")}</h2>
+            <p>{t("first.samples.text")}</p>
+            <ul className="first-samples">
+              {samples.map((sample) => {
+                const choice = picked[sample.id]!, title = automationTitle(sample);
+                const set = (next: Partial<typeof choice>) => setPicked((current) => ({ ...current, [sample.id]: { ...choice, ...next } }));
+                return (
+                  <li key={sample.id} data-k={sample.k}>
+                    <button type="button" className="switch" role="switch" aria-checked={choice.on} aria-label={t("auto.toggle", { name: title })} onClick={() => set({ on: !choice.on })} />
+                    <span><b>{title}</b><small>{sample.template ? t(`auto.tpl.${sample.template}.goal` as Key) : sample.instruction}</small></span>
+                    <input type="time" value={choice.at} disabled={!choice.on} aria-label={t("first.samples.at", { name: title })} onChange={(event) => event.target.value && set({ at: event.target.value })} />
+                  </li>
+                );
+              })}
+            </ul>
+            <button type="button" className="first-go" disabled={busy} onClick={startSamples}>{t("first.morning.go")}</button>
           </>
         ) : null}
         {error && <p className="problem small" role="alert">{error}</p>}

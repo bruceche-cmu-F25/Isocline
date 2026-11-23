@@ -8,6 +8,7 @@ import {
   getConversation, getRun, listAutomations, listNotices, openWorld, presentNotice, recordDomainEvent, reportPresence,
   runAutomationNow, submitRun, undeliveredNotices, type AwayDigest,
 } from "../src/index.ts";
+import { oldAutomation } from "./old-world.ts";
 import { completionNotification } from "../src/result-delivery.ts";
 
 test("completion notification is an explicit request in the user's own words", () => {
@@ -145,8 +146,8 @@ test("upgrade keeps an already-read latest edition read and retires earlier unre
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, "world.sqlite");
   const old = openWorld(path, CORE_MIGRATIONS.filter((m) => Number(m.id.split(":")[1]) < 20));
-  ensureTemplates(old);
-  const rule = listAutomations(old).find((a) => a.template === "brief")!;
+  oldAutomation(old, { id: "brief1", template: "brief", schedule: { at: "07:30", days: [1, 2, 3, 4, 5, 6, 7] }, enabled: false, at: Date.now() });
+  const rule = { id: "brief1" };
   const ids: string[] = [];
   for (const slot of ["first", "second"]) {
     const run = runAutomationNow(old, rule.id, slot, { profile: "automation" });
