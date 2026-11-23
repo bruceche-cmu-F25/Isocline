@@ -114,10 +114,14 @@ export function expireProposals(world: World, now: number = Date.now()): number 
   }));
 }
 
-/** Opens a proposal; under a run, it belongs to the run's conversation. A notice tells the user. */
+/** Opens a proposal; under a run, it belongs to the run's conversation. A notice tells the user.
+ *
+ * `replaces`: it is a corrected version of what was proposed earlier in the same conversation ("make it 3 to 4"), so
+ * the proposals earlier runs there left open are superseded: the user is never left two versions to choose from.
+ * `replaced` lists them. */
 export function openProposal(world: World, input: {
-  title: string; summary: string; steps: ProposalStep[]; subjects?: string[]; conversationId?: string | null; now?: number;
-}): Proposal {
+  title: string; summary: string; steps: ProposalStep[]; subjects?: string[]; conversationId?: string | null; replaces?: boolean; now?: number;
+}): Proposal & { replaced?: string[] } {
   const now = input.now ?? Date.now();
   const title = input.title.trim(), summary = input.summary.trim();
   if (!title || title.length > 200) throw new Error("title must be 1–200 characters");
@@ -125,6 +129,18 @@ export function openProposal(world: World, input: {
   if (!input.steps.length || input.steps.length > 20) throw new Error("a proposal has 1–20 steps");
   const id = newId(), runId = coreContext()?.run?.id ?? null;
   return world.tx((db) => {
+    const replaced: string[] = [];
+    if (input.replaces && input.conversationId) {
+      const earlier = db.prepare(`SELECT id FROM core_proposals WHERE state = 'open' AND expires_at > ? AND conversation_id = ?
+        AND (run_id IS NULL OR run_id IS NOT ?) ORDER BY created_at, rowid`).all(iso(now), input.conversationId, runId);
+      for (const row of earlier) {
+        const old = load(db, row.id as string);
+        setState(db, old.id, "superseded", now, { decided: true });
+        event(world, old, "proposal.decided", { decision: "revise", request: "", replacedBy: id }, now);
+        closeNotices(db, old.id, now);
+        replaced.push(old.id);
+      }
+    }
     const opened = recordDomainEvent(world, {
       kind: "proposal.opened", subject: `proposal:${id}`, now,
       payload: { proposalId: id, title, steps: input.steps.map((step) => step.preview.slice(0, 200)) },
@@ -135,7 +151,7 @@ export function openProposal(world: World, input: {
       runId, input.conversationId ?? null, iso(now), iso(now), iso(now + PROPOSAL_TTL_MS),
     );
     createNotice(db, { eventSeq: opened.seq, kind: "proposal", now, payload: { proposalId: id, title, conversationId: input.conversationId ?? null, runId } });
-    return load(db, id);
+    return { ...load(db, id), ...(replaced.length ? { replaced } : {}) };
   });
 }
 

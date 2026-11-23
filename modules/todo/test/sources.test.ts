@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { CORE_MIGRATIONS, listEvents, openWorld, withCoreContext, type World } from "@alfred/core";
 import { invokeOp, runTools } from "@alfred/module-kit";
 import {
-  acceptTodo, addTodo, completeTodo, deleteTodo, isDayOff, getTodoSettings, listTodos, mirrorCalendar, SAMPLE_OFF_WORDS, setTodoSettings, suggestTodo, todoModule, updateTodo, type SourceEvent, type TodoSnapshot,
+  acceptTodo, addTodo, completeTodo, deleteTodo, isDayOff, getTodoSettings, listTodos, mirrorCalendar, SAMPLE_OFF_WORDS, setTodoSettings, suggestTodo, todoModule, todosForProposedEvents, updateTodo, type SourceEvent, type TodoSnapshot,
 } from "../src/index.ts";
 
 const world = (): World => openWorld(":memory:", [...CORE_MIGRATIONS, ...todoModule.migrations]);
@@ -241,4 +241,33 @@ test("the words a day off goes by are the user's: theirs replace the samples, in
   assert.ok(isDayOff(fair, saved.offWords) && !isDayOff({ ...fair, allDay: false }, saved.offWords));
   assert.throws(() => setTodoSettings(w, { offWords: ["x".repeat(41)] }));
   assert.equal(listEvents(w).events.filter((e) => e.kind === "todo.off_words_set").length, 1);
+});
+
+test("a proposed meeting goes on the todo list at once, and moves with a corrected proposal; what the calendar would make itself is left to it", () => {
+  const w = world();
+  // Local wall-clock times, as the calendar module pins them (an instant).
+  const at = (local: string) => new Date(local).toISOString();
+  const add = (title: string, when: unknown, extra: object = {}) => ({ op: "calendar.add", input: { title, when, ...extra } });
+  const meet = add("和张伟见面", { start: at("2026-11-26T14:00"), end: at("2026-11-26T15:00") });
+
+  assert.match(todosForProposedEvents(w, [meet, { op: "mail.send", input: {} }])[0], /added/);
+  assert.deepEqual(listTodos(w).map((todo) => [todo.title, todo.due, todo.at]), [["和张伟见面", "2026-11-26", "14:00"]]);
+  // Proposed again (the run asked twice), or already written by the run: not twice.
+  assert.match(todosForProposedEvents(w, [meet])[0], /already/);
+  assert.equal(listTodos(w).length, 1);
+
+  // "改成3点到4点": the todo follows the correction.
+  const later = add("和张伟见面", { start: at("2026-11-26T15:00"), end: at("2026-11-26T16:00") });
+  assert.match(todosForProposedEvents(w, [later], [meet])[0], /moved/);
+  assert.deepEqual(listTodos(w).map((todo) => [todo.due, todo.at]), [["2026-11-26", "15:00"]]);
+
+  // An all-day one becomes a todo by itself once in the calendar (the default setting); what repeats is not one todo.
+  assert.deepEqual(todosForProposedEvents(w, [add("出差", { date: "2026-11-30", endDate: "2026-12-02" }), add("课", { start: at("2026-11-24T15:00"), end: at("2026-11-24T16:00") }, { repeat: { every: "week" } })]), []);
+  setTodoSettings(w, { fromCalendar: "off" });
+  todosForProposedEvents(w, [add("出差", { date: "2026-11-30", endDate: "2026-12-02" })]);
+  const trip = listTodos(w).find((todo) => todo.title === "出差");
+  assert.deepEqual([trip?.startDate, trip?.due], ["2026-11-30", "2026-12-02"]);
+  // Every event becomes a todo by itself: nothing here.
+  setTodoSettings(w, { fromCalendar: "all" });
+  assert.deepEqual(todosForProposedEvents(w, [add("晚饭", { start: at("2026-11-27T19:00"), end: at("2026-11-27T20:00") })]), []);
 });

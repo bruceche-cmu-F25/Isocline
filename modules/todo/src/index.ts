@@ -1,7 +1,7 @@
 import { areaName, describeAreas, lastChangesOf, localDate, userLocale, type World } from "@alfred/core";
 import { defineModule, defineOp, defineTool, Type } from "@alfred/module-kit";
 import {
-  acceptTodo, addTodo, completeTodo, deleteTodo, formatTodo, getTodoSettings, listTodos, MIGRATIONS, moveTodosOutOfArea, resolveTodo, setTodoSettings, suggestTodo, todoRevision,
+  acceptTodo, addTodo, sameTodo, todosForProposedEvents, completeTodo, deleteTodo, formatTodo, getTodoSettings, listTodos, MIGRATIONS, moveTodosOutOfArea, resolveTodo, setTodoSettings, suggestTodo, todoRevision,
   updateTodo, type Todo,
 } from "./domain.ts";
 import type { TodoSnapshot } from "./types.ts";
@@ -96,14 +96,18 @@ export const todoModule = defineModule({
   views: [{ id: "list", title: "Todos" }],
   guidance: (world) => [
     "Todos: when the user mentions something they intend to do later, record it with todo_add instead of only acknowledging it.",
-    "A todo has a due date, never a time. Resolve relative dates (\"Friday\", \"tomorrow\") against the local date you were given.",
+    "A todo has a due date, and `at` when the user names the hour it must be done by (\"before 9pm\"). Leave due out when they name no day.",
+    "Something that happens at a time, with someone or somewhere (a meeting, a meal, an appointment, a flight), goes in the calendar and on the todo list both. With a calendar connected, propose the event: proposing it puts its todo on the list by itself (the propose result says so), so do not add one with todo_add. With none connected, add a todo with its title, due its day, with `at` its start time when it has one.",
+    "Add a todo for something to do beforehand only when the user names it (\"remind me to prepare slides\"); do not think of preparations for them.",
+    "Resolve relative dates (\"Friday\", \"tomorrow\") against the local date you were given.",
     "For a task spanning several days, set startDate to its first day and due to its last day: one ranged todo, not one per day.",
     "Before editing or completing a todo you have not seen in this run, call todo_list to find its id.",
     "todo_suggest is for something you found yourself, in a mail, that the user did not ask you to add: it waits on the Todos page as a suggestion for them to keep or drop. When the user asks for a todo, use todo_add.",
-    "Todos marked \"from the calendar\" follow the user's calendar by themselves; do not add a todo for a calendar event.",
+    "Todos marked \"from the calendar\" follow the user's calendar by themselves; do not add a todo for an event already in the calendar.",
     `Set a todo's area when it is clear which part of life it belongs to; leave it out when unsure. The user's areas (id and name): ${describeAreas(world)}.`,
   ].join("\n"),
   areaRemoved: (world, id, moveTo) => { moveTodosOutOfArea(world, id, moveTo); },
+  proposed: (world, proposal) => todosForProposedEvents(world, proposal.steps, proposal.replaced).join("\n") || undefined,
 
   ops: [
     defineOp({
@@ -180,11 +184,15 @@ export const todoModule = defineModule({
         startDate: DateField("First day of a multi-day task as YYYY-MM-DD. Only with due."),
         url: Type.Optional(Type.String({ description: "Link to where the task is actually done (http, https or mailto)" })),
         area: AreaField,
+        again: Type.Optional(Type.Boolean({ description: "true only when the user wants a second todo like one already on the list" })),
       }),
       describe: (_world, params) => params.title,
-      pin: (world, params) => ({ op: "todo.add", input: params, preview: say(world).add(params.title, params.due) }),
-      execute(world, params) {
+      pin: (world, { again: _again, ...params }) => ({ op: "todo.add", input: params, preview: say(world).add(params.title, params.due) }),
+      execute(world, { again, ...params }) {
         try {
+          // A model that did not look at the list first would add what is there already ("月底前把房租交了").
+          const twin = again ? undefined : sameTodo(world, params);
+          if (twin) return `Not added: the list already has ${formatTodo(twin)}. Tell the user it is there (todo_update changes it). Only if they want a second one, call todo_add again with again: true.`;
           const { todo, open } = addTodo(world, params);
           return `Added ${formatTodo(todo)}\n${open} open todo(s).`;
         } catch (error) {

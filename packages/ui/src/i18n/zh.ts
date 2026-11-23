@@ -783,6 +783,7 @@ export const zh = {
   "auto.confirmDelete": "确定删除",
   "auto.tpl.mail_todos": "从邮件里挑待办",
   "auto.tpl.mail_todos.goal": "看最近两天的邮件，把要你做的事和截止日期挑出来，作为建议放到待办页，等你留下或不要。",
+  "today.advice.open": "看全文",
   "brief.start": "要点",
   "brief.calendarSource": "日历记录",
   "brief.eventDetails": "日程详情",
@@ -1369,6 +1370,8 @@ export const zh = {
   "today.tomorrow": "明天",
   "today.noCalendar": "还没接上日历",
   "today.noCalendar.hint": "。接上之后，这里会写下一件事。",
+  "today.reviewChange": "查看变更",
+  "today.connectCalendar": "连接日历",
   "today.calError": "日历没同步上",
   "today.join": "进会议",
   "today.openEvent": "在日历里打开",
@@ -1398,6 +1401,5 @@ export const zh = {
   "today.guess.free": "这段空着",
   "today.place": "放进日历",
   "today.placed": "已放进日历",
-  "today.study": "学习",
   "today.open": "打开",
 } as const;

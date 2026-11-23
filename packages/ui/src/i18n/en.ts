@@ -784,6 +784,7 @@ export const en: Record<keyof typeof zh, string> = {
   "auto.confirmDelete": "Confirm delete",
   "auto.tpl.mail_todos": "Todos from mail",
   "auto.tpl.mail_todos.goal": "Reads the last two days of mail and picks out what you have to do and by when, as suggestions on the Todos page for you to keep or drop.",
+  "today.advice.open": "Read it whole",
   "brief.start": "In short",
   "brief.calendarSource": "From the calendar",
   "brief.eventDetails": "Event details",
@@ -1370,6 +1371,8 @@ export const en: Record<keyof typeof zh, string> = {
   "today.tomorrow": "Tomorrow",
   "today.noCalendar": "No calendar connected yet",
   "today.noCalendar.hint": ". Once it is, what comes next is written here.",
+  "today.reviewChange": "Review changes",
+  "today.connectCalendar": "Connect calendar",
   "today.calError": "The calendar didn't sync",
   "today.join": "Join",
   "today.openEvent": "Open in Calendar",
@@ -1399,6 +1402,5 @@ export const en: Record<keyof typeof zh, string> = {
   "today.guess.free": "free then",
   "today.place": "Put on calendar",
   "today.placed": "On the calendar",
-  "today.study": "Study",
   "today.open": "Open",
 };

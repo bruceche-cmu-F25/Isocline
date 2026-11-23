@@ -5,11 +5,13 @@ import type { Todo } from "@alfred/module-todo/types";
 import type { StateResponse } from "@alfred/protocol";
 import { api } from "./api.ts";
 import { Detail } from "./Inbox.tsx";
+import type { InboxItem } from "./shell/inbox.ts";
 import type { PageLine } from "./shell/about.ts";
 import { Icon, type IconName } from "./shell/icons.tsx";
 import { when as ago } from "./shell/Nav.tsx";
-import { LEARN, todayLine, todayModel, untilText, type LineRow, type TodayEvent, type TodayModel } from "./shell/today.ts";
+import { todayFocus, todayLine, todayModel, untilText, type LineRow, type TodayFocus, type TodayModel } from "./shell/today.ts";
 import { intlLocale, t, type Key } from "./i18n/index.ts";
+import { plainText } from "./markdown.ts";
 import "./today.css";
 
 export interface TodayProps {
@@ -48,18 +50,25 @@ function placeLink(location?: string): { href: string; site: string } | null {
 }
 
 /** 一句: a greeting, then the one thing that is next, with the way in under it. */
-function Lede({ model, over, name, now, go }: { model: TodayModel; over: number; name: string | null; now: number; go: TodayProps["go"] }) {
+function Lede({ model, focus, over, name, go, doing }: {
+  model: TodayModel; focus: TodayFocus; over: number; name: string | null; go: TodayProps["go"]; doing: Doing;
+}) {
   const hello = t(`today.hi.${model.part}`) + (name ? t("today.hi.name", { name }) : "") + t("today.stop");
-  const lead: TodayEvent | undefined = model.current ?? model.next;
+  const decision = focus.kind === "decision" ? focus.item : undefined;
+  const expanded = !!decision && doing.open === decision.id;
+  const lead = focus.kind === "event" ? focus.event : undefined;
+  const imminent = focus.kind === "event" && focus.imminent;
   const place = placeLink(lead?.event.location);
   let said: ReactNode;
-  if (model.current) {
+  if (decision) {
+    said = <b>{decision.title}</b>;
+  } else if (model.current) {
     said = <>
       <b>{t("today.now", { title: model.current.event.title })}</b><span>{t("today.now.until", { until: model.current.until })}</span>
       {model.next && <span> {t("today.then", { at: model.next.at, title: model.next.event.title })}{t("today.stop")}</span>}
     </>;
   } else if (model.next) {
-    said = <><b>{t("today.next", { at: model.next.at, title: model.next.event.title })}</b><span>{t("today.next.in", { left: untilText(model.next.startMs - now) })}</span></>;
+    said = <><b>{t("today.next", { at: model.next.at, title: model.next.event.title })}</b><span>{t("today.next.in", { left: untilText(model.next.startMs - model.now) })}</span></>;
   } else if (model.calendar === "none") {
     said = <><b>{t("today.noCalendar")}</b><span>{t("today.noCalendar.hint")}</span></>;
   } else if (model.turned) {
@@ -77,10 +86,21 @@ function Lede({ model, over, name, now, go }: { model: TodayModel; over: number;
     <section className="today-lede">
       <p className="today-hi">{hello}</p>
       <h2 className="today-next">{said}</h2>
-      {lead ? (
+      {decision ? (
+        <>
+          {!expanded && decision.summary && <p className="today-reason">{decision.summary}</p>}
+          <div className="today-way">
+            <button type="button" className="today-btn" data-solid={!expanded || undefined} aria-expanded={expanded}
+              onClick={() => doing.onOpen(expanded ? null : decision.id)}>
+              {expanded ? t("common.close") : decision.proposal ? t("today.reviewChange") : decision.run?.request ? t("notice.answer") : t("notice.view")}
+            </button>
+          </div>
+          {expanded && <div className="today-decide today-featured-detail">{doing.card(decision)}</div>}
+        </>
+      ) : lead ? (
         <div className="today-way">
-          {lead.event.meeting ? <Out href={lead.event.meeting} solid>{t("today.join")}</Out>
-            : place ? <Out href={place.href} solid>{place.site}</Out>
+          {lead.event.meeting ? <Out href={lead.event.meeting} solid={imminent}>{t("today.join")}</Out>
+            : place ? <Out href={place.href} solid={imminent}>{place.site}</Out>
             : lead.event.link ? <Out href={lead.event.link}>{t("today.openEvent")}</Out> : null}
           {lead.event.location && !place && <span className="today-where">{lead.event.location}</span>}
         </div>
@@ -150,7 +170,7 @@ interface Doing {
   /** The waiting thing that is open, and its card. */
   open: string | null;
   onOpen(id: string | null): void;
-  card(row: Extract<LineRow, { kind: "wait" }>): ReactNode;
+  card(item: InboxItem): ReactNode;
   /** Suggested hours the user has taken, by todo; and taking one, where a calendar can be written to. */
   placed: ReadonlyMap<string, string>;
   onPlace?: (todo: Todo, hour: string) => void;
@@ -164,7 +184,7 @@ function Rows({ rows, doing }: { rows: LineRow[]; doing: Doing }) {
       const open = doing.open === row.item.id;
       return [
         <Row key={row.key} when={t("today.wait")} tone="wait" icon="inbox" k="warm" what={row.item.title} why={open ? undefined : row.item.summary} open={open} onOpen={() => doing.onOpen(open ? null : row.item.id)} />,
-        open && <li key={`${row.key}:card`} className="today-decide">{doing.card(row)}</li>,
+        open && <li key={`${row.key}:card`} className="today-decide">{doing.card(row.item)}</li>,
       ];
     }
     if (row.kind === "event") {
@@ -177,24 +197,23 @@ function Rows({ rows, doing }: { rows: LineRow[]; doing: Doing }) {
     if (row.kind === "todo") {
       const { todo } = row;
       const tick = { ticked: doing.ticked.has(todo.id), onTick: () => doing.onTick(todo.id) };
-      const study = todo.area === LEARN ? t("today.study") : "";
       if (row.block) {
         // Its hour is an event of the same name: one row, the todo's ring and the event's way in.
         const place = placeLink(row.block.location);
         const out = row.block.meeting ? { href: row.block.meeting, label: t("today.join") } : place ? { href: place.href, label: place.site } : undefined;
-        return <Row key={row.key} when={row.at} k={row.k} what={todo.title} why={[study, place ? "" : row.block.location ?? ""].filter(Boolean).join(" · ")} out={out} {...tick} onOpen={() => go("calendar.week")} />;
+        return <Row key={row.key} when={row.at} k={row.k} what={todo.title} why={place ? "" : row.block.location ?? ""} out={out} {...tick} onOpen={() => go("calendar.week")} />;
       }
       const taken = doing.placed.get(todo.id);
       if (taken ?? row.guess) {
         const hour = (taken ?? row.guess)!;
         const why = taken ? t("today.placed") : row.after ? t("today.guess.after", { title: row.after }) : t("today.guess.free");
-        return <Row key={row.key} when={hour} tone={taken ? undefined : "guess"} k={row.k} what={todo.title} why={[study, why].filter(Boolean).join(" · ")} {...tick}
+        return <Row key={row.key} when={hour} tone={taken ? undefined : "guess"} k={row.k} what={todo.title} why={why} {...tick}
           act={!taken && doing.onPlace ? { label: t("today.place"), onAct: () => doing.onPlace!(todo, hour) } : undefined} onOpen={() => go("todo.list")} />;
       }
-      return <Row key={row.key} when={row.at} tone={row.late ? "late" : undefined} k={row.k} what={todo.title} why={[study, row.late ? t("today.overdue") : ""].filter(Boolean).join(" · ")} {...tick} onOpen={() => go("todo.list")} />;
+      return <Row key={row.key} when={row.at} tone={row.late ? "late" : undefined} k={row.k} what={todo.title} why={row.late ? t("today.overdue") : ""} {...tick} onOpen={() => go("todo.list")} />;
     }
     if (row.kind === "link") {
-      return <Row key={row.key} icon="link" k="violet" what={row.clip.title} why={`${t("today.study")} · ${row.clip.site}`} out={{ href: row.clip.url, label: t("today.open") }} onOpen={() => go("link.list")} />;
+      return <Row key={row.key} icon="link" k={row.k ?? undefined} what={row.clip.title} why={`${row.topic} · ${row.clip.site}`} out={{ href: row.clip.url, label: t("today.open") }} onOpen={() => go("link.list")} />;
     }
     const { message } = row;
     return <Row key={row.key} icon="mail" k="teal" what={message.from} why={message.subject} onOpen={() => go("mail.inbox", `${message.account}|${message.id}`)} />;
@@ -212,6 +231,8 @@ export function Today({ state, name, go, onOpenConversation, line: bar }: TodayP
   const now = useNow();
   const model = useMemo(() => todayModel(state, now), [state, now]);
   const line = useMemo(() => todayLine(model), [model]);
+  const focus = todayFocus(model);
+  const waiting = focus.kind === "decision" ? line.wait.filter((row) => row.kind !== "wait" || row.item.id !== focus.item.id) : line.wait;
   const [pastOpen, setPastOpen] = useState(false);
   const [rest, setRest] = useState<Rest | null>(null);
   // A todo ticked here is struck through at once; the home node's next state takes it off the line.
@@ -247,8 +268,8 @@ export function Today({ state, name, go, onOpenConversation, line: bar }: TodayP
   };
   const inPlace: Doing = {
     go, ticked, onTick: tick, open, onOpen: (id) => { setOpen(id); setSaid(null); }, placed, onPlace: target ? place : undefined,
-    card: ({ item }) => (
-      <Detail item={item} mail={state.modules.mail as MailSnapshot | undefined} line={bar} onOpenConversation={onOpenConversation}
+    card: (item) => (
+      <Detail key={item.id} item={item} mail={state.modules.mail as MailSnapshot | undefined} line={bar} onOpenConversation={onOpenConversation}
         conversationTitle={state.conversations.find((conversation) => conversation.id === item.conversationId)?.title}
         onDone={(message) => { setOpen(null); setSaid(message ? { text: message } : null); }} />
     ),
@@ -259,14 +280,15 @@ export function Today({ state, name, go, onOpenConversation, line: bar }: TodayP
   const clock = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
   const [y, m, d] = model.ahead.date.split("-").map(Number);
   const tomorrowDay = new Date(y, m - 1, d).toLocaleDateString(intlLocale(), { weekday: "short" });
-  const atNow = line.past.length + line.wait.length + line.ahead.length > 0;
+  const atNow = line.past.length + waiting.length + line.moreWaiting + line.ahead.length > 0;
   const hasLine = atNow || line.within.length > 0 || line.tomorrow.length > 0;
 
   const { mail, doing, done } = model;
   const mailShown = mail.state === "ok" && mail.today > 0;
   const mailLeft = mail.unread - mail.machine - mail.rows.length;
   const mailOpens = mail.rows.length > 0 || mail.machine > 0;
-  const hasRest = mailShown || mail.state === "error" || doing.length > 0 || done.length > 0 || model.late > 0;
+  const calendarSetup = focus.kind === "decision" && model.calendar === "none";
+  const hasRest = calendarSetup || mailShown || mail.state === "error" || doing.length > 0 || done.length > 0 || model.late > 0;
   const count = (key: Rest, text: string) => (
     <button type="button" className="today-count" aria-expanded={rest === key} onClick={() => setRest(rest === key ? null : key)}><Counted text={text} /></button>
   );
@@ -275,7 +297,16 @@ export function Today({ state, name, go, onOpenConversation, line: bar }: TodayP
     <div className="today">
       <div className="today-col">
         {/* The count the sentence gives is the count folded away just under it. */}
-        <Lede model={model} over={line.past.length} name={name} now={now} go={go} />
+        <Lede model={model} focus={focus} over={line.past.length} name={name} go={go} doing={inPlace} />
+        {said && <p className="today-said" data-problem={said.problem || undefined} role="status">{said.text}</p>}
+        {model.advice && (
+          // What today's result in sections said to start with (docs/design/user-defined.md §6.3): one line, the way into it whole.
+          <button type="button" className="today-advice" data-k={model.advice.k} title={t("today.advice.open")}
+            onClick={() => (model.advice!.inbox ? go("core.inbox", model.advice!.inbox) : go("core.automations"))}>
+            <Icon name="bulb" />
+            <span><b>{model.advice.name}</b>{plainText(model.advice.text)}</span>
+          </button>
+        )}
 
         {hasLine && (
           <ol className="today-line">
@@ -284,8 +315,7 @@ export function Today({ state, name, go, onOpenConversation, line: bar }: TodayP
             )}
             {pastOpen && rows(line.past)}
             {atNow && <li className="today-mark" data-now>{t("today.mark.now", { at: clock })}</li>}
-            {said && <li className="today-said" data-problem={said.problem || undefined} role="status">{said.text}</li>}
-            {rows(line.wait)}
+            {rows(waiting)}
             {line.moreWaiting > 0 && <Row quiet what={t("today.wait.more", { n: line.moreWaiting })} onOpen={() => go("core.inbox")} />}
             {rows(line.ahead)}
             {line.within.length > 0 && <li className="today-mark">{t("today.mark.within")}</li>}
@@ -298,6 +328,7 @@ export function Today({ state, name, go, onOpenConversation, line: bar }: TodayP
 
         {hasRest && (
           <div className="today-rest">
+            {calendarSetup && <button type="button" className="today-count" onClick={() => go("calendar.week")}>{t("today.connectCalendar")}</button>}
             {mailShown && (mailOpens
               ? count("mail", mail.unread ? t("today.c.mailUnread", { n: mail.today, unread: mail.unread }) : t("today.c.mail", { n: mail.today }))
               : <button type="button" className="today-count" onClick={() => go("mail.inbox")}><Counted text={t("today.c.mail", { n: mail.today })} /></button>)}

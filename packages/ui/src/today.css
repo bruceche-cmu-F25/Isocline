@@ -9,6 +9,7 @@
 .today-lede { min-width: 0; }
 .today-hi { margin: 0; color: var(--muted); font-size: .875rem; }
 .today-next { margin: 4px 0 0; color: var(--muted); font-size: 1.375rem; line-height: 1.45; font-weight: 400; letter-spacing: -.01em; text-wrap: pretty; overflow-wrap: anywhere; }
+.today-reason { margin: 6px 0 0; color: var(--copy); font-size: .9375rem; line-height: 1.6; overflow-wrap: anywhere; }
 .today-next b { color: var(--ink); font-weight: 600; }
 .today-way { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding-top: 14px; }
 .today-where { min-width: 0; color: var(--copy); font-size: .875rem; overflow-wrap: anywhere; }
@@ -52,12 +53,20 @@
 /* A waiting thing, open: the Inbox's own card under its row, without the heading the row already is. */
 .today-row[data-open] { background: var(--wash); border-radius: 10px 10px 0 0; }
 .today-decide { margin: 0 -10px 6px; padding: 4px 14px 16px 102px; border-radius: 0 0 10px 10px; background: var(--wash); }
+.today-lede .today-featured-detail { margin: 12px 0 0; padding: 16px; border-radius: 10px; }
 .today-decide .inbox-detail { width: 100%; margin: 0; gap: 12px; }
 .today-decide .inbox-detail-head { display: none; }
 .today-decide .inbox-summary { font-size: .875rem; }
 /* What a thing done here answered with. */
 .today-said { padding: 2px 0 6px; color: var(--copy); font-size: .8125rem; }
 .today-said[data-problem] { color: var(--now); }
+/* The lead of today's result in sections: a quiet line under the sentence, its automation's colour on the mark. */
+.today-advice { display: flex; align-items: baseline; gap: 8px; width: 100%; margin: 4px 0 8px; padding: 9px 12px; border: 0; border-radius: 8px;
+  background: var(--wash); color: var(--copy); font: inherit; font-size: .875rem; line-height: 1.5; text-align: start; cursor: pointer; }
+.today-advice:hover { background: color-mix(in oklab, var(--wash) 70%, var(--line)); }
+.today-advice svg { flex: none; align-self: center; width: 15px; height: 15px; color: var(--k-solid, var(--alf)); }
+.today-advice span { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.today-advice b { margin-inline-end: 6px; color: var(--ink); font-weight: 600; }
 .today-row[data-past] { opacity: .5; }
 .today-row[data-quiet] .today-text b { color: var(--muted); font-size: .8125rem; font-weight: 400; }
 .today-row[data-quiet]:hover .today-text b { color: var(--ink); }

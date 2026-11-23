@@ -322,6 +322,71 @@ export function suggestTodo(world: World, input: { title: string; due?: string; 
   });
 }
 
+/** Letters and digits only, lower case: "交房租。" and "交房租" are one title. */
+const plain = (title: string) => title.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+
+/** An open todo the new one would repeat: the same title, or one naming the other (at least two letters) due the
+ * same day ("买牛奶和鸡蛋" is not "买牛奶"). */
+export function sameTodo(world: World, input: { title: string; due?: string }): Todo | undefined {
+  const title = plain(input.title ?? "");
+  if (!title) return undefined;
+  const open = readAll(world).filter(isOpen);
+  return open.find((todo) => plain(todo.title) === title)
+    ?? open.find((todo) => {
+      const other = plain(todo.title);
+      return Math.min(other.length, title.length) >= 2 && (other.includes(title) || title.includes(other)) && !!input.due && todo.due === input.due;
+    });
+}
+
+/** What the calendar module's calendar.add step carries, as far as a todo needs it. */
+interface ProposedEvent { title?: string; when?: { start: string; end: string } | { date: string; endDate?: string }; repeat?: unknown }
+
+/** A proposed event as a todo: due its day, at its start; a whole-day one over several days is a range. What repeats
+ * is left out (it would be one todo for every time). */
+function eventTodo(input: unknown): { title: string; due: string; at?: string; startDate?: string; allDay: boolean } | null {
+  const event = (input ?? {}) as ProposedEvent;
+  const title = event.title?.trim();
+  if (!title || !event.when || event.repeat) return null;
+  if ("date" in event.when) {
+    const last = event.when.endDate ?? event.when.date;
+    return { title, due: last, ...(last !== event.when.date ? { startDate: event.when.date } : {}), allDay: true };
+  }
+  const start = new Date(event.when.start);
+  const at = clockOf(event.when.start);
+  return Number.isNaN(start.getTime()) || !at ? null : { title, due: localDate(start), at, allDay: false };
+}
+
+/** The user wants a meeting they mention in the calendar and on the todo list both (Bruce, 2026-11-23). When a run
+ * proposes adding an event, its todo is made at once, whatever the user then says to the proposal; except what the
+ * calendar would turn into a todo by itself once accepted (the `fromCalendar` setting), which would be there twice.
+ * A proposal that corrects an earlier one moves that one's todo, while the user has not changed it. Returns what was
+ * done, a line each, for the run. */
+export function todosForProposedEvents(world: World, steps: readonly { op: string; input: unknown }[], replaced: readonly { op: string; input: unknown }[] = []): string[] {
+  const mode = getTodoSettings(world).fromCalendar;
+  const wanted = (event: { allDay: boolean }) => mode !== "all" && !(mode === "allday" && event.allDay);
+  const adds = (list: readonly { op: string; input: unknown }[]) => list.filter((step) => step.op === "calendar.add").map((step) => eventTodo(step.input)).filter((event) => event !== null);
+  const earlier = adds(replaced);
+  const lines: string[] = [];
+  for (const event of adds(steps)) {
+    if (!wanted(event)) continue;
+    const open = readAll(world).filter(isOpen);
+    const exactly = (todo: Todo, as: typeof event) => todo.title === as.title && (todo.due ?? null) === as.due && (todo.at ?? null) === (as.at ?? null);
+    const patch = { title: event.title, due: event.due, at: event.at ?? "", startDate: event.startDate ?? "" };
+    const moved = earlier.map((before) => open.find((todo) => exactly(todo, before))).find((todo) => todo !== undefined);
+    if (moved) {
+      const result = updateTodo(world, { id: moved.id }, patch);
+      if ("id" in result) lines.push(`Its todo moved with it: ${formatTodo(result)}. Do not add another.`);
+      continue;
+    }
+    // One the run (or the user) has already written: the same day, and the same hour or a title that names it.
+    const same = open.find((todo) => todo.due === event.due && ((event.at && todo.at === event.at) || todo.title.includes(event.title) || event.title.includes(todo.title)));
+    if (same) { lines.push(`The todo list already has it: ${formatTodo(same)}.`); continue; }
+    const { todo } = insertTodo(world, patch.startDate ? { title: event.title, due: event.due, startDate: event.startDate } : { title: event.title, due: event.due, ...(event.at ? { at: event.at } : {}) }, "added");
+    lines.push(`A todo for it was added to the list: ${formatTodo(todo)}. Do not add another.`);
+  }
+  return lines;
+}
+
 /** A calendar event as the mirror needs it (the calendar module's events fit). */
 export interface SourceEvent {
   id: string;

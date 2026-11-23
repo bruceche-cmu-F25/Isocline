@@ -245,6 +245,7 @@ export const calendarModule = defineModule({
   guidance: [
     "Calendar: the user's Google Calendar is mirrored here and refreshed every few minutes; calendar_list reads it.",
     "To add an event or hold time, move an event the user organizes, or answer an invitation, propose it (calendar_add, calendar_move, calendar_respond inside `propose`): nothing changes in their calendar until they accept.",
+    "There is no tool to cancel or delete an event: say so, and that they can delete one they organize on the Calendar page here (open it with show_view); for someone else's meeting, propose declining it.",
     "Propose straight away from what they said, without asking first: an event with no end is one hour unless its kind suggests otherwise (an exam is two or three), a part of the day with no hour (\"afternoon\") is a hold over that part, and times are the user's local time. Say what you assumed in the summary; they change it there.",
   ].join(" "),
   snapshot(world): CalendarSnapshot {

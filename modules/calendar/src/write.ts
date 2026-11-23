@@ -24,7 +24,10 @@ const RESPONSES = ["accepted", "declined", "tentative"] as const;
 type Response = (typeof RESPONSES)[number];
 
 type When = CalendarWhen;
-export interface AddInput { account: string; calendarId: string; calendar: string; title: string; when: When; location?: string; notes?: string }
+/** How a new event repeats: every day, every weekday (Mon–Fri), every week or every month on its first day's
+ * weekday or date, until a last day (inclusive) or for good. */
+export interface Repeat { every: "day" | "weekday" | "week" | "month"; until?: string }
+export interface AddInput { account: string; calendarId: string; calendar: string; title: string; when: When; location?: string; notes?: string; repeat?: Repeat }
 export interface MoveInput { account: string; calendarId: string; eventId: string; title: string; etag: string | null; when: When; notify: boolean; attendees: number }
 /** What the user changed of an event, by hand: only what is named is set. `title` is what it was called before. */
 export interface EditInput { account: string; calendarId: string; eventId: string; title: string; changes: { title?: string; when?: When; location?: string; notes?: string }; notify: boolean; attendees: number }
@@ -39,7 +42,7 @@ export function newEventId(): string {
 }
 
 function format(when: When, locale: Locale): string {
-  const tag = locale === "zh" ? "zh-CN" : "en-US";
+  const tag = localeTag(locale);
   const day = (date: Date) => date.toLocaleDateString(tag, { month: "short", day: "numeric", weekday: "short" });
   const time = (date: Date) => date.toLocaleTimeString(tag, { hour: "2-digit", minute: "2-digit", hour12: false });
   if ("date" in when) {
@@ -52,16 +55,32 @@ function format(when: When, locale: Locale): string {
   return start.toDateString() === end.toDateString() ? `${day(start)} ${time(start)}–${time(end)}` : `${day(start)} ${time(start)} – ${day(end)} ${time(end)}`;
 }
 
-const SAY = {
+const SAY: Record<Locale, {
+  add(input: AddInput): string; move(input: MoveInput): string; respond(input: RespondInput): string; delete(input: DeleteInput): string; edit(input: EditInput): string;
+  /** The line a proposal's summary gets when the user moved one of its events by hand; `lead` is how it starts, so a
+   * newer move of the same event replaces it. */
+  movedLead(title: string): string; moved(title: string, when: When): string;
+  /** Appended to a step that adds or moves an event over others the user has then. */
+  clash(events: Array<{ title: string; time: string }>): string;
+  noPermission: string;
+}> = {
   zh: {
-    add: (input: AddInput) => `在「${input.calendar}」加「${input.title}」：${format(input.when, "zh")}`,
+    movedLead: (title) => `↪ 你把「${title}」`,
+    moved: (title, when) => `↪ 你把「${title}」改到了 ${format(when, "zh")}`,
+    noPermission: "没有改这个日历的权限：在设置里打开「日历：替你加和改」",
+    add: (input: AddInput) => `在「${input.calendar}」加「${input.title}」：${format(input.when, "zh")}${input.repeat ? `，${{ day: "每天", weekday: "工作日每天", week: "每周", month: "每月" }[input.repeat.every]}重复${input.repeat.until ? `到 ${input.repeat.until}` : ""}` : ""}`,
+    clash: (events) => `（和${events.map((event) => `「${event.title}」${event.time}`).join("、")}重叠）`,
     move: (input: MoveInput) => `把「${input.title}」改到 ${format(input.when, "zh")}${input.notify ? `（会通知 ${input.attendees - 1} 位参会者）` : ""}`,
     respond: (input: RespondInput) => `${{ accepted: "接受", declined: "拒绝", tentative: "暂定" }[input.response]}「${input.title}」（${input.at}）的邀请`,
     delete: (input: DeleteInput) => `删除「${input.title}」（${input.at}）${input.notify ? `（会通知 ${input.attendees - 1} 位参会者）` : ""}`,
     edit: (input: EditInput) => `改「${input.title}」${input.changes.title ? ` →「${input.changes.title}」` : ""}${input.changes.when ? `：${format(input.changes.when, "zh")}` : ""}${input.notify ? `（会通知 ${input.attendees - 1} 位参会者）` : ""}`,
   },
   en: {
-    add: (input: AddInput) => `Add “${input.title}” to ${input.calendar}: ${format(input.when, "en")}`,
+    movedLead: (title) => `↪ You moved “${title}”`,
+    moved: (title, when) => `↪ You moved “${title}” to ${format(when, "en")}`,
+    noPermission: "No permission to change this calendar: turn on “Calendar: add and change” in Settings",
+    add: (input: AddInput) => `Add “${input.title}” to ${input.calendar}: ${format(input.when, "en")}${input.repeat ? `, repeating ${{ day: "daily", weekday: "every weekday", week: "weekly", month: "monthly" }[input.repeat.every]}${input.repeat.until ? ` until ${input.repeat.until}` : ""}` : ""}`,
+    clash: (events) => ` (overlaps ${events.map((event) => `“${event.title}” ${event.time}`).join(", ")})`,
     move: (input: MoveInput) => `Move “${input.title}” to ${format(input.when, "en")}${input.notify ? ` (tells ${input.attendees - 1} other ${input.attendees - 1 === 1 ? "guest" : "guests"})` : ""}`,
     respond: (input: RespondInput) => `${{ accepted: "Accept", declined: "Decline", tentative: "Maybe:" }[input.response]} “${input.title}” (${input.at})`,
     delete: (input: DeleteInput) => `Delete “${input.title}” (${input.at})${input.notify ? ` (tells ${input.attendees - 1} other ${input.attendees - 1 === 1 ? "guest" : "guests"})` : ""}`,
@@ -73,6 +92,8 @@ const Instant = Type.String({ maxLength: 40 });
 const Day = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
 const WhenSchema = Type.Union([Type.Object({ start: Instant, end: Instant }), Type.Object({ date: Day, endDate: Day })]);
 const Ids = { account: Type.String({ maxLength: 320 }), calendarId: Type.String({ maxLength: 300 }) };
+const Every = Type.Union([Type.Literal("day"), Type.Literal("weekday"), Type.Literal("week"), Type.Literal("month")]);
+const RepeatSchema = Type.Object({ every: Every, until: Type.Optional(Day) });
 
 function checkWhen(when: When): string | null {
   if ("date" in when) return when.endDate < when.date ? "The last day is before the first" : null;
@@ -96,7 +117,7 @@ export const calendarOps = [
   defineOp({
     name: "calendar.add",
     input: Type.Object({ ...Ids, calendar: Type.String({ maxLength: 120 }), title: Type.String({ minLength: 1, maxLength: 300 }), when: WhenSchema,
-      location: Type.Optional(Type.String({ maxLength: 300 })), notes: Type.Optional(Type.String({ maxLength: 4000 })) }),
+      location: Type.Optional(Type.String({ maxLength: 300 })), notes: Type.Optional(Type.String({ maxLength: 4000 })), repeat: Type.Optional(RepeatSchema) }),
     run: (world, input) => queue(world, "add", input as AddInput),
   }),
   defineOp({
@@ -125,10 +146,11 @@ export const calendarOps = [
       if (checkWhen(input.when as When)) return { error: "bad_time" };
       const locale = userLocale(world);
       const next = { ...(step.input as AddInput | MoveInput), when: input.when as When };
-      const preview = step.op === "calendar.add" ? SAY[locale].add(next as AddInput) : SAY[locale].move(next as MoveInput);
+      const moving = step.op === "calendar.move" ? `${(next as MoveInput).calendarId}:${(next as MoveInput).eventId}` : undefined;
+      const preview = withClashes(world, step.op === "calendar.add" ? SAY[locale].add(next as AddInput) : SAY[locale].move(next as MoveInput), next.when, moving);
       // One line per event the user moved, the newest in place of an older one.
-      const lead = locale === "zh" ? `↪ 你把「${next.title}」` : `↪ You moved “${next.title}”`;
-      const note = `${lead}${locale === "zh" ? "改到了 " : " to "}${format(next.when, locale)}`;
+      const lead = SAY[locale].movedLead(next.title);
+      const note = SAY[locale].moved(next.title, next.when);
       const summary = [...proposal.summary.split("\n").filter((line) => !line.startsWith(lead)), note].filter(Boolean).join("\n");
       try {
         amendProposal(world, proposal.id, input.step, { ...step, input: next, preview }, summary);
@@ -292,7 +314,7 @@ function eventRow(world: World, ref: string): Row | null {
 /** When an event of the mirror is, in a few words. */
 function whenWas(row: Row, locale: Locale): string {
   return row.start_at
-    ? new Date(row.start_at).toLocaleString(locale === "zh" ? "zh-CN" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
+    ? new Date(row.start_at).toLocaleString(localeTag(locale), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
     : row.start_date;
 }
 function source(world: World, account: string) {
@@ -300,6 +322,51 @@ function source(world: World, account: string) {
   if (!row) return null;
   return { canWrite: row.can_write === 1, calendars: JSON.parse(row.calendars as string) as Array<{ id: string; name: string; writable?: boolean }> };
 }
+/** A step's words with the user's timed events it would overlap (not ones they declined), so both the user and the
+ * run see a clash without anyone having to spot it. `except`: the event being moved. */
+function withClashes(world: World, preview: string, when: When, except?: string): string {
+  if ("date" in when) return preview;
+  const hhmm = (at: number) => { const date = new Date(at); return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; };
+  const rows = world.db.prepare(`SELECT id, title, start_at, end_at FROM calendar_events WHERE all_day = 0 AND start_at < ? AND end_at > ?
+    AND (response IS NULL OR response != 'declined') ORDER BY start_at LIMIT 4`).all(Date.parse(when.end), Date.parse(when.start));
+  const events = rows.filter((row) => row.id !== except).slice(0, 3)
+    .map((row) => ({ title: row.title as string, time: `${hhmm(row.start_at as number)}–${hhmm(row.end_at as number)}` }));
+  return events.length ? `${preview}${SAY[userLocale(world)].clash(events)}` : preview;
+}
+
+/** Words that say what kind of thing it is, not which one: two meetings are not the same for both being 开会. */
+const GENERIC = new Set(["开会", "会议", "见面", "吃饭", "午饭", "晚饭", "meeting", "call", "sync", "lunch", "dinner", "with"]);
+/** Whether two titles name the same thing: the same letters, or sharing a name (two pairs of Chinese characters, or
+ * a word of three letters or more) beyond the generic words ("和张伟开会" and "和张伟同步"; not "和导师开会" and "组会"). */
+export function sameTitle(a: string, b: string): boolean {
+  const plain = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  if (plain(a) && plain(a) === plain(b)) return true;
+  const parts = (text: string) => {
+    const words = (text.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).map((word) => `w:${word}`);
+    const pairs = (text.match(/\p{Script=Han}+/gu) ?? []).flatMap((run) => Array.from({ length: Math.max(0, run.length - 1) }, (_, i) => `h:${run.slice(i, i + 2)}`));
+    return new Set([...words, ...pairs].filter((part) => !GENERIC.has(part.slice(2))));
+  };
+  const theirs = parts(b);
+  const shared = [...parts(a)].filter((part) => theirs.has(part));
+  return shared.some((part) => part.startsWith("w:")) || shared.length >= 2;
+}
+
+/** An event of the mirror the new one would repeat: one with a title naming the same thing, starting the same
+ * minute (timed) or on the same days (all-day). Declined ones do not count; another meeting at that time is a clash,
+ * which the step names, not a twin. */
+function sameEvent(world: World, title: string, when: When): { title: string; at: string } | null {
+  const hhmm = (at: number) => { const date = new Date(at); return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; };
+  if ("date" in when) {
+    const rows = world.db.prepare(`SELECT title FROM calendar_events WHERE all_day = 1 AND start_date = ? AND end_date = ?
+      AND (response IS NULL OR response != 'declined')`).all(when.date, when.endDate);
+    const row = rows.find((candidate) => sameTitle(title, candidate.title as string));
+    return row ? { title: row.title as string, at: when.date } : null;
+  }
+  const row = world.db.prepare(`SELECT title, start_at, end_at, start_date FROM calendar_events WHERE all_day = 0 AND start_at = ?
+    AND (response IS NULL OR response != 'declined')`).all(Date.parse(when.start)).find((candidate) => sameTitle(title, candidate.title as string));
+  return row ? { title: row.title as string, at: `${row.start_date} ${hhmm(row.start_at as number)}–${hhmm(row.end_at as number)}` } : null;
+}
+
 const NO_WRITE = "The user has not let Alfred change this calendar. Tell them they can turn on “Calendar: add and change” for the account in Settings.";
 const PROPOSE_ONLY = "Changing the calendar is never done directly: put this call in `propose`, and it happens when the user accepts.";
 
@@ -314,7 +381,7 @@ export const calendarWriteTools = [
   defineTool({
     name: "calendar_add",
     label: "Add to calendar",
-    description: "Add an event to the user's Google Calendar, or hold time for something (a todo, focus work). Only through `propose`: it happens when the user accepts. Goes to their main calendar unless you name another they can change.",
+    description: "Add an event to the user's Google Calendar, or hold time for something (a todo, focus work); with repeat, one event that repeats. Only through `propose`: it happens when the user accepts. Goes to their main calendar unless you name another they can change. The step says which of their events it overlaps.",
     level: "external",
     parameters: Type.Object({
       title: Type.String({ maxLength: 300 }), ...Times,
@@ -322,12 +389,20 @@ export const calendarWriteTools = [
       location: Type.Optional(Type.String({ maxLength: 300 })),
       notes: Type.Optional(Type.String({ maxLength: 4000, description: "Description" })),
       calendar: Type.Optional(Type.String({ description: "Calendar name, if not their main one" })),
+      repeat: Type.Optional(Type.Union([Type.Literal("day"), Type.Literal("weekday"), Type.Literal("week"), Type.Literal("month")], {
+        description: "For something that repeats (\"每周二组会\", \"every weekday standup\"): every day, every weekday (Mon–Fri), every week, or every month, starting at start. One event that repeats, never one event per time.",
+      })),
+      until: Type.Optional(Type.String({ description: "Last day it repeats, YYYY-MM-DD; leave out to repeat for good" })),
+      again: Type.Optional(Type.Boolean({ description: "true only when the user means another event than the one already in the calendar at that time" })),
     }),
     describe: (_world, params) => params.title,
     execute: () => PROPOSE_ONLY,
     pin(world, params) {
       const when = whenFrom(params, DEFAULT_MINUTES);
       if ("error" in when) return when;
+      // A model that did not read the calendar first would add what is there already ("周五下午2点和张伟开会").
+      const twin = params.again ? null : sameEvent(world, params.title, when);
+      if (twin) return { error: `Not proposed: the calendar already has “${twin.title}” ${twin.at}. If that is the event the user means, propose nothing and tell them it is there. Only if it is another event, call calendar_add again with again: true.` };
       const accounts = world.db.prepare("SELECT account FROM calendar_sources WHERE can_write = 1 ORDER BY account").all().map((row) => row.account as string);
       if (!accounts.length) return { error: NO_WRITE };
       const options = accounts.flatMap((account) => (source(world, account)?.calendars ?? []).filter((calendar) => calendar.writable).map((calendar) => ({ account, ...calendar })));
@@ -335,10 +410,16 @@ export const calendarWriteTools = [
         ? options.find((calendar) => calendar.name.toLowerCase() === params.calendar!.toLowerCase()) ?? options.find((calendar) => calendar.name.toLowerCase().includes(params.calendar!.toLowerCase()))
         : options[0];
       if (!target) return { error: `No calendar called ${params.calendar} that Alfred may change. Ones it may: ${options.map((calendar) => calendar.name).join(", ") || "none"}.` };
-      const input: AddInput = { account: target.account, calendarId: target.id, calendar: target.name, title: params.title.trim(), when, ...(params.location ? { location: params.location } : {}), ...(params.notes ? { notes: params.notes } : {}) };
+      if (params.until && !params.repeat) return { error: "until is only for an event that repeats" };
+      if (params.until && !/^\d{4}-\d{2}-\d{2}$/.test(params.until)) return { error: "until is YYYY-MM-DD" };
+      const repeat: Repeat | undefined = params.repeat ? { every: params.repeat, ...(params.until ? { until: params.until } : {}) } : undefined;
+      const input: AddInput = {
+        account: target.account, calendarId: target.id, calendar: target.name, title: params.title.trim(), when,
+        ...(params.location ? { location: params.location } : {}), ...(params.notes ? { notes: params.notes } : {}), ...(repeat ? { repeat } : {}),
+      };
       const problem = checkWhen(when);
       if (problem) return { error: problem };
-      return { op: "calendar.add", input, preview: SAY[userLocale(world)].add(input) };
+      return { op: "calendar.add", input, preview: withClashes(world, SAY[userLocale(world)].add(input), input.when) };
     },
   }),
   defineTool({
@@ -363,7 +444,7 @@ export const calendarWriteTools = [
         account: row.account, calendarId: row.calendar_id, eventId: row.id.slice(row.calendar_id.length + 1), title: row.title, etag: row.etag, when,
         notify: row.attendees > 1, attendees: row.attendees,
       };
-      return { op: "calendar.move", input, preview: SAY[userLocale(world)].move(input) };
+      return { op: "calendar.move", input, preview: withClashes(world, SAY[userLocale(world)].move(input), input.when, row.id) };
     },
   }),
   defineTool({
@@ -386,6 +467,24 @@ export const calendarWriteTools = [
     },
   }),
 ];
+
+/** A repeating event for Google: its rule, and its times with the home node's time zone, which Google needs to
+ * repeat a timed event across a daylight-saving change. */
+function repeating(when: When, repeat: Repeat) {
+  const rule = { day: "FREQ=DAILY", weekday: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", week: "FREQ=WEEKLY", month: "FREQ=MONTHLY" }[repeat.every];
+  let until = "";
+  if (repeat.until) {
+    const [y, m, d] = repeat.until.split("-").map(Number);
+    // Whole days end on a date; timed ones at the end of that local day, in UTC as the rule wants.
+    until = ";UNTIL=" + ("date" in when ? repeat.until.replaceAll("-", "") : new Date(y, m - 1, d, 23, 59, 59).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, ""));
+  }
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const time = googleTime(when);
+  return {
+    recurrence: [`RRULE:${rule}${until}`],
+    ...("date" in when ? time : { start: { ...time.start, timeZone }, end: { ...time.end, timeZone } }),
+  };
+}
 
 const googleTime = (when: When) => "date" in when
   ? { start: { date: when.date }, end: { date: addDays(when.endDate, 1) } }
@@ -423,7 +522,7 @@ async function deliverOne(world: World, session: GoogleSession, outbound: Outbou
   if (outbound.action === "add") {
     const input = outbound.payload as AddInput & { eventId: string };
     const answer = await session.send("POST", `${API}/calendars/${encodeURIComponent(input.calendarId)}/events?sendUpdates=none`, {
-      id: input.eventId, summary: input.title, ...googleTime(input.when),
+      id: input.eventId, summary: input.title, ...(input.repeat ? repeating(input.when, input.repeat) : googleTime(input.when)),
       ...(input.location ? { location: input.location } : {}), ...(input.notes ? { description: input.notes } : {}),
     }, { signal });
     if (answer.status === 409) return { state: "done", result: { id: input.eventId, already: true } };
@@ -497,7 +596,7 @@ export async function deliverCalendar(world: World, outbound: Outbound, services
   const google = services.google;
   const account = (outbound.payload as { account: string }).account;
   if (!google?.accounts().find((candidate) => candidate.email === account)?.capabilities.includes("calWrite")) {
-    return { state: "failed", error: localeOf(world.db) === "zh" ? "没有改这个日历的权限：在设置里打开「日历：替你加和改」" : "No permission to change this calendar: turn on “Calendar: add and change” in Settings" };
+    return { state: "failed", error: SAY[localeOf(world.db)].noPermission };
   }
   return deliverOne(world, await google.session(account), outbound, signal);
 }

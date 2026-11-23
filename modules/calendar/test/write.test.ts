@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { acceptProposal, CORE_MIGRATIONS, listNotices, listOpenProposals, listOutbound, openWorld, updateSettings, type World } from "@alfred/core";
 import { applyStep, assistantTools, deliverQueued, invokeOp, runQuery, runTools, ServiceError, type GoogleService } from "@alfred/module-kit";
 import { calendarModule, listEvents, syncCalendar, type CalendarSnapshot } from "../src/index.ts";
+import { sameTitle } from "../src/write.ts";
 
 const snapshotOf = (w: World) => calendarModule.snapshot!(w) as CalendarSnapshot;
 
@@ -85,6 +86,31 @@ test("holding time: proposed in the user's words, accepted, created under its ow
   assert.match(body.id, /^alfred[0-9a-v]{20}$/);
   assert.equal((sent[1].body as { id: string }).id, body.id, "the same event id both times");
   assert.deepEqual([body.summary, Date.parse(body.start.dateTime)], ["写方案", start.getTime()]);
+});
+
+test("a repeating event is one event with Google's rule and the time zone; a step names the events it overlaps", async () => {
+  const w = world();
+  const { google, sent } = fakeGoogle();
+  await syncCalendar(w, { google });
+  updateSettings(w, { locale: "zh" });
+  const add = calendarModule.tools.find((tool) => tool.name === "calendar_add")!;
+  // Over the standup (9:30–9:45 tomorrow).
+  const over = add.pin!(w, { title: "组会", start: local(at(1, 9)), end: local(at(1, 10)) } as never) as { preview: string };
+  assert.match(over.preview, /（和「Standup」09:30–09:45重叠）$/);
+  const free = add.pin!(w, { title: "组会", start: local(at(1, 11)), end: local(at(1, 12)) } as never) as { preview: string };
+  assert.doesNotMatch(free.preview, /重叠/);
+  assert.match(String((add.pin!(w, { title: "x", start: local(at(1, 11)), until: "2027-01-01" } as never) as { error: string }).error), /only for an event that repeats/);
+
+  const last = at(30, 0);
+  const until = `${last.getFullYear()}-${pad(last.getMonth() + 1)}-${pad(last.getDate())}`;
+  await proposeAndAccept(w, [{ tool: "calendar_add", params: { title: "组会", start: local(at(2, 15)), end: local(at(2, 16)), repeat: "week", until } }]);
+  assert.match(listOutbound(w)[0].preview, new RegExp(`15:00–16:00，每周重复到 ${until}$`));
+  await deliverQueued(w, calendarModule, { google }, signal);
+  const body = sent[0].body as { recurrence: string[]; start: { dateTime: string; timeZone: string }; end: { timeZone: string } };
+  assert.match(body.recurrence[0], /^RRULE:FREQ=WEEKLY;UNTIL=\d{8}T\d{6}Z$/);
+  assert.equal(body.start.timeZone, Intl.DateTimeFormat().resolvedOptions().timeZone);
+  assert.equal(body.end.timeZone, body.start.timeZone);
+  assert.equal(Date.parse(body.start.dateTime), at(2, 15).getTime());
 });
 
 test("moving: only events the user organizes, guests told, refused when Google's copy changed in between", async () => {
@@ -330,4 +356,28 @@ test("by hand: deleting an event the user organizes takes it out at once, tells 
   assert.equal(listOutbound(w)[0].state, "done", "410: the first try had deleted it");
   assert.equal(snapshotOf(w).events.some((candidate) => candidate.id === standup.id), false, "out of the mirror without a read");
   assert.deepEqual(listNotices(w).filter((notice) => notice.kind === "outbound"), []);
+});
+
+test("an event already in the calendar at that minute is not proposed again, unless the run says it is another one", async () => {
+  const w = world();
+  const { google } = fakeGoogle();
+  await syncCalendar(w, { google });
+  const propose = assistantTools(w, [calendarModule]).find((tool) => tool.name === "propose")!;
+  const ask = (params: Record<string, unknown>) => propose.execute({ title: "Add?", summary: "", calls: [{ tool: "calendar_add", params }] }, signal);
+  const twin = await ask({ title: "Daily standup", start: local(at(1, 9, 30)) });
+  assert.match(twin, /already has “Standup”.*again: true/);
+  assert.equal(listOpenProposals(w).length, 0);
+  // Another meeting at the same minute, or an overlap at another minute, is only named, not refused.
+  assert.match(await ask({ title: "Coffee", start: local(at(1, 9, 30)) }), /^Proposed/);
+  assert.match(await ask({ title: "Another standup", start: local(at(1, 9, 30)), again: true }), /^Proposed/);
+  assert.equal(listOpenProposals(w).length, 2);
+});
+
+test("two titles are the same event when they share a name, not just the kind of thing", () => {
+  assert.ok(sameTitle("和张伟开会", "和张伟同步"));
+  assert.ok(sameTitle("Daily standup", "Standup"));
+  assert.ok(sameTitle("牙医。", "牙医"));
+  assert.ok(!sameTitle("和导师开会", "组会"));
+  assert.ok(!sameTitle("和张伟开会", "和张三吃饭"));
+  assert.ok(!sameTitle("Lunch with Sarah", "Lunch with Tom"));
 });

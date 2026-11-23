@@ -186,7 +186,12 @@ export function localDate(at: Date = new Date()): string {
   return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
 }
 
-const DENIED = "The user did not allow this. Nothing was changed; do not try it another way.";
+/** HH:MM on the home node's clock. */
+export function localTime(at: Date = new Date()): string {
+  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+}
+
+const DENIED ="The user did not allow this. Nothing was changed; do not try it another way.";
 
 /** Returns the finished run, or the run as it stood when this executor lost
  * its lease (it then writes nothing more; the sweep records the interruption).
@@ -362,6 +367,7 @@ async function drive(world: World, run: Run, engine: EnginePort, options: Execut
     history: conversationBefore(world, run),
     tools,
     today: localDate(),
+    now: localTime(),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     locale: userLocale(world),
     onText: options.onLive ? (text) => options.onLive!({ runId: run.id, conversationId: run.conversationId, text }) : undefined,

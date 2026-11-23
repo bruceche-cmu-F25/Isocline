@@ -19,6 +19,7 @@ import type { Run, StateResponse } from "@alfred/protocol";
 import { automationTitle, hhmm, whenText } from "../automationText.ts";
 import { t } from "../i18n/dict.ts";
 import { inboxItems, type InboxItem } from "./inbox.ts";
+import { readSections } from "../sections.ts";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const localDate = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
@@ -90,15 +91,16 @@ export interface TodayModel {
   doing: Array<{ run: Run; title: string; sub: string; session: boolean }>;
   upcoming?: { name: string; when: string };
   done: TodayDone[];
-  /** Saved links filed under a topic in the 学习 area and not yet looked at, newest first. Not the Learning Hub
-   * (that is still in Robin): only what Alfred already keeps. */
-  study: Clip[];
+  /** Saved links the user filed under one of their topics and has not looked at yet, newest first, with the topic's
+   * name and its area's colour. No area is special (docs/design/user-defined.md §2.2). */
+  study: Array<{ clip: Clip; topic: string; k: string | null }>;
+  /** What a result in sections said to start with, when one came today (a morning brief, or any automation the user
+   * set to sections): its lead, the automation's name, and where it is read whole. The newest one, if several. */
+  advice?: { text: string; name: string; k: string; automationId: string; inbox?: string };
 }
 
 const GOING = new Set(["queued", "running", "cancelling"]);
 const TOP = 3, MAIL_ROWS = 4, DONE_ROWS = 6, STUDY_ROWS = 2;
-/** The shared area for learning (packages/core/src/areas.ts). */
-export const LEARN = "learn";
 
 /** A letter no person wrote and nobody answers: a one-time code, a sign-in or security notice, a no-reply sender.
  * Plain rules on the sender and the first words, so it is a fact about the letter, not a judgement of its worth. */
@@ -118,7 +120,6 @@ export function todayModel(state: StateResponse, now: number = Date.now()): Toda
   const todos = state.modules.todo as TodoSnapshot | undefined;
   const mail = state.modules.mail as MailSnapshot | undefined;
   const links = state.modules.link as LinksSnapshot | undefined;
-  const learning = new Set((links?.topics ?? []).filter((topic) => topic.area === LEARN).map((topic) => topic.id));
   const date = calendar?.today ?? todos?.today ?? localDate(now);
   const hour = new Date(now).getHours();
   const areaK = (id?: string) => state.areas?.find((area) => area.id === id)?.k ?? null;
@@ -191,9 +192,24 @@ export function todayModel(state: StateResponse, now: number = Date.now()): Toda
         at: conversation.updatedAt, conversationId: conversation.id, session: !!conversation.projectId })),
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, DONE_ROWS);
 
+  // Today's newest result in sections, by its lead: the model's judgement of where to start, said once at the top.
+  const advice = (state.automations ?? [])
+    .filter((automation) => automation.layout === "sections" && automation.lastRun?.state === "completed" && automation.lastRun.reply
+      && localDate(Date.parse(automation.lastRun.at)) === date)
+    .sort((a, b) => b.lastRun!.at.localeCompare(a.lastRun!.at))
+    .map((automation) => {
+      const read = readSections(automation.lastRun!.reply!);
+      const text = read.sections.length ? read.lead.map((row) => row.text).join(" ").trim() : "";
+      const item = results.find((result) => result.runId === automation.lastRun!.id);
+      return text ? { text, name: automationTitle(automation), k: automation.k ?? "alfred", automationId: automation.id, ...(item ? { inbox: item.id } : {}) } : null;
+    }).find(Boolean) ?? undefined;
+
   return {
-    now, date, part,
-    study: (links?.clips ?? []).filter((clip) => clip.state !== "seen" && !!clip.topicId && learning.has(clip.topicId)).slice(0, STUDY_ROWS),
+    now, date, part, ...(advice ? { advice } : {}),
+    study: (links?.clips ?? []).flatMap((clip) => {
+      const topic = clip.state !== "seen" && clip.topicId ? links?.topics.find((each) => each.id === clip.topicId) : undefined;
+      return topic ? [{ clip, topic: topic.name, k: areaK(topic.area) }] : [];
+    }).slice(0, STUDY_ROWS),
     calendar: !calendar?.sources?.length ? "none" : calendar.sources.some((source) => source.error) ? "error" : "ok",
     current, next, tomorrow,
     allDay: today.day.allDay,
@@ -213,6 +229,20 @@ export function todayModel(state: StateResponse, now: number = Date.now()): Toda
   };
 }
 
+export type TodayFocus =
+  | { kind: "event"; event: TodayEvent; imminent: boolean }
+  | { kind: "decision"; item: InboxItem }
+  | { kind: "summary" };
+
+/** A decision can be handled now. The calendar takes the lead when its event is underway or starts within 15 minutes. */
+export function todayFocus(model: TodayModel): TodayFocus {
+  const event = model.current ?? model.next;
+  const imminent = !!event && event.startMs - model.now <= 15 * 60_000;
+  const decision = model.waiting.top[0];
+  if (decision && !imminent) return { kind: "decision", item: decision };
+  return event ? { kind: "event", event, imminent } : { kind: "summary" };
+}
+
 /** One row of the day's line. Whatever it is, it is drawn the same way: when · what kind · what it is · the way in. */
 export type LineRow =
   | { key: string; kind: "wait"; item: InboxItem }
@@ -223,7 +253,7 @@ export type LineRow =
    * already holds an hour for it, an event of the same name, and the two are one row. */
   | { key: string; kind: "todo"; todo: Todo; k: string | null; at?: string; late: boolean; guess?: string; after?: string; block?: CalendarEvent }
   | { key: string; kind: "mail"; message: MailMessage }
-  | { key: string; kind: "link"; clip: Clip };
+  | { key: string; kind: "link"; clip: Clip; topic: string; k: string | null };
 
 /** The day in order (docs/design/today-and-inbox.md, 3.1b): one list, three marks on it (now, sometime today,
  * tomorrow), and no section for where a thing comes from. */
@@ -306,7 +336,7 @@ export function todayLine(model: TodayModel): TodayLine {
     within: [
       ...placed.filter((row) => !hasHour(row)),
       ...model.mail.rows.filter((message) => message.important).slice(0, LINE_MAIL).map((message): LineRow => ({ key: `m:${message.account}|${message.id}`, kind: "mail", message })),
-      ...model.study.map((clip): LineRow => ({ key: `l:${clip.id}`, kind: "link", clip })),
+      ...model.study.map(({ clip, topic, k }): LineRow => ({ key: `l:${clip.id}`, kind: "link", clip, topic, k })),
     ],
     tomorrow: shown,
     moreTomorrow: tomorrow.length - shown.length,

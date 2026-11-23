@@ -6,7 +6,7 @@
  * trusting its code. Third parties extend Alfred through MCP and skills instead.
  */
 import {
-  coreContext, getRun, openProposal, runCommand, withCoreContext, type Actor, type Migration, type ProposalStep, type RunTool, type World,
+  coreContext, getProposal, getRun, openProposal, runCommand, withCoreContext, type Actor, type Migration, type ProposalStep, type RunTool, type World,
   automationName, createAutomation, listAutomations, updateAutomation, userLocale, type AutomationView,
   addArea, deleteAreaRow, describeAreas, listAreas, type Area,
   addPreference, listPreferences, removePreference, MAX_PREFERENCE,
@@ -79,6 +79,10 @@ export interface AlfredModule {
   /** The user removed an area: move what of this module's was in it to `moveTo`, or to no area. Runs in the same
    * transaction as the removal (`removeArea`). */
   areaRemoved?(world: World, id: string, moveTo: string | null): void;
+  /** A run has just proposed these steps (any module's), replacing the steps of `replaced` if it corrects earlier
+   * proposals. A module may act on them at once (a proposed meeting goes on the todo list) and say what it did in
+   * a line the run reads. */
+  proposed?(world: World, proposal: { id: string; steps: readonly ProposalStep[]; replaced: readonly ProposalStep[] }): string | void;
   /** What a device needs to draw this module right now. JSON. */
   snapshot?(world: World): unknown;
   /** For a module that mirrors an outside service (a calendar, a mailbox): the home node calls `run` now and then,
@@ -310,7 +314,7 @@ export function askUserTool(): RunTool {
     label: "Ask",
     description: "Ask the user a short question when you cannot go on without their choice. A last resort: use it only when there is nothing sensible to guess and a wrong guess could not be put right afterwards; otherwise act on your best guess and say what you assumed. Ask about one thing, and offer 2–4 short options that each answer the whole question. Returns their answer.",
     parameters: Type.Object({
-      question: Type.String({ description: "One short question about one thing, in the user's language" }),
+      question: Type.String({ description: "One short question about one thing, in the language the user wrote in" }),
       options: Type.Optional(Type.Array(Type.String(), { maxItems: 6, description: "Suggested answers" })),
     }) as unknown as Record<string, unknown>,
     describe: (params) => String(params.question ?? "").slice(0, 120),
@@ -345,15 +349,18 @@ export function assistantTools(world: World, modules: readonly AlfredModule[]): 
       name: "propose",
       label: "Propose",
       description: [
-        "Prepare changes for the user to approve later, instead of making them now. Use it for anything the user should decide",
-        "(deleting, several changes at once, anything you are unsure they want), or when they asked you to suggest rather than do.",
+        "Prepare changes for the user to approve later, instead of making them now. Use it for what only happens on the user's yes",
+        "(anything in their calendar or mail), for deleting, for anything you are unsure they want, or when they asked you to suggest rather than do.",
+        "What you may simply do (adding or changing a todo) you do directly, not in a proposal, even when the same request also has something to propose.",
         "The user sees your title and summary in their inbox, with the exact steps, and can accept, decline or ask for a change;",
         "accepting runs exactly these steps, once. Do not also make these changes yourself. After proposing you can finish and say what you proposed.",
+        "When the user corrects something you proposed earlier in this conversation (another time, another title), propose the corrected whole with replaces: true; the earlier proposal is withdrawn.",
         `Each call names one of these tools with its parameters, as \`calls\` describes them: ${proposable.map((tool) => tool.name).join(", ")}.`,
       ].join(" "),
       parameters: Type.Object({
-        title: Type.String({ maxLength: 120, description: "The decision as a short question in the user's language, e.g. 删掉 3 条逾期很久的待办？" }),
-        summary: Type.String({ maxLength: 1200, description: "What will change and why, briefly, in the user's language" }),
+        title: Type.String({ maxLength: 120, description: "The decision as a short question, in the language the user wrote in (e.g. 删掉 3 条逾期很久的待办？ / Delete 3 long-overdue todos?)" }),
+        summary: Type.String({ maxLength: 1200, description: "What will change and why, briefly, in the language the user wrote in" }),
+        replaces: Type.Optional(Type.Boolean({ description: "true when this corrects a proposal you made earlier in this conversation; the earlier one is withdrawn" })),
         // One shape per tool, with that tool's own parameters and what it does: a run is never offered some of them
         // directly (anything `external`), so this is the only place it learns how to call them.
         calls: Type.Array(Type.Union(proposable.map((tool) => Type.Object({
@@ -385,8 +392,15 @@ export function assistantTools(world: World, modules: readonly AlfredModule[]): 
         }
         const run = coreContext()?.run;
         const conversationId = run ? getRun(world, run.id).run.conversationId : null;
-        const proposal = openProposal(world, { title: String(params.title ?? ""), summary: String(params.summary ?? ""), steps, subjects, conversationId });
-        return `Proposed "${proposal.title}" (${steps.length} step${steps.length > 1 ? "s" : ""}). It waits in the user's inbox for their decision; nothing has changed yet.`;
+        const proposal = openProposal(world, { title: String(params.title ?? ""), summary: String(params.summary ?? ""), steps, subjects, conversationId, replaces: params.replaces === true });
+        const replaced = proposal.replaced?.length ? ` It replaces ${proposal.replaced.length} earlier proposal${proposal.replaced.length > 1 ? "s" : ""}, now withdrawn.` : "";
+        // What modules did about it at once (a proposed meeting on the todo list). One that fails leaves the proposal be.
+        const earlier = (proposal.replaced ?? []).flatMap((id) => getProposal(world, id).steps);
+        const done = modules.flatMap((module) => {
+          try { return [module.proposed?.(world, { id: proposal.id, steps, replaced: earlier })].filter((line): line is string => !!line); } catch { return []; }
+        });
+        // The steps as the user reads them: what they add (an overlap with another event, say) is for the reply too.
+        return `Proposed "${proposal.title}" (${steps.length} step${steps.length > 1 ? "s" : ""}). It waits in the user's inbox for their decision; nothing has changed yet.${replaced}\nSteps: ${steps.map((step) => step.preview).join(" | ")}${done.length ? `\n${done.join("\n")}` : ""}`;
       },
     });
   }

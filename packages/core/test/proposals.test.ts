@@ -86,6 +86,22 @@ test("declined, superseded and expired proposals leave the inbox", () => {
   assert.equal(getProposal(w, b.id).decidedAt !== null, true);
 });
 
+test("a corrected proposal replaces what earlier runs in the same conversation left open, and nothing else", () => {
+  const w = world();
+  const open = (conversationId: string, replaces?: boolean) => withCoreContext({ actor: "alfred" }, () => openProposal(w, {
+    title: "Hold Thursday?", summary: "", steps: [{ op: "toy.remove", input: { name: "x" }, preview: "x" }], conversationId, replaces,
+  }));
+  const first = open("c1"), elsewhere = open("c2");
+  const second = open("c1", true);
+  assert.deepEqual(second.replaced, [first.id]);
+  assert.equal(getProposal(w, first.id).state, "superseded");
+  assert.deepEqual(listOpenProposals(w).map((proposal) => proposal.id).sort(), [elsewhere.id, second.id].sort());
+  // Without the flag (another thing, said in the same conversation), both stay.
+  const third = open("c1");
+  assert.equal(third.replaced, undefined);
+  assert.equal(listOpenProposals(w).length, 3);
+});
+
 test("a proposal nobody decided in a week expires by itself, and its notice goes with it", () => {
   const w = world();
   addToy(w, "ball");

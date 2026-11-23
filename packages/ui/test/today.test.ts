@@ -5,7 +5,7 @@ import type { MailMessage, MailSnapshot } from "@alfred/module-mail/types";
 import type { Todo, TodoSnapshot } from "@alfred/module-todo/types";
 import { PROTOCOL_VERSION, type Conversation, type Proposal, type Run, type StateResponse } from "@alfred/protocol";
 import { setLocale } from "../src/i18n/dict.ts";
-import { machineMail, todayLine, todayModel, todaySummary, untilText } from "../src/shell/today.ts";
+import { machineMail, todayFocus, todayLine, todayModel, todaySummary, untilText } from "../src/shell/today.ts";
 
 // Friday 20 November 2026, on whatever clock the test runs on: every instant below is made from local hours.
 const DAY = "2026-11-20";
@@ -136,6 +136,21 @@ test("what waits is counted, and a task stuck on an answer comes before a propos
   assert.equal(todayLine(again).moreWaiting, 1);
 });
 
+test("a decision leads until the next event is 15 minutes away, including with no calendar connected", () => {
+  const asking = run("r", "c", { state: "waiting_input", request: { id: "q", kind: "input", question: "Which train?", createdAt: iso(8) } as Run["request"] });
+  const day = state({ events: [event("e", "Review", 11, 12)], runs: [asking] });
+  assert.equal(todayFocus(todayModel(day, at(10, 44))).kind, "decision");
+  for (const now of [at(10, 45), at(11, 10)]) {
+    const focus = todayFocus(todayModel(day, now));
+    assert.ok(focus.kind === "event" && focus.imminent && focus.event.event.id === "e");
+  }
+  const free = todayFocus(todayModel({ ...day, runs: [] }, at(9)));
+  assert.ok(free.kind === "event" && !free.imminent);
+  const unconnected = todayFocus(todayModel(state({ runs: [asking] }), at(9)));
+  assert.ok(unconnected.kind === "decision" && unconnected.item.id === "r:r");
+  assert.equal(todayFocus(todayModel(state(), at(9))).kind, "summary");
+});
+
 test("mail says how many letters came today and lists the unread ones, important first", () => {
   const day = state({ mail: [
     letter("old", 9, { receivedAt: iso(9, 0, 19) }), letter("read", 7, { unread: false }), letter("promo", 7, { category: "promotions" }),
@@ -244,9 +259,26 @@ test("suggested hours: the first free half hours from now, three at most, none i
   assert.equal(night.ahead.some((row) => row.kind === "todo" && !!row.guess), false, "once the page has turned to tomorrow nothing is offered for today");
 });
 
-test("study: links saved under a topic in the learning area and not yet looked at are on the line", () => {
+test("to read: links filed under any of the user's topics and not yet looked at are on the line, with the topic's name", () => {
   const clip = (id: string, topicId: string | undefined, seen = false) => ({ id, url: `https://example.com/${id}`, title: `Clip ${id}`, titleSource: "page", platform: "web", type: "article", site: "example.com", state: seen ? "seen" : "unread", savedAt: iso(8), fetch: "done", ...(topicId ? { topicId } : {}) });
   const day = state({ modules: { link: { places: [], clips: [clip("a", "t1"), clip("b", "t2"), clip("c", "t1", true), clip("d", undefined), clip("e", "t1"), clip("f", "t1")], topics: [{ id: "t1", name: "Algorithms", area: "learn" }, { id: "t2", name: "Travel", area: "life" }] } } });
   const line = todayLine(todayModel(day, at(10)));
-  assert.deepEqual(line.within.map((row) => (row.kind === "link" ? row.clip.id : "")), ["a", "e"], "two at most, newest first; not other areas, not ones already seen");
+  assert.deepEqual(line.within.map((row) => (row.kind === "link" ? `${row.clip.id} ${row.topic}` : "")), ["a Algorithms", "b Travel"], "two at most, newest first; no area is special; not unfiled, not seen");
+});
+
+test("what today's result in sections says to start with sits at the top; any automation set to sections, the newest, not yesterday's", () => {
+  setLocale("en");
+  const automation = (id: string, layout: "text" | "sections", at: string, reply: string) => ({
+    id, name: id, goal: "", template: null, schedule: { kind: "daily", at: "07:00" }, enabled: true, layout, keep: "latest", notify: "always", k: "orange",
+    conversationId: `c-${id}`, lastSlot: null, lastRunId: `r-${id}`, createdAt: iso(6), updatedAt: iso(6), instruction: "", nextAt: null,
+    lastRun: { id: `r-${id}`, state: "completed", at, reply },
+  }) as unknown as NonNullable<StateResponse["automations"]>[number];
+  const brief = automation("Morning brief", "sections", iso(7), "Start with the **visa form**.\n\n## Mail\n- [Due] Visa (mail:v1)");
+  const weekly = automation("My week", "sections", iso(9), "Reply to Lin first.\n\n## Done\n- Two papers");
+  const plain = automation("Plain", "text", iso(10), "Just words.");
+  const old = automation("Yesterday's", "sections", iso(9, 0, 19), "Old advice.\n\n## A\n- x");
+  const noHeading = automation("No sections", "sections", iso(11), "Only a paragraph, no heading.");
+  assert.deepEqual(todayModel(state({ automations: [brief, weekly, plain, old, noHeading] }), at(12)).advice,
+    { text: "Reply to Lin first.", name: "My week", k: "orange", automationId: "My week" });
+  assert.equal(todayModel(state({ automations: [plain, old] }), at(12)).advice, undefined);
 });

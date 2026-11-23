@@ -141,3 +141,18 @@ test("editing a todo after Alfred proposed a change to it makes the proposal sta
   const refused = propose.execute({ title: "x", summary: "", calls: [{ tool: "todo_delete", params: { title: "nothing like this" } }] }, new AbortController().signal);
   assert.match(String(refused), /No todo matching/);
 });
+
+test("a run adding what the list already has is told so, unless it says the user wants a second one", async () => {
+  const w = world();
+  addTodo(w, { title: "交房租", due: "2026-11-30" });
+  addTodo(w, { title: "买牛奶" });
+  const add = runTools(w, [todoModule]).find((tool) => tool.name === "todo_add")!;
+  const run = (params: Record<string, unknown>) => Promise.resolve(add.execute(params, new AbortController().signal));
+  assert.match(await run({ title: "交房租。", due: "2026-11-30" }), /^Not added: the list already has .*交房租/);
+  assert.match(await run({ title: "月底交房租", due: "2026-11-30" }), /^Not added/);
+  // Naming another task, or another day, is a new todo.
+  assert.match(await run({ title: "买牛奶和鸡蛋" }), /^Added/);
+  assert.match(await run({ title: "交房租押金", due: "2026-12-15" }), /^Added/);
+  assert.match(await run({ title: "交房租", due: "2026-11-30", again: true }), /^Added/);
+  assert.equal(listTodos(w).filter((todo) => todo.title === "交房租").length, 2);
+});
