@@ -1,13 +1,13 @@
 /** Gmail's recent inbox and previously seen saved or important messages, mirrored for reading on the home node. */
 import { listOutbound, recordDomainEvent, withDefaultActor, type World } from "@alfred/core";
 import { defineModule, defineOp, defineQuery, defineTool, ServiceError, Type, type ModuleServices } from "@alfred/module-kit";
-import { withMailAccount } from "./favorites.ts";
+import { deliverStar, favoriteOp, starsOnTheirWay } from "./favorites.ts";
 import { INBOX_MAX, readInbox, unescapeHtml } from "./google.ts";
 import { deliverMail, mailOps, mailWriteTools } from "./write.ts";
 import type { MailCategory, MailDetail, MailMessage, MailSent, MailSnapshot, MailSource, SendInput } from "./types.ts";
 
 export type { MailCategory, MailDetail, MailMessage, MailSent, MailSnapshot, MailSource } from "./types.ts";
-export { setMailFavorite } from "./favorites.ts";
+export { deliverStar, type StarInput } from "./favorites.ts";
 export { extractBody, mapMessage, parseAddress, stripHtml, type GmailMessage } from "./google.ts";
 export { buildRaw, checkAddress, deliverMail, type SendInput } from "./write.ts";
 
@@ -64,7 +64,7 @@ CREATE INDEX mail_messages_verification ON mail_messages(account, labels_checked
 `,
 }];
 
-/** Each account gets a bounded refresh so a slow Gmail request cannot indefinitely block a manual favorite. */
+/** Each account gets a bounded refresh so one slow Gmail account cannot hold up the others. */
 const SYNC_TIMEOUT_MS = 45_000;
 const VERIFY_RETAINED_AFTER_MS = 24 * 60 * 60_000;
 
@@ -76,7 +76,7 @@ export async function syncMail(world: World, services: ModuleServices, signal?: 
   const accounts = new Set([...byEmail.keys(), ...world.db.prepare("SELECT account FROM mail_sources").all().map((row) => row.account as string)]);
   for (const account of accounts) {
     if (signal?.aborted) return;
-    await withMailAccount(world, account, async () => {
+    await (async () => {
       const capabilities = byEmail.get(account)?.capabilities ?? [];
       const canSend = Number(capabilities.includes("mailSend"));
       const canModify = Number(capabilities.includes("mailModify"));
@@ -131,21 +131,28 @@ export async function syncMail(world: World, services: ModuleServices, signal?: 
         }
         const markedOutside = db.prepare(`UPDATE mail_messages SET in_inbox = 0, labels_checked_at = 0 WHERE account = ? AND in_inbox = 1
           AND id NOT IN (SELECT value FROM json_each(?))`).run(account, JSON.stringify([...inbox])).changes;
-        const labels = db.prepare(`UPDATE mail_messages SET in_inbox = :recent, starred = :starred, important = :important, unread = :unread,
-          read_in_alfred = CASE WHEN :unread = 0 THEN 0 ELSE read_in_alfred END
-          WHERE account = :account AND id = :id AND (in_inbox <> :recent OR starred <> :starred OR important <> :important OR unread <> :unread)`);
+        // A star the user changed that is still on its way to Gmail: Gmail's answer, read before it arrived, is not
+        // news about it. Read inside this transaction, so a click that came during the read counts.
+        const onTheirWay = starsOnTheirWay(world, account);
+        const labels = db.prepare(`UPDATE mail_messages SET in_inbox = :recent, starred = CASE WHEN :keep = 1 THEN starred ELSE :starred END,
+          important = :important, unread = :unread, read_in_alfred = CASE WHEN :unread = 0 THEN 0 ELSE read_in_alfred END
+          WHERE account = :account AND id = :id AND (in_inbox <> :recent OR (:keep = 0 AND starred <> :starred) OR important <> :important OR unread <> :unread)`);
         let changed = Number(markedOutside) + added.length;
         for (const id of inbox) {
-          changed += Number(labels.run({ account, id, recent: 1, starred: Number(starred.has(id)), important: Number(important.has(id)), unread: Number(unread.has(id)) }).changes);
+          changed += Number(labels.run({ account, id, recent: 1, keep: Number(onTheirWay.has(id)), starred: Number(starred.has(id)), important: Number(important.has(id)), unread: Number(unread.has(id)) }).changes);
         }
         const prune = db.prepare("DELETE FROM mail_messages WHERE account = ? AND id = ? AND (? = 1 OR local_saved = 0)");
         const verified = db.prepare("UPDATE mail_messages SET labels_checked_at = ? WHERE account = ? AND id = ?");
         for (const entry of checked) {
           const remote = entry.labels;
           const isStarred = !!remote?.has("STARRED"), isImportant = !!remote?.has("IMPORTANT");
+          if (onTheirWay.has(entry.id)) {
+            if (remote) changed += Number(labels.run({ account, id: entry.id, recent: 0, keep: 1, starred: 0, important: Number(isImportant), unread: Number(remote.has("UNREAD")) }).changes);
+            continue;
+          }
           if (!isStarred && !isImportant) changed += Number(prune.run(account, entry.id, Number(!remote)).changes);
           if (remote) {
-            changed += Number(labels.run({ account, id: entry.id, recent: 0, starred: Number(isStarred), important: Number(isImportant), unread: Number(remote.has("UNREAD")) }).changes);
+            changed += Number(labels.run({ account, id: entry.id, recent: 0, keep: 0, starred: Number(isStarred), important: Number(isImportant), unread: Number(remote.has("UNREAD")) }).changes);
             verified.run(now, account, entry.id);
           }
         }
@@ -156,7 +163,7 @@ export async function syncMail(world: World, services: ModuleServices, signal?: 
           recordDomainEvent(world, { kind: "mail.synced", subject: `mail:${account}`, payload: { messages: inbox.size, unread: unread.size, added: added.length } });
         }
       }));
-    });
+    })();
   }
 }
 
@@ -236,6 +243,7 @@ export const mailModule = defineModule({
   migrations: MIGRATIONS,
   ops: [
     ...mailOps,
+    favoriteOp,
     defineOp({
       name: "mail.mark_read",
       input: Type.Object({ account: Type.String({ minLength: 1, maxLength: 320 }), id: Type.String({ minLength: 1, maxLength: 64 }) }),
@@ -316,5 +324,6 @@ export const mailModule = defineModule({
     return { messages, sources: mailSources(world), sent: listSent(world) };
   },
   sync: { everyMs: 30 * 60_000, onEvents: ["connection.connected", "connection.updated", "connection.disconnected"], run: syncMail },
-  deliver: deliverMail,
+  // A star is the user's own click; anything else is an email they accepted.
+  deliver: (world, outbound, services, signal) => outbound.action === "star" ? deliverStar(world, outbound, services, signal) : deliverMail(world, outbound, services, signal),
 });

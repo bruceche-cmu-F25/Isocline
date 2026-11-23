@@ -838,12 +838,14 @@ test("a module's kept image is served as an image and nothing else", async () =>
   } finally { server.close(); server.closeAllConnections(); home.close(); }
 });
 
-test("mail favorites are scoped to the account and only write the requested Gmail star after opt-in", async () => {
+test("a mail favorite changes the mirror at once and reaches Gmail through the outbound queue, only after opt-in", async () => {
   const { mailModule } = await import("@alfred/module-mail");
   const accounts = [
     { email: "a@example.com", capabilities: ["mailRead"] },
     { email: "b@example.com", capabilities: ["mailRead"] },
   ];
+  // Gmail as the fake knows it: which messages are starred, per account. Both accounts hold `same-id` in the inbox.
+  const stars = new Map<string, Set<string>>([["a@example.com", new Set()], ["b@example.com", new Set(["same-id"])]]);
   const calls: Array<{ account: string; url: string; body: unknown }> = [];
   let status = 200;
   let gate: Promise<void> | undefined;
@@ -853,10 +855,20 @@ test("mail favorites are scoped to the account and only write the requested Gmai
     async session(account: string) {
       await opening;
       return {
-        async get(): Promise<Record<string, unknown>> { return { messages: [] }; },
+        async get(url: string): Promise<Record<string, unknown>> {
+          const q = new URL(url).searchParams.get("q") ?? "";
+          if (q.includes("is:unread") || q.includes("is:important")) return { messages: [] };
+          if (q.includes("is:starred")) return { messages: stars.get(account)!.has("same-id") ? [{ id: "same-id" }] : [] };
+          return { messages: [{ id: "same-id" }] };
+        },
         async send(_method: string, url: string, body?: unknown) {
           calls.push({ account, url, body });
           await gate;
+          if (status === 200) {
+            const change = body as { addLabelIds?: string[] };
+            if (change.addLabelIds) stars.get(account)!.add("same-id");
+            else stars.get(account)!.delete("same-id");
+          }
           return { status, body: {} };
         },
       };
@@ -864,55 +876,92 @@ test("mail favorites are scoped to the account and only write the requested Gmai
   };
   const home = openHome({ dataDir: mkdtempSync(join(tmpdir(), "alfred-mail-star-")), engine, modules: [mailModule], services: () => ({ google }) });
   const { server, base } = await start(home);
-  const favorite = (account: string, starred: boolean) => post(base, "/api/modules/mail/favorite", { account, id: "same-id", starred });
+  let request = 0;
+  const favorite = (account: string, starred: unknown, id = "same-id") => post(base, "/api/ops/mail.favorite", { requestId: `star-${++request}`, input: { account, id, starred } });
+  const result = async (response: Response) => ((await response.json()) as { result: unknown }).result;
   const flags = (account: string) => {
     const row = home.world.db.prepare("SELECT local_saved, starred FROM mail_messages WHERE account = ? AND id = 'same-id'").get(account)!;
     return [row.local_saved, row.starred];
   };
+  const waiting = () => listOutbound(home.world, { module: "mail", states: ["queued", "sending"] });
+  /** One pass of the mail module: what is queued goes out, then the inbox is read again. */
+  const pass = () => home.syncModule("mail");
+  const settle = async () => { for (let i = 0; i < 10 && (waiting().length || i === 0); i++) await pass(); };
   try {
     for (const [index, source] of accounts.entries()) {
       home.world.db.prepare(`INSERT INTO mail_messages
         (account,id,thread_id,from_name,from_email,to_line,subject,snippet,body,attachments,body_incomplete,received_at,unread,important,starred,category)
-        VALUES (?, 'same-id','thread','','','','','','','[]',0,?,0,0,?,'primary')`).run(source.email, Date.now(), index);
+        VALUES (?, 'same-id','thread','','','','Hello','','','[]',0,?,0,0,?,'primary')`).run(source.email, Date.now(), index);
     }
+    await pass();
     const [first, second] = accounts.map((source) => source.email);
-    assert.deepEqual(await (await favorite(first, true)).json(), { starred: true, scope: "local" });
+
+    // Without star syncing a favorite is Alfred's own, and a Gmail star cannot be taken away.
+    assert.deepEqual(await result(await favorite(first, true)), { starred: true, scope: "local" });
     assert.deepEqual(flags(first), [1, 0]);
-    assert.equal((await favorite(second, false)).status, 403, "a read-only account cannot remove a Gmail star");
+    const refused = await favorite(second, false);
+    assert.equal(refused.status, 403, "a read-only account cannot remove a Gmail star");
+    assert.equal(((await refused.json()) as { code: string }).code, "mail_permission");
     assert.deepEqual(flags(second), [0, 1]);
+    await settle();
     assert.equal(calls.length, 0);
+    assert.deepEqual(flags(first), [1, 0], "an inbox read keeps a favorite saved in Alfred");
+
+    // With it, the click shows at once; Gmail's half is an outbound change, tried again while Gmail does not answer.
     accounts[0].capabilities.push("mailModify");
+    await pass();
     status = 503;
-    assert.equal((await favorite(first, true)).status, 502);
-    assert.deepEqual(flags(first), [1, 0], "a failed promotion keeps the local favorite");
+    assert.deepEqual(await result(await favorite(first, true)), { starred: true, scope: "gmail" });
+    assert.deepEqual(flags(first), [1, 1], "the local save stays until Gmail has the star");
+    await pass();
+    assert.equal(waiting().length, 1, "an unclear answer leaves the star change waiting");
+    assert.deepEqual(flags(first), [1, 1], "an inbox read taken before the star arrived does not undo it");
+    const tries = calls.length;
+    assert.ok(tries >= 1);
     status = 200;
-    assert.deepEqual(await (await favorite(first, true)).json(), { starred: true, scope: "gmail" });
+    await settle();
     assert.deepEqual(flags(first), [0, 1]);
+    assert.ok(stars.get(first)!.has("same-id"));
     assert.equal((await favorite(first, false)).status, 200);
     assert.deepEqual(flags(first), [0, 0]);
-    assert.equal((await favorite(first, false)).status, 200, "replaying a desired state is safe");
-    assert.deepEqual(calls.map((call) => call.body), [{ addLabelIds: ["STARRED"] }, { addLabelIds: ["STARRED"] }, { removeLabelIds: ["STARRED"] }, { removeLabelIds: ["STARRED"] }]);
+    await settle();
+    assert.ok(!stars.get(first)!.has("same-id"));
+    assert.deepEqual(calls.slice(tries).map((call) => call.body), [{ addLabelIds: ["STARRED"] }, { removeLabelIds: ["STARRED"] }]);
+    assert.ok(calls.slice(0, tries).every((call) => (call.body as { addLabelIds?: string[] }).addLabelIds), "only the star was tried again");
     assert.ok(calls.every((call) => call.account === first && call.url === "https://gmail.googleapis.com/gmail/v1/users/me/messages/same-id/modify"));
     assert.deepEqual(flags(second), [0, 1]);
+    assert.ok(listOutbound(home.world, { module: "mail" }).every((outbound) => outbound.action === "star" && outbound.quiet && outbound.idempotent));
+
+    // Two clicks while Gmail is slow reach it in the order they were made.
     const blocked = Promise.withResolvers<void>();
     gate = blocked.promise;
-    const on = home.setMailFavorite(first, "same-id", true);
-    const off = home.setMailFavorite(first, "same-id", false);
+    await favorite(first, true);
+    await favorite(first, false);
     await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(calls.length, 5, "the next change waits for the first Gmail acknowledgement");
     blocked.resolve();
-    await Promise.all([on, off]);
-    assert.deepEqual(flags(first), [0, 0]);
+    await settle();
+    gate = undefined;
     assert.deepEqual(calls.slice(-2).map((call) => call.body), [{ addLabelIds: ["STARRED"] }, { removeLabelIds: ["STARRED"] }]);
+    assert.ok(!stars.get(first)!.has("same-id"));
+    assert.deepEqual(flags(first), [0, 0]);
+
+    // Turned off between the click and the delivery: nothing is written to Gmail, the user is told, and the next
+    // read shows Gmail as it is.
+    const before = calls.length;
     const refresh = Promise.withResolvers<void>();
     opening = refresh.promise;
-    const awaitingToken = home.setMailFavorite(first, "same-id", true);
+    await favorite(first, true);
     await new Promise((resolve) => setImmediate(resolve));
     accounts[0].capabilities = ["mailRead"];
     refresh.resolve();
-    await assert.rejects(awaitingToken, { code: "permission" });
-    assert.equal(calls.length, 6, "no remote write after permission was disabled during token refresh");
-    assert.equal((await post(base, "/api/modules/mail/favorite", { account: first, id: "missing", starred: true })).status, 404);
-    assert.equal((await post(base, "/api/modules/mail/favorite", { account: first, id: "same-id", starred: "false" })).status, 400);
+    await settle();
+    opening = undefined;
+    assert.equal(calls.length, before, "no remote write after permission was turned off");
+    assert.equal(listOutbound(home.world, { module: "mail" }).at(-1)!.state, "failed");
+    assert.ok(listEvents(home.world, { limit: 500 }).events.some((event) => event.kind === "outbound.failed"));
+    assert.deepEqual(flags(first), [0, 0]);
+
+    assert.equal((await favorite(first, true, "missing")).status, 404);
+    assert.equal((await favorite(first, "false")).status, 400);
   } finally { server.close(); server.closeAllConnections(); home.close(); }
 });

@@ -587,15 +587,6 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     return;
   }
 
-  if (method === "POST" && path === "/api/modules/mail/favorite") {
-    if (!home.modules.some((module) => module.id === "mail")) throw new HttpError(404, "Mail is unavailable");
-    const { account, id, starred } = await readJson(req);
-    if (typeof account !== "string" || !account.length || account.length > 320 || typeof id !== "string" || !id.length || id.length > 64 || typeof starred !== "boolean") {
-      throw new HttpError(400, "Provide an account, message id and starred boolean");
-    }
-    return send(res, 200, await home.setMailFavorite(account, id, starred));
-  }
-
   // Refresh a module's mirror of an outside service now (the calendar, the inbox); answers when it is done.
   const sync = /^\/api\/modules\/([a-z][a-z0-9]*)\/sync$/.exec(path);
   if (sync && method === "POST") {

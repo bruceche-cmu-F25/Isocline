@@ -460,7 +460,8 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
     setFavoriteError(null);
     setSaid(null);
     try {
-      const saved = await api.setMailFavorite(message.account, message.id, starred);
+      // Gmail's half goes out after this answers; if Gmail refuses it, Alfred says so in a notice.
+      const saved = (await api.op("mail.favorite", { account: message.account, id: message.id, starred })).result as { starred: boolean; scope: "gmail" | "local" };
       refresh();
       setSaid(saved.scope === "gmail"
         ? t(saved.starred ? "mail.favorite.gmailOn" : "mail.favorite.gmailOff")

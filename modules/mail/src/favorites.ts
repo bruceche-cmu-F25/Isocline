@@ -1,72 +1,117 @@
-import { recordDomainEvent, type World } from "@alfred/core";
-import type { ModuleServices } from "@alfred/module-kit";
+/** Favorites: a star in Gmail, or a message saved in Alfred only.
+ *
+ * The user's click is an operation like any other (`mail.favorite`): it changes the mirror at once, in one
+ * transaction. If Alfred may change stars in the account, the Gmail half is an outbound change (core/outbound.ts)
+ * that `deliverStar` makes later, so it is retried, ordered and reported like every other outside change. A star is a
+ * desired state, so delivering it again is safe (`idempotent`); the user hears about it only when it did not go
+ * through (`quiet`), and the next read of the inbox then shows Gmail as it is.
+ *
+ * Without that permission a favorite is saved in Alfred only. A Gmail star cannot be removed from here then.
+ */
+import { enqueueOutbound, listOutbound, localeOf, recordDomainEvent, userLocale, type Locale, type Outbound, type World } from "@alfred/core";
+import { defineOp, Type, type Delivered, type GoogleSession, type ModuleServices } from "@alfred/module-kit";
 
-// Reading the remote labels and committing their snapshot must finish before a user changes the same
-// account's star. Otherwise a slow sync could undo the acknowledged change in the local mirror.
-const accountWork = new WeakMap<World, Map<string, Promise<void>>>();
+const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 
-export function withMailAccount<T>(world: World, account: string, work: () => Promise<T>): Promise<T> {
-  let queue = accountWork.get(world);
-  if (!queue) {
-    queue = new Map();
-    accountWork.set(world, queue);
-  }
-  const previous = queue.get(account) ?? Promise.resolve();
-  const result = previous.then(work);
-  const tail = result.then(() => {}, () => {});
-  queue.set(account, tail);
-  return result.finally(() => { if (queue.get(account) === tail) queue.delete(account); });
-}
+export interface StarInput { account: string; id: string; starred: boolean }
 
 class MailFavoriteError extends Error {
   override name = "MailFavoriteError";
-  readonly code: "missing" | "permission" | "reconnect" | "unavailable";
+  readonly code: "missing" | "permission";
   constructor(code: MailFavoriteError["code"], message: string) {
     super(message);
     this.code = code;
   }
 }
 
-/** Set a desired state, so retrying after an uncertain Gmail response is safe. Only a device
- * action calls this. Local-only saves never modify Gmail or acquire new OAuth permissions. */
-export function setMailFavorite(world: World, services: ModuleServices, account: string, id: string, starred: boolean) {
-  return withMailAccount(world, account, async () => {
-    const google = services.google;
-    if (!google) throw new MailFavoriteError("unavailable", "Gmail is unavailable");
-    const source = google.accounts(true).find((candidate) => candidate.email === account);
-    if (!source?.capabilities.includes("mailRead")) throw new MailFavoriteError("permission", "This account has no mailbox read access");
-    const row = world.db.prepare("SELECT starred, local_saved FROM mail_messages WHERE account = ? AND id = ?").get(account, id);
-    if (!row) throw new MailFavoriteError("missing", "This message is no longer in Alfred Mail");
+const SAY: Record<Locale, { star(subject: string): string; unstar(subject: string): string; noPermission: string; missing: string }> = {
+  zh: {
+    star: (subject) => `在 Gmail 中给「${subject}」加星`,
+    unstar: (subject) => `取消「${subject}」的 Gmail 星标`,
+    noPermission: "这个账户没有开启 Gmail 星标同步",
+    missing: "这封邮件在 Gmail 里已经不在了",
+  },
+  en: {
+    star: (subject) => `Star “${subject}” in Gmail`,
+    unstar: (subject) => `Remove the Gmail star from “${subject}”`,
+    noPermission: "Gmail star syncing is not enabled for this account",
+    missing: "This message no longer exists in Gmail",
+  },
+};
 
-    const canModify = source.capabilities.includes("mailModify");
-    if (canModify) {
-      const session = await google.session(account);
-      // Refreshing access can outlast a Settings change. Check the live grant immediately before sending.
-      const connected = google.accounts().find((candidate) => candidate.email === account);
-      if (!connected) throw new MailFavoriteError("reconnect", "Reconnect this Gmail account in Settings to change its stars");
-      if (!connected.capabilities.includes("mailRead") || !connected.capabilities.includes("mailModify")) {
-        throw new MailFavoriteError("permission", "Gmail star syncing is no longer enabled for this account");
-      }
-      const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/modify`;
-      const changes = starred ? { addLabelIds: ["STARRED"] } : { removeLabelIds: ["STARRED"] };
-      const { status, body } = await session.send("POST", url, changes);
-      if (status === 404 || status === 410) throw new MailFavoriteError("missing", "This message no longer exists in Gmail");
-      if (status === 403) throw new MailFavoriteError("permission", "Gmail refused the star change. Check this account's permissions in Settings");
-      if (status < 200 || status >= 300 || (Array.isArray(body.labelIds) && body.labelIds.includes("STARRED") !== starred)) {
-        throw new MailFavoriteError("unavailable", "Gmail did not confirm the star change. Try again");
-      }
-    } else if (!starred && row.starred === 1) {
-      throw new MailFavoriteError("permission", "Enable Gmail star syncing in Settings to remove a Gmail star");
-    }
+/** Star changes for these messages are still on their way to Gmail (`account\nid`): the mirror already shows them,
+ * and an inbox read taken before they arrive must not undo that. */
+export function starsOnTheirWay(world: World, account: string): Map<string, Outbound> {
+  const waiting = new Map<string, Outbound>();
+  for (const outbound of listOutbound(world, { module: "mail", states: ["queued", "sending"] })) {
+    const input = outbound.payload as StarInput;
+    if (outbound.action === "star" && input.account === account) waiting.set(input.id, outbound);
+  }
+  return waiting;
+}
 
-    const scope: "gmail" | "local" = canModify || row.starred === 1 ? "gmail" : "local";
-    const remoteStar = canModify ? Number(starred) : row.starred;
-    const localSave = scope === "local" ? Number(starred) : 0;
-    world.tx((db) => {
-      const result = db.prepare(`UPDATE mail_messages SET starred = ?, local_saved = ?
-        WHERE account = ? AND id = ? AND (starred != ? OR local_saved != ?)`).run(remoteStar, localSave, account, id, remoteStar, localSave);
-      if (result.changes) recordDomainEvent(world, { kind: "mail.favorite", subject: `mail:${account}`, actor: "user", payload: { id, starred, scope } });
+export const favoriteOp = defineOp({
+  name: "mail.favorite",
+  input: Type.Object({
+    account: Type.String({ minLength: 1, maxLength: 320 }),
+    id: Type.String({ minLength: 1, maxLength: 64 }),
+    starred: Type.Boolean(),
+  }),
+  run(world, { account, id, starred }) {
+    return world.tx((db) => {
+      const row = db.prepare(`SELECT m.starred, m.local_saved, m.subject, s.can_modify FROM mail_messages AS m
+        LEFT JOIN mail_sources AS s ON s.account = m.account WHERE m.account = ? AND m.id = ?`).get(account, id);
+      if (!row) throw new MailFavoriteError("missing", "This message is no longer in Alfred Mail");
+      const canModify = row.can_modify === 1;
+      if (!canModify && !starred && row.starred === 1) {
+        throw new MailFavoriteError("permission", "Enable Gmail star syncing in Settings to remove a Gmail star");
+      }
+      const scope: "gmail" | "local" = canModify || row.starred === 1 ? "gmail" : "local";
+      // Starring in Gmail keeps a local save until Gmail has it (deliverStar clears it), so a star Gmail refuses
+      // does not lose the favorite. Taking a favorite away takes both.
+      const next = canModify
+        ? { starred: Number(starred), saved: starred ? row.local_saved as number : 0 }
+        : { starred: row.starred as number, saved: scope === "local" ? Number(starred) : 0 };
+      const changed = db.prepare("UPDATE mail_messages SET starred = ?, local_saved = ? WHERE account = ? AND id = ? AND (starred != ? OR local_saved != ?)")
+        .run(next.starred, next.saved, account, id, next.starred, next.saved).changes;
+      if (canModify && row.starred !== next.starred) {
+        const say = SAY[userLocale(world)];
+        const subject = (row.subject as string) || id;
+        // After any star change for this message still on its way, so Gmail ends where the user last left it.
+        const afterId = [...starsOnTheirWay(world, account).values()].filter((outbound) => (outbound.payload as StarInput).id === id).at(-1)?.id;
+        enqueueOutbound(world, {
+          module: "mail", action: "star", payload: { account, id, starred } satisfies StarInput,
+          preview: starred ? say.star(subject) : say.unstar(subject), idempotent: true, quiet: true, afterId,
+        });
+      }
+      if (changed) recordDomainEvent(world, { kind: "mail.favorite", subject: `mail:${account}`, payload: { id, starred, scope } });
+      return { starred, scope };
     });
-    return { starred, scope };
-  });
+  },
+});
+
+/** Makes one star change in Gmail (mail's `deliver`, for `star`). The permission is checked again here: the user may
+ * have turned star syncing off since the click. */
+export async function deliverStar(world: World, outbound: Outbound, services: ModuleServices, signal?: AbortSignal): Promise<Delivered> {
+  const { account, id, starred } = outbound.payload as StarInput;
+  const say = SAY[localeOf(world.db)];
+  const allowed = () => {
+    const capabilities = services.google?.accounts().find((candidate) => candidate.email === account)?.capabilities ?? [];
+    return capabilities.includes("mailRead") && capabilities.includes("mailModify");
+  };
+  if (!allowed()) return { state: "failed", error: say.noPermission };
+  // A thrown ServiceError is the queue's to read: reconnect fails it, anything else is tried again later.
+  const session: GoogleSession = await services.google!.session(account);
+  // Getting a session may refresh the account's token, which can outlast the user turning star syncing off.
+  if (!allowed()) return { state: "failed", error: say.noPermission };
+  const changes = starred ? { addLabelIds: ["STARRED"] } : { removeLabelIds: ["STARRED"] };
+  const { status, body } = await session.send("POST", `${API}/messages/${encodeURIComponent(id)}/modify`, changes, { signal });
+  if (status === 404 || status === 410) return { state: "failed", error: say.missing };
+  if (status >= 400 && status < 500) return { state: "failed", error: `Gmail answered ${status}` };
+  if (status >= 300 || (Array.isArray(body.labelIds) && body.labelIds.includes("STARRED") !== starred)) {
+    return { state: "unclear", error: `Gmail did not confirm the star change (${status})` };
+  }
+  // Gmail holds it now: a local save under the star is no longer needed.
+  if (starred) world.tx((db) => db.prepare("UPDATE mail_messages SET local_saved = 0 WHERE account = ? AND id = ? AND starred = 1").run(account, id));
+  return { state: "done" };
 }

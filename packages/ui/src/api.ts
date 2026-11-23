@@ -188,8 +188,6 @@ export const api = {
   query: <T>(name: string, input: unknown) => post<{ result: T }>(`/api/queries/${name}`, { input }).then((response) => response.result),
   /** Refresh a module's mirror of an outside service now; resolves when it has been read. */
   syncModule: (id: string) => post<Record<string, never>>(`/api/modules/${id}/sync`, {}),
-  setMailFavorite: (account: string, id: string, starred: boolean) =>
-    request<{ starred: boolean; scope: "gmail" | "local" }>("/api/modules/mail/favorite", { account, id, starred }),
   /** The user's areas: each answers with the whole list, in order. `moveTo`: where what was in a removed one goes. */
   addArea: (name: string, k?: string) => post<{ areas: Area[] }>("/api/areas", { requestId: newRequestId(), name, ...(k ? { k } : {}) }),
   updateArea: (id: string, patch: { name?: string; k?: string }) => post<{ areas: Area[] }>(`/api/areas/${id}`, { requestId: newRequestId(), patch }),

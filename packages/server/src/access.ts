@@ -70,7 +70,6 @@ export const ACCESS: readonly Rule[] = [
   rule("*", "/api/queries/:name", "device"),
   rule("*", "/api/modules/:module/files/:name", "device"),
   rule("*", "/api/modules/:module/sync", "device"),
-  rule("POST", "/api/modules/mail/favorite", "device"),
   rule("*", "/api/notices/:id/(claim|present|acknowledge)", "device"),
   rule("*", "/api/settings", "device"),
   rule("*", "/api/areas/*", "device"),
