@@ -60,6 +60,7 @@ export {
 export { simpleCommand, commandAllowed, normalizeCommand, listCommandGrants, grantCommand, revokeCommand, type CommandGrant } from "./shell.ts";
 export { defaultSecretStore, fileStore, keychainStore, type SecretStore } from "./secrets.ts";
 export { adoptLegacyEnv, carryingOver, LEGACY_KEYCHAIN_SERVICE } from "./legacy.ts";
+export { currentStage, stageDataDir, dataDirFor, portFor, keychainServiceFor, agentLabelFor, checkStage, type Stage } from "./stage.ts";
 export { tidyWorld, OUTPUT_DAYS, COMMAND_DAYS, type Upkeep } from "./upkeep.ts";
 export {
   enqueueOutbound, claimOutbound, finishOutbound, retryOutbound, interruptOutbound, getOutbound, listOutbound, OUTBOUND_STATES, OUTBOUND_MAX_ATTEMPTS,

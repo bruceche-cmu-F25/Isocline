@@ -61,10 +61,19 @@ You need Node 24 or newer. To talk to the assistant in sentences, you also need 
 
 ```bash
 npm install
-npm start          # builds the interface, then serves it on http://127.0.0.1:7480
+npm start          # builds the interface, then serves a development world on http://127.0.0.1:7491
 ```
 
-The world is stored in `~/Library/Application Support/Isocline/` on macOS. Use `--data-dir` or `ISOCLINE_DATA_DIR` to put it somewhere else. Only one home node can run on a data directory at a time.
+**Development and production never share anything** ([packages/core/src/stage.ts](packages/core/src/stage.ts)). Production is the installed Isocline.app; anything run from this source tree is development, with its own world, port, launchd agent and keychain entry:
+
+| | Production (Isocline.app) | Development (from source) |
+|---|---|---|
+| World | `~/Library/Application Support/Isocline/` | `~/Library/Application Support/Isocline Dev/` |
+| Port | 7480 | 7491 |
+| launchd agent | `isocline.home-node` | `isocline.home-node.dev` |
+| Keychain service | `Isocline` | `Isocline Dev` |
+
+On Linux the worlds are `~/.local/share/isocline` and `isocline-dev`. `--data-dir` / `ISOCLINE_DATA_DIR`, `ISOCLINE_PORT` and `ISOCLINE_KEYCHAIN_SERVICE` move a world within its stage; a development run refuses production's world and keychain. A server run from source as the real node says so with `ISOCLINE_ENV=production`. Only one home node can run on a data directory at a time.
 
 ## What is guaranteed so far
 

@@ -22,6 +22,7 @@ import { BrowserPane } from "./browser.ts";
 import { HomeClient } from "./client.ts";
 import { ensureHomeNode, healthy, homeNodeConfig, restartHomeNode, retireLegacyAgent, stopHomeNode, type HomeNodeMode } from "./home-node.ts";
 import { adoptLegacyEnv } from "@isocline/core/legacy";
+import { currentStage, dataDirFor } from "@isocline/core/stage";
 import { moveRenamedFolders } from "@isocline/server/rename";
 import { appIcon, trayIcon } from "./icon.ts";
 import { installTextMenu } from "./text-menu.ts";
@@ -42,17 +43,22 @@ const OUTLET_CHECK_MS = 5_000;
 /** Untouched for this long at the last report, and touched since: the user came back. */
 const BACK_AFTER_S = 30;
 
-// An install from before the rename (Alfred → Isocline): its settings still apply, its home node agent is retired, and
-// its folders move to the new names, all before anything below opens a file in either place.
+// An install from before the rename (Alfred → Isocline): its settings still apply.
 adoptLegacyEnv();
-const renamed = homeNodeConfig({ runtime: process.execPath, cli: "", env: process.env });
-retireLegacyAgent(renamed);
-moveRenamedFolders(undefined, (message) => console.log(`[isocline] ${message}`));
+// Production is the installed app on its own world; run from the source tree, or on a world given by
+// ISOCLINE_DATA_DIR, it is development (core stage.ts): its own world, port, agent and keychain.
+process.env.ISOCLINE_ENV ??= app.isPackaged && !process.env.ISOCLINE_DATA_DIR ? "production" : "development";
+const production = currentStage() === "production";
+if (production) {
+  // Its old home node agent is retired and its folders move to the new names, before anything below opens a file.
+  retireLegacyAgent(homeNodeConfig({ runtime: process.execPath, cli: "", env: process.env }));
+  moveRenamedFolders(undefined, (message) => console.log(`[isocline] ${message}`));
+}
 
-app.setName("Isocline");
+app.setName(production ? "Isocline" : "Isocline Dev");
 // The app's own files (window state, device id) live beside the world, never inside it:
-// ~/Library/Application Support/Isocline/Desktop, or <data dir>/desktop for a development world.
-app.setPath("userData", process.env.ISOCLINE_DATA_DIR ? join(process.env.ISOCLINE_DATA_DIR, "desktop") : join(app.getPath("appData"), "Isocline", "Desktop"));
+// ~/Library/Application Support/Isocline/Desktop in production, <data dir>/desktop otherwise.
+app.setPath("userData", production ? join(app.getPath("appData"), "Isocline", "Desktop") : join(dataDirFor(), "desktop"));
 if (!app.requestSingleInstanceLock()) app.quit();
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
@@ -670,10 +676,10 @@ app.on("before-quit", () => { quitting = true; });
 app.on("will-quit", () => globalShortcut.unregisterAll());
 
 /** launchd starts the home node from wherever this app is. Run from a disk image or a translocated Downloads copy,
- * that place is gone after the next restart, so a packaged app offers to move itself first (a development world,
- * ISOCLINE_DATA_DIR, is left where it is). Moving quits and reopens the app from Applications. */
+ * that place is gone after the next restart, so the production app offers to move itself first (a development run
+ * is left where it is). Moving quits and reopens the app from Applications. */
 function offerToMove(): void {
-  if (!app.isPackaged || process.env.ISOCLINE_DATA_DIR || app.isInApplicationsFolder()) return;
+  if (currentStage() !== "production" || app.isInApplicationsFolder()) return;
   const choice = dialog.showMessageBoxSync({
     type: "question", message: say("mac.move.title"), detail: say("mac.move.detail"),
     buttons: [say("mac.move.yes"), say("mac.move.no")], defaultId: 0, cancelId: 1,

@@ -1,17 +1,19 @@
 /** Moving an install from before the rename (Alfred → Isocline, docs/design/rename-isocline.md §3.3): the world and
  * the logs move from the old folders to the new ones, once, when the new ones are not there yet. Synchronous and
- * without imports beyond node, so the Mac app can run it before anything opens a file in either place. A world given
- * by ISOCLINE_DATA_DIR (a development world) is the caller's and is left where it is.
+ * without imports beyond node and core's stage rule, so the Mac app can run it before anything opens a file in either place. A world given
+ * by ISOCLINE_DATA_DIR is the caller's and is left where it is, and a development run moves nothing (only production
+ * was ever installed under the old name).
  */
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { currentStage } from "@isocline/core/stage";
 
 export interface Move { from: string; to: string }
 
 /** The folders that changed name, old and new, on this platform. */
 export function renamedFolders(home: string = homedir(), env: NodeJS.ProcessEnv = process.env, platform: string = process.platform): Move[] {
-  if (env.ISOCLINE_DATA_DIR || env.ALFRED_DATA_DIR) return [];
+  if (env.ISOCLINE_DATA_DIR || env.ALFRED_DATA_DIR || currentStage(env) !== "production") return [];
   if (platform === "darwin") {
     return [
       { from: join(home, "Library", "Application Support", "Alfred"), to: join(home, "Library", "Application Support", "Isocline") },

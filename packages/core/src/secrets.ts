@@ -16,6 +16,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { carryingOver, LEGACY_KEYCHAIN_SERVICE } from "./legacy.ts";
+import { currentStage, keychainServiceFor } from "./stage.ts";
 
 export interface SecretStore {
   readonly kind: "keychain" | "file";
@@ -116,7 +117,7 @@ function securityItems(service: string): KeychainItems {
   };
 }
 
-export function keychainStore(service = process.env.ISOCLINE_KEYCHAIN_SERVICE || "Isocline", items: KeychainItems = securityItems(service)): SecretStore {
+export function keychainStore(service = keychainServiceFor(), items: KeychainItems = securityItems(service)): SecretStore {
   const part = (name: string, generation: string, index: number) => `${name}/${generation}/${index}`;
   const hash = (text: string) => createHash("sha256").update(text).digest("hex");
   const decode = (text: string) => Buffer.from(text, "base64").toString("utf8");
@@ -203,6 +204,8 @@ export function fileStore(path: string): SecretStore {
 
 export function defaultSecretStore(dataDir: string): SecretStore {
   if (process.platform !== "darwin" || process.env.ISOCLINE_SECRETS === "file") return fileStore(join(dataDir, "secrets.json"));
-  // Secrets kept before the rename, under the old service, come over the first time each is read.
-  return process.env.ISOCLINE_KEYCHAIN_SERVICE ? keychainStore() : carryingOver(keychainStore(), keychainStore(LEGACY_KEYCHAIN_SERVICE));
+  // Production's secrets kept before the rename, under the old service, come over the first time each is read.
+  // Development has its own service (stage.ts) and never reads production's, old or new.
+  const carryOver = currentStage() === "production" && !process.env.ISOCLINE_KEYCHAIN_SERVICE;
+  return carryOver ? carryingOver(keychainStore(), keychainStore(LEGACY_KEYCHAIN_SERVICE)) : keychainStore();
 }

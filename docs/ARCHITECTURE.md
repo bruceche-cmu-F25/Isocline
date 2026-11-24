@@ -277,7 +277,8 @@ interface EnginePort {
 **主节点**
 
 - 一个 Node 进程，用 launchd 用户服务常驻。Mac App 第一次启动时安装并拉起它；关掉 App 窗口、退出 App，任务和定时都照常跑，手机也照常能连。
-- 数据目录 `~/Library/Application Support/Alfred/`：一个 SQLite（世界、任务、通知、各模块的表）加三份记忆 Markdown。密钥放钥匙串。
+- 数据目录 `~/Library/Application Support/Isocline/`：一个 SQLite（世界、任务、通知、各模块的表）加三份记忆 Markdown。密钥放钥匙串。
+- 【已实现】（2026-11-23）开发和生产不共用任何东西：数据目录、端口、launchd 代理、钥匙串服务名各一套，规则只在 `packages/core/src/stage.ts`。装好的 App 是生产，从源码跑的都是开发；开发运行碰到生产的数据或钥匙串就拒绝启动。打包只用已提交的代码。见 `docs/packaging.md` 第 4.1 节。
 - 主节点自己托管界面的静态文件，所有设备打开的是同一套界面。
 - 位置无关：以后可以搬到常开的 Mac mini 或服务器上，协议不变。那时 Mac App 远程连它，Mac 本机的能力变成"设备能力"（见下）。
 

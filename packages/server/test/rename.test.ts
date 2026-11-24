@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { moveRenamedFolders, renamedFolders } from "../src/rename.ts";
 
+const PRODUCTION = { ISOCLINE_ENV: "production" };
+
 test("an install from before the rename: its world and logs move to the new folders, once", () => {
   const home = mkdtempSync(join(tmpdir(), "isocline-rename-"));
-  const moves = renamedFolders(home, {}, "darwin");
+  const moves = renamedFolders(home, PRODUCTION, "darwin");
   const [world, logs] = moves;
   mkdirSync(world!.from, { recursive: true });
   writeFileSync(join(world!.from, "world.sqlite"), "the world");
@@ -20,12 +22,13 @@ test("an install from before the rename: its world and logs move to the new fold
 
 test("a new folder that already exists is never overwritten, and a development world stays where it is", () => {
   const home = mkdtempSync(join(tmpdir(), "isocline-rename-"));
-  const [world] = renamedFolders(home, {}, "darwin");
+  const [world] = renamedFolders(home, PRODUCTION, "darwin");
   mkdirSync(world!.from, { recursive: true });
   mkdirSync(world!.to, { recursive: true });
   writeFileSync(join(world!.to, "world.sqlite"), "the new world");
   assert.deepEqual(moveRenamedFolders([world!]), []);
   assert.equal(readFileSync(join(world!.to, "world.sqlite"), "utf8"), "the new world");
-  assert.deepEqual(renamedFolders(home, { ISOCLINE_DATA_DIR: "/dev/world" }, "darwin"), []);
-  assert.deepEqual(renamedFolders(home, { XDG_DATA_HOME: "/data" }, "linux"), [{ from: "/data/alfred", to: "/data/isocline" }]);
+  assert.deepEqual(renamedFolders(home, { ...PRODUCTION, ISOCLINE_DATA_DIR: "/dev/world" }, "darwin"), []);
+  assert.deepEqual(renamedFolders(home, {}, "darwin"), [], "a development run moves nothing");
+  assert.deepEqual(renamedFolders(home, { ...PRODUCTION, XDG_DATA_HOME: "/data" }, "linux"), [{ from: "/data/alfred", to: "/data/isocline" }]);
 });

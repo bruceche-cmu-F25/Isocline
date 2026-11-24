@@ -53,6 +53,18 @@ npm run package:mac -- --no-dmg
 - **装在哪很重要**：launchd 会记住 App 当时所在的路径。如果直接在 DMG 里或「下载」文件夹里打开，下次开机那个路径可能已经不在了，所以 App 会先提示「移到应用程序文件夹」。
 - **从 Alfred 升级**：第一次打开时，App 会依次停掉并删除旧的 `alfred.home-node`、把 `Application Support/Alfred` 和日志目录改名为 `Isocline`，再启动新的主节点。钥匙串里的凭证第一次被读到时会复制一份到新名下，旧的保留。详见 [design/rename-isocline.md](design/rename-isocline.md) 第 3.3 节。
 
+## 4.1 开发和生产分开
+
+规则只写在一处：[packages/core/src/stage.ts](../packages/core/src/stage.ts)。
+
+- **生产** = 装好的 Isocline.app（打包、没设 `ISOCLINE_DATA_DIR`）。它在 launchd 代理里写上 `ISOCLINE_ENV=production`。
+- **开发** = 其余一切：`npm start`、`npm run desktop`、直接跑 `cli.ts`、带 `ISOCLINE_DATA_DIR` 打开的打包版。开发有自己的数据目录（`Isocline Dev`）、端口（7491）、代理（`isocline.home-node.dev`）和钥匙串服务名（`Isocline Dev`），读不到真实账号。
+- 开发运行指向真实数据目录或真实钥匙串时，主节点直接拒绝启动。
+- 打包只用已提交的代码：工作区里有没提交的改动（`packages/`、`modules/` 等）就停下；提交号写进 `Info.plist` 的 `IsoclineCommit`。只为试一下可以加 `--allow-uncommitted`，这样的包不要拿来日常用。
+- App 换了位置或换了版本，代理文件变了，打开时会重新载入主节点，让它跑新的代码（以前要等下次登录）。
+
+**从「源码版当正式版」换过来**（2026-11-23 之前的做法）：旧的 `isocline.home-node` 代理指向仓库里的 `cli.ts`。打包、装进「应用程序」、打开一次 Isocline.app，它会把这个代理改成指向 App 自己，并重启主节点；真实数据目录不动。在这之前如果旧代理自己重启了，它会以开发身份打开一个空的开发世界（真实数据仍在原处，没有丢）。
+
 ## 5. 安全地试一个新包（不碰真实的数据）
 
 **不要直接双击打开来测试。**打包版不带任何环境变量启动时，会接管你真实的主节点和数据目录（第 4 节）。测试要给它一个临时世界和另一个端口：
@@ -62,8 +74,8 @@ D=$(mktemp -d)
 ISOCLINE_DATA_DIR=$D ISOCLINE_PORT=7487 dist/mac/Isocline.app/Contents/MacOS/Isocline
 ```
 
-- 设了 `ISOCLINE_DATA_DIR` 就是"开发世界"：数据放在 `$D`，launchd 代理的名字带上这个目录的哈希（`isocline.home-node.<8 位>`），不会替换掉真实的代理；也不会去挪 `Application Support` 里的目录，也不会弹出移动提示。
-- **钥匙串是共用的**：开发世界和真实世界读写的是同一个登录钥匙串。所以测试 App 读到的模型和 Google 凭证就是你真实的那几个。要完全隔离，再加上 `ISOCLINE_SECRETS=file`，凭证就存进 `$D/secrets.json`。2026-11-23 的一次测试就是因为没加这一条，把真实钥匙串里的模型凭证挪了位置（已经修好，迁移现在只复制、不删旧的）。
+- 设了 `ISOCLINE_DATA_DIR` 就是开发世界（第 4.1 节）：数据放在 `$D`，launchd 代理的名字带上这个目录的哈希（`isocline.home-node.<8 位>`），不会替换掉真实的代理；也不会去挪 `Application Support` 里的目录，也不会弹出移动提示。
+- **钥匙串分开**：开发世界用钥匙串服务名 `Isocline Dev`，读不到真实的模型和 Google 凭证（2026-11-23 起；之前是共用的，那天的一次测试因此挪动过真实凭证）。想连钥匙串都不碰，再加 `ISOCLINE_SECRETS=file`，凭证存进 `$D/secrets.json`。
 - **测完清理**（`<hash>` 是代理名后面那 8 位）：
 
   ```bash
@@ -110,7 +122,7 @@ rm -rf /Applications/Isocline.app
 
 ## 8. 出问题时
 
-- **"主节点没有启动"**：看 `~/Library/Logs/Isocline/isocline.home-node.log`。常见原因是端口 7480 被占了（比如源码版的主节点还在跑），或者另一个主节点正在用同一个数据目录（日志里会写 `Another Isocline home node is running`）。
+- **"主节点没有启动"**：看 `~/Library/Logs/Isocline/isocline.home-node.log`。常见原因是端口 7480 被占了，或者另一个主节点正在用同一个数据目录（日志里会写 `Another Isocline home node is running`）。
 - **看代理状态**：`launchctl print gui/$(id -u)/isocline.home-node`。
 - **App 闪退或打不开**：在终端里直接运行 `/Applications/Isocline.app/Contents/MacOS/Isocline`，错误会打在终端里。
 - **验签名**：`codesign --verify --deep --strict --verbose=2 /Applications/Isocline.app`。

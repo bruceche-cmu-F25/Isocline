@@ -22,7 +22,7 @@ import { PushService } from "./push.ts";
 import { cliRunner, findTailscale, Tailscale } from "./tailscale.ts";
 import { GoogleConnections } from "./google.ts";
 import { createCredentialStore, McpConnectors, ModelAccounts, Skills } from "@isocline/engine-pi";
-import { adoptLegacyEnv, recordDomainEvent } from "@isocline/core";
+import { adoptLegacyEnv, checkStage, currentStage, recordDomainEvent } from "@isocline/core";
 import { defaultSecretStore } from "./secrets.ts";
 import { watchTodoSources } from "./todo-sources.ts";
 import { moveRenamedFolders } from "./rename.ts";
@@ -40,9 +40,16 @@ const { values, positionals } = parseArgs({
     "ingress-port": { type: "string" },
   },
 });
-// An install from before the rename keeps its world: the old folders move to the new names (once; not for --data-dir).
-if (!values["data-dir"]) moveRenamedFolders(undefined, log);
+// An install from before the rename keeps its world: the old folders move to the new names (once; production only,
+// not for --data-dir).
+if (!values["data-dir"] && currentStage() === "production") moveRenamedFolders(undefined, log);
 const dataDir = values["data-dir"] ?? defaultDataDir();
+// A development run never opens production's world or its keychain (core stage.ts).
+const crossing = checkStage(dataDir);
+if (crossing) {
+  console.error(`[isocline] ${crossing}`);
+  process.exit(1);
+}
 const command = positionals[0] ?? "serve";
 
 if (command === "serve") {
@@ -107,7 +114,7 @@ if (command === "serve") {
     throw error;
   });
   server.listen(port, "127.0.0.1", () => {
-    log(`home node on http://127.0.0.1:${port}  (data: ${dataDir})`);
+    log(`${currentStage()} home node on http://127.0.0.1:${port}  (data: ${dataDir})`);
     home.kick();
     ingress.listen(ingressPort, "127.0.0.1", () => {
       log(`ingress for other devices on http://127.0.0.1:${ingressPort}`);

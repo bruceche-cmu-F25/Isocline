@@ -8,13 +8,14 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { agentLabelFor, portFor } from "@isocline/core/stage";
 
 export interface HomeNodeConfig {
   label: string;
   /** The agent this world ran under before the rename (Alfred → Isocline): retired before this one starts. */
   legacyLabel: string;
   port: number;
-  /** Absent: the home node's default (~/Library/Application Support/Isocline). */
+  /** Absent: the stage's own directory (core stage.ts). */
   dataDir?: string;
   /** The executable that runs the node (this app's binary, as Node). */
   runtime: string;
@@ -25,18 +26,18 @@ export interface HomeNodeConfig {
   env: Record<string, string>;
 }
 
-export const DEFAULT_PORT = 7480;
-
 export function homeNodeConfig(options: { runtime: string; cli: string; env: NodeJS.ProcessEnv }): HomeNodeConfig {
   const dataDir = options.env.ISOCLINE_DATA_DIR || undefined;
-  // A non-default data directory gets its own agent, so a development world never replaces the real one.
-  const label = dataDir ? `isocline.home-node.${createHash("sha256").update(dataDir).digest("hex").slice(0, 8)}` : "isocline.home-node";
-  const env: Record<string, string> = {};
+  // Production and development each have their own agent (core stage.ts); a world elsewhere gets one of its own too.
+  const label = dataDir ? `isocline.home-node.${createHash("sha256").update(dataDir).digest("hex").slice(0, 8)}` : agentLabelFor(options.env);
+  // The node decides its stage from this, as the app did: the agent must not fall back to another one.
+  const env: Record<string, string> = { ISOCLINE_ENV: options.env.ISOCLINE_ENV === "production" ? "production" : "development" };
   if (options.env.ISOCLINE_AWAY_MINUTES) env.ISOCLINE_AWAY_MINUTES = options.env.ISOCLINE_AWAY_MINUTES;
+  if (options.env.ISOCLINE_KEYCHAIN_SERVICE) env.ISOCLINE_KEYCHAIN_SERVICE = options.env.ISOCLINE_KEYCHAIN_SERVICE;
   return {
     label,
     legacyLabel: label.replace(/^isocline\./, "alfred."),
-    port: Number(options.env.ISOCLINE_PORT) || DEFAULT_PORT,
+    port: portFor(options.env),
     dataDir,
     runtime: options.runtime,
     cli: options.cli,
@@ -133,9 +134,10 @@ export async function ensureHomeNode(config: HomeNodeConfig): Promise<HomeNodeMo
   const current = existsSync(path) ? readFileSync(path, "utf8") : null;
   if (await healthy(config.port)) {
     if (!isLoaded(config)) return "external";
-    // A changed plist (the app moved) takes effect at the node's next start, not mid-run.
-    if (current !== plist) writeFileSync(path, plist, { mode: 0o644 });
-    return "launchd";
+    if (current === plist) return "launchd";
+    // A changed agent (the app moved or was updated, or the node used to run from a source tree) is loaded again
+    // now: launchd keeps the definition it loaded, so the node would otherwise go on running the old code. Runs
+    // survive a restart (leases), so nothing is lost.
   }
   mkdirSync(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
   mkdirSync(join(homedir(), "Library", "Logs", "Isocline"), { recursive: true });

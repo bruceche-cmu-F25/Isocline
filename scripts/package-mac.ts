@@ -5,6 +5,10 @@
  *
  *   npm run package:mac            → dist/mac/Isocline.app and dist/mac/Isocline-<version>-<arch>.dmg
  *   npm run package:mac -- --no-dmg
+ *   npm run package:mac -- --allow-uncommitted   (a trial build; never the one to use every day)
+ *
+ * The app is production (core stage.ts), so it is built only from committed code: the commit goes into its
+ * Info.plist (IsoclineCommit), and uncommitted changes to what goes inside stop the build.
  *
  * The app is signed ad hoc, not with a Developer ID, and not notarized: on another Mac, the first open is
  * right-click → Open (or System Settings → Privacy & Security → Open Anyway).
@@ -40,6 +44,16 @@ const step = (text: string) => console.log(`▸ ${text}`);
 
 if (process.platform !== "darwin") throw new Error("Isocline.app is built on a Mac.");
 
+// Production runs what was committed, not whatever the working tree holds today.
+const SHIPPED = ["packages", "modules", "package.json", "package-lock.json", "LICENSE", "THIRD-PARTY-NOTICES.md"];
+const uncommitted = run("git", ["status", "--porcelain", "--", ...SHIPPED], { cwd: root }).split("\n").filter(Boolean);
+if (uncommitted.length && !process.argv.includes("--allow-uncommitted")) {
+  console.error(`Uncommitted changes would go into the app:\n${uncommitted.slice(0, 12).join("\n")}${uncommitted.length > 12 ? `\n… and ${uncommitted.length - 12} more` : ""}`);
+  console.error("Commit them (or stash them) first. For a trial build only: npm run package:mac -- --allow-uncommitted");
+  process.exit(1);
+}
+const commit = run("git", ["rev-parse", "--short", "HEAD"], { cwd: root }).trim() + (uncommitted.length ? "-uncommitted" : "");
+
 step("Building the interface");
 run("npm", ["run", "build:ui"], { cwd: root });
 
@@ -68,7 +82,7 @@ for (const helper of readdirSync(frameworks).filter((entry) => /^Electron Helper
 const info = join(contents, "Info.plist");
 for (const [key, value] of Object.entries({
   CFBundleExecutable: name, CFBundleName: name, CFBundleDisplayName: name, CFBundleIdentifier: bundleId,
-  CFBundleShortVersionString: version, CFBundleVersion: version, CFBundleIconFile: `${name}.icns`,
+  CFBundleShortVersionString: version, CFBundleVersion: version, CFBundleIconFile: `${name}.icns`, IsoclineCommit: commit,
   LSApplicationCategoryType: "public.app-category.productivity",
   // What macOS shows when Isocline first asks: the microphone is for dictation, and nothing else is used.
   NSMicrophoneUsageDescription: "Isocline listens only while you hold its figure, press the talk shortcut or use a microphone button, to turn what you say into text.",

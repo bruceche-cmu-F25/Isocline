@@ -1,14 +1,13 @@
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { dataDirFor, portFor } from "@isocline/core";
 
-export const DEFAULT_PORT = 7480;
+/** The port of this stage's home node (production 7480, development 7491; core stage.ts). */
+export const DEFAULT_PORT = portFor({ ...process.env, ISOCLINE_PORT: undefined });
 
-/** Where the world lives. Never inside the repository. */
+/** Where the world lives: ISOCLINE_DATA_DIR, or this stage's own directory (core stage.ts). Never inside the repository. */
 export function defaultDataDir(): string {
-  if (process.env.ISOCLINE_DATA_DIR) return resolve(process.env.ISOCLINE_DATA_DIR);
-  if (process.platform === "darwin") return join(homedir(), "Library", "Application Support", "Isocline");
-  return join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "isocline");
+  return dataDirFor();
 }
 
 /** The built interface, next to this package in the workspace (or where ISOCLINE_UI_DIR says, to try a build that
