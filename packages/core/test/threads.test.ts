@@ -263,14 +263,16 @@ test("a run remembers the page it was asked from and hands it to the engine; a m
     "the same request id from another page is a different request");
   assert.equal(submitRun(w, { requestId: "r2", goal: "hi", profile: "tasks" }).run.context, null);
 
-  for (const bad of [{ view: "Todo List" }, { view: "todo.list", summary: "x".repeat(301) }, { view: "todo.list", selection: {} }, "todo.list", [1]]) {
+  // Said out loud: kept, and only as `true`.
+  assert.deepEqual(submitRun(w, { requestId: "r3", goal: "明天三点交材料", profile: "tasks", context: { view: "core.voice", spoken: true } }).run.context, { view: "core.voice", spoken: true });
+  for (const bad of [{ view: "Todo List" }, { view: "todo.list", summary: "x".repeat(301) }, { view: "todo.list", selection: {} }, { view: "core.voice", spoken: "yes" }, "todo.list", [1]]) {
     assert.throws(() => submitRun(w, { requestId: `bad-${JSON.stringify(bad).length}`, goal: "x", profile: "tasks", context: bad }), /Invalid view context/);
   }
 
   const seen: unknown[] = [];
   await createRunDrain(w, { submit: async (request) => { seen.push(request.context); return { reply: "ok" }; } }, { owner: "home", profiles: profiles(w) }).kick();
-  assert.equal(seen.length, 2);
-  assert.deepEqual(seen.filter(Boolean), [context], "only the run asked from a page carries one");
+  assert.equal(seen.length, 3);
+  assert.deepEqual(seen.filter(Boolean), [context, { view: "core.voice", spoken: true }], "only runs asked from a page, or by voice, carry one");
 });
 
 test("a conversation without its own model uses the user's default model and thinking level", async () => {

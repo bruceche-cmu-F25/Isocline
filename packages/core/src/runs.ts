@@ -80,7 +80,13 @@ export interface ViewContext {
   title?: string;
   summary?: string;
   selection?: { id: string; title?: string };
+  /** Said out loud, not typed (quick talk, docs/design/voice.md §1.2): the words are a transcript, and the reply
+   * will be read aloud. `view` is then the page the user was on, or `core.voice` when there was none (the Mac's
+   * figure, the hotkey). */
+  spoken?: true;
 }
+/** The view of a run asked by voice from no page. */
+export const VOICE_VIEW = "core.voice";
 
 const VIEW = /^[a-z][a-z0-9]*\.[a-z][a-z_]*$/;
 /** Checks and bounds a context from a device; anything malformed is refused, not trimmed into something else. */
@@ -91,11 +97,13 @@ export function viewContext(input: unknown): ViewContext | null {
   if (typeof value !== "object" || typeof value.view !== "string" || !VIEW.test(value.view) || value.view.length > 64) throw new Error("Invalid view context");
   const selection = value.selection as Record<string, unknown> | undefined;
   if (selection !== undefined && (typeof selection !== "object" || typeof selection.id !== "string" || !selection.id || selection.id.length > 64)) throw new Error("Invalid view context");
+  if (value.spoken !== undefined && value.spoken !== true) throw new Error("Invalid view context");
   return {
     view: value.view,
     ...(value.title !== undefined ? { title: text(value.title, 80) } : {}),
     ...(value.summary !== undefined ? { summary: text(value.summary, 300) } : {}),
     ...(selection ? { selection: { id: selection.id as string, ...(selection.title !== undefined ? { title: text(selection.title, 200) } : {}) } } : {}),
+    ...(value.spoken ? { spoken: true as const } : {}),
   };
 }
 

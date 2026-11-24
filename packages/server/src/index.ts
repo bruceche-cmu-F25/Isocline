@@ -10,3 +10,4 @@ export { Tailscale, cliRunner, findTailscale, type Runner } from "./tailscale.ts
 export { PushService, noticeMessage, checkSubscription, PUSH_CLIENT, type PushSender, type PushMessage } from "./push.ts";
 export { OUTLET_STALE_MS, Outlets, watchAttention, type AttentionOptions, type Reach, type SeenOutlet } from "./attention.ts";
 export { Transcriber, VoiceError, DEFAULT_VOICE_COMMAND, type Transcript, type TranscriberOptions } from "./voice.ts";
+export { Speaker, parseSystemVoices, DEFAULT_SPEAK_MODEL_COMMAND, type SpeakerOptions, type VoiceInfo } from "./speak.ts";

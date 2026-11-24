@@ -248,6 +248,11 @@ body.resizing { cursor: col-resize; user-select: none; }
 .run-meta { display: flex; flex-wrap: wrap; gap: 0 6px; padding-left: 4px; font: .6875rem var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); cursor: default; }
 .run-meta span + span::before { content: "·"; margin-right: 6px; opacity: .6; }
 .run-meta .logo { width: 11px; height: 11px; margin-right: 4px; vertical-align: -1.5px; }
+/* Read a reply aloud: a small speaker at the end of its line, quiet until wanted. */
+.read-aloud { width: 20px; height: 16px; margin-left: 2px; display: inline-grid; place-items: center; border-radius: 5px; color: var(--muted); opacity: .7; }
+.read-aloud:hover, .read-aloud:focus-visible, .read-aloud[data-speaking] { opacity: 1; color: var(--ink); }
+.read-aloud svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.read-aloud[data-speaking] svg { fill: currentColor; }
 
 /* Conversation */
 /* --read-w: the reading width. At the 15px reply text, about 37 Chinese characters or 75 Latin letters a line,
@@ -737,7 +742,10 @@ html.desktop .topbar button, html.desktop .page-head button, html.desktop .alf-h
   .chip { flex: none; }
   /* In a row that scrolls sideways the week's chip leads, or it would sit out of sight at the end. */
   .chip-view { order: -1; margin-left: 0; }
-  .alfred { position: fixed; inset: 0; z-index: 30; border: 0; padding-top: env(safe-area-inset-top, 0px); }
+  /* A sheet over the whole screen, but only as tall as what the keyboard leaves (--vvh, viewport.ts): fixed to
+     inset 0 its foot, and the composer in it, would sit behind the keyboard. */
+  .alfred { position: fixed; inset: 0 0 auto; height: var(--vvh, 100dvh); z-index: 30; border: 0; padding-top: env(safe-area-inset-top, 0px); }
+  html[data-keyboard] .alfred .composer { margin-bottom: 8px; }
   .sidebar[data-visible] { position: fixed; inset: 0 auto 0 0; width: min(300px, 86vw); z-index: 32; padding-top: calc(4px + env(safe-area-inset-top, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); box-shadow: 0 0 40px #0006; }
   .scrim { display: block; position: fixed; inset: 0; z-index: 31; background: #00000040; }
   /* The dock is two bubbles floating over the page, no band behind them: at the left one pill with three lines
@@ -757,6 +765,10 @@ html.desktop .topbar button, html.desktop .page-head button, html.desktop .alf-h
   .dock .count { position: absolute; top: 2px; left: calc(50% + 7px); min-width: 16px; height: 16px; padding: 0 4px; display: grid; place-items: center; border-radius: 8px; background: var(--warm); color: var(--raise); font-size: .625rem; }
   .dock-alfred { flex: none; width: 58px; height: 58px; display: grid; place-items: center; border-radius: 50%; }
   .dock-alfred .figure[data-speaking] { transform-origin: center; --up: 0; --nod-distance: 0px; }
+  /* Held to talk: no callout or selection on a long press; a ring that swells with the voice; a line above saying it listens. */
+  .dock-alfred { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+  .dock-alfred[data-listening] { box-shadow: 0 0 0 calc(3px + var(--level, 0) * 8px) var(--alf-soft), 0 8px 24px oklch(0 0 0 / .14), inset 0 0 0 1.5px var(--alf); transition: box-shadow 80ms linear; }
+  .dock-listening { position: absolute; right: 14px; bottom: calc(100% + 10px); padding: 6px 12px; border-radius: 999px; background: var(--raise); color: var(--copy); font-size: .8125rem; white-space: nowrap; box-shadow: 0 6px 18px oklch(0 0 0 / .14), inset 0 0 0 1px var(--line-soft); }
   .pal kbd { display: none; }
 }
 /* Keep all five buttons in the pill within reach beside Alfred on a 320px phone. */

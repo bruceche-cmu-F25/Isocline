@@ -16,6 +16,7 @@ import { DEFAULT_PORT, defaultDataDir, defaultUiDir } from "./config.ts";
 import { openHome } from "./home.ts";
 import { createHttpServer, createIngressServer } from "./http.ts";
 import { Transcriber } from "./voice.ts";
+import { Speaker } from "./speak.ts";
 import { RemoteAccess } from "./remote.ts";
 import { PushService } from "./push.ts";
 import { cliRunner, findTailscale, Tailscale } from "./tailscale.ts";
@@ -88,8 +89,9 @@ if (command === "serve") {
   const stopTodoSources = watchTodoSources(home.world, calendarModule, log);
   // Speech to text for every device; the model loads when someone starts talking.
   const voice = new Transcriber({ log });
-  const server = createHttpServer(home, { port, uiDir: defaultUiDir(), log, google, models, mcp, skills, remote, push, voice });
-  const ingress = createIngressServer(home, { port: ingressPort, uiDir: defaultUiDir(), log, google, models, mcp, skills, remote, push, voice });
+  const speaker = new Speaker({ log });
+  const server = createHttpServer(home, { port, uiDir: defaultUiDir(), log, google, models, mcp, skills, remote, push, voice, speaker });
+  const ingress = createIngressServer(home, { port: ingressPort, uiDir: defaultUiDir(), log, google, models, mcp, skills, remote, push, voice, speaker });
   server.on("error", (error: NodeJS.ErrnoException) => {
     void engine.close();
     home.close();
@@ -111,6 +113,7 @@ if (command === "serve") {
   const stop = async () => {
     stopTodoSources();
     voice.close();
+    speaker.close();
     google.close();
     models.close();
     mcp.close();

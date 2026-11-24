@@ -122,7 +122,11 @@ export interface Run {
   automationId: string | null;
 }
 /** The page a request came from: its view, title, one line of what it shows, and what was selected on it. */
-export interface ViewContext { view: string; title?: string; summary?: string; selection?: { id: string; title?: string } }
+export interface ViewContext {
+  view: string; title?: string; summary?: string; selection?: { id: string; title?: string };
+  /** Said out loud (quick talk): a transcript, and the reply is read aloud. `view` is `core.voice` when asked from no page. */
+  spoken?: true;
+}
 
 export interface Conversation {
   id: string;
@@ -357,8 +361,35 @@ export interface UserSettings {
   firstRunAt: string | null;
   /** The sidebar's pages as the user arranged them (page keys); null: as they come. */
   pages?: { order: string[]; hidden: string[] } | null;
+  /** Speaking and listening; a patch may name only the fields it changes. */
+  voice: VoiceSettings;
 }
-export interface SettingsRequest { requestId: string; patch: Partial<UserSettings> }
+export interface VoiceSettings {
+  /** The Mac's figure reads out what it says. Replies to quick talk are always read out, unless muted. */
+  speakFigure: boolean;
+  /** For now, nothing is said out loud anywhere. */
+  muted: boolean;
+  /** `system:<name>` or `model:<name>`; null: the default for the language. */
+  voice: string | null;
+  /** 0.7–1.5. */
+  rate: number;
+  /** Words given to the speech model with every recording (at most 40). */
+  words: string[];
+}
+export interface SettingsRequest { requestId: string; patch: Omit<Partial<UserSettings>, "voice"> & { voice?: Partial<VoiceSettings> } }
+
+/** A voice Alfred can speak in (`GET /api/voice`). */
+export interface VoiceInfo { id: string; name: string; engine: "system" | "model"; lang: "zh" | "en" }
+export interface VoiceStatus {
+  /** Speech to text. */
+  available: boolean; reason: string | null; loaded: boolean;
+  speak: {
+    available: boolean; reason: string | null; voices: VoiceInfo[];
+    model: "absent" | "loading" | "ready" | "loaded" | null; modelBytes: number;
+    /** The voice that will be used now. */
+    current: string | null;
+  };
+}
 
 export type ProposalState = "open" | "executed" | "declined" | "stale" | "failed" | "superseded" | "expired";
 /** One device operation a proposal will run, pinned to the exact records it names. */

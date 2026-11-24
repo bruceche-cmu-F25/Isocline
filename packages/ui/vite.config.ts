@@ -10,6 +10,9 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    // The microphone's audio worklet stays a file of its own: inlined as a data: URL, the page's
+    // Content-Security-Policy (default-src 'self') refuses to load it, and no recording can start.
+    assetsInlineLimit: (file) => (file.endsWith("capture-worklet.js") ? false : undefined),
     // The main interface, and the Mac app's always-on-top figure.
     rollupOptions: { input: { main: page("index.html"), presence: page("presence.html") } },
   },

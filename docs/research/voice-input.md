@@ -14,7 +14,7 @@
 - **识别在主节点上做**：`POST /api/voice/transcribe`（16kHz 单声道 WAV）。开始录音时前端顺手调一次 `POST /api/voice/warm`，模型一边录一边加载；闲置 10 分钟卸载。模型是 Qwen3-ASR 0.6B（第 6.1 节），通过 `uv` 跑 `packages/server/voice/transcribe.py`。配对过的手机也能用。
 - 代码：`packages/server/src/voice.ts`、`packages/ui/src/voice/`；测试 `packages/server/test/voice.test.ts`。
 
-还没做：快说（全局快捷键、长按形象）、词表、识别后的整理、形象的 `listen` 状态、打包时带上 Python 和模型。
+还没做：识别后的整理、打包时带上 Python 和模型。快说（⌥⇧Space、按住形象、手机按住 Alfred）、常用词（词表）、形象的 `listen` 状态和 Alfred 开口，2026-11-23 按 [../design/voice.md](../design/voice.md) 做了。
 
 ## 0. 结论
 

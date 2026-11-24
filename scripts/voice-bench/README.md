@@ -101,3 +101,18 @@ uv run --no-project --with pyarrow python -I scripts/voice-bench/import_ascend.p
 | `engines/apple.swift` | Apple SpeechTranscriber 本机程序 |
 | `score.ts` | 打分 |
 | `import_ascend.py` | 从 ASCEND 公开数据集抽真人录音 |
+
+## 声音（朗读）的比较
+
+给 Alfred 开口选默认声音，背景和结果见 [docs/design/voice.md](../../docs/design/voice.md) 第 6 节。
+
+```bash
+cd scripts/voice-bench
+uv run --no-project --python 3.12 --with mlx-audio==0.6.7 --with "misaki[zh]" --with soundfile python -I tts.py kokoro results/tts
+uv run --no-project --python 3.12 --with mlx-audio==0.6.7 --with "misaki[zh]" --with soundfile python -I tts.py qwen results/tts
+uv run --no-project --python 3.12 --with mlx-qwen3-asr==0.4.4 python -I tts-check.py results/tts
+```
+
+- 句子在 `tts-lines.json`。系统声音的样本用 `say -v Tingting --file-format=WAVE --data-format=LEI16@24000 -o results/tts/say-Tingting-1.wav "…"` 这样生成，文件名照 `<引擎>-<声音>-<第几句>.wav`。
+- `tts-check.py` 把每个样本交给 Qwen3-ASR 再听一遍，算回听错误率：只说明念得清不清楚。好不好听要自己听。
+- 第一次运行会下载模型：Kokoro 约 400MB，Qwen3-TTS 0.6B 约 2GB。

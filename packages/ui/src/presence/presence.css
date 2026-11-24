@@ -66,3 +66,15 @@ html[data-demo] body { background: linear-gradient(160deg, oklch(.72 .06 240), o
 @media (prefers-reduced-motion: reduce) {
   .hold, .figure { animation: none !important; transition: none !important; }
 }
+
+/* Quick talk: one short line where the card goes, while Alfred listens or works on what was said. The dot swells
+   with the voice. */
+.quick-hint {
+  align-self: flex-end; margin: 0 0 30px; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--line);
+  border-radius: 999px; background: var(--plate); box-shadow: 0 6px 18px #0000002e; color: var(--copy); font-size: 12.5px; white-space: nowrap;
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); animation: hint-in 220ms var(--out);
+}
+.presence[data-v="top"] .quick-hint { align-self: flex-start; margin: 30px 0 0; }
+.quick-level { width: 8px; height: 8px; border-radius: 50%; background: var(--alf); transform: scale(calc(.8 + var(--level, 0) * 1.4)); transition: transform 80ms linear; }
+@keyframes hint-in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .quick-hint { animation: none; } .quick-level { transition: none; } }

@@ -1,5 +1,5 @@
 /** Settings, one tab per kind of thing (docs/design/settings-and-connections.md §3.7; the tabs after pi-web's
- * settings panel, github.com/agegr/pi-web, MIT): General, Models, Accounts, Skills, Connectors, Devices.
+ * settings panel, github.com/agegr/pi-web, MIT): General, Voice, Models, Accounts, Skills, Connectors, Devices.
  *
  * Paired devices can view subscription usage. Credentials, skills and connectors are managed on the home node. A tab
  * that was opened stays mounted while the page is, so a sign-in that is waiting for the browser is not lost by
@@ -19,14 +19,16 @@ import { PagesSetting } from "./PagesSetting.tsx";
 import { ModelSettings } from "./ModelSettings.tsx";
 import { SubscriptionUsage } from "./SubscriptionUsage.tsx";
 import { Skills } from "./Skills.tsx";
+import { VoiceSettings } from "./VoiceSettings.tsx";
 import { t, useLocale, type Key } from "./i18n/index.ts";
 import { Icon, type IconName } from "./shell/icons.tsx";
 import "./settings.css";
 
-type Tab = "general" | "models" | "accounts" | "skills" | "connectors" | "devices";
+type Tab = "general" | "voice" | "models" | "accounts" | "skills" | "connectors" | "devices";
 /** `home`: only where Alfred runs. */
 const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
   { id: "general", icon: "gear" },
+  { id: "voice", icon: "speaker" },
   { id: "models", icon: "model" },
   { id: "accounts", icon: "person", home: true },
   { id: "skills", icon: "layers", home: true },
@@ -91,6 +93,7 @@ export function Settings({ name, saveName, dockOptions, onEvent, state }: Genera
         ))}
       </div>
       {pane("general", <><General name={name} saveName={saveName} dockOptions={dockOptions} /><Preferences state={state} /><Areas state={state} /><PagesSetting state={state} /></>)}
+      {pane("voice", <VoiceSettings />)}
       {pane("models", local ? <ModelSettings /> : remote === null
         ? <p className="quiet" role="status">{t("models.usage.checking")}</p>
         : <SubscriptionUsage />)}

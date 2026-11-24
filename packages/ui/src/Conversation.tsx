@@ -12,6 +12,7 @@ import { StopRun, stoppableRun } from "./StopRun.tsx";
 import { Diff } from "./Diff.tsx";
 import { Linked } from "./Linked.tsx";
 import { MessageBubble } from "./MessageBubble.tsx";
+import { ReadAloud } from "./speech/ReadAloud.tsx";
 import { SelectionActions } from "./SelectionActions.tsx";
 import { ConversationReply } from "./ConversationReply.tsx";
 import { SkillInput } from "./SkillInput.tsx";
@@ -255,7 +256,12 @@ const Turn = memo(function Turn({ run, receipts, activity, files, highlighted, a
               </div>
             )}
           </div>
-          {meta.length > 0 && <p className="run-meta" title={metaTitle}>{meta.map((part, index) => <span key={part}>{mark && index === 0 && <Logo name={mark} />}{part}</span>)}</p>}
+          {(meta.length > 0 || outcome?.reply) && (
+            <p className="run-meta" title={metaTitle}>
+              {meta.map((part, index) => <span key={part}>{mark && index === 0 && <Logo name={mark} />}{part}</span>)}
+              {outcome?.reply && <ReadAloud id={`reply:${run.id}`} text={outcome.reply} />}
+            </p>
+          )}
           {error && <p className="problem small" role="alert">{error}</p>}
         </div>
       </div>
@@ -616,6 +622,7 @@ export function Conversation({ id, preferredModel, highlighted, context, suggest
   // Leaving the page is said too: a question asked with Alfred across the window is not about the page before it.
   const askedOn = (run: Run, previous: Run | undefined) => {
     if (run.automationId || run.context?.view === previous?.context?.view) return undefined;
+    if (run.context?.view === "core.voice") return t("conv.askedByVoice");
     if (run.context) return t("conv.askedFrom", { page: pageTitle(run.context.view) ?? run.context.title ?? run.context.view });
     return previous ? t("conv.askedHere") : undefined;
   };

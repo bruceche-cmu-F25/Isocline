@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { todoModule } from "@alfred/module-todo";
+import { updateSettings } from "@alfred/core";
 import { createHttpServer, openHome, Transcriber, type Home } from "../src/index.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-transcriber.ts", import.meta.url));
@@ -40,7 +41,8 @@ test("a recording comes back as words; the model loads on warm and unloads when 
   const voice = new Transcriber({ command: fake(), idleMs: 150 });
   const { home, server, base } = await start(voice);
   try {
-    assert.deepEqual(await (await fetch(`${base}/api/voice`)).json(), { available: true, reason: null, loaded: false });
+    const status = await (await fetch(`${base}/api/voice`)).json() as Record<string, unknown>;
+    assert.deepEqual({ ...status, speak: undefined }, { available: true, reason: null, loaded: false, speak: undefined });
     await fetch(`${base}/api/voice/warm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const heard = await send(base, wav(1000));
     assert.equal(heard.status, 200);
@@ -72,6 +74,20 @@ test("bad input is refused, a failed recording is an error, and a crashed model 
     // The fake quit after that answer; the next recording starts it again.
     await new Promise((resolve) => setTimeout(resolve, 100));
     assert.equal(await text(await send(base, wav(3))), "heard 50 bytes");
+  } finally {
+    voice.close();
+    server.close();
+    home.close();
+  }
+});
+
+test("every recording is given the user's words and name, so the model spells them right", async () => {
+  const voice = new Transcriber({ command: fake(), idleMs: 60_000 });
+  const { home, server, base } = await start(voice);
+  try {
+    assert.equal(await text(await send(base, wav(2))), "context: ");
+    updateSettings(home.world, { preferredName: "Bruce", voice: { words: ["useSpeech", "Bruce", "Stripe"] } });
+    assert.equal(await text(await send(base, wav(2))), "context: Bruce, useSpeech, Stripe");
   } finally {
     voice.close();
     server.close();

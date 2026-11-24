@@ -35,6 +35,9 @@ export interface DesktopBridge {
   dragFigure(phase: "start" | "move" | "end" | "cancel"): void;
   /** Presence window: the figure's right-click menu. */
   figureMenu(): void;
+  /** Presence window: the quick-talk hotkey was pressed (start or end talking). `visiting` when the figure was
+   * hidden and is shown only for this. Absent in older app builds. */
+  onQuickTalk?(listener: (visiting: boolean) => void): () => void;
   /** Main window: the system's folder picker; the chosen folder's path, or null. Absent in older app builds. */
   pickFolder?(): Promise<string | null>;
   /** Main window: the browser pane, a real browser the app lays over a rectangle of the page. Absent in older app

@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld("alfredDesktop", {
   onSide: (listener) => listen("presence-side", (_event, side) => listener({ h: side?.h === "left" ? "left" : "right", v: side?.v === "top" ? "top" : "bottom" })),
   dragFigure: (phase) => ipcRenderer.send("presence-drag", String(phase)),
   figureMenu: () => ipcRenderer.send("presence-menu"),
+  onQuickTalk: (listener) => listen("quick-talk", (_event, visiting) => listener(Boolean(visiting))),
   /** Main window: the system's folder picker; resolves with the chosen folder's path, or null. */
   pickFolder: () => ipcRenderer.invoke("pick-folder"),
   /** Main window: the browser pane, laid over the rectangle the page gives (in the page's own pixels). */

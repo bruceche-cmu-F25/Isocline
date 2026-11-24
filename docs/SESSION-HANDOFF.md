@@ -63,8 +63,8 @@ Alfred 是从 pi-web-robin 抽出来的开源个人助手 harness：一个常驻
 | 开发页浏览器的第三步（Alfred 点和填）、截图给模型、后台进程；整套在真的 Alfred.app 里验证 | 终端和"能看、Alfred 能读"的浏览器已做第一版（2026-11-19） | `docs/design/dev-terminal-browser.md` §4、§5 |
 | 日常页"少说话"：底部一行、就地改 | Bruce 已选"底部一行"。**"说一句就落地"已做（2026-11-20）**：底部一行边打边读（`packages/ui/src/shell/read.ts`，本地规则，不经过模型），带日期或时间的句子显示成待办 / 日程，回车直接记下，可撤销；一句里逗号隔开的几件事分开读；问句和"改已有的东西"照旧交给 Alfred。预览上点日期可以换一天。**就地改也接上了待办和日程**（同一天）：卡片里点「说一句…」，这件事挂到底部一行，说"明天""下午3点""晚1小时""做完了"直接改（`shell/say.ts`，本地规则），说得更多的连同这件事交给 Alfred；邮件的之前已做。**提议在日历落点处的虚线预览**也做了：未决提议里的 `calendar.add` / `calendar.move` 画成虚线日程，点开可以接受 / 不用了。**在 Alfred 里建的日程可以在周视图上直接拖**（Bruce 要的，同一天）：改时间、换天，按 15 分钟对齐，时长不变，走 `calendar.edit`；只限 id 以 `alfred` 开头、没有别的参会者、不重复的有时间日程，Google 来的照旧走编辑框；只支持鼠标。**虚线提议也能拖**：提议还是提议，只是那一步换了时间（核心 `amendProposal`，只许用户的设备、不许 run；日历操作 `calendar.retime` 重写那一步的预览，并在摘要末尾记一行"你把…改到了…"）。**还没做**：待办提议在待办页的虚线行（邮件来的建议已有）、提议被你手改后自动让位；没有设计文档；日程的落地、就地改没在真实 Google 账号上走过 | `prototype/less-talk.html` |
 | 开发模式 D5：worktree、提交和开 PR 的按钮、后台进程面板 | **已做并提交**（`3e5760d`，2026-11-20）；没对真实 GitHub 推送过 | `docs/design/dev-mode.md` §6 |
-| 语音：快速对话热键、词表、形象的"在听"状态、打包 Python | 没做 | `docs/research/voice-input.md` |
-| 注意力 A6：语音出口 | 排在后面 | `docs/design/attention.md` |
+| 语音：快说（⌥⇧Space、按住形象、手机按住 Alfred）、常用词、形象的"在听"、Alfred 开口（系统声音 / 本机 Qwen3-TTS） | 2026-11-23 做了，没提交；没在真的 Mac App 里试过；打包 Python 还没做 | `docs/design/voice.md` |
+| 注意力 A6：语音出口 | 2026-11-23 随语音做了（空档在设备上判断） | `docs/design/voice.md` §2.3 |
 | 远程访问的 tsnet 版本 | 以后 | `docs/research/remote-access.md` |
 | 记忆（偏好、做事方法） | 架构里有位置，没有设计文档 | `docs/ARCHITECTURE.md` §8 |
 | 打包 Alfred.app | 按计划留到最后 | |

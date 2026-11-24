@@ -4,7 +4,7 @@
 import type { Area, Preference,
   ArchivedConversation, Automation, AutomationHistory, RunSources, Schedule,
   Conversation, ConversationDetail, CoreEvent, DeviceInfo, FileInfo, DeviceKind, DeviceScopeRequest, LiveUpdate, ModelsResponse, Notice, OpResponse, PairingCode, ProposalResponse,
-  Project, ProjectBranches, StartSessionRequest, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, ViewContext, WebLockStatus,
+  Project, ProjectBranches, StartSessionRequest, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, SettingsRequest, ViewContext, VoiceStatus, WebLockStatus,
 } from "@alfred/protocol";
 import "./desktop.ts";
 import type { OpName } from "./modules.ts";
@@ -184,7 +184,7 @@ export const api = {
   /** `context`: the page it was changed from and what was picked there, as with a question. */
   revise: (id: string, text: string, context?: ViewContext) => post<ProposalResponse>(`/api/proposals/${id}/revise`, { requestId: newRequestId(), text, ...(context ? { context } : {}) }),
   /** The user's preferences that are not secrets, shared by every device (for now, the language). */
-  settings: (patch: Partial<UserSettings>) => post<UserSettings>("/api/settings", { requestId: newRequestId(), patch }),
+  settings: (patch: SettingsRequest["patch"]) => post<UserSettings>("/api/settings", { requestId: newRequestId(), patch }),
   /** A module's read that is too big for the state (one mail's body). */
   query: <T>(name: string, input: unknown) => post<{ result: T }>(`/api/queries/${name}`, { input }).then((response) => response.result),
   /** Refresh a module's mirror of an outside service now; resolves when it has been read. */
@@ -229,6 +229,17 @@ export const api = {
   /** Speech to text on the home node: start loading the model (someone began talking), then send the recording. */
   voiceWarm: () => post<{ loaded: boolean }>("/api/voice/warm", {}),
   transcribe: (wav: Blob) => call<{ text: string; ms: number }>("/api/voice/transcribe", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav }),
+  /** Text to speech: what voices there are, and which is used now. */
+  voice: () => call<VoiceStatus>("/api/voice"),
+  /** The words as a WAV, in the user's voice and pace unless these say otherwise. */
+  speak: async (text: string, voice?: string, rate?: number): Promise<Blob> => {
+    const response = await fetch("/api/voice/speak", json({ text, ...(voice ? { voice } : {}), ...(rate ? { rate } : {}) }));
+    if (!response.ok) return answer<never>(response);
+    return response.blob();
+  },
+  speakWarm: () => post<Record<string, never>>("/api/voice/speak/warm", {}),
+  /** Download and load the local voice model. */
+  voiceModel: () => post<VoiceStatus["speak"]>("/api/voice/model", {}),
 };
 
 export type Connection = "connecting" | "live" | "reconnecting";

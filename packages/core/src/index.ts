@@ -46,7 +46,7 @@ export {
   openProposal, getProposal, listOpenProposals, acceptProposal, declineProposal, supersedeProposal, amendProposal, expireProposals, ProposalStateError, PROPOSAL_TTL_MS,
   type Proposal, type ProposalState, type ProposalStep,
 } from "./proposals.ts";
-export { getSettings, updateSettings, userLocale, localeOf, LOCALES, LOCALE_TAGS, localeTag, acceptLanguage, SettingsError, type Locale, type PageLayout, type UserSettings } from "./settings.ts";
+export { getSettings, updateSettings, userLocale, localeOf, LOCALES, LOCALE_TAGS, localeTag, acceptLanguage, SettingsError, MAX_VOICE_WORDS, type Locale, type PageLayout, type UserSettings, type VoiceSettings } from "./settings.ts";
 export {
   createAutomation, updateAutomation, deleteAutomation, getAutomation, listAutomations, fireDueAutomations, runAutomationNow, ensureTemplates,
   latestSlot, nextSlot, automationName, automationGoal, AutomationError, AUTOMATION_TEMPLATES, CATCH_UP_MS,

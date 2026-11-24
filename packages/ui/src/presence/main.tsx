@@ -24,6 +24,10 @@ import { waitingCount } from "../shell/inbox.ts";
 import { noticeLines } from "../noticeText.ts";
 import { SpeechCard } from "../speech/SpeechCard.tsx";
 import { useSpeech, type Said } from "../speech/useSpeech.ts";
+import { firstSentences, forSpeech, say, stopSpeaking, useKeepVoiceSettings, voiceSettings } from "../speech/voice.ts";
+import { useQuickTalk } from "../voice/useQuickTalk.ts";
+import { api } from "../api.ts";
+import type { Run } from "@alfred/protocol";
 import { WebLockGate } from "../WebLockGate.tsx";
 import { useAlfred } from "../useAlfred.ts";
 import { welcomeLines } from "../welcome.ts";
@@ -35,6 +39,13 @@ const STAY_MS: Record<string, number> = { welcome: 15_000, run_result: 12_000, r
 const STAY_DEFAULT_MS = 25_000;
 /** Pointer travel before a press becomes a drag rather than a click. */
 const DRAG_PX = 4;
+/** Held this long without moving, a press becomes talking (quick talk). */
+const HOLD_MS = 350;
+/** Quick talk goes on in one conversation, remembered here (docs/design/voice.md §1.2). */
+const QUICK_KEY = "alfred.quick.conversation";
+/** A reply to quick talk, said by the figure; not a notice of the home node's. */
+const VOICE_PREFIX = "voice:";
+const isReply = (notice: Notice) => notice.id.startsWith(VOICE_PREFIX);
 
 function linesOf(notice: Notice, preferredName: string | null): Said {
   if (notice.kind === "welcome") {
@@ -55,6 +66,7 @@ function Presence() {
   const { state } = useAlfred();
   // Speak the user's language, as set on the home node.
   useLocale();
+  useKeepVoiceSettings(state?.settings?.voice);
   const locale = state?.settings?.locale;
   useEffect(() => { if (locale) setLocale(locale); }, [locale]);
 
@@ -80,8 +92,14 @@ function Presence() {
     return () => { follow.disconnect(); live.destroy(); figure.current = null; };
   }, []);
 
+  /** Runs started by quick talk here: their result is said as a reply, not again as a notice. */
+  const quickRuns = useRef(new Set<string>());
   const hear = useCallback((notices: Notice[], visit: boolean) => {
-    setQueue((current) => [...current, ...notices.filter((notice) => !current.some((known) => known.id === notice.id))]);
+    const own = notices.filter((notice) => notice.kind === "run_result" && quickRuns.current.has(String(notice.payload.runId)));
+    for (const notice of own) { desktop?.noticeDone(notice.id, "open"); api.acknowledge(notice.id).catch(() => {}); }
+    const rest = notices.filter((notice) => !own.includes(notice));
+    if (!rest.length) { if (visit && !own.length) setVisiting(true); if (own.length) desktop?.settle(); return; }
+    setQueue((current) => [...current, ...rest.filter((notice) => !current.some((known) => known.id === notice.id))]);
     if (visit) setVisiting(true);
   }, []);
   useEffect(() => desktop?.onSay(hear), [hear]);
@@ -94,7 +112,10 @@ function Presence() {
     lines: (notice) => linesOf(notice, state?.settings?.preferredName ?? null),
     stayMs: (notice) => STAY_MS[notice.kind] ?? STAY_DEFAULT_MS,
     done: (notice, outcome) => {
-      desktop?.noticeDone(notice.id, outcome);
+      // A card closed or clicked through takes its voice with it.
+      stopSpeaking(notice.id);
+      if (!isReply(notice)) desktop?.noticeDone(notice.id, outcome);
+      else if (outcome === "open") desktop?.openMain(String(notice.payload.runId));
     },
     remove: (notice) => setQueue((rest) => rest.filter((item) => item.id !== notice.id)),
     leaving: () => visitingRef.current,
@@ -102,8 +123,66 @@ function Presence() {
   });
   const { current, said, phase } = speech;
 
+  // Says the card out loud as it comes out (docs/design/voice.md §2.2), unless the user turned that off or muted
+  // Alfred.
+  const spoken = useRef<string | null>(null);
+  useEffect(() => {
+    if (phase !== "speak" || !current || !said || spoken.current === current.id) return;
+    spoken.current = current.id;
+    const { speakFigure, muted } = voiceSettings();
+    if (muted) return;
+    // A reply to quick talk is always said (the user asked out loud): its first two sentences, the rest is on the card.
+    if (isReply(current)) {
+      const reply = typeof current.payload.reply === "string" ? forSpeech(current.payload.reply) : said.body;
+      void say(firstSentences(reply, 2).text || said.title, { key: current.id });
+      return;
+    }
+    if (!speakFigure) return;
+    void say([said.title, said.body].filter(Boolean).join("。").replace(/([。！？.!?])。/g, "$1"), { key: current.id });
+  }, [phase, current, said]);
+
+  // ── Quick talk: hold the figure, or the hotkey ──
+  const [heard, setHeard] = useState<string | null>(null);
+  /** How the talking was started: holding the figure (let go to send) or the hotkey (press it again). */
+  const [how, setHow] = useState<"hold" | "key">("hold");
+  const quick = useQuickTalk({
+    conversation: () => { try { return localStorage.getItem(QUICK_KEY) ?? undefined; } catch { return undefined; } },
+    remember: (id) => { try { localStorage.setItem(QUICK_KEY, id); } catch { /* asked again next time */ } },
+    context: () => ({ view: "core.voice" }),
+    runs: state?.runs,
+    onReply: (run: Run) => {
+      // A run that waits on the user is told by its own notice (a question, a permission).
+      if (run.request) return;
+      const at = new Date().toISOString();
+      setQueue((current) => [...current, {
+        id: `${VOICE_PREFIX}${run.id}`, eventSeq: 0, kind: "run_result", state: "presented", createdAt: at, updatedAt: at, claimedBy: null, claimUntil: null, expiresAt: null,
+        payload: { runId: run.id, conversationId: run.conversationId, goal: run.goal, status: run.state === "completed" ? "completed" : run.state, reply: run.outcome?.reply ?? "" },
+      }]);
+      // Its result notice, if the home node made one before this saw the run end, is this reply.
+      for (const notice of state?.notices ?? []) {
+        if (notice.kind === "run_result" && notice.payload.runId === run.id && notice.state !== "acknowledged") api.acknowledge(notice.id).catch(() => {});
+      }
+    },
+    onError: (message) => { setHeard(message); window.setTimeout(() => setHeard(null), 4000); },
+  });
+  useEffect(() => { if (quick.runId) quickRuns.current.add(quick.runId); }, [quick.runId]);
+  const quickRef = useRef(quick);
+  quickRef.current = quick;
+  // The hotkey (⌥⇧Space): the app shows the figure if it was hidden, and this starts or ends the talking.
+  useEffect(() => desktop?.onQuickTalk?.((visit) => {
+    if (visit) setVisiting(true);
+    setHow("key");
+    quickRef.current.toggle();
+  }), []);
+  // A figure that came out only to listen goes away again once there is nothing to say or wait for.
+  useEffect(() => {
+    if (!visiting || quick.state !== "idle" || queue.length) return;
+    const timer = window.setTimeout(() => { setVisiting(false); desktop?.settle(); }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [visiting, quick.state, queue.length]);
+
   // ── Being moved and touched ──
-  const drag = useRef<{ x: number; y: number; lastX: number; moved: boolean } | null>(null);
+  const drag = useRef<{ x: number; y: number; lastX: number; moved: boolean; talking: boolean; hold: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [tilt, setTilt] = useState(0);
   const [offset, setOffset] = useState<[number, number]>([0, 0]); // demo only: the browser cannot move the window
@@ -112,17 +191,26 @@ function Presence() {
 
   const down = (event: PointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
-    drag.current = { x: event.screenX, y: event.screenY, lastX: event.screenX, moved: false };
+    const held = { x: event.screenX, y: event.screenY, lastX: event.screenX, moved: false, talking: false, hold: 0 };
+    // Held still for a moment: talking, not moving it.
+    held.hold = window.setTimeout(() => {
+      if (drag.current !== held || held.moved) return;
+      held.talking = true;
+      desktop?.dragFigure("cancel");
+      setHow("hold");
+      quickRef.current.start();
+    }, HOLD_MS);
+    drag.current = held;
     event.currentTarget.setPointerCapture(event.pointerId);
     figure.current?.play("poke");
     desktop?.dragFigure("start");
   };
   const move = (event: PointerEvent<HTMLButtonElement>) => {
     const held = drag.current;
-    if (!held) return;
+    if (!held || held.talking) return;
     const dx = event.screenX - held.x, dy = event.screenY - held.y;
     if (!held.moved && Math.hypot(dx, dy) < DRAG_PX) return;
-    if (!held.moved) { held.moved = true; setDragging(true); }
+    if (!held.moved) { held.moved = true; window.clearTimeout(held.hold); setDragging(true); }
     // Leans the way it is carried, more the faster it goes.
     setTilt(Math.max(-16, Math.min(16, (event.screenX - held.lastX) * 1.4)));
     held.lastX = event.screenX;
@@ -133,6 +221,8 @@ function Presence() {
     const held = drag.current;
     drag.current = null;
     if (!held) return;
+    window.clearTimeout(held.hold);
+    if (held.talking) { quickRef.current.finish(); return; }
     if (!held.moved) { desktop?.dragFigure("cancel"); desktop?.toggleMain(); return; }
     setDragging(false);
     setTilt(0);
@@ -155,7 +245,9 @@ function Presence() {
   const working = state?.runs.some((run) => BUSY.has(run.state)) ?? false;
   const waiting = !!state && waitingCount(state) > 0;
   // Show the notice’s state throughout its text reveal. Touch greets, waiting is amber, and work turns.
-  const mood: FigureState = speech.mood ?? (dragging || pointing ? "hello" : waiting ? "notice" : working ? "work" : "rest");
+  const listening = quick.state === "recording" || quick.state === "starting";
+  const thinking = quick.state === "transcribing" || quick.state === "sending" || quick.state === "waiting";
+  const mood: FigureState = speech.mood ?? (listening ? "listen" : thinking ? "think" : dragging || pointing ? "hello" : waiting ? "notice" : working ? "work" : "rest");
   useEffect(() => { figure.current?.setState(mood); }, [mood]);
   // Once the welcome text is fully visible, the tesseract unfolds into its net of eight cubes.
   const unfolded = useRef<string | null>(null);
@@ -168,6 +260,8 @@ function Presence() {
   const label = working ? t("presence.working") : waiting ? t("presence.waiting") : "Alfred";
   const speaking = phase === "idle" || phase === "next" ? undefined : phase;
   const cardShown = said && current && (phase === "speak" || phase === "fold");
+  // While talking or waiting for the answer, one short line where the card goes.
+  const hint = cardShown ? null : heard ?? (listening ? t(how === "key" ? "voice.quick.listeningKey" : "voice.quick.listening") : quick.state === "transcribing" ? t("voice.working") : thinking ? t("voice.quick.thinking") : null);
 
   return (
     <div className={`presence${visiting ? " visiting" : ""}`} data-h={side.h} data-v={side.v}>
@@ -178,6 +272,11 @@ function Presence() {
           onOpen={() => speech.finish("open")} onNext={() => speech.finish("dismiss")} onClose={() => speech.finish("dismiss")}
           onHover={(on) => { speech.setHovered(on); interactive(on); }}
         />
+      )}
+      {hint && (
+        <p className="quick-hint" role="status" data-listening={listening || undefined} style={{ "--level": quick.dictation.level.toFixed(2) } as CSSProperties}>
+          {listening && <span className="quick-level" aria-hidden="true" />}{hint}
+        </p>
       )}
       <div
         className="hold" data-dragging={dragging || undefined} data-landed={landed ? landed % 2 : undefined}

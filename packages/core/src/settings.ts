@@ -36,14 +36,32 @@ export interface UserSettings {
    * keeps its place after them), `hidden` the ones taken out of the sidebar. Null: as they come. Which pages can be
    * hidden is the app's to say (the Today page and Settings cannot); this only keeps the choice. */
   pages: PageLayout | null;
+  /** Speaking and listening (docs/design/voice.md §3). */
+  voice: VoiceSettings;
 }
 export interface PageLayout { order: string[]; hidden: string[] }
+export interface VoiceSettings {
+  /** The Mac's figure reads out what it says (the welcome, a result, a question). Replies to quick talk are always
+   * read out, unless muted. */
+  speakFigure: boolean;
+  /** For now: Alfred says nothing out loud anywhere, only shows. */
+  muted: boolean;
+  /** `system:<name>` or `model:<name>`; null: the default for the language. */
+  voice: string | null;
+  /** 0.7–1.5; 1 is the voice's own pace. */
+  rate: number;
+  /** Words the user says that a speech model may not know (names, terms): given to it with every recording. */
+  words: string[];
+}
+export const MAX_VOICE_WORDS = 40;
+const VOICE_DEFAULTS: VoiceSettings = { speakFigure: true, muted: false, voice: null, rate: 1, words: [] };
 
 export class SettingsError extends Error {
   override name = "SettingsError";
 }
 
-const DEFAULTS: UserSettings = { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null };
+const DEFAULTS: UserSettings = { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE_DEFAULTS };
+const VOICE_ID = /^(system|model):[^\n\r]{1,80}$/;
 const PAGE_KEY = /^[a-z][a-z0-9_-]{0,31}\.[a-z][a-z0-9_-]{0,31}$/;
 const MODEL = /^[A-Za-z0-9._-]{1,64}\/[^\s/][^\s]{0,199}$/;
 
@@ -100,15 +118,49 @@ function pick(value: Record<string, unknown>): Partial<UserSettings> {
     if (pages !== null && (typeof pages !== "object" || !keys(pages.order) || !keys(pages.hidden))) throw new SettingsError("pages is { order, hidden }, lists of page keys, or null");
     out.pages = pages === null ? null : { order: [...new Set(pages.order!)], hidden: [...new Set(pages.hidden!)] };
   }
+  if ("voice" in value) out.voice = voiceSettings(value.voice);
+  return out;
+}
+
+/** A whole or partial voice object; what it leaves out keeps its default (updateSettings merges onto the current). */
+function voiceSettings(input: unknown): VoiceSettings {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new SettingsError("voice is an object");
+  const value = input as Record<string, unknown>;
+  const unknown = Object.keys(value).filter((key) => !(key in VOICE_DEFAULTS));
+  if (unknown.length) throw new SettingsError(`Unknown voice setting: ${unknown.join(", ")}`);
+  const out: VoiceSettings = { ...VOICE_DEFAULTS };
+  for (const key of ["speakFigure", "muted"] as const) {
+    if (key in value) {
+      if (typeof value[key] !== "boolean") throw new SettingsError(`voice.${key} is true or false`);
+      out[key] = value[key] as boolean;
+    }
+  }
+  if ("voice" in value) {
+    if (value.voice !== null && (typeof value.voice !== "string" || !VOICE_ID.test(value.voice))) throw new SettingsError("voice.voice is system:<name> or model:<name>, or null");
+    out.voice = value.voice as string | null;
+  }
+  if ("rate" in value) {
+    if (typeof value.rate !== "number" || !(value.rate >= 0.7 && value.rate <= 1.5)) throw new SettingsError("voice.rate is between 0.7 and 1.5");
+    out.rate = Math.round(value.rate * 100) / 100;
+  }
+  if ("words" in value) {
+    const words = value.words;
+    if (!Array.isArray(words) || !words.every((word) => typeof word === "string")) throw new SettingsError("voice.words is a list of words");
+    const kept = [...new Set((words as string[]).map((word) => word.trim()).filter(Boolean))];
+    if (kept.some((word) => word.length > 40 || /\p{Cc}/u.test(word))) throw new SettingsError("a word is at most 40 characters, without control characters");
+    if (kept.length > MAX_VOICE_WORDS) throw new SettingsError(`at most ${MAX_VOICE_WORDS} words`);
+    out.words = kept;
+  }
   return out;
 }
 
 export function updateSettings(world: World, patch: Record<string, unknown>, now: number = Date.now()): UserSettings {
   const unknown = Object.keys(patch).filter((key) => !(key in DEFAULTS));
   if (unknown.length) throw new SettingsError(`Unknown setting: ${unknown.join(", ")}`);
-  const changes = pick(patch);
   return world.tx((db) => {
     const before = getSettings(world);
+    // A voice patch changes only the fields it names.
+    const changes = pick(patch.voice && typeof patch.voice === "object" && !Array.isArray(patch.voice) ? { ...patch, voice: { ...before.voice, ...patch.voice } } : patch);
     const changed: Record<string, [unknown, unknown]> = {};
     for (const [key, value] of Object.entries(changes)) {
       if (JSON.stringify(before[key as keyof UserSettings]) === JSON.stringify(value)) continue;

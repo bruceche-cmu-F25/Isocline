@@ -43,6 +43,7 @@ import { DEVICE_COOKIE, type RemoteAccess } from "./remote.ts";
 import { WEB_SESSION_COOKIE, type WebLock } from "./web-lock.ts";
 import type { PushService } from "./push.ts";
 import { MAX_VOICE_BYTES, type Transcriber } from "./voice.ts";
+import type { Speaker } from "./speak.ts";
 import { MAX_FILE_BYTES } from "./files.ts";
 import { encodingFor, HttpError, overTheWire, pack, parseObject, readBytes, readJson, send, statusOf, type Encoding } from "./wire.ts";
 import { checkAccess, NEEDS_DEV } from "./access.ts";
@@ -713,6 +714,8 @@ export interface ServeOptions {
   push?: PushService;
   /** Speech to text (`/api/voice/*`); left out, those routes are 404. */
   voice?: Transcriber;
+  /** Text to speech (`/api/voice/speak`, `/api/voice/model`); left out, those are 404 and nothing is spoken. */
+  speaker?: Speaker;
 }
 
 async function readAudio(req: IncomingMessage): Promise<Buffer> {
@@ -722,20 +725,58 @@ async function readAudio(req: IncomingMessage): Promise<Buffer> {
   return wav;
 }
 
-/** Any device that may talk to Alfred may talk to it out loud. */
-async function voiceRoute(voice: Transcriber | undefined, req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
-  if (!voice) throw new HttpError(404, "Not found");
+/** The words the speech model is given with a recording: the user's own list and how they want to be called. */
+function vocabulary(home: Home): string {
+  const settings = getSettings(home.world);
+  return [...new Set([...(settings.preferredName ? [settings.preferredName] : []), ...settings.voice.words])].join(", ");
+}
+
+/** Any device that may talk to Alfred may talk to it out loud, and be spoken to. */
+async function voiceRoute(home: Home, voice: Transcriber | undefined, speaker: Speaker | undefined, req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
+  if (!voice && !speaker) throw new HttpError(404, "Not found");
   if (req.method === "GET" && path === "/api/voice") {
-    const why = await voice.unavailable();
-    return send(res, 200, { available: !why, reason: why, loaded: voice.loaded });
+    const why = voice ? await voice.unavailable() : "No speech model on this node";
+    const settings = getSettings(home.world);
+    const speak = speaker ? await speaker.status() : null;
+    const current = speaker && speak?.available ? await speaker.pick(settings.voice.voice, userLocale(home.world)).catch(() => null) : null;
+    return send(res, 200, {
+      available: !why, reason: why, loaded: voice?.loaded ?? false,
+      speak: speak ? { ...speak, current } : { available: false, reason: "Not on this node", voices: [], model: null, modelBytes: 0, current: null },
+    });
   }
-  if (req.method === "POST" && path === "/api/voice/warm") {
+  if (voice && req.method === "POST" && path === "/api/voice/warm") {
     await readJson(req);
     voice.warm();
     return send(res, 200, { loaded: voice.loaded });
   }
-  if (req.method === "POST" && path === "/api/voice/transcribe") {
-    return send(res, 200, await voice.transcribe(await readAudio(req)));
+  if (voice && req.method === "POST" && path === "/api/voice/transcribe") {
+    return send(res, 200, await voice.transcribe(await readAudio(req), vocabulary(home)));
+  }
+  if (speaker && req.method === "POST" && path === "/api/voice/speak") {
+    const body = await readJson<{ text?: unknown; voice?: unknown; rate?: unknown }>(req);
+    if (typeof body.text !== "string") throw new HttpError(400, "text is required");
+    if (body.voice !== undefined && body.voice !== null && typeof body.voice !== "string") throw new HttpError(400, "voice is a voice id");
+    if (body.rate !== undefined && typeof body.rate !== "number") throw new HttpError(400, "rate is a number");
+    // What is not given is the user's choice.
+    const settings = getSettings(home.world).voice;
+    const wav = await speaker.speak({
+      text: body.text, voice: (body.voice as string | null | undefined) ?? settings.voice, rate: (body.rate as number | undefined) ?? settings.rate, locale: userLocale(home.world),
+    });
+    res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": wav.length, "Cache-Control": "no-store" });
+    res.end(wav);
+    return;
+  }
+  // Get the chosen voice ready before it is needed (the local model takes seconds to load).
+  if (speaker && req.method === "POST" && path === "/api/voice/speak/warm") {
+    await readJson(req);
+    speaker.warm(getSettings(home.world).voice.voice);
+    return send(res, 200, {});
+  }
+  // Download and load the local voice model, on the user's word.
+  if (speaker && req.method === "POST" && path === "/api/voice/model") {
+    await readJson(req);
+    speaker.install();
+    return send(res, 202, await speaker.status());
   }
   throw new HttpError(404, "Not found");
 }
@@ -792,7 +833,7 @@ function dispatch(home: Home, options: ServeOptions, peer: Peer, req: IncomingMe
       }
     }
     if (peer.local && path === "/api/events" && req.method === "GET") return events(home, peer, req, res, url, () => true);
-    if (path === "/api/voice" || path.startsWith("/api/voice/")) return voiceRoute(options.voice, req, res, path);
+    if (path === "/api/voice" || path.startsWith("/api/voice/")) return voiceRoute(home, options.voice, options.speaker, req, res, path);
     if (path.startsWith("/api/connections") && (options.google || options.models || options.mcp)
       && await handleConnections({ google: options.google, models: options.models, mcp: options.mcp }, req, res, url)) return;
     if (options.skills && (path === "/api/skills" || path.startsWith("/api/skills/")) && await handleSkills(options.skills, req, res, url)) return;

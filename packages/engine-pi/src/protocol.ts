@@ -105,9 +105,13 @@ export function composePrompt(request: RunJob["prompt"]): string {
     comingDays(request.today),
   ];
   const context = request.context;
-  if (context) {
+  // Asked by voice from no page (the Mac's figure, a hotkey): there is no page to mention.
+  if (context && context.view !== "core.voice") {
     const page = context.title ? `${context.title} (${context.view})` : context.view;
     lines.push(`The user is looking at the ${page} page${context.summary ? `: ${context.summary}` : ""}.${context.selection ? ` Selected: ${context.selection.title ?? context.selection.id} (${context.selection.id}).` : ""} This is context, not a request.`);
+  }
+  if (context?.spoken) {
+    lines.push("The user said this out loud and it was transcribed, so a word may be misheard: if a name or number looks wrong, check before acting on it. Your reply will be read aloud: one or two short sentences, no lists, tables, links or Markdown. Never say something was done unless it was.");
   }
   // Much of what a run reads (areas, events, the steps it proposes) is in the app's language; a message in a Latin
   // script is answered in its own language all the same (models drift to the language around them).

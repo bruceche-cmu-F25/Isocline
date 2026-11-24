@@ -118,11 +118,14 @@ test("a proposal nobody decided in a week expires by itself, and its notice goes
   assert.deepEqual(toys(w), ["ball"]);
 });
 
+/** The voice settings a node starts with. */
+const VOICE = { speakFigure: true, muted: false, voice: null, rate: 1, words: [] };
+
 test("settings: the language is set once, audited, and checked", () => {
   const w = world();
-  assert.deepEqual(getSettings(w), { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null });
+  assert.deepEqual(getSettings(w), { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE });
   assert.equal(userLocale(w), "en");
-  assert.deepEqual(updateSettings(w, { locale: "zh" }), { locale: "zh", preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null });
+  assert.deepEqual(updateSettings(w, { locale: "zh" }), { locale: "zh", preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE });
   updateSettings(w, { locale: "zh" });
   assert.equal(listEvents(w).events.filter((event) => event.kind === "settings.changed").length, 1, "an unchanged value records nothing");
   assert.equal(userLocale(w), "zh");
@@ -153,10 +156,10 @@ test("settings: the first-run walkthrough is owed until it is finished or skippe
 
 test("settings: the default model and thinking level are checked", () => {
   const w = world();
-  assert.deepEqual(updateSettings(w, { model: "anthropic/claude-opus-5-5", thinking: "high" }), { locale: null, preferredName: null, model: "anthropic/claude-opus-5-5", thinking: "high", firstRunAt: null, pages: null });
+  assert.deepEqual(updateSettings(w, { model: "anthropic/claude-opus-5-5", thinking: "high" }), { locale: null, preferredName: null, model: "anthropic/claude-opus-5-5", thinking: "high", firstRunAt: null, pages: null, voice: VOICE });
   assert.throws(() => updateSettings(w, { model: "no-slash" }), SettingsError);
   assert.throws(() => updateSettings(w, { model: 3 }), SettingsError);
   assert.throws(() => updateSettings(w, { thinking: "huge" }), SettingsError);
-  assert.deepEqual(updateSettings(w, { model: null, thinking: null }), { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null });
+  assert.deepEqual(updateSettings(w, { model: null, thinking: null }), { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE });
 });
 

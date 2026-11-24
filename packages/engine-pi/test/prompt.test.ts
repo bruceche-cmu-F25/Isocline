@@ -25,3 +25,12 @@ test("the prompt says the date and time, the coming days, then the page the user
   assert.match(composePrompt({ today: "2026-11-18", timezone: "UTC", goal: "Lunch with Sarah on Tuesday" }), /not in Chinese: write your reply.*\n\nLunch with Sarah/);
   assert.doesNotMatch(composePrompt({ today: "2026-11-18", timezone: "UTC", goal: "周二和 Sarah 吃午饭" }), /not in Chinese/);
 });
+
+test("a message said out loud: the model is told it is a transcript and that its reply will be read aloud", () => {
+  const fromFigure = composePrompt({ today: "2026-11-23", timezone: "UTC", goal: "明天下午三点交报税材料", context: { view: "core.voice", spoken: true } });
+  assert.doesNotMatch(fromFigure, /looking at/, "asked from no page");
+  assert.match(fromFigure, /said this out loud.*misheard.*read aloud: one or two short sentences, no lists.*Never say something was done unless it was\./);
+  const fromPage = composePrompt({ today: "2026-11-23", timezone: "UTC", goal: "这个挪到周五", context: { view: "todo.list", title: "Todos", spoken: true } });
+  assert.match(fromPage, /looking at the Todos \(todo\.list\) page.*\nThe user said this out loud/);
+  assert.doesNotMatch(composePrompt({ today: "2026-11-23", timezone: "UTC", goal: "x", context: { view: "todo.list" } }), /out loud/);
+});

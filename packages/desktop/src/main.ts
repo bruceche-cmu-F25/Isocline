@@ -25,6 +25,9 @@ import { appIcon, trayIcon } from "./icon.ts";
 import { installTextMenu } from "./text-menu.ts";
 
 const HOTKEY = "Alt+Space";
+/** Quick talk (docs/design/voice.md §1.1): press to start talking to Alfred, press again to send. Not ⌥Space, which
+ * opens the window here and is a dictation app's default too. */
+const TALK_HOTKEY = "Alt+Shift+Space";
 /** Room for the figure to hop and grow and for its speech card; the transparent rest lets clicks through. */
 const PRESENCE_SIZE = { width: 440, height: 280 };
 const HEARTBEAT_MS = 60_000;
@@ -242,12 +245,21 @@ function dragFigure(phase: string): void {
   }
 }
 
+/** The quick-talk hotkey: the figure listens (shown for it if the user hid it), and a second press sends. */
+function quickTalk(): void {
+  if (!presence || presence.isDestroyed() || presence.webContents.isLoading()) return;
+  const visiting = !presence.isVisible();
+  if (visiting) presence.showInactive();
+  presence.webContents.send("quick-talk", visiting);
+}
+
 function figureMenu(): void {
   if (!presence || presence.isDestroyed()) return;
   Menu.buildFromTemplate([
     { label: say("mac.open"), click: () => showMain({ composer: true }) },
     { label: say("mac.figureHome"), click: () => { delete settings.figure; saveSettings(); putFigure(homePlace(), false); } },
     { type: "separator" },
+    { label: say("mac.mute"), type: "checkbox", checked: muted, click: (item) => setMuted(item.checked) },
     { label: say("mac.hideFigure"), click: () => { settings.showFigure = false; saveSettings(); presence?.hide(); updateTray(); } },
   ]).popup({ window: presence });
 }
@@ -394,6 +406,21 @@ function dockBadge(state: StateResponse): void {
 }
 
 /** Menus and notifications follow the user's language setting. */
+/** Whether Alfred is muted, as the home node last said: the menus show it and turn it on and off. */
+let muted = false;
+function followVoice(state: StateResponse): void {
+  const now = state.settings?.voice?.muted ?? false;
+  if (now === muted) return;
+  muted = now;
+  updateTray();
+}
+function setMuted(next: boolean): void {
+  muted = next;
+  updateTray();
+  client.post("/api/settings", { requestId: `mac-mute-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, patch: { voice: { muted: next } } })
+    .catch(() => { muted = !next; updateTray(); });
+}
+
 function followLocale(state: StateResponse): void {
   const locale = state.settings?.locale;
   if (!locale || locale === LOCALE) return;
@@ -406,7 +433,7 @@ function followLocale(state: StateResponse): void {
 let refreshAgain = false;
 function refresh(): Promise<void> {
   if (refreshing) { refreshAgain = true; return refreshing; }
-  refreshing = client.state().then((state) => { followLocale(state); dockBadge(state); return handleNotices(state); }).catch(() => {}).finally(() => {
+  refreshing = client.state().then((state) => { followLocale(state); followVoice(state); dockBadge(state); return handleNotices(state); }).catch(() => {}).finally(() => {
     refreshing = null;
     if (refreshAgain) { refreshAgain = false; void refresh(); }
   });
@@ -469,6 +496,7 @@ function updateTray(): void {
   const items: MenuItemConstructorOptions[] = [
     { label: statusLabel(), enabled: false },
     { label: say("mac.open"), accelerator: HOTKEY, click: () => showMain({ composer: true }) },
+    { label: say("mac.talk"), accelerator: TALK_HOTKEY, click: () => quickTalk() },
     {
       label: say("mac.showFigure"), type: "checkbox", checked: settings.showFigure, click: (item) => {
         settings.showFigure = item.checked;
@@ -476,6 +504,7 @@ function updateTray(): void {
         if (item.checked) presence?.showInactive(); else presence?.hide();
       },
     },
+    { label: say("mac.mute"), type: "checkbox", checked: muted, click: (item) => setMuted(item.checked) },
     { type: "separator" },
     {
       label: say("mac.node"), submenu: [
@@ -654,6 +683,7 @@ app.whenReady().then(async () => {
   void serveDesk();
   if (!app.getLoginItemSettings().wasOpenedAtLogin) showMain();
   if (!globalShortcut.register(HOTKEY, toggleMain)) console.warn(`[alfred] could not register ${HOTKEY}`);
+  if (!globalShortcut.register(TALK_HOTKEY, quickTalk)) console.warn(`[alfred] could not register ${TALK_HOTKEY}`);
   watchPresence();
 }).catch((error: unknown) => {
   console.error(error);

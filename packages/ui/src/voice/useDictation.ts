@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api.ts";
 import { t } from "../i18n/dict.ts";
 import { concat, downsample, encodeWav } from "./wav.ts";
+import { stopSpeaking } from "../speech/voice.ts";
 
 export type DictationState = "idle" | "starting" | "recording" | "transcribing";
 
@@ -122,6 +123,8 @@ export function useDictation(onText: (text: string) => void): Dictation {
     setError(null);
     setSeconds(0);
     setState("starting");
+    // The user talking is Alfred's cue to stop.
+    stopSpeaking();
     void api.voiceWarm().catch(() => {});
     try {
       const ctx = await audioContext();

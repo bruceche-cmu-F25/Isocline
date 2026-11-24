@@ -36,6 +36,8 @@ import { useOutlet } from "./outlet.ts";
 import { useWriting } from "./live.ts";
 import { welcomeLines } from "./welcome.ts";
 import { snapshotOf } from "./modules.ts";
+import { firstSentences, forSpeech, say, useKeepVoiceSettings, voiceSettings } from "./speech/voice.ts";
+import { useQuickTalk } from "./voice/useQuickTalk.ts";
 
 if (desktop) document.documentElement.classList.add("desktop");
 desktop?.onFullScreen?.((full) => document.documentElement.classList.toggle("full-screen", full));
@@ -157,6 +159,7 @@ export function App() {
   const alfred = useAlfred();
   const { state, error, unpaired } = alfred;
   useLocale(); // re-render in the new language when it changes
+  useKeepVoiceSettings(state?.settings?.voice);
 
   // The language is the user's, on the home node: follow it; if no device has set it yet, set it from this one's.
   const savedLocale = state?.settings?.locale;
@@ -478,7 +481,24 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
   }, [setLayout]);
 
   const settledFigure = useSettled(state ? figureState(state, selected, writing, greeting) : "rest", 250);
-  const figure = speaking ?? settledFigure;
+
+  // Quick talk on a phone (docs/design/voice.md §1.1): hold the Alfred bubble, say it, let go. It joins the open
+  // conversation while that is recent; the reply is said out loud and shows in the ask bar.
+  const quick = useQuickTalk({
+    conversation: () => continues(conversations?.find((conversation) => conversation.id === selected), Date.now()) ?? undefined,
+    remember: (id) => { if (id !== selected) go({ selected: id }); },
+    context: () => context ?? { view: "core.voice" },
+    runs,
+    onReply: (run) => {
+      setAsking(true);
+      if (run.request) return;
+      const reply = run.outcome?.reply;
+      if (reply && !voiceSettings().muted) void say(firstSentences(forSpeech(reply), 2).text, { key: `reply:${run.id}` });
+    },
+  });
+  const quickFigure: FigureState | null = quick.state === "recording" || quick.state === "starting" ? "listen"
+    : quick.state === "transcribing" || quick.state === "sending" || quick.state === "waiting" ? "think" : null;
+  const figure = speaking ?? quickFigure ?? settledFigure;
 
   // Keyboard: ⌘K search (Spotlight-like), anywhere; ⌘J talk to Alfred; ⌘. Alfred; ⌘\ the sidebar; ⌘, Settings; ⌥1–9 the pages (not while typing).
   useEffect(() => {
@@ -618,7 +638,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Alfred }) 
       )}
 
       {phone && sheet !== "alfred" && (
-        <Dock state={state} pages={listed} page={navigationPage} figure={figure} onPage={goPage}
+        <Dock state={state} pages={listed} page={navigationPage} figure={figure} onPage={goPage} talk={quick}
           onAlfred={() => (asking || bare ? setSheet("alfred") : setAsking(true))} onMenu={() => setSheet("nav")}
           ask={asking && !bare ? (
             <AskBar dock state={state} selected={selected} figure={figure} suggestions={view?.suggestions ?? []} find={find} page={current?.key} about={about} onAbout={setAbout}
