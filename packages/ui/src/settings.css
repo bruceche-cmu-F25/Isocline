@@ -227,6 +227,15 @@ button.area-dot:hover, button.area-dot:focus-visible, button.area-dot[aria-check
 }
 .page-group { padding: 14px 2px 4px; color: var(--muted); font-size: .75rem; font-weight: 550; border-bottom: 1px solid var(--line-soft); }
 
+/* Making a Google client of one's own (GoogleClientSetup.tsx). */
+.gclient { display: flex; flex-direction: column; gap: 10px; color: var(--copy); }
+.gclient-steps { display: flex; flex-direction: column; gap: 10px; margin: 0; padding-inline-start: 20px; list-style: decimal; font-size: .875rem; line-height: 1.5; }
+.gclient-steps li { display: list-item; padding-inline-start: 2px; }
+.gclient-steps li::marker { color: var(--muted); }
+.gclient-steps li > span:first-child { display: block; }
+.gclient-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 2px; }
+.gclient-links a { color: var(--accent); font-size: .8125rem; }
+
 /* Settings → Voice: the user's words as small removable chips, and a field to add one. */
 .set-row.set-words .set-end { flex-direction: column; align-items: flex-end; }
 .voice-words { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 420px; margin: 0; padding: 0; list-style: none; }

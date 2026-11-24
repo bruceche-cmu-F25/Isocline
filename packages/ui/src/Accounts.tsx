@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectFlow, ConnectStart, ConnectionsResponse, GoogleAccount, GoogleCapability, GoogleCheck as Check } from "@alfred/protocol";
 import { request as call } from "./api.ts";
 import { Logo } from "./brand/Logo.tsx";
+import { GoogleClientSetup } from "./GoogleClientSetup.tsx";
 import { localeTag, t, useLocale, type Key } from "./i18n/index.ts";
 
 const CAPS: GoogleCapability[] = ["calRead", "calWrite", "mailRead", "mailModify", "mailSend"];
@@ -177,7 +178,7 @@ export function Accounts({ setup, onConfigured }: { setup?: boolean; onConfigure
           </div>
         </div>
         {google && !google.client.configured ? (
-          <p className="problem small">{t("settings.google.noClient")}</p>
+          <GoogleClientSetup onSaved={setData} />
         ) : pending?.for === "new" ? waitingCard("new") : (
           <>
             <div className="chips set-chips">

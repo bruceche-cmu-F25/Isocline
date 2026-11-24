@@ -77,6 +77,9 @@ const ASKS = [
   /\b(?:move|reschedule|postpone|cancel|delete|every|each)\b/i,
 ];
 
+/** Words that only join a part to the one before it ("顺便帮我…", "and also find…"). */
+const LINKS = /^\s*(?:顺便|顺带|另外|还有|然后|再|也|还|并且|而且|and|also|then|plus)\s*/i;
+
 /** What one clause says about a day and an hour, and what is left of it as a title. */
 export function readClause(text: string, today: string): Omit<Reading, "kind"> {
   let rest = ` ${text.replace(/明早/g, "明天早上").replace(/明晚/g, "明天晚上")} `, day: string | null = null, start: string | null = null, end: string | null = null, by = false;
@@ -189,7 +192,10 @@ export function readLine(text: string, today: string): Reading[] {
   const line = text.trim();
   if (!line || line.length > 300 || ASKS.some((ask) => ask.test(line))) return [];
   const read: Array<Omit<Reading, "kind">> = [];
-  for (const clause of line.split(/[，,；;。\n]+/).map((part) => part.trim()).filter(Boolean)) {
+  const clauses = line.split(/[，,；;。\n]+/).map((part) => part.trim()).filter(Boolean);
+  // A later part that asks Alfred for something ("…，顺便帮我想想周末去哪") makes the whole line Alfred's.
+  if (clauses.slice(1).some((clause) => ASKS[2]!.test(clause.replace(LINKS, "")) || ASKS[3]!.test(clause.replace(LINKS, "")))) return [];
+  for (const clause of clauses) {
     const got = readClause(clause, today);
     if ([got.start, got.end].some((time) => time !== null && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time))) return [];
     const last = read.at(-1);

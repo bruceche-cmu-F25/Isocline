@@ -88,6 +88,8 @@ test("a reply as plain text, for a notification", () => {
   assert.equal(plainText("**Today (PT):** AGAI 6–7am\n\n## Mail\n- [reply](https://example.com) to *Leo*\n- `rent` due"), "Today (PT): AGAI 6–7am\nMail\n• reply to Leo\n• rent due");
   assert.equal(plainText("1. one\n2. two"), "1. one\n2. two");
   assert.equal(plainText(""), "");
+  // A sectioned result's tags and citations are for the page that draws it, not for a preview.
+  assert.equal(plainText("先交报销。(mail:m1)\n\n## 邮件\n- [风险] 新设备登录 (mail:m2)\n- 10:00 评审 (event:e1)"), "先交报销。\n邮件\n• 新设备登录\n• 10:00 评审");
 });
 
 

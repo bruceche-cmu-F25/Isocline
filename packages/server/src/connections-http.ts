@@ -123,6 +123,11 @@ export async function handleConnections(services: Connections, req: IncomingMess
       send(res, 200, { google: google.status() } satisfies ConnectionsResponse);
       return true;
     }
+    if (method === "POST" && path === "/api/connections/google/client") {
+      const body = (await readJson(req)) as { client?: unknown };
+      send(res, 200, { google: google.saveClient(body.client) } satisfies ConnectionsResponse);
+      return true;
+    }
     if (method === "POST" && path === "/api/connections/google/connect") {
       const body = (await readJson(req)) as Partial<GoogleConnectRequest>;
       const capabilities = Array.isArray(body.capabilities) ? body.capabilities : [];

@@ -4,6 +4,7 @@ import { createFigure, drawFigurePose } from "./entity/tesseract.js";
 import { t } from "./i18n/index.ts";
 import { errorText } from "./receipts.ts";
 import { Icon } from "./shell/icons.tsx";
+import { openSettings } from "./settingsTab.ts";
 
 /** A turn that fails in view shakes briefly. Reading an old turn paints the same crossed beams at rest. */
 export function RunFailure({ run }: { run: Run }) {
@@ -54,6 +55,9 @@ export function RunFailure({ run }: { run: Run }) {
           <p>{detail}</p>
         </details>
       ) : <p className="failure-title">{title}</p>}
+      {outcome?.error === "engine_unavailable" && (
+        <button type="button" className="failure-act" onClick={() => openSettings("models")}>{t("run.connectModel")}</button>
+      )}
     </div>
   );
 }

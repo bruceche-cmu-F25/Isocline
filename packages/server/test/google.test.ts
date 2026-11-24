@@ -234,3 +234,18 @@ test("a Google session keeps its request deadline when a sync also supplies a sh
   await assert.rejects(session.get("https://example.test/messages", live), { code: "unavailable" });
   await assert.rejects(session.send("POST", "https://example.test/modify", {}, { signal: live }), { code: "unavailable" });
 });
+
+test("a newcomer's own Google client: a Desktop app client file is checked, kept privately, and used at once", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alfred-google-client-"));
+  const google = new GoogleConnections({ dataDir, secrets: fileStore(join(dataDir, "secrets.json")) });
+  assert.equal(google.status().client.configured, false);
+  assert.throws(() => google.saveClient({ web: { client_id: "x.apps.googleusercontent.com", client_secret: "s" } }), /Desktop app/);
+  assert.throws(() => google.saveClient({ installed: { client_id: "not-google", client_secret: "s" } }), /not a Google OAuth client/);
+  assert.throws(() => google.saveClient("nonsense"), /not a Google OAuth client/);
+  assert.equal(google.status().client.configured, false);
+  const status = google.saveClient({ installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-x", redirect_uris: ["http://localhost"] } });
+  assert.deepEqual(status.client, { configured: true, source: "file" });
+  const path = join(dataDir, "google-oauth-client.json");
+  assert.equal(statSync(path).mode & 0o777, 0o600);
+  assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), { installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-x" } });
+});

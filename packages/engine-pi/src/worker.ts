@@ -515,6 +515,9 @@ function wordsOf(message: unknown): string {
 
 let currentAbort: (() => void) | null = null;
 
+/** What Pi says when no model can be used: none signed in, or no key for the one chosen. */
+export const NO_MODEL = /no api key found|no models? (?:are |is )?available|no model selected|model not available/i;
+
 async function models(): Promise<ModelInfo[]> {
   const runtime = await ModelRuntime.create(modelOptions);
   const settings = SettingsManager.create(cwd, agentDir);
@@ -542,7 +545,9 @@ process.on("message", async (message: ToWorker) => {
       (error: unknown) => send({
         type: "error", run: message.run,
         message: error instanceof Error ? error.message : String(error),
-        ...(error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name) ? { code: error.name } : {}),
+        ...(error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name) ? { code: error.name }
+          // Nothing to think with yet (no key, no sign-in): the user is told to connect a model, not that it broke.
+          : error instanceof Error && NO_MODEL.test(error.message) ? { code: "EngineUnavailableError" } : {}),
       }),
     ).finally(() => { busy = false; });
   } else if (message.type === "tool_result" || message.type === "allow_result") {

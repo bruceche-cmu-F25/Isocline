@@ -130,6 +130,20 @@ export class GoogleConnections {
     world.tx(() => recordDomainEvent(world, { kind, subject: `google:${email}`, actor: "user", payload: { provider: "google", account: email, ...payload } }));
   }
 
+  /** Saves the OAuth client the user made in Google Cloud and downloaded (a "Desktop app" client's JSON), so a
+   * newcomer never has to find the data directory. Checked before it is written; read again on every use. */
+  saveClient(file: unknown): GoogleStatus {
+    const entry = (file && typeof file === "object" ? (file as Record<string, unknown>).installed : undefined) as { client_id?: unknown; client_secret?: unknown } | undefined;
+    if ((file as Record<string, unknown> | null)?.web) throw new GoogleError("google", "This is a web client. Make one of type “Desktop app”.");
+    if (!entry || typeof entry.client_id !== "string" || !/^[\w.-]+\.apps\.googleusercontent\.com$/.test(entry.client_id) || typeof entry.client_secret !== "string" || !entry.client_secret) {
+      throw new GoogleError("google", "This is not a Google OAuth client file.");
+    }
+    const path = join(this.options.dataDir, "google-oauth-client.json"), temp = `${path}.tmp`;
+    writeFileSync(temp, JSON.stringify({ installed: { client_id: entry.client_id, client_secret: entry.client_secret } }, null, 2), { mode: 0o600 });
+    renameSync(temp, path);
+    return this.status();
+  }
+
   status(): GoogleStatus {
     const client = this.client();
     return { client: { configured: !!client, source: client ? (client.source === "environment" ? "environment" : "file") : null }, accounts: this.accounts() };

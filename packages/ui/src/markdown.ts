@@ -8,6 +8,7 @@
  * - HTML is text, and an image is a link to it: a reply never makes the page fetch an address by itself.
  * Text that is still arriving reads as far as it has come: an open fence is code to the end, an open `**` is itself. */
 import { linkParts } from "./links.ts";
+import { readRow } from "./sections.ts";
 
 export type Inline =
   | string
@@ -415,5 +416,10 @@ function blockText(block: Block): string {
 
 /** A reply without its Markdown, for where it is shown as one piece of plain text: a notification, a one-line preview. */
 export function plainText(text: string): string {
-  return parseMarkdown(text).map(blockText).filter(Boolean).join("\n");
+  // A result in sections tags its rows and cites what they are about (`[Risk] … (mail:ID)`, sections.ts); the page
+  // that draws it reads those, a preview drops them.
+  return parseMarkdown(text).map(blockText).filter(Boolean).join("\n").split("\n").map((line) => {
+    const mark = /^\s*(?:[•☐☑]|\d+\.)\s+/.exec(line)?.[0] ?? "";
+    return mark + readRow(line.slice(mark.length)).text;
+  }).join("\n");
 }

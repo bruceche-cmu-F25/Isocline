@@ -14,9 +14,10 @@ test("first run: what is already set is not asked again; the walk round always i
 });
 
 test("first run: a step that cannot be done here is left out", () => {
-  // Another device: the connections cannot be read. No Google client: nothing to sign in with. No samples: nothing to time.
+  // Another device: the connections cannot be read. No samples: nothing to time.
   assert.deepEqual(owedSteps({ name: null, models: null, google: null, samples: [] }), ["name", "tour"]);
-  assert.deepEqual(owedSteps({ name: "小林", models: 0, google: { accounts: 0, ready: false }, samples: [on, on] }), ["model", "tour"]);
+  // No Google client yet is not left out: that step walks the user through making one.
+  assert.deepEqual(owedSteps({ name: "小林", models: 0, google: { accounts: 0, ready: false }, samples: [on, on] }), ["model", "google", "tour"]);
 });
 
 test("first run: skipping the model step drops the samples question", () => {

@@ -8,7 +8,7 @@ export interface FirstRunFacts {
   name: string | null;
   /** Providers with a model connected; null: could not be read (a device that does not hold the credentials). */
   models: number | null;
-  /** `ready`: this Alfred can start a Google sign-in at all. Null: could not be read. */
+  /** `ready`: this Alfred has a Google client to sign in with. Null: could not be read. */
   google: { accounts: number; ready: boolean } | null;
   /** The automations Alfred ships with (the morning brief among them), as they are now. */
   samples: ReadonlyArray<Pick<Automation, "enabled">>;
@@ -19,7 +19,8 @@ export function owedSteps({ name, models, google, samples }: FirstRunFacts): Fir
   const steps: FirstRunStep[] = [];
   if (!name) steps.push("name");
   if (models === 0) steps.push("model");
-  if (google?.ready && google.accounts === 0) steps.push("google");
+  // Without a Google client of its own yet, the step walks the user through making one (GoogleClientSetup.tsx).
+  if (google && google.accounts === 0) steps.push("google");
   if (samples.some((sample) => !sample.enabled)) steps.push("samples");
   steps.push("tour");
   return steps;

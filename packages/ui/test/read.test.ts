@@ -49,3 +49,10 @@ test("morning and midnight times keep the intended half of the day", () => {
   assert.deepEqual(read("Call tomorrow at 11-1am"), [["event", "Call", "2026-11-21", "23:00", "01:00", false]]);
   assert.deepEqual(read("Call tomorrow at 25:30-27:00"), []);
 });
+
+test("a later part that asks Alfred for something hands the whole line to Alfred", () => {
+  assert.deepEqual(read("明天下午三点提醒我交报告，顺便帮我想想周末去哪"), []);
+  assert.deepEqual(read("dentist tomorrow at 3, and find me a parking spot"), []);
+  // A plain second thing to note stays a note.
+  assert.equal(read("明天3点开会，带电脑").length, 1);
+});

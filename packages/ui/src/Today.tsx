@@ -12,6 +12,7 @@ import { intlLocale, t, type Key } from "./i18n/index.ts";
 import { plainText } from "./markdown.ts";
 import "./today.css";
 import { snapshotOf } from "./modules.ts";
+import { openSettings } from "./settingsTab.ts";
 
 export interface TodayProps {
   state: StateResponse;
@@ -48,9 +49,23 @@ function placeLink(location?: string): { href: string; site: string } | null {
   try { return { href: text, site: new URL(text).hostname.replace(/^www\./, "") }; } catch { return null; }
 }
 
+/** Whether no model can be used yet (none signed in, no key): asked when the page opens and when the window comes
+ * back, since connecting one happens in Settings or in another window. */
+function useNoModel(): boolean {
+  const [none, setNone] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const check = () => { api.models().then((response) => { if (alive) setNone(response.models.length === 0); }, () => {}); };
+    check();
+    window.addEventListener("focus", check);
+    return () => { alive = false; window.removeEventListener("focus", check); };
+  }, []);
+  return none;
+}
+
 /** 一句: a greeting, then the one thing that is next, with the way in under it. */
-function Lede({ model, focus, over, name, go, doing }: {
-  model: TodayModel; focus: TodayFocus; over: number; name: string | null; go: TodayProps["go"]; doing: Doing;
+function Lede({ model, focus, over, name, go, doing, noModel }: {
+  model: TodayModel; focus: TodayFocus; over: number; name: string | null; go: TodayProps["go"]; doing: Doing; noModel: boolean;
 }) {
   const hello = t(`today.hi.${model.part}`) + (name ? t("today.hi.name", { name }) : "") + t("today.stop");
   const decision = focus.kind === "decision" ? focus.item : undefined;
@@ -68,6 +83,9 @@ function Lede({ model, focus, over, name, go, doing }: {
     </>;
   } else if (model.next) {
     said = <><b>{t("today.next", { at: model.next.at, title: model.next.event.title })}</b><span>{t("today.next.in", { left: untilText(model.next.startMs - model.now) })}</span></>;
+  } else if (noModel) {
+    // Without a model Alfred can do nothing it is asked: that comes before the calendar.
+    said = <><b>{t("today.noModel")}</b><span>{t("today.noModel.hint")}</span></>;
   } else if (model.calendar === "none") {
     said = <><b>{t("today.noCalendar")}</b><span>{t("today.noCalendar.hint")}</span></>;
   } else if (model.turned) {
@@ -103,6 +121,8 @@ function Lede({ model, focus, over, name, go, doing }: {
             : lead.event.link ? <Out href={lead.event.link}>{t("today.openEvent")}</Out> : null}
           {lead.event.location && !place && <span className="today-where">{lead.event.location}</span>}
         </div>
+      ) : noModel && !model.current && !model.next ? (
+        <div className="today-way"><button type="button" className="today-btn" data-solid onClick={() => openSettings("models")}>{t("today.connectModel")}</button></div>
       ) : model.calendar === "none" ? (
         <div className="today-way"><button type="button" className="today-btn" onClick={() => go("calendar.week")}>{t("page.calendar")}</button></div>
       ) : null}
@@ -228,6 +248,7 @@ type Rest = "mail" | "doing" | "done";
  * next; the day on one line, every row the same shape; the rest as counts that open in place. Nothing empty is shown. */
 export function Today({ state, name, go, onOpenConversation, line: bar }: TodayProps) {
   const now = useNow();
+  const noModel = useNoModel();
   const model = useMemo(() => todayModel(state, now), [state, now]);
   const line = useMemo(() => todayLine(model), [model]);
   const focus = todayFocus(model);
@@ -296,7 +317,7 @@ export function Today({ state, name, go, onOpenConversation, line: bar }: TodayP
     <div className="today">
       <div className="today-col">
         {/* The count the sentence gives is the count folded away just under it. */}
-        <Lede model={model} focus={focus} over={line.past.length} name={name} go={go} doing={inPlace} />
+        <Lede model={model} focus={focus} over={line.past.length} name={name} go={go} doing={inPlace} noModel={noModel} />
         {said && <p className="today-said" data-problem={said.problem || undefined} role="status">{said.text}</p>}
         {model.advice && (
           // What today's result in sections said to start with (docs/design/user-defined.md §6.3): one line, the way into it whole.

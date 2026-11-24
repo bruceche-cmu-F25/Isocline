@@ -302,6 +302,8 @@ body.resizing { cursor: col-resize; user-select: none; }
   background: var(--raise); color: var(--ink); font-size: .875rem; line-height: 1.45; overflow-wrap: anywhere;
 }
 .run-failure .failure-mark { flex: none; width: 30px; height: 30px; }
+.run-failure { flex-wrap: wrap; }
+.run-failure .failure-act { align-self: center; min-height: 26px; padding: 0 12px; border-radius: 999px; background: var(--accent-solid); color: var(--accent-ink); font-size: .8125rem; }
 .run-failure details { min-width: 0; }
 .run-failure summary, .run-failure .failure-title { min-height: 30px; align-content: center; font-weight: 550; }
 .run-failure summary { display: flex; align-items: center; gap: 10px; list-style: none; cursor: pointer; border-radius: 4px; }

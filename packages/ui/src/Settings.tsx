@@ -22,9 +22,10 @@ import { Skills } from "./Skills.tsx";
 import { VoiceSettings } from "./VoiceSettings.tsx";
 import { t, useLocale, type Key } from "./i18n/index.ts";
 import { Icon, type IconName } from "./shell/icons.tsx";
+import { SETTINGS_TAB_EVENT, SETTINGS_TAB_KEY, type SettingsTab } from "./settingsTab.ts";
 import "./settings.css";
 
-type Tab = "general" | "voice" | "models" | "accounts" | "skills" | "connectors" | "devices";
+type Tab = SettingsTab;
 /** `home`: only where Alfred runs. */
 const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
   { id: "general", icon: "gear" },
@@ -35,7 +36,7 @@ const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
   { id: "connectors", icon: "plug", home: true },
   { id: "devices", icon: "phone" },
 ];
-const KEY = "alfred.settings.tab";
+const KEY = SETTINGS_TAB_KEY;
 const saved = (): Tab => { try { const value = localStorage.getItem(KEY); return TABS.some((tab) => tab.id === value) ? value as Tab : "general"; } catch { return "general"; } };
 
 export function Settings({ name, saveName, dockOptions, onEvent, state }: GeneralProps & Pick<Alfred, "onEvent"> & { state: StateResponse }) {
@@ -70,6 +71,12 @@ export function Settings({ name, saveName, dockOptions, onEvent, state }: Genera
     setOpened((current) => new Set(current).add(next));
     try { localStorage.setItem(KEY, next); } catch { /* opens on General next time */ }
   };
+  // Sent from elsewhere ("connect a model" on a failed turn): this page may already be open.
+  useEffect(() => {
+    const go = (event: Event) => { const next = (event as CustomEvent<Tab>).detail; setTab(next); setOpened((current) => new Set(current).add(next)); };
+    window.addEventListener(SETTINGS_TAB_EVENT, go);
+    return () => window.removeEventListener(SETTINGS_TAB_EVENT, go);
+  }, []);
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
     if (!step) return;

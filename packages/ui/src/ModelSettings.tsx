@@ -15,6 +15,8 @@ import { Select } from "./shell/Select.tsx";
 /** API-key providers shown before "show all": the ones most people have. Configured ones always show. */
 const COMMON = ["anthropic", "openai", "google", "openrouter", "deepseek", "xai", "mistral", "groq", "moonshotai", "kimi-coding"];
 const SUBSCRIPTION_PRIORITY = new Map([["openai", 0], ["openai-codex", 1]]);
+/** In the first run, how many of each kind show before "more ways": a newcomer picks from a few, not forty. */
+const SETUP_SUBSCRIPTIONS = 3, SETUP_KEYS = 5;
 const THINKING: Array<ThinkingLevel | null> = [null, "off", "low", "medium", "high", "xhigh"];
 const PI_DISMISSED = "alfred.models.piDismissed";
 
@@ -239,7 +241,10 @@ export function ModelSettings({ setup, onConfigured }: { setup?: boolean; onConf
     const rank = (provider: ModelProvider) => (COMMON.includes(provider.id) ? COMMON.indexOf(provider.id) : COMMON.length);
     return rank(a) - rank(b) || a.name.localeCompare(b.name);
   });
-  const shownKeys = showAll ? keyed : keyed.filter((provider) => COMMON.includes(provider.id) || provider.status.configured || flow?.provider === provider.id);
+  const mine = (provider: ModelProvider) => provider.status.configured || flow?.provider === provider.id;
+  const shownKeys = showAll ? keyed : keyed.filter((provider, index) => (setup ? index < SETUP_KEYS : COMMON.includes(provider.id)) || mine(provider));
+  const shownSubscriptions = showAll || !setup ? subscriptions : subscriptions.filter((provider, index) => index < SETUP_SUBSCRIPTIONS || mine(provider));
+  const hidden = subscriptions.length - shownSubscriptions.length + keyed.length - shownKeys.length;
   const modelOptions = models.map((model) => ({ value: `${model.provider}/${model.id}`, label: `${model.name} · ${providers.find((provider) => provider.id === model.provider)?.name ?? model.provider}` }));
   const piSubNames = data?.piSubscriptions.map((item) => item.name) ?? [];
 
@@ -292,14 +297,16 @@ export function ModelSettings({ setup, onConfigured }: { setup?: boolean; onConf
       <h3 className="set-sub">{t("models.subs")}</h3>
       <p className="quiet small">{t("models.subs.note")}</p>
       {piSubNames.length > 0 && <p className="quiet small">{t("models.pi.subs", { names: piSubNames.join(t("list.sep")), n: piSubNames.length })}</p>}
-      <div className="set-rows">{subscriptions.map((provider) => row(provider, "subscription"))}</div>
+      <div className="set-rows">{shownSubscriptions.map((provider) => row(provider, "subscription"))}</div>
 
       <h3 className="set-sub">{t("models.keys")}</h3>
       <p className="quiet small">{t("models.keys.note")}</p>
       <div className="set-rows">{shownKeys.map((provider) => row(provider, "key"))}</div>
-      {keyed.length > shownKeys.length || showAll ? (
+      {hidden > 0 || showAll ? (
         <div className="set-actions">
-          <button type="button" className="set-button ghost" onClick={() => setShowAll(!showAll)}>{showAll ? t("models.keys.fewer") : t("models.keys.all", { n: keyed.length })}</button>
+          <button type="button" className="set-button ghost" onClick={() => setShowAll(!showAll)}>
+            {showAll ? t("models.keys.fewer") : setup ? t("models.more", { n: hidden }) : t("models.keys.all", { n: keyed.length })}
+          </button>
         </div>
       ) : null}
     </section>
