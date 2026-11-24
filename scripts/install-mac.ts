@@ -33,7 +33,7 @@ try {
   run("git", ["worktree", "add", "--detach", build, commit]);
 
   step("Installing its dependencies");
-  run("npm", ["ci", "--no-audit", "--no-fund"], build);
+  run("npm", ["ci", "--prefer-offline", "--no-audit", "--no-fund"], build);
 
   step("Checking it: typecheck and tests");
   run("npm", ["run", "typecheck"], build);
