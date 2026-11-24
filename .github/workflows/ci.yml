@@ -1,0 +1,29 @@
+# Typecheck and tests for every pull request into alfred-harness and every push to it (docs/WORKFLOW.md §6).
+name: CI
+
+on:
+  pull_request:
+    branches: [alfred-harness]
+  push:
+    branches: [alfred-harness]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      # The tests never start Electron; its binary is only needed to package the app.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
