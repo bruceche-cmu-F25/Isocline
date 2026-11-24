@@ -19,6 +19,8 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const target = "/Applications/Isocline.app";
+/** The app's own process, not the home node (which runs the same executable with arguments). */
+const APP_PROCESS = `^${target}/Contents/MacOS/Isocline$`;
 const ref = process.argv[2] ?? "HEAD";
 const step = (text: string) => console.log(`▸ ${text}`);
 const run = (command: string, args: string[], cwd = root) => execFileSync(command, args, { cwd, stdio: "inherit" });
@@ -50,6 +52,12 @@ try {
     const id = read("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", join(target, "Contents", "Info.plist")]);
     try { read("/usr/bin/osascript", ["-e", `tell application id "${id}" to quit`]); } catch { /* not running */ }
     for (let waited = 0; waited < 15_000 && running(); waited += 500) execFileSync("/bin/sleep", ["0.5"]);
+    // A dialog left open keeps it from quitting. Only the app's own process is ended: the home node is launchd's.
+    for (const signal of ["TERM", "KILL"]) {
+      if (!running()) break;
+      try { execFileSync("/usr/bin/pkill", [`-${signal}`, "-f", APP_PROCESS]); } catch { /* gone already */ }
+      for (let waited = 0; waited < 5_000 && running(); waited += 500) execFileSync("/bin/sleep", ["0.5"]);
+    }
     if (running()) throw new Error("Isocline did not quit. Quit it from the menu bar and run this again.");
     rmSync(target, { recursive: true, force: true });
   }
@@ -64,5 +72,5 @@ try {
 
 /** Whether the installed app's own process is still running (its home node is launchd's, not the app's). */
 function running(): boolean {
-  try { return read("/usr/bin/pgrep", ["-f", `^${target}/Contents/MacOS/Isocline$`]) !== ""; } catch { return false; }
+  try { return read("/usr/bin/pgrep", ["-f", APP_PROCESS]) !== ""; } catch { return false; }
 }
