@@ -71,7 +71,7 @@ npm run install:mac
 
 它把当前分支的最后一次提交取到一个临时目录（不管工作区里有什么没提交的），在那里 `npm ci`、跑类型检查和全部测试，通过了才打包；然后退出 /Applications 里的 Isocline、换成新的、再打开。App 里记着提交号，换了版本，主节点的代理跟着变，App 打开时会让主节点用新代码重启，数据不动。要装别的提交：`npm run install:mac -- <提交或分支>`。见 [scripts/install-mac.ts](../scripts/install-mac.ts)。
 
-日常就是：在开发版里改（`npm run desktop`）→ 满意了提交 → `npm run install:mac`。
+日常就是：在开发版里改（`npm run desktop`）→ 满意了提交 → `npm run install:mac`，或者在开发版菜单栏图标的菜单里点「更新 App 版…」（同一件事，只在从源码跑的开发版里有；输出记在 `~/Library/Logs/Isocline/install-mac.log`）。
 
 **让开发版有真实的数据**：`npm run dev:copy-world` 把生产的世界复制一份给开发（生产只读、可以照常运行；开发原来的世界留作 `Isocline Dev.previous`）。手机推送、远程访问、Google 账号不复制，等着发出去的改动在副本里标成失败、不会发出。见 [scripts/copy-world-to-dev.ts](../scripts/copy-world-to-dev.ts)。
 

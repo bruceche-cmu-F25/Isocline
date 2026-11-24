@@ -25,6 +25,7 @@ import { adoptLegacyEnv } from "@isocline/core/legacy";
 import { currentStage, dataDirFor } from "@isocline/core/stage";
 import { moveRenamedFolders } from "@isocline/server/rename";
 import { appIcon, trayIcon } from "./icon.ts";
+import { installApp, lastCommit, UPDATE_LOG, updateText } from "./update-app.ts";
 import { installTextMenu } from "./text-menu.ts";
 
 const HOTKEY = "Alt+Space";
@@ -539,6 +540,8 @@ function updateTray(): void {
       ],
     },
     { label: say("mac.restart"), enabled: !restarting, click: () => void restartIsocline() },
+    // Run from the source tree: put the last commit into the installed app (update-app.ts).
+    ...(app.isPackaged ? [] : [{ label: updateText(LOCALE, updating ? "running" : "menu"), enabled: !updating, click: () => void updateInstalledApp() }]),
     {
       label: say("mac.loginItem"), type: "checkbox", checked: app.getLoginItemSettings().openAtLogin,
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }),
@@ -548,6 +551,35 @@ function updateTray(): void {
   ];
   tray.setContextMenu(Menu.buildFromTemplate(items));
   tray.setToolTip(`Isocline · ${statusLabel()}`);
+}
+
+/** Development only: asks, then installs the last commit into /Applications/Isocline.app, and says how it went. */
+let updating = false;
+async function updateInstalledApp(): Promise<void> {
+  const root = here("../../..");
+  let last: { commit: string; subject: string };
+  try { last = lastCommit(root); } catch (error) {
+    dialog.showMessageBoxSync({ type: "error", message: updateText(LOCALE, "failed", { reason: error instanceof Error ? error.message : String(error) }) });
+    return;
+  }
+  const choice = dialog.showMessageBoxSync({
+    type: "question", message: updateText(LOCALE, "title", last), detail: updateText(LOCALE, "detail", last),
+    buttons: [updateText(LOCALE, "go"), updateText(LOCALE, "cancel")], defaultId: 0, cancelId: 1,
+  });
+  if (choice !== 0) return;
+  updating = true;
+  updateTray();
+  const failure = await installApp(root);
+  updating = false;
+  updateTray();
+  const note = new Notification({
+    title: "Isocline Dev",
+    body: failure ? updateText(LOCALE, "failed", { reason: failure }) : updateText(LOCALE, "done", last),
+  });
+  if (failure) note.on("click", () => void shell.openPath(UPDATE_LOG));
+  notifications.add(note);
+  note.on("close", () => notifications.delete(note));
+  note.show();
 }
 
 /** A node someone started by hand (npm start) went away: run our own under launchd. */
