@@ -68,7 +68,26 @@ v0.3，2026-11-24。写给每一个改这个仓库的人和编码代理，不管
    ```
 3. 安装：`npm run install:mac -- v0.1.<n>`。它会在一个干净的目录里 `npm ci`、跑测试、打包，再替换 `/Applications/Isocline.app`。
 4. 看 `~/Library/Logs/Isocline/isocline.home-node.log` 的最新一行，提交号要对得上。
-5. **回退就是装上一个 tag。** 不在生产上改文件，也不装没合进 `zirma` 的东西。
+5. 不在生产上改文件，也不装没合进 `zirma` 的东西。
+
+**数据备份。** `install:mac` 每次换 App 之前，都会把生产的数据库备份到 `~/Library/Application Support/Isocline/backups/`，文件名是 `world-<时间>-<提交号>.sqlite`。提交号是当时在跑的那个版本，所以文件里就是「这个版本最后留下的数据」。只保留最近 10 份。
+
+**回退：代码和数据一起退。** 只装回旧 tag 是不够的：新版本可能已经改过数据库的结构，旧代码不一定读得了。回到 `v0.1.<旧>` 的步骤：
+
+1. 在菜单栏退出 Isocline，停掉生产主节点：
+   ```bash
+   launchctl bootout gui/$(id -u)/isocline.home-node
+   ```
+2. 找到旧版本留下的那份备份：先 `git rev-parse --short v0.1.<旧>` 拿到它的提交号，再到 `backups/` 里挑文件名带这个提交号的最新一份。
+3. 把现在的数据挪到一边（不删），换上那份备份：
+   ```bash
+   cd ~/Library/Application\ Support/Isocline
+   mkdir -p rolled-back && mv world.sqlite* rolled-back/
+   cp backups/world-<时间>-<提交号>.sqlite world.sqlite
+   ```
+4. 装旧版本：`npm run install:mac -- v0.1.<旧>`。它会打开 App，App 会重新拉起主节点。
+
+装新版本之后才写进去的数据（新邮件可以重新同步下来，但手写的待办、笔记这类）会退掉，还留在 `rolled-back/` 里。在装这个功能之前装的版本没有备份，那种只能装回代码。
 
 **急救例外。** 生产坏了、等不及合并时，可以先 `npm run install:mac -- fix/<主题>` 装上。但当天要把这条分支按 §2 合回 `zirma`，再按本节发一个修位版本重装，让生产重新回到 tag 上。
 

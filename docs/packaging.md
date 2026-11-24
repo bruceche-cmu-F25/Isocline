@@ -101,6 +101,7 @@ ISOCLINE_DATA_DIR=$D ISOCLINE_PORT=7487 dist/mac/Isocline.app/Contents/MacOS/Iso
 ## 6. 装到自己的 Mac 上
 
 1. 先备份数据：把 `~/Library/Application Support/Alfred`（已经升级过的话是 `Isocline`）复制一份放到别处。
+   用 `npm run install:mac` 装的话不用手动备份：它每次换 App 之前自己会备份到 `Isocline/backups/`，回退的步骤见 [WORKFLOW.md](WORKFLOW.md) §5。
 2. 打开 DMG，把 Isocline 拖进「应用程序」。
 3. 第一次打开。在自己这台 Mac 上打出来的包可以直接打开；从别的地方下载的会被 macOS 拦下，要右键 →「打开」，或者到 系统设置 → 隐私与安全性 → 「仍要打开」。
 4. 第一次打开会接管主节点（第 4 节）。在菜单栏里确认「主节点：在线」。
