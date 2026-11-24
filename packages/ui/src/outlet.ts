@@ -1,4 +1,4 @@
-/** This window, as a place where Isocline can tell the user something (docs/design/attention.md): it says whether it
+/** This window, as a place where Zirma can tell the user something (docs/design/attention.md): it says whether it
  * is being looked at and when the user last did something in it. From that, and from what the other outlets say, the
  * home node decides which window, figure or phone gets a notice (handed.ts is this window's half of that).
  */

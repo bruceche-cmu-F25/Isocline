@@ -1,4 +1,4 @@
-import type { FileInfo } from "@isocline/protocol";
+import type { FileInfo } from "@zirma/protocol";
 
 export interface Pending {
   key: string;
@@ -64,7 +64,7 @@ export function composerDraft(sessionId?: string) {
   if (!sessionId) return createDraft();
   let draft = drafts.get(sessionId);
   if (!draft) {
-    draft = createDraft(`isocline.codingDraft.${sessionId}`);
+    draft = createDraft(`zirma.codingDraft.${sessionId}`);
     drafts.set(sessionId, draft);
   }
   return draft;

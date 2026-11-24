@@ -1,5 +1,5 @@
 import { ConversationStatus } from "./ConversationStatus.tsx";
-import type { Conversation, StateResponse } from "@isocline/protocol";
+import type { Conversation, StateResponse } from "@zirma/protocol";
 import { useState } from "react";
 import { ApiError, api, type Connection } from "../api.ts";
 import { getLocale, intlLocale, localeTag, nextLocale, t } from "../i18n/index.ts";
@@ -45,7 +45,7 @@ export interface NavProps {
   onLanguage(): void;
 }
 
-const UNFOLDED_KEY = "isocline.unfoldedProjects";
+const UNFOLDED_KEY = "zirma.unfoldedProjects";
 
 /** The projects unfolded on this device; every other one starts folded. */
 function readUnfolded(): Set<string> {

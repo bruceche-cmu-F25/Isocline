@@ -1,7 +1,7 @@
-/** The presence window: Isocline's figure, always on screen in the Mac app.
- * It shows what Isocline is doing, and it is how Isocline tells the user things on the Mac: the welcome when they come
- * back, a finished task, a question, a proposal. Isocline hops up, grows, and the words come out of the figure as a
- * speech card; then it folds the card back in. When the user hid the figure, Isocline rises from the screen's edge to
+/** The presence window: Zirma's figure, always on screen in the Mac app.
+ * It shows what Zirma is doing, and it is how Zirma tells the user things on the Mac: the welcome when they come
+ * back, a finished task, a question, a proposal. Zirma hops up, grows, and the words come out of the figure as a
+ * speech card; then it folds the card back in. When the user hid the figure, Zirma rises from the screen's edge to
  * say it and sinks away after.
  *
  * The figure is the user's to move: drag it anywhere, and it settles toward the nearest corner, with the card on the
@@ -16,7 +16,7 @@
  */
 import { StrictMode, useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { createRoot } from "react-dom/client";
-import type { AwayDigest, Notice } from "@isocline/protocol";
+import type { AwayDigest, Notice } from "@zirma/protocol";
 import { desktop, type FigureSide } from "../desktop.ts";
 import { createFigure, type Figure, type FigureState } from "../entity/tesseract.js";
 import { assistantNameFor, setAssistant, setLocale, t, useLocale, getAssistant } from "../i18n/index.ts";
@@ -27,9 +27,9 @@ import { useSpeech, type Said } from "../speech/useSpeech.ts";
 import { firstSentences, forSpeech, say, stopSpeaking, useKeepVoiceSettings, voiceSettings } from "../speech/voice.ts";
 import { useQuickTalk } from "../voice/useQuickTalk.ts";
 import { api } from "../api.ts";
-import type { Run } from "@isocline/protocol";
+import type { Run } from "@zirma/protocol";
 import { WebLockGate } from "../WebLockGate.tsx";
-import { useIsocline } from "../useIsocline.ts";
+import { useZirma } from "../useZirma.ts";
 import { welcomeLines } from "../welcome.ts";
 import "./presence.css";
 
@@ -42,7 +42,7 @@ const DRAG_PX = 4;
 /** Held this long without moving, a press becomes talking (quick talk). */
 const HOLD_MS = 350;
 /** Quick talk goes on in one conversation, remembered here (docs/design/voice.md §1.2). */
-const QUICK_KEY = "isocline.quick.conversation";
+const QUICK_KEY = "zirma.quick.conversation";
 /** A reply to quick talk, said by the figure; not a notice of the home node's. */
 const VOICE_PREFIX = "voice:";
 const isReply = (notice: Notice) => notice.id.startsWith(VOICE_PREFIX);
@@ -63,7 +63,7 @@ function demoSide(): FigureSide {
 }
 
 function Presence() {
-  const { state } = useIsocline();
+  const { state } = useZirma();
   // Speak the user's language, as set on the home node.
   useLocale();
   useKeepVoiceSettings(state?.settings?.voice);
@@ -125,7 +125,7 @@ function Presence() {
   const { current, said, phase } = speech;
 
   // Says the card out loud as it comes out (docs/design/voice.md §2.2), unless the user turned that off or muted
-  // Isocline.
+  // Zirma.
   const spoken = useRef<string | null>(null);
   useEffect(() => {
     if (phase !== "speak" || !current || !said || spoken.current === current.id) return;

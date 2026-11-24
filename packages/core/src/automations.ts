@@ -49,7 +49,7 @@ export interface Automation {
   notify: AutomationNotify;
   /** Colour slot in tokens.css (`data-k`). */
   k: AreaColour;
-  /** What Isocline is told each time; null for a template, whose words follow the user's language. */
+  /** What Zirma is told each time; null for a template, whose words follow the user's language. */
   goal: string | null;
   schedule: Schedule;
   enabled: boolean;
@@ -64,7 +64,7 @@ export interface Automation {
 
 /** An automation as a page shows it: when it next fires and how its last run went. */
 export interface AutomationView extends Automation {
-  /** What Isocline is told each time, in the user's language: its own words, or its sample's. For editing and copying. */
+  /** What Zirma is told each time, in the user's language: its own words, or its sample's. For editing and copying. */
   instruction: string;
   nextAt: string | null;
   lastRun: { id: string; state: RunState; at: string; reply: string | null } | null;
@@ -254,7 +254,7 @@ function fire(world: World, automation: Automation, input: { requestId: string; 
     const late = input.slot !== null && input.now - input.slot > LATE_MS;
     const slotTime = input.slot === null ? "" : new Date(input.slot).toTimeString().slice(0, 5);
     const goal = automationGoal(automation, locale) + (automation.layout === "sections" ? `\n\n${SECTIONS_GUIDE[locale]}` : "")
-      + (late ? `\n\n(Scheduled for ${slotTime}; running late because Isocline was not running then.)` : "");
+      + (late ? `\n\n(Scheduled for ${slotTime}; running late because Zirma was not running then.)` : "");
     const conversationId = automation.conversationId && db.prepare("SELECT 1 FROM core_conversations WHERE id = ?").get(automation.conversationId)
       ? automation.conversationId
       : createConversation(db, { title: automationName(automation, locale), now: input.now });
@@ -301,7 +301,7 @@ export function runAutomationNow(world: World, id: string, requestId: string, op
   return fire(world, getAutomation(world, id), { requestId: `auto-now:${requestId}`, slot: null, profile: options.profile, now: options.now ?? Date.now() });
 }
 
-/** The automations Isocline ships with (the morning brief, todos from mail) are there from the start, switched off;
+/** The automations Zirma ships with (the morning brief, todos from mail) are there from the start, switched off;
  * one the user has deleted is not made again. */
 export function ensureTemplates(world: World, now: number = Date.now()): void {
   const made = world.db.prepare("SELECT 1 FROM core_events WHERE kind = 'automation.created' AND json_extract(payload, '$.template') = ? LIMIT 1");

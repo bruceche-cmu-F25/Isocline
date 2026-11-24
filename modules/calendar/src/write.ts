@@ -9,11 +9,11 @@
  * it), and saving, or confirming the delete, is the yes. Those go out the same way, quietly: the page shows them
  * on their way (`pendingChanges`), and only one that fails is told.
  *
- * And a proposal that waits is theirs to adjust: an event Isocline proposed, drawn on the page where it would land, can
+ * And a proposal that waits is theirs to adjust: an event Zirma proposed, drawn on the page where it would land, can
  * be dragged to another time before they say yes (`calendar.retime`). The proposal stays a proposal.
  */
 import { randomInt } from "node:crypto";
-import { amendProposal, enqueueOutbound, getProposal, listOutbound, localeOf, localeTag, ProposalStateError, userLocale, type Locale, type Outbound, type Proposal, type World, defineOp, defineQuery, defineTool, Type, type Delivered, type GoogleSession, type ModuleServices } from "@isocline/module-kit";
+import { amendProposal, enqueueOutbound, getProposal, listOutbound, localeOf, localeTag, ProposalStateError, userLocale, type Locale, type Outbound, type Proposal, type World, defineOp, defineQuery, defineTool, Type, type Delivered, type GoogleSession, type ModuleServices } from "@zirma/module-kit";
 import { addDays, mapEvent, type GoogleEvent } from "./google.ts";
 import { colourOf, colourSeries, putEvent } from "./mirror.ts";
 import type { CalendarPending, CalendarWhen } from "./types.ts";
@@ -34,8 +34,9 @@ export interface EditInput { account: string; calendarId: string; eventId: strin
 export interface DeleteInput { account: string; calendarId: string; eventId: string; title: string; at: string; notify: boolean; attendees: number }
 export interface RespondInput { account: string; calendarId: string; eventId: string; title: string; response: Response; at: string }
 
-/** Google's event ids are base32hex. Ours start with "isocline" (every letter of it is base32hex), so they are
- * recognisable in Google too; ones made before the rename start with "alfred" (the UI's Calendar.tsx knows both). */
+/** Google's event ids are base32hex (0–9, a–v). Ours start with "isocline", the product's name when this was
+ * written, so they are recognisable in Google too; ones made earlier start with "alfred" (the UI's Calendar.tsx knows
+ * both). "zirma" cannot be a prefix: z is not base32hex. So "isocline" stays, like the stored actor "alfred". */
 export function newEventId(): string {
   const alphabet = "0123456789abcdefghijklmnopqrstuv";
   return `isocline${Array.from({ length: 20 }, () => alphabet[randomInt(32)]).join("")}`;
@@ -134,7 +135,7 @@ export const calendarOps = [
   }),
   // A proposed event, moved by the user's own hand while the proposal waits (dragged on the calendar page): the step
   // keeps what it adds or moves and takes the new time, its preview is written again, and the summary says so,
-  // since Isocline's own words there may name the old time.
+  // since Zirma's own words there may name the old time.
   defineOp({
     name: "calendar.retime",
     input: Type.Object({ proposal: Type.String({ minLength: 1, maxLength: 64 }), step: Type.Integer({ minimum: 0, maximum: 19 }), when: WhenSchema }),
@@ -367,7 +368,7 @@ function sameEvent(world: World, title: string, when: When): { title: string; at
   return row ? { title: row.title as string, at: `${row.start_date} ${hhmm(row.start_at as number)}–${hhmm(row.end_at as number)}` } : null;
 }
 
-const NO_WRITE = "The user has not let Isocline change this calendar. Tell them they can turn on “Calendar: add and change” for the account in Settings.";
+const NO_WRITE = "The user has not let Zirma change this calendar. Tell them they can turn on “Calendar: add and change” for the account in Settings.";
 const PROPOSE_ONLY = "Changing the calendar is never done directly: put this call in `propose`, and it happens when the user accepts.";
 
 const Times = {
@@ -409,7 +410,7 @@ export const calendarWriteTools = [
       const target = params.calendar
         ? options.find((calendar) => calendar.name.toLowerCase() === params.calendar!.toLowerCase()) ?? options.find((calendar) => calendar.name.toLowerCase().includes(params.calendar!.toLowerCase()))
         : options[0];
-      if (!target) return { error: `No calendar called ${params.calendar} that Isocline may change. Ones it may: ${options.map((calendar) => calendar.name).join(", ") || "none"}.` };
+      if (!target) return { error: `No calendar called ${params.calendar} that Zirma may change. Ones it may: ${options.map((calendar) => calendar.name).join(", ") || "none"}.` };
       if (params.until && !params.repeat) return { error: "until is only for an event that repeats" };
       if (params.until && !/^\d{4}-\d{2}-\d{2}$/.test(params.until)) return { error: "until is YYYY-MM-DD" };
       const repeat: Repeat | undefined = params.repeat ? { every: params.repeat, ...(params.until ? { until: params.until } : {}) } : undefined;

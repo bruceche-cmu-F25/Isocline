@@ -7,11 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { ATTENTION, enqueueOutbound, listEvents, listOutbound, withCoreContext, type EnginePort } from "@isocline/core";
-import { createPiEngine } from "@isocline/engine-pi";
-import { defineModule } from "@isocline/module-kit";
-import { todoModule, type TodoSnapshot } from "@isocline/module-todo";
-import type { ConversationDetail, CoreEvent, RunDetail, SessionChanges, StateResponse, SubmitRunResponse } from "@isocline/protocol";
+import { ATTENTION, enqueueOutbound, listEvents, listOutbound, withCoreContext, type EnginePort } from "@zirma/core";
+import { createPiEngine } from "@zirma/engine-pi";
+import { defineModule } from "@zirma/module-kit";
+import { todoModule, type TodoSnapshot } from "@zirma/module-todo";
+import type { ConversationDetail, CoreEvent, RunDetail, SessionChanges, StateResponse, SubmitRunResponse } from "@zirma/protocol";
 import { AUTOMATION_PROFILE, ASSISTANT_PROFILE, createHttpServer, openHome, profiles, type Home } from "../src/index.ts";
 
 /** Adds the todo named in the goal through the run's own tool. */
@@ -215,7 +215,7 @@ test("a second home node on the same data directory is refused", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alfred-"));
   const home = openHome({ dataDir, engine, modules: [todoModule] });
   try {
-    assert.throws(() => openHome({ dataDir, engine, modules: [todoModule] }), /Another Isocline home node is running/);
+    assert.throws(() => openHome({ dataDir, engine, modules: [todoModule] }), /Another Zirma home node is running/);
   } finally {
     home.close();
   }
@@ -425,7 +425,7 @@ test("automations over HTTP: made by the user, fired once by the clock, unattend
   }
 });
 
-test("Isocline can list, make and change automations when asked; an automation's own run cannot", async () => {
+test("Zirma can list, make and change automations when asked; an automation's own run cannot", async () => {
   const home = openHome({ dataDir: mkdtempSync(join(tmpdir(), "alfred-")), engine, modules: [todoModule] });
   try {
     const all = profiles(home.world, [todoModule]);
@@ -469,8 +469,8 @@ test("the model picked when opening Code receives the first message and can swit
   writeFileSync(join(agentDir, "models.json"), JSON.stringify({ providers: { fixture: { baseUrl, api: "openai-completions", apiKey: "fixture",
     models: [{ id: "fast", input: ["text"] }, { id: "vision", input: ["text", "image"] }] } } }));
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "fixture", defaultModel: "fast" }));
-  const secrets = process.env.ISOCLINE_SECRETS;
-  process.env.ISOCLINE_SECRETS = "file";
+  const secrets = process.env.ZIRMA_SECRETS;
+  process.env.ZIRMA_SECRETS = "file";
   const engine = createPiEngine({ cwd: join(dataDir, "engine"), agentDir, config: dataDir });
   const home = openHome({ dataDir, engine, modules: [] });
   const { server, base } = await start(home);
@@ -502,7 +502,7 @@ test("the model picked when opening Code receives the first message and can swit
   } finally {
     server.close(); server.closeAllConnections(); home.close();
     await engine.close();
-    if (secrets === undefined) delete process.env.ISOCLINE_SECRETS; else process.env.ISOCLINE_SECRETS = secrets;
+    if (secrets === undefined) delete process.env.ZIRMA_SECRETS; else process.env.ZIRMA_SECRETS = secrets;
   }
 });
 
@@ -550,8 +550,8 @@ test("a development session: add and trust a folder, start a session, and its ru
 });
 
 test("calendar and mail over HTTP: a refresh reads Google, the state carries the mirror, a body is a query", async () => {
-  const { calendarModule } = await import("@isocline/module-calendar");
-  const { mailModule } = await import("@isocline/module-mail");
+  const { calendarModule } = await import("@zirma/module-calendar");
+  const { mailModule } = await import("@zirma/module-mail");
   const today = new Date();
   const at = (hours: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours).toISOString();
   const google = {
@@ -628,13 +628,13 @@ test("a session that edits: changes since its snapshot, one file's diff, and 'do
   try {
     const project = await (await post(base, "/api/projects", { path: folder })).json() as { id: string };
     assert.equal((await post(base, "/api/conversations", { projectId: project.id, title: "Add a line" })).status, 409);
-    assert.equal(String(sh("for-each-ref", "refs/isocline")), "", "nothing is done in a folder before it is trusted");
+    assert.equal(String(sh("for-each-ref", "refs/zirma")), "", "nothing is done in a folder before it is trusted");
     await post(base, `/api/projects/${project.id}/trust`, {});
     const session = await (await post(base, "/api/conversations", { projectId: project.id, title: "Add a line", mode: "ask" })).json() as { id: string; mode: string; base: string | null };
     assert.equal(session.mode, "ask");
     assert.match(String(session.base), /^[0-9a-f]{40}$/);
-    // The snapshot is a commit on no branch: a ref of Isocline's keeps git from collecting it.
-    assert.match(String(sh("for-each-ref", "refs/isocline/snapshots")), new RegExp(`^${session.base} `));
+    // The snapshot is a commit on no branch: a ref of Zirma's keeps git from collecting it.
+    assert.match(String(sh("for-each-ref", "refs/zirma/snapshots")), new RegExp(`^${session.base} `));
     sh("gc", "-q", "--prune=now");
     const { run } = await (await post(base, "/api/runs", { requestId: "edit-1", goal: "Add a line", conversationId: session.id })).json() as SubmitRunResponse;
 
@@ -707,8 +707,8 @@ test("a change accepted while its module is syncing goes out right after that pa
 });
 
 test("calendar and mail changes over HTTP: proposed by a run, delivered right after the user's yes, the outcome told", async () => {
-  const { calendarModule } = await import("@isocline/module-calendar");
-  const { mailModule } = await import("@isocline/module-mail");
+  const { calendarModule } = await import("@zirma/module-calendar");
+  const { mailModule } = await import("@zirma/module-mail");
   const sent: string[] = [];
   const google = {
     accounts: () => [{ email: "me@example.com", capabilities: ["calRead", "calWrite", "mailRead", "mailSend"] }],
@@ -797,7 +797,7 @@ test("the harness's own commands: done once per request id, checked, and recorde
     assert.deepEqual([first.status, again.status], [201, 201]);
     assert.equal(((await again.json()) as { id: string }).id, session.id, "the same session, not a second one");
     assert.equal(((await (await fetch(`${base}/api/state`)).json()) as StateResponse).conversations.length, 1);
-    assert.equal(String(sh("for-each-ref", "refs/isocline/snapshots")).trim().split("\n").length, 1, "and its folder was read once");
+    assert.equal(String(sh("for-each-ref", "refs/zirma/snapshots")).trim().split("\n").length, 1, "and its folder was read once");
     assert.equal((await post(base, "/api/conversations", { requestId: "s-1", projectId: project.id, title: "Something else" })).status, 409, "an id is for one command");
 
     // Whatever the command, what it changes is the user's.
@@ -841,7 +841,7 @@ test("a module's kept image is served as an image and nothing else", async () =>
 });
 
 test("a mail favorite changes the mirror at once and reaches Gmail through the outbound queue, only after opt-in", async () => {
-  const { mailModule } = await import("@isocline/module-mail");
+  const { mailModule } = await import("@zirma/module-mail");
   const accounts = [
     { email: "a@example.com", capabilities: ["mailRead"] },
     { email: "b@example.com", capabilities: ["mailRead"] },
@@ -898,7 +898,7 @@ test("a mail favorite changes the mirror at once and reaches Gmail through the o
     await pass();
     const [first, second] = accounts.map((source) => source.email);
 
-    // Without star syncing a favorite is Isocline's own, and a Gmail star cannot be taken away.
+    // Without star syncing a favorite is Zirma's own, and a Gmail star cannot be taken away.
     assert.deepEqual(await result(await favorite(first, true)), { starred: true, scope: "local" });
     assert.deepEqual(flags(first), [1, 0]);
     const refused = await favorite(second, false);
@@ -907,7 +907,7 @@ test("a mail favorite changes the mirror at once and reaches Gmail through the o
     assert.deepEqual(flags(second), [0, 1]);
     await settle();
     assert.equal(calls.length, 0);
-    assert.deepEqual(flags(first), [1, 0], "an inbox read keeps a favorite saved in Isocline");
+    assert.deepEqual(flags(first), [1, 0], "an inbox read keeps a favorite saved in Zirma");
 
     // With it, the click shows at once; Gmail's half is an outbound change, tried again while Gmail does not answer.
     accounts[0].capabilities.push("mailModify");

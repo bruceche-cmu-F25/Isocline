@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Run, RunState } from "@isocline/protocol";
+import type { Run, RunState } from "@zirma/protocol";
 import { api } from "./api.ts";
 import { SectionsResult } from "./Sections.tsx";
 import { Markdown } from "./Markdown.tsx";

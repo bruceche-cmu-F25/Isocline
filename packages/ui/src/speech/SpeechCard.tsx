@@ -24,7 +24,7 @@ interface Props {
   style?: CSSProperties;
 }
 
-/** What Isocline says, coming out of its figure: the tail points back at it and the card grows from there. */
+/** What Zirma says, coming out of its figure: the tail points back at it and the card grows from there. */
 export function SpeechCard({ said, out, complete, folding, more, tail, tailAt, onOpen, onNext, onClose, onHover, brief, style }: Props) {
   const chars = Array.from(said.body);
   if (brief) {

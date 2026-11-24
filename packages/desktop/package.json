@@ -1,5 +1,5 @@
 {
-  "name": "@isocline/desktop",
+  "name": "@zirma/desktop",
   "version": "0.0.0",
   "private": true,
   "description": "The Mac app: starts the home node under launchd and is one device on it.",
@@ -15,9 +15,9 @@
     "playwright-core": "1.65.1"
   },
   "dependencies": {
-    "@isocline/core": "*",
-    "@isocline/protocol": "*",
-    "@isocline/server": "*",
-    "@isocline/ui": "*"
+    "@zirma/core": "*",
+    "@zirma/protocol": "*",
+    "@zirma/server": "*",
+    "@zirma/ui": "*"
   }
 }

@@ -1,4 +1,4 @@
-import { recordDomainEvent, type World } from "@isocline/module-kit";
+import { recordDomainEvent, type World } from "@zirma/module-kit";
 import type { SiteIcon } from "./fetch.ts";
 
 export const COVER_MIGRATION = {

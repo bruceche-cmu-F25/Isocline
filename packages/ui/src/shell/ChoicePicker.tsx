@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { SessionMode } from "@isocline/protocol";
+import type { SessionMode } from "@zirma/protocol";
 import { Select, type Choice } from "./Select.tsx";
 
 interface ChoicePickerProps {

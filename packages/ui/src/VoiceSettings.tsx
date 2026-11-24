@@ -1,9 +1,9 @@
-/** Settings → Voice (docs/design/voice.md §3): whether Isocline speaks, in which voice, how fast, and the words the
+/** Settings → Voice (docs/design/voice.md §3): whether Zirma speaks, in which voice, how fast, and the words the
  * speech model should know; and the speech services (ElevenLabs, Inworld, Boson AI) whose voices it can use with the
  * user's own key. All of it lives on the home node, so every device speaks and hears alike; keys are given only on
  * that machine. */
 import { useEffect, useState, type FormEvent } from "react";
-import type { SpeechServiceStatus, VoiceSettings as Voice, VoiceStatus } from "@isocline/protocol";
+import type { SpeechServiceStatus, VoiceSettings as Voice, VoiceStatus } from "@zirma/protocol";
 import { api } from "./api.ts";
 import { t, useLocale } from "./i18n/index.ts";
 import { Logo } from "./brand/Logo.tsx";

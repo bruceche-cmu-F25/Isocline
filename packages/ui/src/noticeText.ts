@@ -1,9 +1,9 @@
-import type { Notice } from "@isocline/protocol";
+import type { Notice } from "@zirma/protocol";
 import type { FigureState } from "./entity/tesseract.js";
 import { getLocale, translate, type Locale, getAssistant } from "./i18n/dict.ts";
 import { plainText } from "./markdown.ts";
 
-/** What Isocline says about a notice, how the figure looks while saying it, and what opening it means. */
+/** What Zirma says about a notice, how the figure looks while saying it, and what opening it means. */
 export interface NoticeLines {
   title: string;
   body: string;

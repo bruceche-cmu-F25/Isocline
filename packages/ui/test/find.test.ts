@@ -21,7 +21,7 @@ test("typing finds pages, commands and conversations by name, pages first", () =
   assert.equal(findItems("", sources).length, 5, "with no words: everything there is to go to");
 });
 
-test("in the ask bar Enter goes to a page or command named by the words, and otherwise asks Isocline", () => {
+test("in the ask bar Enter goes to a page or command named by the words, and otherwise asks Zirma", () => {
   assert.equal(defaultPick(findItems("todos", sources)), 0, "a page's name: go there");
   assert.equal(defaultPick(findItems("new conv", sources)), 0, "a command's name: run it");
   assert.equal(defaultPick(findItems("which mail needs a reply", sources)), -1, "a question matches nothing: ask");

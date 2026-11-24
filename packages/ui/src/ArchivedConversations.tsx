@@ -1,16 +1,16 @@
-import type { ArchivedConversation, Project } from "@isocline/protocol";
+import type { ArchivedConversation, Project } from "@zirma/protocol";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "./api.ts";
 import { intlLocale, t } from "./i18n/index.ts";
 import { Icon } from "./shell/icons.tsx";
-import type { Isocline } from "./useIsocline.ts";
+import type { Zirma } from "./useZirma.ts";
 import "./archived-conversations.css";
 
 interface ArchivedConversationsProps {
   projects: Project[];
   onClose(): void;
   onRestore(conversation: ArchivedConversation): Promise<void>;
-  onEvent: Isocline["onEvent"];
+  onEvent: Zirma["onEvent"];
 }
 
 export function ArchivedConversations({ projects, onClose, onRestore, onEvent }: ArchivedConversationsProps) {

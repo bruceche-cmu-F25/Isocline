@@ -7,7 +7,7 @@
    its own space at the end, so its last row scrolls clear of the fade. */
 .ask::before { content: ""; position: absolute; left: 50%; bottom: calc(100% + 6px); width: 100cqw; height: 36px; transform: translateX(-50%); background: linear-gradient(to top, var(--bg), color-mix(in oklab, var(--bg) 70%, transparent) 40%, transparent); pointer-events: none; }
 .ask-form { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 5px 6px 5px 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--field); box-shadow: 0 1px 2px oklch(0 0 0 / .04), 0 6px 20px oklch(0 0 0 / .06); transition: border-color .15s, box-shadow .15s; }
-/* Isocline's colour is on the bar only while you are in it. */
+/* Zirma's colour is on the bar only while you are in it. */
 .ask-form:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--alf-soft); }
 .ask-figure { flex: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; }
 .ask-figure:hover { background: var(--wash); }
@@ -29,7 +29,7 @@ html.desktop .ask { -webkit-app-region: no-drag; }
 .ask-over > * { pointer-events: auto; }
 .ask-chips { display: flex; gap: 6px; padding: 2px; overflow-x: auto; scrollbar-width: none; }
 .ask-chips .suggestion { background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), 0 2px 8px oklch(0 0 0 / .06); }
-/* What the words name: pages, commands, conversations, and asking Isocline last, as in ⌘K's palette. */
+/* What the words name: pages, commands, conversations, and asking Zirma last, as in ⌘K's palette. */
 .ask-found { margin: 0; padding: 6px; list-style: none; border: 1px solid var(--line); border-radius: 14px; background: var(--raise); box-shadow: var(--shadow); }
 .ask-found button { width: 100%; height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 9px; color: var(--copy); text-align: left; }
 .ask-found button span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

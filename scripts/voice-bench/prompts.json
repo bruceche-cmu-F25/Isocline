@@ -16,7 +16,7 @@
   { "id": "m04", "category": "mixed", "ref": "这个 deadline 太紧了，能不能 push 到下周。", "terms": ["deadline", "push"] },
   { "id": "m05", "category": "mixed", "ref": "把 CMU 那门课的 homework 加到待办里。", "terms": ["CMU", "homework"] },
   { "id": "m06", "category": "mixed", "ref": "周末去 Costco 买点东西，顺便去 Trader Joe's。", "terms": ["Costco", "Trader Joe's"] },
-  { "id": "m07", "category": "mixed", "ref": "给 Isocline 设一个 morning brief，每天八点。", "terms": ["Isocline", "morning brief"] },
+  { "id": "m07", "category": "mixed", "ref": "给 Zirma 设一个 morning brief，每天八点。", "terms": ["Zirma", "morning brief"] },
   { "id": "m08", "category": "mixed", "ref": "我的 Google Calendar 和 Gmail 都连上了吗？", "terms": ["Google Calendar", "Gmail"] },
   { "id": "m09", "category": "mixed", "ref": "这个 offer 的 base 和 RSU 分别是多少？", "terms": ["offer", "base", "RSU"] },
   { "id": "m10", "category": "mixed", "ref": "用 Tailscale 从 iPhone 连回家里的 Mac mini。", "terms": ["Tailscale", "iPhone", "Mac mini"] },

@@ -5,8 +5,8 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { addProject, startSession, submitRun, trustProject, type EnginePort } from "@isocline/core";
-import { todoModule } from "@isocline/module-todo";
+import { addProject, startSession, submitRun, trustProject, type EnginePort } from "@zirma/core";
+import { todoModule } from "@zirma/module-todo";
 import { createHttpServer, openHome, plainLines, Terminals, type TerminalEvent } from "../src/index.ts";
 
 const until = async (done: () => boolean, ms = 8000) => { const end = Date.now() + ms; while (!done()) { if (Date.now() > end) throw new Error("timed out"); await new Promise((resolve) => setTimeout(resolve, 30)); } };
@@ -30,7 +30,7 @@ test("a session's terminal is a real shell in its folder: it takes input, keeps 
     const text = () => seen.map((event) => (event.type === "output" ? event.data : "")).join("");
     await until(() => text().includes("sum-42") && text().includes(cwd));
     stop();
-    // What it printed is kept: a page that comes back gets it again, and Isocline can read the end of it.
+    // What it printed is kept: a page that comes back gets it again, and Zirma can read the end of it.
     const again: string[] = [];
     terminals.follow("s1", 0, (event) => { if (event.type === "output") again.push(event.data); })();
     assert.ok(again.join("").includes("sum-42"));
@@ -44,7 +44,7 @@ test("a session's terminal is a real shell in its folder: it takes input, keeps 
   } finally { terminals.closeAll(); }
 });
 
-test("the terminal is opened over HTTP for a trusted session's folder, and Isocline reads it but cannot type into it", async () => {
+test("the terminal is opened over HTTP for a trusted session's folder, and Zirma reads it but cannot type into it", async () => {
   const seenTools: string[][] = [];
   let read = "";
   const engine: EnginePort = {

@@ -1,14 +1,14 @@
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
-import type { World } from "@isocline/core";
-import type { WebLockStatus } from "@isocline/protocol";
+import type { World } from "@zirma/core";
+import type { WebLockStatus } from "@zirma/protocol";
 import { Fault, HttpError } from "./wire.ts";
 
 export const WEB_LOCK_IDLE_MS = 15 * 60_000;
-export const WEB_SESSION_COOKIE = "__Host-isocline_unlock";
-/** Its name before the rename: an unlocked browser stays unlocked until that session ends. */
-export const LEGACY_WEB_SESSION_COOKIE = "__Host-alfred_unlock";
+export const WEB_SESSION_COOKIE = "__Host-zirma_unlock";
+/** Its names before the renames, newest first: an unlocked browser stays unlocked until that session ends. */
+export const LEGACY_WEB_SESSION_COOKIES = ["__Host-isocline_unlock", "__Host-alfred_unlock"];
 const ATTEMPT_WINDOW_MS = 5 * 60_000;
-const ERROR_LOCKED = () => new HttpError(423, "Unlock this browser to use Isocline.", "web_locked");
+const ERROR_LOCKED = () => new HttpError(423, "Unlock this browser to use Zirma.", "web_locked");
 const ERROR_THROTTLED = () => new HttpError(429, "Too many unlock attempts. Try again later.", "rate_limited");
 
 interface Verifier { salt: Buffer; hash: Buffer }
@@ -96,7 +96,7 @@ export class WebLock {
       const hash = await derive(password, verifier.salt);
       if (check.revoked) throw new HttpError(401, "Pair this browser again.", "unpaired");
       if (verifier !== this.#verifier) throw ERROR_LOCKED();
-      if (!timingSafeEqual(hash, verifier.hash)) throw new HttpError(401, "Incorrect Isocline password.", "wrong_password");
+      if (!timingSafeEqual(hash, verifier.hash)) throw new HttpError(401, "Incorrect Zirma password.", "wrong_password");
       this.#attempts = this.#attempts.filter((attempt) => attempt.id !== id);
       this.#endSession(id);
       const token = randomBytes(32).toString("base64url");

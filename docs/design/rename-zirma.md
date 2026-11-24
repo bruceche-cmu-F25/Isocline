@@ -1,6 +1,6 @@
 # 从 Isocline 改名为 Zirma
 
-v0.1，2026-11-24。Bruce 已定：产品名 Zirma，存下来的数据也一起改名并迁移，等同一个 checkout 里的其他会话停下、提交后再改代码。名字的来由、商标和域名检查见 [rename-isocline.md](rename-isocline.md) §6。
+v0.2，2026-11-24。代码已改完，在分支 `chore/rename-zirma` 上（§6）。Bruce 已定：产品名 Zirma，存下来的数据也一起改名并迁移，等同一个 checkout 里的其他会话停下、提交后再改代码。名字的来由、商标和域名检查见 [rename-isocline.md](rename-isocline.md) §6。
 
 ## 1. 已经定了的
 
@@ -65,3 +65,12 @@ v0.1，2026-11-24。Bruce 已定：产品名 Zirma，存下来的数据也一起
 - **生产数据**：搬目录是同盘重命名，瞬间完成，但不可逆：迁完后旧版 Isocline.app 打不开新目录。所以第 7 步之前不碰真实世界，钥匙串的旧条目也保留。
 - **手机**：cookie 名变了，靠"三个名字都认"不掉线；如果出问题，最坏是重新配对一次。
 - **别的会话**：改名后它们手里的文件路径和 import 会失效，所以必须等它们停。
+
+## 6. 做到哪了（2026-11-24）
+
+- 代码、文案、文档、包名（`@zirma/*`）、文件名都改成了 Zirma。
+- 迁移按 §3.2 做了，旧名字按 Isocline、Alfred 的顺序认：数据目录、日志、钥匙串、launchd 代理、cookie、浏览器本地设置、环境变量。开发版的 `Isocline Dev` 也会搬到 `Zirma Dev`。`install:mac` 会先备份旧目录里的数据库，再退出旧的 Isocline.app 并把它移到废纸篓。
+- 和计划不同的一处：日历日程 id 的前缀**仍然是 `isocline`**。Google 的日程 id 只能用 0–9 和 a–v，"zirma" 里的 z 不合法。
+- 验证：`npm run typecheck` 通过，`npm test` 476 个全部通过（新增 Isocline→Zirma、Alfred→Zirma、开发版搬迁、旧名字防护的测试）；在一个临时节点上用无头 Chrome 看了中英文、桌面和手机宽度、浅色和深色下的字标和页面。
+- 还没验证：真实钥匙串的复制（测试里用的是内存里的假钥匙串）、真机上的 launchd 交接、手机 cookie 的换发。这些要等 Bruce 用 `npm run install:mac` 装到生产时（§4 第 7 步）才能看到。
+

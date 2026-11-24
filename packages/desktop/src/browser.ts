@@ -1,12 +1,12 @@
 /** The browser pane (docs/design/dev-terminal-browser.md): a real browser inside the main window, for looking at the
- * app being built and at pages the user wants Isocline to see.
+ * app being built and at pages the user wants Zirma to see.
  *
- * It is a separate web view laid over a rectangle the page reserves for it. Nothing of Isocline is in it: no preload,
- * no Node, its own storage (`persist:alfred-browser`, so its sign-ins are not Chrome's and not Isocline's pages').
- * It may open http and https pages only, never Isocline's own address; pop-ups open in the pane itself; downloads and
+ * It is a separate web view laid over a rectangle the page reserves for it. Nothing of Zirma is in it: no preload,
+ * no Node, its own storage (`persist:alfred-browser`, so its sign-ins are not Chrome's and not Zirma's pages').
+ * It may open http and https pages only, never Zirma's own address; pop-ups open in the pane itself; downloads and
  * every permission a page asks for (camera, location, notifications) are refused.
  *
- * Isocline never drives it. Through the home node it may ask what is on the page: its address and title, its visible
+ * Zirma never drives it. Through the home node it may ask what is on the page: its address and title, its visible
  * text, and what it logged as warnings and errors.
  */
 import { session, WebContentsView, type BrowserWindow, type Rectangle } from "electron";
@@ -39,7 +39,7 @@ export class BrowserPane {
   #console: string[] = [];
   #error: string | undefined;
 
-  /** `own`: Isocline's own origin, which the pane never opens. */
+  /** `own`: Zirma's own origin, which the pane never opens. */
   constructor(window: BrowserWindow, options: { own: string; onState(state: BrowserState): void }) {
     this.#window = window;
     this.#own = options.own;

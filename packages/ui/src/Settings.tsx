@@ -6,9 +6,9 @@
  * looking at another tab. The tab last looked at is where the page opens next time, on this device.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { RemoteResponse, StateResponse } from "@isocline/protocol";
+import type { RemoteResponse, StateResponse } from "@zirma/protocol";
 import { api, ApiError } from "./api.ts";
-import type { Isocline } from "./useIsocline.ts";
+import type { Zirma } from "./useZirma.ts";
 import { Accounts } from "./Accounts.tsx";
 import { Connectors } from "./Connectors.tsx";
 import { Devices } from "./Devices.tsx";
@@ -26,7 +26,7 @@ import { SETTINGS_TAB_EVENT, SETTINGS_TAB_KEY, type SettingsTab } from "./settin
 import "./settings.css";
 
 type Tab = SettingsTab;
-/** `home`: only where Isocline runs. In the order they are used, most often first: the model and its usage are
+/** `home`: only where Zirma runs. In the order they are used, most often first: the model and its usage are
  * looked at often; skills and connectors change now and then; the voice, the accounts and the devices are set up
  * once and seldom touched again (muting is in the figure's menu and the menu bar). */
 const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
@@ -41,7 +41,7 @@ const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
 const KEY = SETTINGS_TAB_KEY;
 const saved = (): Tab => { try { const value = localStorage.getItem(KEY); return TABS.some((tab) => tab.id === value) ? value as Tab : "general"; } catch { return "general"; } };
 
-export function Settings({ name, saveName, dockOptions, onEvent, state }: GeneralProps & Pick<Isocline, "onEvent"> & { state: StateResponse }) {
+export function Settings({ name, saveName, dockOptions, onEvent, state }: GeneralProps & Pick<Zirma, "onEvent"> & { state: StateResponse }) {
   useLocale();
   /** Null until known; an older home node without remote access answers 404, which is treated as the Mac. */
   const [remote, setRemote] = useState<RemoteResponse | null | "old" | "unavailable">(null);

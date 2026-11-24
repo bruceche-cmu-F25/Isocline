@@ -1,4 +1,4 @@
-/** What Isocline keeps for its MCP servers outside `mcp.json`, in its own secret store (the keychain), and how a
+/** What Zirma keeps for its MCP servers outside `mcp.json`, in its own secret store (the keychain), and how a
  * server is reached with it (docs/design/settings-and-connections.md §3.3). Shared by the home node, where the user
  * signs in and where a server's state is checked, and by the engine workers, which make the calls.
  *
@@ -16,11 +16,11 @@ import { StdioTransport, StreamableHttpTransport, type McpTransport } from "@ear
 import {
   createMcpAuthProvider, McpRefreshLockBusyError, type McpOAuthServerStore, type McpOAuthSettings, type McpOAuthState, type OAuthChallenge,
 } from "@earendil-works/pi-mcp/oauth";
-import type { SecretStore } from "@isocline/core";
+import type { SecretStore } from "@zirma/core";
 import { alfredMeta } from "./mcp-config.ts";
 
-/** The name Isocline registers under with an authorization server; the user sees it on the consent page. */
-export const MCP_CLIENT_NAME = "Isocline";
+/** The name Zirma registers under with an authorization server; the user sees it on the consent page. */
+export const MCP_CLIENT_NAME = "Zirma";
 
 export interface McpSecrets { headers?: Record<string, string>; env?: Record<string, string> }
 

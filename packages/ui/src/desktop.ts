@@ -1,7 +1,7 @@
 /** What the Mac app's preload exposes. Absent in an ordinary browser. */
-import type { Notice } from "@isocline/protocol";
+import type { Notice } from "@zirma/protocol";
 
-/** How a notice Isocline said left the screen: clicked through, closed, or it timed out unanswered. */
+/** How a notice Zirma said left the screen: clicked through, closed, or it timed out unanswered. */
 export type NoticeOutcome = "open" | "dismiss" | "timeout";
 /** Which corner of the screen the figure was dragged toward; its card goes on the other side. */
 export interface FigureSide { h: "left" | "right"; v: "top" | "bottom" }
@@ -16,7 +16,7 @@ export interface DesktopBridge {
   onAttention(listener: (attending: boolean) => void): () => void;
   /** Main window: whether it is full screen (no window buttons then). Absent in older app builds. */
   onFullScreen?(listener: (full: boolean) => void): () => void;
-  /** Presence window: notices for Isocline to say (the welcome, results, questions, proposals). `visiting` when the
+  /** Presence window: notices for Zirma to say (the welcome, results, questions, proposals). `visiting` when the
    * user hid the figure and it is shown only to say these; the page calls `settle` once it is done. */
   onSay(listener: (notices: Notice[], visiting: boolean) => void): () => void;
   /** Presence window: show or hide the main window. */
@@ -25,7 +25,7 @@ export interface DesktopBridge {
   openMain(runId?: string): void;
   /** Presence window: whether the pointer is over something clickable (else clicks pass through). */
   setInteractive(interactive: boolean): void;
-  /** Presence window: a notice Isocline said is off the screen, and how. */
+  /** Presence window: a notice Zirma said is off the screen, and how. */
   noticeDone(noticeId: string, outcome: NoticeOutcome): void;
   /** Presence window: nothing left to say; a figure that was only visiting can hide again. */
   settle(): void;

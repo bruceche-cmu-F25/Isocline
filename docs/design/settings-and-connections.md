@@ -76,7 +76,7 @@
 | 同步 Gmail 星标和归档 | `gmail.modify` | 受限 |
 | Gmail：替你发 | `gmail.send`（草稿先存在 Alfred 里，你点头才发） | 敏感 |
 
-用户可以只在 Isocline 收藏。启用「同步 Gmail 星标和归档」后，收藏会同步到 Gmail 的 `STARRED` 标签。点「归档」会移除所选邮件的 `INBOX` 标签，邮件仍保留在 Gmail 中。发信继续由单独的「替你发」开关控制。
+用户可以只在 Zirma 收藏。启用「同步 Gmail 星标和归档」后，收藏会同步到 Gmail 的 `STARRED` 标签。点「归档」会移除所选邮件的 `INBOX` 标签，邮件仍保留在 Gmail 中。发信继续由单独的「替你发」开关控制。
 
 可以连多个 Google 账号（Robin 的「外联邮箱」就是第二个账号加「替你发」）。
 

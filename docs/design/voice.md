@@ -66,7 +66,7 @@
 | Inworld | `POST /tts/v1/voice`，`Authorization: Basic <key>`（后台给的 key 本身就是 Base64），模型 `inworld-tts-2`，`LINEAR16` 24kHz，回来的是 Base64 的 WAV | `GET /voices/v1/voices`，只取中文和英文 | `zh-CN` | `speakingRate`，0.5–1.5 |
 | Boson AI | `POST /v1/audio/speech`，Bearer，模型 `higgs-tts-3`，`response_format: "wav"` | 六个预设（chloe、eleanor、nora、jake、marcus、oliver，文档里列的，API 不列）+ 你自己做的声音 `GET /v1/audio/voices` | 模型读得了中文，但预设都是美式英语声音 | 没有字段：开头加 `<|prosody:speed_slow|>` 之类，同 Robin |
 
-- key 是凭据，只能在运行 Isocline 的那台 Mac 上填（`/api/voice/services/*` 只许本机）；保存前先用它列一次声音，服务不收就不存。手机上只看得到连没连。
+- key 是凭据，只能在运行 Zirma 的那台 Mac 上填（`/api/voice/services/*` 只许本机）；保存前先用它列一次声音，服务不收就不存。手机上只看得到连没连。
 - 声音列表里服务的声音排最前，标着服务名。
 - 隐私：选了服务的声音，要念的文字会发给那家（ARCHITECTURE 第 5.4 节要如实说明），设置页那一节写着。
 - Boson 的开源权重是非商用许可；它的托管 API 用你自己的 key，条款以 Boson 为准，没细读。

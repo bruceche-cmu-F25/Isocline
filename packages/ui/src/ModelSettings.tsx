@@ -1,11 +1,11 @@
-/** Settings → Models: who Isocline thinks with (docs/design/settings-and-connections.md §3.2).
+/** Settings → Models: who Zirma thinks with (docs/design/settings-and-connections.md §3.2).
  *
  * Signing in runs on the home node through Pi. This page starts it and follows it: it opens the provider's page,
  * shows a device code, or asks for a key, as Pi's flow asks. The default model and thinking level are the user's
  * settings, used by any conversation that has not chosen its own.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { EngineModel, ModelAccountsResponse, ModelAuthMethod, ModelProvider, ModelSignIn, StateResponse, ThinkingLevel } from "@isocline/protocol";
+import type { EngineModel, ModelAccountsResponse, ModelAuthMethod, ModelProvider, ModelSignIn, StateResponse, ThinkingLevel } from "@zirma/protocol";
 import { api, request as call } from "./api.ts";
 import { Logo, providerMark } from "./brand/Logo.tsx";
 import { t } from "./i18n/index.ts";
@@ -18,7 +18,7 @@ const SUBSCRIPTION_PRIORITY = new Map([["openai", 0], ["openai-codex", 1]]);
 /** In the first run, how many of each kind show before "more ways": a newcomer picks from a few, not forty. */
 const SETUP_SUBSCRIPTIONS = 3, SETUP_KEYS = 5;
 const THINKING: Array<ThinkingLevel | null> = [null, "off", "low", "medium", "high", "xhigh"];
-const PI_DISMISSED = "isocline.models.piDismissed";
+const PI_DISMISSED = "zirma.models.piDismissed";
 
 const host = (url: string) => { try { return new URL(url).host; } catch { return url; } };
 const dismissedPi = () => { try { return localStorage.getItem(PI_DISMISSED) === "1"; } catch { return false; } };

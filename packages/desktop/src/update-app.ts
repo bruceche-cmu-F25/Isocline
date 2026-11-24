@@ -1,4 +1,4 @@
-/** Development only (run from the source tree): puts the last commit into the installed Isocline.app from the menu
+/** Development only (run from the source tree): puts the last commit into the installed Zirma.app from the menu
  * bar, the same as `npm run install:mac` (scripts/install-mac.ts) — typecheck and tests first, then the app is
  * replaced and reopened. Uncommitted changes never go in. What it printed is kept in a log beside the node's.
  */
@@ -6,15 +6,15 @@ import { execFileSync, spawn } from "node:child_process";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Locale } from "@isocline/ui/i18n";
+import type { Locale } from "@zirma/ui/i18n";
 
-export const UPDATE_LOG = join(homedir(), "Library", "Logs", "Isocline", "install-mac.log");
+export const UPDATE_LOG = join(homedir(), "Library", "Logs", "Zirma", "install-mac.log");
 
 const TEXT: Record<Locale, Record<"menu" | "running" | "title" | "detail" | "go" | "cancel" | "done" | "failed", string>> = {
   zh: {
     menu: "更新 App 版…",
     running: "正在更新 App 版…",
-    title: "把 {commit} 装进 Isocline.app？",
+    title: "把 {commit} 装进 Zirma.app？",
     detail: "只装已提交的代码：{subject}\n没提交的改动不会进去。先跑类型检查和测试，通过了才替换，几分钟后 App 版会重新打开。",
     go: "更新",
     cancel: "取消",
@@ -24,7 +24,7 @@ const TEXT: Record<Locale, Record<"menu" | "running" | "title" | "detail" | "go"
   en: {
     menu: "Update the App Version…",
     running: "Updating the app version…",
-    title: "Install {commit} into Isocline.app?",
+    title: "Install {commit} into Zirma.app?",
     detail: "Only committed code goes in: {subject}\nUncommitted changes stay out. Typecheck and tests run first; the app is replaced only if they pass, and reopens in a few minutes.",
     go: "Update",
     cancel: "Cancel",

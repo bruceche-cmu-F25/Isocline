@@ -25,4 +25,4 @@ class Capture extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor("isocline-capture", Capture);
+registerProcessor("zirma-capture", Capture);

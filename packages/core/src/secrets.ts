@@ -1,6 +1,6 @@
 /** Secrets (account tokens, model credentials, keys) live in the macOS keychain, never in the world
  * database, a config file or a log. On other systems, and when
- * ISOCLINE_SECRETS=file (tests), a 0600 JSON file in the data directory stands in.
+ * ZIRMA_SECRETS=file (tests), a 0600 JSON file in the data directory stands in.
  *
  * Values go to the `security` tool on its standard input, never in its
  * arguments (which other processes can read), base64-encoded so any text
@@ -15,7 +15,7 @@ import { execFile, spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { carryingOver, LEGACY_KEYCHAIN_SERVICE } from "./legacy.ts";
+import { carryingOver, legacyKeychainServices } from "./legacy.ts";
 import { currentStage, keychainServiceFor } from "./stage.ts";
 
 export interface SecretStore {
@@ -55,7 +55,7 @@ export interface KeychainItems {
 /** The command that stores one item, as `security -i` reads it. Throws rather than build a line the tool would cut,
  * or one whose words could run into each other. */
 export function keychainLine(service: string, account: string, text: string): string {
-  if (!SERVICE.test(service) || !ACCOUNT.test(account) || !TEXT.test(text)) throw new Error("Not a keychain item Isocline writes");
+  if (!SERVICE.test(service) || !ACCOUNT.test(account) || !TEXT.test(text)) throw new Error("Not a keychain item Zirma writes");
   const line = `add-generic-password -U -s "${service}" -a "${account}" -w "${text}"`;
   if (line.length > MAX_LINE) throw new Error("Too long for one keychain item");
   return line;
@@ -203,9 +203,9 @@ export function fileStore(path: string): SecretStore {
 }
 
 export function defaultSecretStore(dataDir: string): SecretStore {
-  if (process.platform !== "darwin" || process.env.ISOCLINE_SECRETS === "file") return fileStore(join(dataDir, "secrets.json"));
-  // Production's secrets kept before the rename, under the old service, come over the first time each is read.
-  // Development has its own service (stage.ts) and never reads production's, old or new.
-  const carryOver = currentStage() === "production" && !process.env.ISOCLINE_KEYCHAIN_SERVICE;
-  return carryOver ? carryingOver(keychainStore(), keychainStore(LEGACY_KEYCHAIN_SERVICE)) : keychainStore();
+  if (process.platform !== "darwin" || process.env.ZIRMA_SECRETS === "file") return fileStore(join(dataDir, "secrets.json"));
+  // Secrets kept before a rename, under an old service, come over the first time each is read (legacy.ts).
+  // Each stage reads only its own old services: development never reads production's, old or new.
+  if (process.env.ZIRMA_KEYCHAIN_SERVICE) return keychainStore();
+  return carryingOver(keychainStore(), ...legacyKeychainServices(currentStage()).map((service) => keychainStore(service)));
 }

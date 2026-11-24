@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Conversation } from "@isocline/protocol";
+import type { Conversation } from "@zirma/protocol";
 
 type Route = { page: string | null; selected: string | null; session: string | null; item: string | null };
 type Visit = { index: number; hasNext: boolean };
@@ -28,7 +28,7 @@ function savedVisit(): Visit | undefined {
 }
 
 function directions(visit: Visit) {
-  // A trip outside Isocline can replace a forward entry while this document is suspended.
+  // A trip outside Zirma can replace a forward entry while this document is suspended.
   const navigation = window.navigation;
   if (navigation?.currentEntry) {
     const entries = navigation.entries();

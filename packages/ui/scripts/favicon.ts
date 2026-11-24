@@ -1,4 +1,4 @@
-/** Isocline's favicon, drawn from the figure's own geometry (markSegments), like the Mac app icon
+/** Zirma's favicon, drawn from the figure's own geometry (markSegments), like the Mac app icon
  * (packages/desktop/src/icon-art.ts): the resting tesseract, far edges paler, on a paper rounded square.
  * At tab size the lines are thicker and the square fills the whole icon.
  *

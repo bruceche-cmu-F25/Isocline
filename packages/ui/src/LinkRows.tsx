@@ -2,9 +2,9 @@
  * card each, row after row (the grid). A site's card is a small tile; a saved thing's is the page's usual card.
  * Opening either shows it as a card over the blurred page. */
 import { useState, type DragEvent } from "react";
-import type { Area } from "@isocline/protocol";
-import type { Clip, Place } from "@isocline/module-links/types";
-import { classify } from "@isocline/module-links/url";
+import type { Area } from "@zirma/protocol";
+import type { Clip, Place } from "@zirma/module-links/types";
+import { classify } from "@zirma/module-links/url";
 import type { Item, Tree } from "./linkTree.ts";
 import { DRAG_LINK, TopicList } from "./LinksTree.tsx";
 import { SiteIcon, linkFileUrl, useOp } from "./linkControls.tsx";

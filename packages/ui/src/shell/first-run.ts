@@ -1,6 +1,6 @@
 /** Which steps of the first run (FirstRun.tsx) are still owed: a step that is already set is not shown, so someone
- * who was using Isocline before the walkthrough existed sees only what is new to them. */
-import type { Automation } from "@isocline/protocol";
+ * who was using Zirma before the walkthrough existed sees only what is new to them. */
+import type { Automation } from "@zirma/protocol";
 
 export type FirstRunStep = "name" | "model" | "google" | "samples" | "tour";
 
@@ -8,9 +8,9 @@ export interface FirstRunFacts {
   name: string | null;
   /** Providers with a model connected; null: could not be read (a device that does not hold the credentials). */
   models: number | null;
-  /** `ready`: this Isocline has a Google client to sign in with. Null: could not be read. */
+  /** `ready`: this Zirma has a Google client to sign in with. Null: could not be read. */
   google: { accounts: number; ready: boolean } | null;
-  /** The automations Isocline ships with (the morning brief among them), as they are now. */
+  /** The automations Zirma ships with (the morning brief among them), as they are now. */
   samples: ReadonlyArray<Pick<Automation, "enabled">>;
 }
 

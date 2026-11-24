@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { todoModule } from "@isocline/module-todo";
-import { updateSettings } from "@isocline/core";
+import { todoModule } from "@zirma/module-todo";
+import { updateSettings } from "@zirma/core";
 import { createHttpServer, openHome, parseSystemVoices, Speaker, type Home } from "../src/index.ts";
 
 const SAY = fileURLToPath(new URL("./fixtures/fake-say.sh", import.meta.url));
@@ -102,10 +102,10 @@ test("voice settings: a patch changes only what it names, and bad values are ref
   const speaker = new Speaker({ sayCommand: SAY, modelPresent: () => false });
   const { home, server } = await start(speaker);
   try {
-    let settings = updateSettings(home.world, { voice: { words: [" Isocline ", "useSpeech", "Isocline"] } });
-    assert.deepEqual(settings.voice, { speakFigure: true, muted: false, voice: null, rate: 1, words: ["Isocline", "useSpeech"] });
+    let settings = updateSettings(home.world, { voice: { words: [" Zirma ", "useSpeech", "Zirma"] } });
+    assert.deepEqual(settings.voice, { speakFigure: true, muted: false, voice: null, rate: 1, words: ["Zirma", "useSpeech"] });
     settings = updateSettings(home.world, { voice: { muted: true } });
-    assert.deepEqual(settings.voice.words, ["Isocline", "useSpeech"]);
+    assert.deepEqual(settings.voice.words, ["Zirma", "useSpeech"]);
     assert.equal(settings.voice.muted, true);
     assert.throws(() => updateSettings(home.world, { voice: { rate: 3 } }), /rate/);
     assert.throws(() => updateSettings(home.world, { voice: { voice: "cloud:x" } }), /voice\.voice/);

@@ -1,8 +1,8 @@
 /** What the Links page shows, worked out without the DOM (docs/design/links.md §4.10): every link with where it sits
  * in the category tree, counts per node, what a search finds, and which view each node was last left in. */
-import type { Clip, LinkType, Place, Topic } from "@isocline/module-links/types";
-import { topicChain, topicTree, under, type TopicTree } from "@isocline/module-links/tree";
-import type { ImportProposal, ProposedNode } from "@isocline/module-links/bookmarks";
+import type { Clip, LinkType, Place, Topic } from "@zirma/module-links/types";
+import { topicChain, topicTree, under, type TopicTree } from "@zirma/module-links/tree";
+import type { ImportProposal, ProposedNode } from "@zirma/module-links/bookmarks";
 
 /** A place or a clip, as one row. Places count as a type of their own: a site. */
 export type Item = { kind: "place"; id: string; title: string; url: string; topicId?: string; type: "site"; place: Place }
@@ -107,7 +107,7 @@ export function byNewest(a: Item, b: Item): number {
 }
 
 export type View = "list" | "grid";
-const VIEW_KEY = "isocline.links.view";
+const VIEW_KEY = "zirma.links.view";
 /** Each node remembers its own view on this device; list unless the user changed it. */
 export function readViews(): Record<string, View> {
   try { const value = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}"); return value && typeof value === "object" ? value : {}; } catch { return {}; }

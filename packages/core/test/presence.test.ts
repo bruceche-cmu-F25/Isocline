@@ -92,7 +92,7 @@ test("a world from before last seen was state: the upgrade takes it from the old
   w.close();
 });
 
-test("the welcome says what Isocline did while the user was away, not what the user did", () => {
+test("the welcome says what Zirma did while the user was away, not what the user did", () => {
   const w = world();
   reportPresence(w, { clientId: "mac", kind: "active", now: T0 });
   reportPresence(w, { clientId: "mac", kind: "away", now: T0 + MIN });

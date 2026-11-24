@@ -1,13 +1,13 @@
 /** The calendar module: the user's Google Calendar, mirrored for reading (docs/design/workspace-architecture.md W6).
  *
- * Google is the source of truth; Isocline keeps no second calendar. A sync every few minutes reads each connected
+ * Google is the source of truth; Zirma keeps no second calendar. A sync every few minutes reads each connected
  * account's shown calendars, this month and the next (and a week on either side), and replaces that account's events here. Devices and
  * runs read the mirror, so a question about the schedule never waits on Google. Writing (moving a meeting, holding
  * time) is only ever proposed by a run; the user adds and changes events themselves on the calendar page. Either way
  * the change is delivered by write.ts, and what Google answers is written into the mirror at once.
  */
 import { createHash } from "node:crypto";
-import { localDate, recordDomainEvent, withDefaultActor, type World, defineModule, defineTool, ServiceError, Type, type ModuleServices } from "@isocline/module-kit";
+import { localDate, recordDomainEvent, withDefaultActor, type World, defineModule, defineTool, ServiceError, Type, type ModuleServices } from "@zirma/module-kit";
 import { addDays, readAccount } from "./google.ts";
 import { calendarSources, colourSeries, putEvent, seriesOf } from "./mirror.ts";
 import { calendarOps, calendarQueries, calendarWriteTools, deliverCalendar, pendingChanges } from "./write.ts";

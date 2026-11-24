@@ -1,7 +1,7 @@
 /** What the next words in the ask bar are about, when the user picked a thing on the page to say something about: a
- * mail to answer, a draft to change. The words then go to that thing, not to Isocline as a new question, so every
+ * mail to answer, a draft to change. The words then go to that thing, not to Zirma as a new question, so every
  * page has one place to write (shell/AskBar.tsx) and nothing on a page needs a field of its own. */
-import type { ViewContext } from "@isocline/protocol";
+import type { ViewContext } from "@zirma/protocol";
 
 export interface About {
   /** Which thing it is. The button that attached it stays pressed while this is the one in the bar. */
@@ -24,7 +24,7 @@ export interface PageLine {
   about: string | null;
   /** Puts a thing in the bar and the cursor after it; null takes it out. */
   attach(about: About | null): void;
-  /** Asks Isocline about something picked on this page. What it makes of it shows on the page, where the thing is.
+  /** Asks Zirma about something picked on this page. What it makes of it shows on the page, where the thing is.
    * Resolves with the run's id, for the page to follow. */
   ask(goal: string, picked: Picked): Promise<string>;
   /** Asks for a change to a proposal that is shown on this page, with the thing it is about. Resolves with the id

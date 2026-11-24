@@ -124,7 +124,7 @@ export function useDictation(onText: (text: string) => void): Dictation {
     setError(null);
     setSeconds(0);
     setState("starting");
-    // The user talking is Isocline's cue to stop.
+    // The user talking is Zirma's cue to stop.
     stopSpeaking();
     void api.voiceWarm().catch(() => {});
     try {
@@ -136,7 +136,7 @@ export function useDictation(onText: (text: string) => void): Dictation {
       if (starting !== attempt) { for (const track of stream.getTracks()) track.stop(); audioSession("auto"); return; } // cancelled meanwhile
       starting = null;
       const source = ctx.createMediaStreamSource(stream);
-      const node = new AudioWorkletNode(ctx, "isocline-capture");
+      const node = new AudioWorkletNode(ctx, "zirma-capture");
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
       source.connect(node);

@@ -9,9 +9,9 @@ export type SendKey = "enter" | "mod";
 export const TEXT_SIZES: TextSize[] = ["small", "normal", "large"];
 export const SEND_KEYS: SendKey[] = ["enter", "mod"];
 
-const SIZE_KEY = "isocline.textSize";
-const SEND_KEY = "isocline.sendKey";
-const DOCK_KEY = "isocline.dockShortcut";
+const SIZE_KEY = "zirma.textSize";
+const SEND_KEY = "zirma.sendKey";
+const DOCK_KEY = "zirma.dockShortcut";
 const DEFAULT_DOCK_SHORTCUT = "todo.list";
 const root = document.documentElement;
 

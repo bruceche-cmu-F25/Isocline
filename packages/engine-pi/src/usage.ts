@@ -1,11 +1,11 @@
 /** How much of a subscription's plan is used: the provider's own limit windows (5 hours, a week…), read with the
- * credential Isocline already keeps. Read-only; the token stays in the request and is never returned or logged.
+ * credential Zirma already keeps. Read-only; the token stays in the request and is never returned or logged.
  *
  * These endpoints are not a published API and may change, so parsing is defensive and a failure stays with its
  * provider. Formats follow pi-web's lib/provider-usage.ts (https://github.com/agegr/pi-web, MIT, © 2026 agegr), itself after
  * @narumitw/pi-usage (MIT, © 2026 narumiruna); see THIRD-PARTY-NOTICES.md.
  */
-import type { ModelUsage, ModelUsageWindow } from "@isocline/protocol";
+import type { ModelUsage, ModelUsageWindow } from "@zirma/protocol";
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 type Json = Record<string, unknown>;

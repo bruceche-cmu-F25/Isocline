@@ -2,8 +2,8 @@ import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// The development home node (core stage.ts); ISOCLINE_PORT for another one.
-const home = `http://127.0.0.1:${process.env.ISOCLINE_PORT ?? 7491}`;
+// The development home node (core stage.ts); ZIRMA_PORT for another one.
+const home = `http://127.0.0.1:${process.env.ZIRMA_PORT ?? 7491}`;
 const page = (name: string) => fileURLToPath(new URL(name, import.meta.url));
 
 export default defineConfig({

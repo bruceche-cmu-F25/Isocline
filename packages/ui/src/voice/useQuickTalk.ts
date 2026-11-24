@@ -1,13 +1,13 @@
-/** Quick talk (docs/design/voice.md §1): say one thing to Isocline without a text box. What is said goes straight to
- * Isocline as a message marked spoken; when Isocline has answered, the caller says the reply out loud.
+/** Quick talk (docs/design/voice.md §1): say one thing to Zirma without a text box. What is said goes straight to
+ * Zirma as a message marked spoken; when Zirma has answered, the caller says the reply out loud.
  *
- *   idle → recording → transcribing → sending → waiting (Isocline works) → idle (reply handed over)
+ *   idle → recording → transcribing → sending → waiting (Zirma works) → idle (reply handed over)
  *
- * The Mac's figure and the phone's Isocline bubble use it. Recording is useDictation's, so the microphone, the warm-up
+ * The Mac's figure and the phone's Zirma bubble use it. Recording is useDictation's, so the microphone, the warm-up
  * and the one-recording-at-a-time rule are the same as in every text box.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Run, ViewContext } from "@isocline/protocol";
+import type { Run, ViewContext } from "@zirma/protocol";
 import { api } from "../api.ts";
 import { t } from "../i18n/dict.ts";
 import { unlockAudio } from "../speech/voice.ts";
@@ -26,7 +26,7 @@ export interface QuickTalkOptions {
   context(): Omit<ViewContext, "spoken">;
   /** The runs the device knows about, kept current: how the answer is noticed. */
   runs: readonly Run[] | undefined;
-  /** Isocline answered (or the run ended without an answer, or is waiting on the user). */
+  /** Zirma answered (or the run ended without an answer, or is waiting on the user). */
   onReply(run: Run): void;
   onError?(message: string): void;
 }

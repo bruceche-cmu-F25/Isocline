@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CORE_MIGRATIONS, openWorld, withCoreContext, type World } from "@isocline/core";
-import { runTools } from "@isocline/module-kit";
+import { CORE_MIGRATIONS, openWorld, withCoreContext, type World } from "@zirma/core";
+import { runTools } from "@zirma/module-kit";
 import {
   ensureTopic, importEntries, importKind, importLinks, linksModule, listClips, listFolders, listPlaces, listTopics, mergeTopic, parseBookmarks, pinPlace, proposeImport,
   removeTopic, saveClip, topicPath, topicTree, undoImport, updatePlace, updateTopic, groupPlaces, LINK_OPS, tidyTitle,
@@ -151,7 +151,7 @@ test("an import is written in parts, files what is already there, and can be und
   assert.deepEqual([video.state, video.fetch, video.title], ["seen", "done", "DP & you"], "an imported clip is not news");
   assert.equal(listPlaces(w).filter((place) => !place.unpinned).length, 3, "the top row is as it was");
 
-  // Isocline sees the tree, and files under a path.
+  // Zirma sees the tree, and files under a path.
   const call = (name: string, params: Record<string, unknown>) => withCoreContext({ actor: "alfred" }, () => String(tools.find((tool) => tool.name === name)!.execute(params, signal)));
   assert.match(call("link_list", { tree: true }), /\[learn\]\n {2}- 刷题与学习 \(\S+\) 3\n {4}- Deep \(\S+\) 1/);
   assert.match(call("link_list", { topic: "刷题与学习/Deep" }), /Places \(1\):\n\S+ {2}Backend \| site \| topic: 刷题与学习\/Deep/);

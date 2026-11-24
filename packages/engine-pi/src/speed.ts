@@ -1,6 +1,6 @@
 /** Faster writing for a higher price, where the model's provider offers it (protocol fastSpeed): the worker passes
  * every request body through this just before it is sent, on a turn whose conversation asked for speed. */
-import { fastSpeed } from "@isocline/protocol";
+import { fastSpeed } from "@zirma/protocol";
 
 /** A request body asking its provider to write faster, where the model has a way (protocol fastSpeed); any other
  * model's request is sent as it was. */

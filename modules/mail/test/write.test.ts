@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acceptProposal, CORE_MIGRATIONS, listEvents, listNotices, listOpenProposals, listOutbound, openWorld, updateSettings, type World } from "@isocline/core";
-import { applyStep, assistantTools, deliverQueued, invokeOp, runTools, ServiceError, type GoogleService } from "@isocline/module-kit";
+import { acceptProposal, CORE_MIGRATIONS, listEvents, listNotices, listOpenProposals, listOutbound, openWorld, updateSettings, type World } from "@zirma/core";
+import { applyStep, assistantTools, deliverQueued, invokeOp, runTools, ServiceError, type GoogleService } from "@zirma/module-kit";
 import { buildRaw, checkAddress, mailModule, syncMail, type MailSnapshot } from "../src/index.ts";
 
 const world = (): World => openWorld(":memory:", [...CORE_MIGRATIONS, ...mailModule.migrations]);
@@ -112,7 +112,7 @@ test("no permission to send: not proposable, and an accepted email whose permiss
   const w = world();
   const readOnly = fakeGmail({ capabilities: ["mailRead"] });
   await syncMail(w, { google: readOnly.google });
-  assert.match(await propose(w, { reply_to: "m1", body: "Friday works." }), /has not let Isocline send/);
+  assert.match(await propose(w, { reply_to: "m1", body: "Friday works." }), /has not let Zirma send/);
 
   await syncMail(w, { google: fakeGmail().google });
   await propose(w, { reply_to: "m1", body: "Friday works." });
@@ -122,7 +122,7 @@ test("no permission to send: not proposable, and an accepted email whose permiss
   assert.equal(listOutbound(w)[0].state, "failed");
 });
 
-test("the mail page hears what was sent from here: Isocline's draft once accepted, and a reply the user wrote themself", async () => {
+test("the mail page hears what was sent from here: Zirma's draft once accepted, and a reply the user wrote themself", async () => {
   const w = world();
   const { google, sent } = fakeGmail();
   await syncMail(w, { google });

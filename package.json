@@ -1,10 +1,10 @@
 {
-  "name": "isocline",
+  "name": "zirma",
   "version": "0.1.0",
   "private": true,
   "description": "An open-source personal agent: one home node, every device a window onto it.",
   "license": "MIT",
-  "homepage": "https://github.com/bruceche-cmu-F25/Isocline",
+  "homepage": "https://github.com/bruceche-cmu-F25/Zirma",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
@@ -14,14 +14,14 @@
     "modules/*"
   ],
   "scripts": {
-    "isocline": "node packages/server/src/cli.ts",
+    "zirma": "node packages/server/src/cli.ts",
     "start": "npm run build:ui && node packages/server/src/cli.ts serve",
-    "trial": "ISOCLINE_DATA_DIR=\"$(mktemp -d)\" ISOCLINE_SECRETS=file ISOCLINE_PORT=\"${ISOCLINE_PORT:-7520}\" node packages/server/src/cli.ts serve",
-    "dev:ui": "ISOCLINE_PORT=\"${ISOCLINE_PORT:-7520}\" npm run dev --workspace @isocline/ui -- --host 127.0.0.1",
+    "trial": "ZIRMA_DATA_DIR=\"$(mktemp -d)\" ZIRMA_SECRETS=file ZIRMA_PORT=\"${ZIRMA_PORT:-7520}\" node packages/server/src/cli.ts serve",
+    "dev:ui": "ZIRMA_PORT=\"${ZIRMA_PORT:-7520}\" npm run dev --workspace @zirma/ui -- --host 127.0.0.1",
     "prototype": "python3 -m http.server 4173 --bind 127.0.0.1 --directory prototype",
-    "build:ui": "npm run build --workspace @isocline/ui",
+    "build:ui": "npm run build --workspace @zirma/ui",
     "test": "node --test \"packages/*/test/*.test.ts\" \"modules/*/test/*.test.ts\"",
-    "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspace @isocline/ui",
+    "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspace @zirma/ui",
     "desktop": "npm run build:ui && electron packages/desktop",
     "package:mac": "node scripts/package-mac.ts",
     "install:mac": "node scripts/install-mac.ts",

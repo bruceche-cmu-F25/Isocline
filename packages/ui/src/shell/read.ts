@@ -3,7 +3,7 @@
  * with no model and no question in between (shell/AskBar.tsx). After prototype/less-talk.html.
  *
  * It reads a day and an hour, nothing cleverer, and when unsure it reads nothing: a question, a request to change
- * something that exists, a sentence with no day or hour in it all go to Isocline as before. Several things in one
+ * something that exists, a sentence with no day or hour in it all go to Zirma as before. Several things in one
  * line, apart by commas, are read one by one.
  */
 
@@ -67,12 +67,12 @@ function zhHour(period: string | undefined, said: string): number {
 const zhMinute = (said: string | undefined) => (said === "半" ? 30 : Number(said ?? 0));
 const enHour = (said: string, half: string | undefined) => Number(said) % 12 + (/p/i.test(half ?? "") ? 12 : 0);
 
-/** Words that make the line something to ask Isocline, not something to put down as it stands. */
+/** Words that make the line something to ask Zirma, not something to put down as it stands. */
 const ASKS = [
   /[?？]\s*$/, /(?:吗|呢|么)\s*[。.!！]?\s*$/,
   /^\s*(?:帮我|帮忙|请|麻烦|怎么|怎样|为什么|为啥|哪|什么|有什么|有没有|查|找|搜|看看|总结|告诉|把|将|取消|删|改|挪|移)/,
   /^\s*(?:what|why|how|which|who|when|where|help|should|can|could|would|please|show|find|list|search|summar|tell|move|cancel|delete|reschedule|change|is|are|do|does|did)\b/i,
-  // Changing something that is already there, or something that repeats: Isocline's to work out.
+  // Changing something that is already there, or something that repeats: Zirma's to work out.
   /改到|挪到|移到|推到|推迟|提前|延后|取消|删掉|删除|改成|改为|每(?:周|天|月|个|逢)/,
   /\b(?:move|reschedule|postpone|cancel|delete|every|each)\b/i,
 ];
@@ -193,7 +193,7 @@ export function readLine(text: string, today: string): Reading[] {
   if (!line || line.length > 300 || ASKS.some((ask) => ask.test(line))) return [];
   const read: Array<Omit<Reading, "kind">> = [];
   const clauses = line.split(/[，,；;。\n]+/).map((part) => part.trim()).filter(Boolean);
-  // A later part that asks Isocline for something ("…，顺便帮我想想周末去哪") makes the whole line Isocline's.
+  // A later part that asks Zirma for something ("…，顺便帮我想想周末去哪") makes the whole line Zirma's.
   if (clauses.slice(1).some((clause) => ASKS[2]!.test(clause.replace(LINKS, "")) || ASKS[3]!.test(clause.replace(LINKS, "")))) return [];
   for (const clause of clauses) {
     const got = readClause(clause, today);

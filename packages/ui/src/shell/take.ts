@@ -1,7 +1,7 @@
 /** Putting down what the ask bar read in a line (shell/read.ts): a todo on the todo list, an event in the user's own
  * calendar, by the same operations the pages use when the user types there. No run, no proposal: the line showed
  * what it would become, and Enter was the yes. Each thing put down can be taken back. */
-import type { CalendarSnapshot } from "@isocline/module-calendar/types";
+import type { CalendarSnapshot } from "@zirma/module-calendar/types";
 import { api, newRequestId } from "../api.ts";
 import { intlLocale, t, type Key } from "../i18n/index.ts";
 import { weekday, type Reading } from "./read.ts";

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { Proposal } from "@isocline/protocol";
-import type { CalendarEvent, CalendarOp, CalendarPending, CalendarSnapshot, CalendarSource, CalendarWhen } from "@isocline/module-calendar/types";
+import type { Proposal } from "@zirma/protocol";
+import type { CalendarEvent, CalendarOp, CalendarPending, CalendarSnapshot, CalendarSource, CalendarWhen } from "@zirma/module-calendar/types";
 import { api } from "./api.ts";
 import { Linked, OutLink } from "./Linked.tsx";
 import { SourceBar } from "./SourceBar.tsx";
@@ -33,7 +33,7 @@ const instant = (day: string, time: string) => { const date = parse(day); date.s
 /** An event as the page draws it: one of the mirror's, one on its way to Google, or the one being typed. */
 type Shown = CalendarEvent & { pending?: boolean; draft?: boolean; proposed?: { id: string; step: number; steps: number } };
 
-/** What Isocline proposes to add or move, drawn where it would land: an open proposal's calendar steps as events of
+/** What Zirma proposes to add or move, drawn where it would land: an open proposal's calendar steps as events of
  * their own, dashed until the user says yes (on the event itself, or in the inbox). */
 function proposedEvents(proposals: readonly Proposal[], sources: CalendarSource[]): Shown[] {
   return proposals.flatMap((proposal) => proposal.state !== "open" || proposal.stale || proposal.revising ? [] : proposal.steps.flatMap((step, n): Shown[] => {
@@ -120,8 +120,8 @@ const sameWhen = (a: CalendarWhen, b: CalendarWhen) => "date" in a
 /** A calendar the user may add to. */
 interface Target { account: string; id: string; name: string; k: string }
 
-/** An event that can be picked up and put down at another time on the week's grid: one made here in Isocline (by the
- * user or by Isocline: its id says so, modules/calendar newEventId), or one Isocline proposes and the user has not
+/** An event that can be picked up and put down at another time on the week's grid: one made here in Zirma (by the
+ * user or by Zirma: its id says so, modules/calendar newEventId), or one Zirma proposes and the user has not
  * answered yet; with a time, within one day, and settled. One that came from Google keeps to its editor, where
  * moving it says who will be told. */
 const movable = (event: Shown) => !event.pending && !event.draft && !event.allDay && !!event.start && !!event.end && event.startDate === event.endDate
@@ -177,7 +177,7 @@ function EventCard({ event, onClose, onEdit, onDelete, onSay }: { event: Shown; 
   const when = whenText(event);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Yes or no to Isocline's proposal, from where it would land. */
+  /** Yes or no to Zirma's proposal, from where it would land. */
   const decide = (yes: boolean) => {
     if (!event.proposed) return;
     setBusy(true);
@@ -342,7 +342,7 @@ function EventEditor({ draft, targets, k, range, onChange, onClose, onSaved, onD
 }
 
 /** The calendars this device has hidden: remembered, since the card that shows them is closed most of the time. */
-const HIDDEN_KEY = "isocline.calendar.hidden";
+const HIDDEN_KEY = "zirma.calendar.hidden";
 function savedHidden(): ReadonlySet<string> {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? "[]");
@@ -402,7 +402,7 @@ function CalendarPicker({ sources, hidden, onToggle }: { sources: CalendarSource
 }
 
 type View = "today" | "week" | "month";
-const VIEW_KEY = "isocline.calendar.view";
+const VIEW_KEY = "zirma.calendar.view";
 function savedView(): View {
   try {
     const saved = localStorage.getItem(VIEW_KEY);
@@ -622,7 +622,7 @@ export function Calendar({ snapshot, line, proposals }: { snapshot: CalendarSnap
   const askDelete = (event: CalendarEvent) => { setDraft(null); setRemoving(event); };
   const sentOne = (change: CalendarPending) => setSent((current) => [...current, change]);
   /** Puts an event in the line under the page: a day, an hour or "an hour later" moves it at once (shell/say.ts),
-   * as saving it in the editor would; words that say more go to Isocline with the event. */
+   * as saving it in the editor would; words that say more go to Zirma with the event. */
   const say = (event: Shown) => {
     if (!line) return;
     setPicked(null);
@@ -696,8 +696,8 @@ export function Calendar({ snapshot, line, proposals }: { snapshot: CalendarSnap
     onPointerCancel() { press.current = null; setStretch(null); },
   });
 
-  // On the grid, with a mouse: an event made in Isocline is carried to another hour or day and put down there. It keeps
-  // its length, moves by quarter hours, and goes to Google as a change saved in the editor would. One Isocline only
+  // On the grid, with a mouse: an event made in Zirma is carried to another hour or day and put down there. It keeps
+  // its length, moves by quarter hours, and goes to Google as a change saved in the editor would. One Zirma only
   // proposes is moved the same way and stays a proposal, at its new time (calendar.retime).
   const carrier = (event: Shown) => !movable(event) ? {} : {
     onPointerDown(down: ReactPointerEvent<HTMLButtonElement>) {

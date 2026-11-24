@@ -1,4 +1,4 @@
-/** The harness's own device commands: what a device asks of Isocline itself, outside any module. Its settings, the
+/** The harness's own device commands: what a device asks of Zirma itself, outside any module. Its settings, the
  * user's automations, their decisions on proposals, conversations and sessions, projects, and what becomes of a run.
  *
  * Each is an operation in the module contract's sense (a name, an input that is checked, one change to the world),
@@ -16,9 +16,9 @@ import {
   acceptProposal, addProject, listRunReceipts, listRuns, commandReplay, CONVERSATION_MODEL, coreContext, createAutomation, declineProposal, deleteAutomation, getConversation, getProject,
   ProjectError, recordCommit, recordPublished, removeProject, requestCancel, resumeRun, revokeCommand, runAutomationNow, sessionRoot, startSession, submitRun, getProposal, markRevising, ProposalStateError, trustProject,
   addArea, addPreference, removePreference, updatePreference, moveArea, updateArea, updateAutomation, updateConversation, updateSettings, userLocale, withCoreContext, type Locale, type SessionMode, type Speed, type ThinkingLevel, type World,
-} from "@isocline/core";
+} from "@zirma/core";
 import { syncAssistantName } from "./assistant-name.ts";
-import { applyStep, OpInputError, opInput, removeArea, runOp, Type, UnknownOpError, type Static, type TSchema } from "@isocline/module-kit";
+import { applyStep, OpInputError, opInput, removeArea, runOp, Type, UnknownOpError, type Static, type TSchema } from "@zirma/module-kit";
 import type { Home } from "./home.ts";
 import { ASSISTANT_PROFILE, AUTOMATION_PROFILE, DEVELOPER_PROFILE } from "./profiles.ts";
 import { branchName, checkoutSessionBranch, createWorktree, publish, releaseNewBranch, removeWorktree, restoreWorktree, snapshot, WorkspaceError, workspaceChanges, type ChangedFile } from "./workspace.ts";
@@ -97,7 +97,7 @@ const OPS: readonly HarnessOp[] = [
     run: (home, input) => { removeArea(home.world, home.modules, input.id, input.moveTo ?? null); return {}; },
   }),
 
-  // Preferences: what the user has said about how they like things (core preferences.ts). Isocline writes its own
+  // Preferences: what the user has said about how they like things (core preferences.ts). Zirma writes its own
   // through its tools; these are the user's hand.
   define({
     name: "preference.create", input: Type.Object({ text: Type.String() }),
@@ -137,7 +137,7 @@ const OPS: readonly HarnessOp[] = [
   // The user's decisions on proposals.
   define({
     name: "proposal.accept", input: Type.Object({ id: Id }),
-    // The steps are Isocline's changes, made on the user's yes to this proposal (the context keeps which one).
+    // The steps are Zirma's changes, made on the user's yes to this proposal (the context keeps which one).
     run: (home, input) => ({
       proposal: acceptProposal(home.world, input.id, (step) => withCoreContext({ ...coreContext(), actor: "alfred" }, () => applyStep(home.world, home.modules, step))),
     }),

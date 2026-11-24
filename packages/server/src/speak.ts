@@ -9,7 +9,7 @@
  * - a local model (Qwen3-TTS 0.6B on MLX, about 2 GB, downloaded only when the user asks): sounds more like a
  *   person, takes about three seconds to a sentence and about 5 GB while loaded, so it runs in a worker that is
  *   started when wanted and stopped after a while unused, like the speech-to-text one.
- * Both were measured on Isocline's kind of sentences, Chinese with English in it (docs/design/voice.md §6).
+ * Both were measured on Zirma's kind of sentences, Chinese with English in it (docs/design/voice.md §6).
  *
  * A voice is named `system:<name>`, `model:<name>`, or `<service>:<the service's voice id>`.
  */
@@ -20,7 +20,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import type { SecretStore } from "@isocline/core";
+import type { SecretStore } from "@zirma/core";
 import { ModelProcess, VoiceError } from "./model-process.ts";
 import { CLOUD_ADAPTERS, CLOUD_PROVIDERS, isCloudProvider, type CloudAdapter, type CloudProvider, type CloudVoice } from "./speak-cloud.ts";
 
@@ -298,7 +298,7 @@ export class Speaker {
     // Chinese voice.
     const language = /\p{Script=Han}/u.test(text) ? "zh" : /\p{Script=Latin}/u.test(text) ? "en" : request.locale;
     const voice = await this.pick(request.voice, language, request.character);
-    this.dir ??= mkdtemp(join(tmpdir(), "isocline-speak-"));
+    this.dir ??= mkdtemp(join(tmpdir(), "zirma-speak-"));
     const out = join(await this.dir, `${++this.seq}.wav`);
     try {
       const [engine, name] = [voice.slice(0, voice.indexOf(":")), voice.slice(voice.indexOf(":") + 1)];

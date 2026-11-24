@@ -16,7 +16,7 @@ v0.3，2026-11-24。写给每一个改这个仓库的人和编码代理，不管
 
 - **一件事一条分支。** 做到一半发现是两件事，就拆成两条分支、两个 PR。
 - **一条分支一个工作目录。** 同一时间可能有好几个人或代理在改这个仓库，所以每条分支用自己的 `git worktree`，不在别人正在用的文件夹里切分支、改文件。
-- **主文件夹 `~/Alfred` 一直停在 `zirma`。** 本机开发版主节点（`isocline.home-node.dev`）跑的就是这个文件夹里的源码，它在哪条分支，开发版就跑哪条。在这个文件夹里只做 `git pull`，不做功能。
+- **主文件夹 `~/Alfred` 一直停在 `zirma`。** 本机开发版主节点（`zirma.home-node.dev`）跑的就是这个文件夹里的源码，它在哪条分支，开发版就跑哪条。在这个文件夹里只做 `git pull`，不做功能。
 - 主题用英文短词，连字符分隔，比如 `feat/notes-library`、`fix/google-retry`、`docs/workflow`。
 - 分支活得越短越好。超过一周还没合的，要么拆小先合一部分，要么先把最新的 `zirma` 合进来。
 
@@ -66,22 +66,22 @@ v0.3，2026-11-24。写给每一个改这个仓库的人和编码代理，不管
    cd ~/Alfred && git pull
    git tag v0.1.<n> && git push origin v0.1.<n>
    ```
-3. 安装：`npm run install:mac -- v0.1.<n>`。它会在一个干净的目录里 `npm ci`、跑测试、打包，再替换 `/Applications/Isocline.app`。
-4. 看 `~/Library/Logs/Isocline/isocline.home-node.log` 的最新一行，提交号要对得上。
+3. 安装：`npm run install:mac -- v0.1.<n>`。它会在一个干净的目录里 `npm ci`、跑测试、打包，再替换 `/Applications/Zirma.app`。
+4. 看 `~/Library/Logs/Zirma/zirma.home-node.log` 的最新一行，提交号要对得上。
 5. 不在生产上改文件，也不装没合进 `zirma` 的东西。
 
-**数据备份。** `install:mac` 每次换 App 之前，都会把生产的数据库备份到 `~/Library/Application Support/Isocline/backups/`，文件名是 `world-<时间>-<提交号>.sqlite`。提交号是当时在跑的那个版本，所以文件里就是「这个版本最后留下的数据」。只保留最近 10 份。
+**数据备份。** `install:mac` 每次换 App 之前，都会把生产的数据库备份到 `~/Library/Application Support/Zirma/backups/`，文件名是 `world-<时间>-<提交号>.sqlite`。提交号是当时在跑的那个版本，所以文件里就是「这个版本最后留下的数据」。只保留最近 10 份。
 
 **回退：代码和数据一起退。** 只装回旧 tag 是不够的：新版本可能已经改过数据库的结构，旧代码不一定读得了。回到 `v0.1.<旧>` 的步骤：
 
-1. 在菜单栏退出 Isocline，停掉生产主节点：
+1. 在菜单栏退出 Zirma，停掉生产主节点：
    ```bash
-   launchctl bootout gui/$(id -u)/isocline.home-node
+   launchctl bootout gui/$(id -u)/zirma.home-node
    ```
 2. 找到旧版本留下的那份备份：先 `git rev-parse --short v0.1.<旧>` 拿到它的提交号，再到 `backups/` 里挑文件名带这个提交号的最新一份。
 3. 把现在的数据挪到一边（不删），换上那份备份：
    ```bash
-   cd ~/Library/Application\ Support/Isocline
+   cd ~/Library/Application\ Support/Zirma
    mkdir -p rolled-back && mv world.sqlite* rolled-back/
    cp backups/world-<时间>-<提交号>.sqlite world.sqlite
    ```

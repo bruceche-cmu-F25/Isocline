@@ -10,7 +10,7 @@
  */
 import { fork, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import type { EngineModel, EnginePort, RunTool } from "@isocline/core";
+import type { EngineModel, EnginePort, RunTool } from "@zirma/core";
 import { composeHistory, type RunJob, type ToParent, type ToWorker } from "./protocol.ts";
 
 export class EngineCrashedError extends Error {

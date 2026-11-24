@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { todoModule } from "@isocline/module-todo";
-import { updateSettings } from "@isocline/core";
+import { todoModule } from "@zirma/module-todo";
+import { updateSettings } from "@zirma/core";
 import { createHttpServer, openHome, Transcriber, type Home } from "../src/index.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-transcriber.ts", import.meta.url));

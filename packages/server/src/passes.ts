@@ -8,8 +8,8 @@
  * A pass that could not reach its service (the module's sync says `retrySoon`) is tried again within seconds, waiting
  * twice as long each time up to the module's own interval, so a moment without network is not shown for half an hour.
  */
-import { listOutbound, onEvents, type World } from "@isocline/core";
-import { deliverQueued, type IsoclineModule, type ModuleServices } from "@isocline/module-kit";
+import { listOutbound, onEvents, type World } from "@zirma/core";
+import { deliverQueued, type ZirmaModule, type ModuleServices } from "@zirma/module-kit";
 
 /** How often changes that had to wait go out again, for a module that has no mirror of its own to refresh. */
 const DELIVER_EVERY_MS = 5 * 60_000;
@@ -20,7 +20,7 @@ const RETRY_FIRST_MS = 10_000;
 
 export interface PassesOptions {
   world: World;
-  modules: readonly IsoclineModule[];
+  modules: readonly ZirmaModule[];
   /** The outside services the user has connected (read when each pass runs). */
   services?: () => ModuleServices;
   log?: (message: string) => void;
@@ -48,7 +48,7 @@ export function modulePasses(options: PassesOptions): ModulePasses {
   const stale = new Set<string>();
   /** Per module: how many passes in a row could not reach the service, and the timer for the next try. */
   const retries = new Map<string, { count: number; timer?: NodeJS.Timeout }>();
-  const retryLater = (module: IsoclineModule, unreachable: boolean) => {
+  const retryLater = (module: ZirmaModule, unreachable: boolean) => {
     const before = retries.get(module.id);
     clearTimeout(before?.timer);
     if (!unreachable || stopped()) { retries.delete(module.id); return; }
@@ -60,7 +60,7 @@ export function modulePasses(options: PassesOptions): ModulePasses {
   };
   const queued = (id: string) => listOutbound(world, { module: id, states: ["queued"] }).length > 0;
 
-  const pass = (module: IsoclineModule): Promise<void> => {
+  const pass = (module: ZirmaModule): Promise<void> => {
     const running = passes.get(module.id);
     if (running) return running;
     const services = options.services?.() ?? {};

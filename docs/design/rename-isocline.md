@@ -1,5 +1,7 @@
 # 从 Alfred 改名为 Isocline
 
+> 2026-11-24：已被 [rename-zirma.md](rename-zirma.md) 取代，产品改名为 Zirma。这里留作记录。
+
 > 状态：v0.2（2026-11-23）。Bruce 说"开始做吧，先不做 ana 和 kata 的模式切换"：R1–R4 当天做完，没提交，见第 8 节。原型：[prototype/isocline.html](../../prototype/isocline.html)（字标和 i 上的点）。
 > 本文区分【已定】（Bruce 说了的）、【事实】（代码里查到的）和【建议】（还没定）。
 

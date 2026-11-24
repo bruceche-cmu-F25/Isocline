@@ -1,4 +1,4 @@
-/** Projects: folders on the home node that Isocline may work in. A conversation either belongs to no project (an
+/** Projects: folders on the home node that Zirma may work in. A conversation either belongs to no project (an
  * everyday conversation) or to one (a development session), fixed when it is created (docs/design/dev-mode.md).
  *
  * A project is added untrusted. Trust allows coding sessions to start there under their selected permission mode.
@@ -87,7 +87,7 @@ export function trustProject(world: World, id: string, now: number = Date.now())
   });
 }
 
-/** Removed from Isocline (nothing on disk is touched). Its sessions stay readable but take no new requests. */
+/** Removed from Zirma (nothing on disk is touched). Its sessions stay readable but take no new requests. */
 export function removeProject(world: World, id: string, now: number = Date.now()): void {
   world.tx((db) => {
     const project = getProject(world, id);

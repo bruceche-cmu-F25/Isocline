@@ -43,7 +43,7 @@ test("the frontmatter switch changes one line and nothing else", () => {
   assert.equal(setSkillDisabled(setSkillDisabled(body, true), false), body);
 });
 
-test("Isocline's skills are listed, switched off and on, read and removed", () => {
+test("Zirma's skills are listed, switched off and on, read and removed", () => {
   const t = setup();
   t.put(t.dir, "notes");
   t.put(t.dir, "quiet", "quiet", "disable-model-invocation: true\n");
@@ -80,7 +80,7 @@ test("a skill found in another agent's folder is copied whole; only the listed o
   writeFileSync(join(agents, "pdf", "scripts", "fill.py"), "print('fill')\n");
   mkdirSync(join(agents, "pdf", "node_modules", "x"), { recursive: true });
   writeFileSync(join(agents, "pdf", "node_modules", "x", "index.js"), "");
-  // The same skill linked into a second place, and one Isocline already has: each name is offered once, or not at all.
+  // The same skill linked into a second place, and one Zirma already has: each name is offered once, or not at all.
   mkdirSync(claude, { recursive: true });
   symlinkSync(join(agents, "pdf"), join(claude, "pdf"));
   t.put(claude, "notes");
@@ -95,11 +95,11 @@ test("a skill found in another agent's folder is copied whole; only the listed o
   assert.deepEqual(t.skills.list().found.map((skill) => skill.name), ["tdd"]);
 
   assert.throws(() => t.skills.addFound(join(t.home, ".ssh")), (error: SkillError) => error.code === "not_found");
-  assert.throws(() => t.skills.addFound(found[0].path), (error: SkillError) => error.code === "not_found", "Isocline has it now");
+  assert.throws(() => t.skills.addFound(found[0].path), (error: SkillError) => error.code === "not_found", "Zirma has it now");
   assert.deepEqual(t.changes, ["added pdf"]);
 });
 
-test("Code loads an explicitly named, enabled Isocline skill and keeps its request separate", () => {
+test("Code loads an explicitly named, enabled Zirma skill and keeps its request separate", () => {
   const t = setup();
   t.put(join(t.home, ".pi", "agent", "skills"), "layout", "apple-design");
   const invoke = (text: string) => t.skills.expandCommand(text);

@@ -1,4 +1,4 @@
-/** Outbound: changes Isocline makes outside the home node, such as an event in the user's Google Calendar or an email
+/** Outbound: changes Zirma makes outside the home node, such as an event in the user's Google Calendar or an email
  * sent from their Gmail. The decision (a proposal accepted, a click) commits together with this record; delivering it
  * is a later step, done by the module that knows the service, and it can fail without undoing the decision.
  *
@@ -190,7 +190,7 @@ export function interruptOutbound(world: World, now: number = Date.now()): numbe
     const rows = db.prepare("SELECT * FROM core_outbound WHERE state = 'sending'").all().map(toOutbound);
     for (const outbound of rows) {
       if (outbound.idempotent) db.prepare("UPDATE core_outbound SET state = 'queued', updated_at = ? WHERE id = ?").run(iso(now), outbound.id);
-      else end(world, db, outbound, "unknown", { error: "Isocline stopped while sending this" }, now);
+      else end(world, db, outbound, "unknown", { error: "Zirma stopped while sending this" }, now);
     }
     return rows.length;
   });

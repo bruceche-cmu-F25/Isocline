@@ -1,4 +1,4 @@
-import type { CoreEvent, StateResponse } from "@isocline/protocol";
+import type { CoreEvent, StateResponse } from "@zirma/protocol";
 import type { FigureState } from "../entity/tesseract.js";
 import { Conversation } from "../Conversation.tsx";
 import { Figure } from "./Figure.tsx";
@@ -20,13 +20,13 @@ export function figureState(state: StateResponse, selected: string | null, writi
   return "rest";
 }
 
-export interface IsoclinePanelProps {
+export interface ZirmaPanelProps {
   selected: string | null;
   figure: FigureState;
   wide: boolean;
   phone: boolean;
   highlighted: ReadonlySet<string>;
-  /** The page beside Isocline: what a question asked now is about. */
+  /** The page beside Zirma: what a question asked now is about. */
   view?: PageView;
   /** A page's title by its key, for "asked on" labels. */
   pageTitle(view: string): string | undefined;
@@ -39,13 +39,13 @@ export interface IsoclinePanelProps {
   onClose(): void;
 }
 
-/** Isocline beside the page: one row with the figure and the page it is looking at, then the open conversation. */
-export function IsoclinePanel({ selected, figure, wide, phone, highlighted, view, pageTitle, automationTitle, onEvent, onView, onStarted, onWide, onClose }: IsoclinePanelProps) {
+/** Zirma beside the page: one row with the figure and the page it is looking at, then the open conversation. */
+export function ZirmaPanel({ selected, figure, wide, phone, highlighted, view, pageTitle, automationTitle, onEvent, onView, onStarted, onWide, onClose }: ZirmaPanelProps) {
   return (
     <aside className="alfred" aria-label={getAssistant()}>
       <header className="alf-head">
         <Figure state={figure} size={28} anchor />
-        <p className="alf-name">Isocline{view && !wide && <span className="alf-looking">{t("panel.looking", { page: view.title })}</span>}</p>
+        <p className="alf-name">Zirma{view && !wide && <span className="alf-looking">{t("panel.looking", { page: view.title })}</span>}</p>
         <div className="alf-tools">
           {!phone && (
             <button type="button" className="icon-btn" onClick={onWide} aria-label={t(wide ? "panel.narrow" : "panel.wide")} title={t(wide ? "panel.narrow" : "panel.wide")}>

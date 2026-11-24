@@ -1,5 +1,5 @@
 {
-  "name": "@isocline/core",
+  "name": "@zirma/core",
   "version": "0.0.0",
   "private": true,
   "description": "The world (events, state), recoverable runs and notices. Engine- and UI-agnostic.",

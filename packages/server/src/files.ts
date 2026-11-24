@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, type ReadStream } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { addFile, dropUnattachedFiles, fileName, newId, type Attachment, type FileInfo, type FileKind, type World } from "@isocline/core";
+import { addFile, dropUnattachedFiles, fileName, newId, type Attachment, type FileInfo, type FileKind, type World } from "@zirma/core";
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 /** A text file past this is not put into the message; the model reads it from disk when it wants to. */

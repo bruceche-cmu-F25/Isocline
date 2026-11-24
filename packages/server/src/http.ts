@@ -1,4 +1,4 @@
-/** The client protocol over HTTP (see @isocline/protocol), plus the UI's files.
+/** The client protocol over HTTP (see @zirma/protocol), plus the UI's files.
  *
  * Two listeners, both on loopback:
  * - the local port, for this machine (the Mac app, a browser here): it accepts requests only for a loopback Host
@@ -22,13 +22,13 @@ import {
   listRunActivity, listRunReceipts, listRuns, conversationRuns, presentNotice, reportPresence, submitRun,
   deviceForToken, listDevices, requestDevAccess, DEVICE_KINDS, DEVICE_SCOPES, type Device, type DeviceKind, type DeviceScope, type LiveUpdate,
   getProject, listProjects, getFile, listRunFiles, requireOpenSession, isSession, runInSession, sessionEvent, sessionIds, sessionRoot,
-} from "@isocline/core";
-import { invokeOp, runQuery } from "@isocline/module-kit";
+} from "@zirma/core";
+import { invokeOp, runQuery } from "@zirma/module-kit";
 import type {
   ConversationDetail, CoreEvent, ModelsResponse, NoticeRequest, OpRequest, OutletReport, OutletsResponse, PairRequest, PresenceRequest, ProposalResponse, PushInfo, PushResult,
   RemoteResponse, RespondRequest, StateResponse, SteerRequest, LiveUpdate as WireLiveUpdate, SubmitRunRequest, SessionBranch, SessionChanges, SessionProcesses, SessionPullRequest,
-} from "@isocline/protocol";
-import { PROTOCOL_VERSION } from "@isocline/protocol";
+} from "@zirma/protocol";
+import { PROTOCOL_VERSION } from "@zirma/protocol";
 import type { Home } from "./home.ts";
 import { DEVELOPER_PROFILE } from "./profiles.ts";
 import { command, profileFor, sessionWrites } from "./commands.ts";
@@ -38,9 +38,9 @@ import { sourcesToday, runSources } from "./run-sources.ts";
 import { reviewCommit } from "./commit-review.ts";
 import { branchState, projectBranches, pullRequest, workspaceChanges, workspaceDiff } from "./workspace.ts";
 import type { GoogleConnections } from "./google.ts";
-import type { McpConnectors, ModelAccounts, Skills } from "@isocline/engine-pi";
-import { DEVICE_COOKIE, LEGACY_DEVICE_COOKIE, type RemoteAccess } from "./remote.ts";
-import { LEGACY_WEB_SESSION_COOKIE, WEB_SESSION_COOKIE, type WebLock } from "./web-lock.ts";
+import type { McpConnectors, ModelAccounts, Skills } from "@zirma/engine-pi";
+import { DEVICE_COOKIE, LEGACY_DEVICE_COOKIES, type RemoteAccess } from "./remote.ts";
+import { LEGACY_WEB_SESSION_COOKIES, WEB_SESSION_COOKIE, type WebLock } from "./web-lock.ts";
 import type { PushService } from "./push.ts";
 import { MAX_VOICE_BYTES, type Transcriber } from "./voice.ts";
 import type { Speaker } from "./speak.ts";
@@ -76,8 +76,9 @@ function ingressHostAllowed(req: IncomingMessage, port: number, dnsName: string 
   return LOOPBACK_HOSTS.has(match[1]) && Number(match[2] ?? 80) === port;
 }
 
-/** Cookies renamed with the product (Alfred → Isocline): the old name is read when the new one is not there. */
-const LEGACY_COOKIES: Record<string, string> = { [DEVICE_COOKIE]: LEGACY_DEVICE_COOKIE, [WEB_SESSION_COOKIE]: LEGACY_WEB_SESSION_COOKIE };
+/** Cookies renamed with the product (Alfred → Isocline → Zirma): the old names are read, newest first, when the new
+ * one is not there. */
+const LEGACY_COOKIES: Record<string, string[]> = { [DEVICE_COOKIE]: LEGACY_DEVICE_COOKIES, [WEB_SESSION_COOKIE]: LEGACY_WEB_SESSION_COOKIES };
 
 function cookieValue(req: IncomingMessage, cookie: string): string {
   for (const part of (req.headers.cookie ?? "").split(";")) {
@@ -88,7 +89,16 @@ function cookieValue(req: IncomingMessage, cookie: string): string {
 }
 
 function cookieToken(req: IncomingMessage, cookie: string): string {
-  return cookieValue(req, cookie) || (LEGACY_COOKIES[cookie] ? cookieValue(req, LEGACY_COOKIES[cookie]) : "");
+  return cookieValue(req, cookie) || legacyCookie(req, cookie)?.value || "";
+}
+
+/** The newest old name of a renamed cookie this request still carries, with its value. */
+function legacyCookie(req: IncomingMessage, cookie: string): { name: string; value: string } | null {
+  for (const name of LEGACY_COOKIES[cookie] ?? []) {
+    const value = cookieValue(req, name);
+    if (value) return { name, value };
+  }
+  return null;
 }
 
 function originAllowed(req: IncomingMessage): boolean {
@@ -295,7 +305,7 @@ async function pushRoute(push: PushService | undefined, device: Device, req: Inc
     await readJson(req);
     if (!push.subscribed(device.id)) throw new HttpError(409, "Turn notifications on first");
     const works: Record<Locale, string> = { zh: "推送通知能用了。", en: "Notifications work." };
-    return send(res, 200, await push.sendTo({ title: "Isocline", body: works[locale], url: "/", tag: "test" }, [device.id]) satisfies PushResult);
+    return send(res, 200, await push.sendTo({ title: "Zirma", body: works[locale], url: "/", tag: "test" }, [device.id]) satisfies PushResult);
   }
   throw new HttpError(404, "Not found");
 }
@@ -317,7 +327,7 @@ async function remoteRoute(home: Home, options: ServeOptions, peer: Peer, req: I
     return true;
   }
   if (!peer.local) {
-    if (!peer.device) throw new HttpError(401, "This device is not paired with Isocline yet", "unpaired");
+    if (!peer.device) throw new HttpError(401, "This device is not paired with Zirma yet", "unpaired");
     if (method === "GET" && path === "/api/remote") return send(res, 200, withPush({ local: false, device: peer.device } satisfies RemoteResponse, options.push)), true;
     if (isPush) return await pushRoute(options.push, peer.device, req, res, path, userLocale(home.world)), true;
     if (method === "POST" && path === "/api/device/request-dev") {
@@ -676,7 +686,7 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
 
 const OUTLET_CLIENT = /^[A-Za-z0-9._:-]{1,80}$/;
 
-/** A window or the Mac's figure says what it sees, and anyone who may talk to Isocline may ask who is looking. None
+/** A window or the Mac's figure says what it sees, and anyone who may talk to Zirma may ask who is looking. None
  * of it is recorded: the home node only keeps the latest from each outlet (attention.ts). */
 async function outletRoute(home: Home, peer: Peer, req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method === "GET") {
@@ -698,7 +708,7 @@ async function outletRoute(home: Home, peer: Peer, req: IncomingMessage, res: Se
   }
   // It is taken as coming from whoever sent it: a paired device, or this machine.
   const device = peer.local ? "home" : peer.device?.id;
-  if (!device) throw new HttpError(401, "This device is not paired with Isocline yet", "unpaired");
+  if (!device) throw new HttpError(401, "This device is not paired with Zirma yet", "unpaired");
   home.outlets.report(device, { client: body.client, kind: body.kind, attending: body.attending, ...(idle === undefined ? {} : { idleMs: idle }) });
   return send(res, 200, {});
 }
@@ -714,7 +724,7 @@ export interface ServeOptions {
   models?: ModelAccounts;
   /** Connectors, the MCP servers runs can use (`/api/connections/mcp`); left out, those routes are 404. */
   mcp?: McpConnectors;
-  /** Isocline's skills (Settings → Skills); only on this machine. */
+  /** Zirma's skills (Settings → Skills); only on this machine. */
   skills?: Skills;
   /** Remote access and devices (`/api/remote`, `/api/devices`, `/api/pair`); left out, those routes are 404. */
   remote?: RemoteAccess;
@@ -739,7 +749,7 @@ function vocabulary(home: Home): string {
   return [...new Set([...(settings.preferredName ? [settings.preferredName] : []), ...settings.voice.words])].join(", ");
 }
 
-/** Any device that may talk to Isocline may talk to it out loud, and be spoken to. */
+/** Any device that may talk to Zirma may talk to it out loud, and be spoken to. */
 async function voiceRoute(home: Home, voice: Transcriber | undefined, speaker: Speaker | undefined, req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
   if (!voice && !speaker) throw new HttpError(404, "Not found");
   if (req.method === "GET" && path === "/api/voice") {
@@ -817,7 +827,7 @@ async function authorizeBrowser(lock: WebLock, device: Device, req: IncomingMess
     await readJson(req, 256);
     return send(res, 200, lock.activity(id, token)), true;
   }
-  if (lock.status(id, token).locked) throw new HttpError(423, "Unlock this browser to use Isocline.", "web_locked");
+  if (lock.status(id, token).locked) throw new HttpError(423, "Unlock this browser to use Zirma.", "web_locked");
   return false;
 }
 
@@ -828,14 +838,14 @@ function dispatch(home: Home, options: ServeOptions, peer: Peer, req: IncomingMe
       return send(res, 200, { enabled: false, locked: false, expiresAt: null });
     }
     if (!peer.local && !(req.method === "POST" && path === "/api/pair")) {
-      if (!peer.device) throw new HttpError(401, "This device is not paired with Isocline yet", "unpaired");
+      if (!peer.device) throw new HttpError(401, "This device is not paired with Zirma yet", "unpaired");
       if (await authorizeBrowser(options.remote!.webLock, peer.device, req, res, path)) return;
     }
     // Who may use which address is decided here, once, for every address (access.ts).
     if (path.startsWith("/api/")) checkAccess({ local: peer.local, dev: mayDev(peer) }, req.method ?? "GET", path);
     if (await remoteRoute(home, options, peer, req, res, path)) return;
     if (!peer.local) {
-      if (!peer.device) throw new HttpError(401, "This device is not paired with Isocline yet", "unpaired");
+      if (!peer.device) throw new HttpError(401, "This device is not paired with Zirma yet", "unpaired");
       if (path === "/api/events" && req.method === "GET" && options.remote) {
         // The reconnect checks the device's current scopes and rejects a revoked device.
         const id = peer.device.id;
@@ -897,16 +907,16 @@ export function createIngressServer(home: Home, options: ServeOptions & { remote
     // Serve sets this for tailnet users (and drops any the device sent). Another account's device is refused outright.
     const header = req.headers["tailscale-user-login"];
     const login = typeof header === "string" && header ? header : null;
-    if (login && options.remote.owner && login !== options.remote.owner) return send(res, 403, { error: "This Isocline belongs to another Tailscale account", code: "other_account" });
+    if (login && options.remote.owner && login !== options.remote.owner) return send(res, 403, { error: "This Zirma belongs to another Tailscale account", code: "other_account" });
     const url = new URL(req.url ?? "/", "http://localhost");
     if (serveUi(options, req, res, url)) return;
     const device = deviceForToken(home.world, cookieToken(req, DEVICE_COOKIE));
     // A device paired before the rename gets its token back under the new name, and the old cookie is cleared.
     if (device && !cookieValue(req, DEVICE_COOKIE)) {
-      const token = cookieValue(req, LEGACY_DEVICE_COOKIE);
+      const token = legacyCookie(req, DEVICE_COOKIE)?.value ?? "";
       res.appendHeader("Set-Cookie", [
         `${DEVICE_COOKIE}=${token}; Path=/; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; Secure; SameSite=Strict`,
-        `${LEGACY_DEVICE_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`,
+        ...LEGACY_DEVICE_COOKIES.map((name) => `${name}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`),
       ]);
     }
     dispatch(home, options, { local: false, device, login }, req, res, url);

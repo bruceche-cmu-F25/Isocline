@@ -28,7 +28,7 @@ test("several things in one line are read one by one, and a time zone said in pa
   assert.deepEqual(read("明天3点开会，带电脑"), [["event", "开会，带电脑", "2026-11-21", "15:00", null, false]]);
 });
 
-test("what is not plainly something to put down is left for Isocline", () => {
+test("what is not plainly something to put down is left for Zirma", () => {
   for (const line of ["我明天日历上有什么？", "把周五的会挪到下周一", "周五的会改到下周一下午3点", "买牛奶", "What do I have tomorrow", "每周三下午3点组会", "帮我看看明天的安排", "顺便说一下，明天3点开会", "明天下午3点"]) {
     assert.deepEqual(read(line), [], line);
   }
@@ -50,7 +50,7 @@ test("morning and midnight times keep the intended half of the day", () => {
   assert.deepEqual(read("Call tomorrow at 25:30-27:00"), []);
 });
 
-test("a later part that asks Isocline for something hands the whole line to Isocline", () => {
+test("a later part that asks Zirma for something hands the whole line to Zirma", () => {
   assert.deepEqual(read("明天下午三点提醒我交报告，顺便帮我想想周末去哪"), []);
   assert.deepEqual(read("dentist tomorrow at 3, and find me a parking spot"), []);
   // A plain second thing to note stays a note.

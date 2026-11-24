@@ -1,9 +1,9 @@
-/** Connectors: the MCP servers Isocline's runs can use, managed from Settings on the home node's machine
+/** Connectors: the MCP servers Zirma's runs can use, managed from Settings on the home node's machine
  * (docs/design/settings-and-connections.md §3.3).
  *
  * The list is `<data>/mcp.json`, the file Pi and other MCP clients read; this class is the only thing that writes it
  * for the user. Secrets never go there: a token or header the user gives, and the tokens of an OAuth sign-in, are in
- * Isocline's secret store (mcp-store.ts). Signing in is pi-mcp's: the client registers itself with the service, the
+ * Zirma's secret store (mcp-store.ts). Signing in is pi-mcp's: the client registers itself with the service, the
  * user agrees in the system browser, and the browser comes back to a one-time listener on 127.0.0.1.
  *
  * A server's state is found by reaching it the way a run would (initialize, list its tools) and is kept for a few
@@ -18,10 +18,10 @@ import {
   completeMcpSignIn, listenForLoopbackSignIn, McpOAuthAuthorizationRequiredError, parseWwwAuthenticate, startMcpSignIn, waitForLoopbackSignIn,
   type OAuthChallenge,
 } from "@earendil-works/pi-mcp/oauth";
-import type { SecretStore } from "@isocline/core";
-import type { McpCatalogItem, McpConnector, McpConnectorsResponse, McpSignIn, NewMcpConnector } from "@isocline/protocol";
+import type { SecretStore } from "@zirma/core";
+import type { McpCatalogItem, McpConnector, McpConnectorsResponse, McpSignIn, NewMcpConnector } from "@zirma/protocol";
 import { MCP_CATALOG } from "./mcp-catalog.ts";
-import { alfredMeta, MCP_NAME, mcpEntryProblem, readMcpFile, writeMcpFile, type IsoclineMeta } from "./mcp-config.ts";
+import { alfredMeta, MCP_NAME, mcpEntryProblem, readMcpFile, writeMcpFile, type ZirmaMeta } from "./mcp-config.ts";
 import { createMcpTransport, createMcpVault, MCP_CLIENT_NAME, oauthSettings, usesHeaderAuth, type McpVault } from "./mcp-store.ts";
 
 export class McpConnectorError extends Error {
@@ -140,7 +140,7 @@ export class McpConnectors {
     }
   }
 
-  #describe(name: string, config: Record<string, unknown>, meta: IsoclineMeta, probe: Probe | undefined, signedIn: boolean): McpConnector {
+  #describe(name: string, config: Record<string, unknown>, meta: ZirmaMeta, probe: Probe | undefined, signedIn: boolean): McpConnector {
     const problem = mcpEntryProblem(name, config);
     const http = typeof config.url === "string";
     const enabled = config.enabled !== false;
@@ -202,7 +202,7 @@ export class McpConnectors {
     const servers = this.#servers();
     let name: string;
     let config: Record<string, unknown>;
-    const meta: IsoclineMeta = {};
+    const meta: ZirmaMeta = {};
     const secretHeaders: Record<string, string> = {};
     const secretEnv: Record<string, string> = {};
     if (input.catalog !== undefined) {

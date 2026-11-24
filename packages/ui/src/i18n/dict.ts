@@ -26,7 +26,7 @@ export function detectLocale(language: string | undefined = typeof navigator ===
 }
 
 /** The product's name: what the app is called, on every device and in every language. */
-export const PRODUCT = "Isocline";
+export const PRODUCT = "Zirma";
 
 /* The assistant's name, as the user set it (UserSettings.assistant, docs/design/rename-isocline.md §3.2): every
  * sentence in which the assistant speaks or acts says `{assistant}`, and this fills it. A device sets it from the home

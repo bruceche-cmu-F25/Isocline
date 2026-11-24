@@ -21,7 +21,7 @@ const COPIED = ["engine", "files", "skills", "mcp.json", "google-oauth-client.js
 
 if (!existsSync(join(from, "world.sqlite"))) throw new Error(`No production world in ${from}.`);
 if (alive(join(to, "home-node.lock"))) {
-  console.error("The development home node is running. Quit Isocline Dev (or stop its node) first.");
+  console.error("The development home node is running. Quit Zirma Dev (or stop its node) first.");
   process.exit(1);
 }
 

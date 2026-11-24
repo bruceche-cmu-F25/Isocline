@@ -65,10 +65,10 @@ const TIMEOUT_MS = 8000;
 const MAX_BYTES = 512 * 1024;
 const MAX_REDIRECTS = 5;
 /** Says what it is. A site that refuses it is simply not read; the link keeps the name made from its address. */
-const USER_AGENT = "Mozilla/5.0 (compatible; Isocline link reader)";
+const USER_AGENT = "Mozilla/5.0 (compatible; Zirma link reader)";
 /** Xiaohongshu sends every reader that is not a phone to its sign-in. Its phone page carries the note's title,
- * text and cover in the head, so it is asked for as a phone, still saying it is Isocline. */
-const PHONE_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X; compatible; Isocline link reader)";
+ * text and cover in the head, so it is asked for as a phone, still saying it is Zirma. */
+const PHONE_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X; compatible; Zirma link reader)";
 const XIAOHONGSHU = /(^|\.)(xiaohongshu|rednote)\.com$|^xhslink\.com$/;
 const agentFor = (url: URL) => (XIAOHONGSHU.test(url.hostname) ? PHONE_AGENT : USER_AGENT);
 

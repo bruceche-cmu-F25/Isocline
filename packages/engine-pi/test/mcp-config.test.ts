@@ -3,10 +3,10 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { loadIsoclineMcpConfig } from "../src/index.ts";
+import { loadZirmaMcpConfig } from "../src/index.ts";
 
 test("no mcp.json means no servers", () => {
-  assert.deepEqual(loadIsoclineMcpConfig(mkdtempSync(join(tmpdir(), "alfred-mcp-"))), { servers: [], errors: [] });
+  assert.deepEqual(loadZirmaMcpConfig(mkdtempSync(join(tmpdir(), "alfred-mcp-"))), { servers: [], errors: [] });
 });
 
 test("valid servers load; invalid ones are reported and skipped", () => {
@@ -21,7 +21,7 @@ test("valid servers load; invalid ones are reported and skipped", () => {
       wrongArgs: { command: "x", args: "a b" },
     },
   }));
-  const loaded = loadIsoclineMcpConfig(dir);
+  const loaded = loadZirmaMcpConfig(dir);
   assert.deepEqual(loaded.servers.map((server) => server.name), ["notes", "docs"]);
   assert.equal(loaded.servers[0].config.env && (loaded.servers[0].config.env as Record<string, string>).TOKEN, "${NOTES_TOKEN}", "placeholders are left for Pi to resolve when it connects");
   assert.equal(loaded.errors.length, 4);
@@ -30,7 +30,7 @@ test("valid servers load; invalid ones are reported and skipped", () => {
 test("a broken file is reported, not thrown", () => {
   const dir = mkdtempSync(join(tmpdir(), "alfred-mcp-"));
   writeFileSync(join(dir, "mcp.json"), "{ not json");
-  const loaded = loadIsoclineMcpConfig(dir);
+  const loaded = loadZirmaMcpConfig(dir);
   assert.deepEqual(loaded.servers, []);
   assert.equal(loaded.errors.length, 1);
 });

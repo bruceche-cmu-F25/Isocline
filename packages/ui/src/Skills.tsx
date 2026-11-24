@@ -1,18 +1,18 @@
-/** Settings → Skills: the instructions Isocline reads when a task calls for one (after pi-web's Settings › Skills, github.com/agegr/pi-web, MIT).
+/** Settings → Skills: the instructions Zirma reads when a task calls for one (after pi-web's Settings › Skills, github.com/agegr/pi-web, MIT).
  *
- * A plain list: one line per skill, its name, what it is for, and a switch (off stays on disk, and Isocline is not told
+ * A plain list: one line per skill, its name, what it is for, and a switch (off stays on disk, and Zirma is not told
  * about it). Ten are shown, and the rest open under them. A skill's name opens its instructions in a card over the page, where it can also be removed. Under the
  * list, one box adds more: what is typed narrows the skills other agents on this Mac already have (they are copied
- * in), and searching asks skills.sh. Only on the Mac Isocline runs on.
+ * in), and searching asks skills.sh. Only on the Mac Zirma runs on.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { FoundSkill, SkillContent, SkillInfo, SkillSearchResponse, SkillSearchResult, SkillsResponse, SkillUpdatesResponse } from "@isocline/protocol";
+import type { FoundSkill, SkillContent, SkillInfo, SkillSearchResponse, SkillSearchResult, SkillsResponse, SkillUpdatesResponse } from "@zirma/protocol";
 import { request as call } from "./api.ts";
 import { intlLocale, t } from "./i18n/index.ts";
 import { Markdown } from "./Markdown.tsx";
 
-/** How many skills a list shows before "show all": Isocline's own, and the ones found on this Mac. */
+/** How many skills a list shows before "show all": Zirma's own, and the ones found on this Mac. */
 const FEW = 10;
 
 /** A card in the middle of the window, the page blurred behind it; Escape or a click beside it puts it away. */

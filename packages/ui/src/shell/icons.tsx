@@ -1,6 +1,6 @@
 import { markSegments } from "../entity/tesseract.js";
 
-/** Isocline's own mark as an icon: the resting tesseract, from the figure's geometry (so the two cannot drift apart),
+/** Zirma's own mark as an icon: the resting tesseract, from the figure's geometry (so the two cannot drift apart),
  * fitted to the 20 × 20 grid. All 32 edges: without the eight that join its two cubes it is only a cube in a cube. */
 const MARK = (() => {
   const edges = markSegments(), points = edges.flatMap(([from, to]) => [from, to]);

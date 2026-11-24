@@ -7,7 +7,7 @@ export type TodoStatus = (typeof TODO_STATUSES)[number];
  * if it has a time. */
 export interface TodoRepeat { days: number[]; at?: string }
 
-/** Where a todo came from, when the user did not write it: a calendar event Isocline mirrors, or a mail Isocline
+/** Where a todo came from, when the user did not write it: a calendar event Zirma mirrors, or a mail Zirma
  * picked it out of. `ref` names that one thing (`calendar:<account>:<event id>`, or
  * `calendar:<account>:repeat:<repeating event>` for one that repeats weekly; `mail:<message id>`): it never makes
  * a second todo at a time, and a todo the user removed is not made again. */
@@ -79,13 +79,13 @@ export interface Todo {
   createdAt: string;
   completedAt?: string;
   source?: TodoSource;
-  /** Isocline's suggestion (from mail), not yet the user's todo: kept with a yes or any edit, dropped with a no. */
+  /** Zirma's suggestion (from mail), not yet the user's todo: kept with a yes or any edit, dropped with a no. */
   suggested?: boolean;
   /** Fields written by another version, kept as they are but not edited. */
   [kept: string]: unknown;
 }
 
-/** What a device draws: every non-archived todo with its revision, and the local date. `changedBy` says Isocline
+/** What a device draws: every non-archived todo with its revision, and the local date. `changedBy` says Zirma
  * made the latest change to it (read from the event log), and which kind of change. */
 export interface TodoSnapshot {
   today: string;

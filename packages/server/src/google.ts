@@ -1,9 +1,9 @@
 /** Google accounts, connected with one click (docs/design/settings-and-connections.md §3.1).
  *
- * Isocline has its own OAuth client of the "Desktop app" type: its id (and the
+ * Zirma has its own OAuth client of the "Desktop app" type: its id (and the
  * secret, which Google does not treat as confidential for installed apps) come
  * from `google-oauth-client.json` in the data directory, as Google Cloud
- * downloads it, or from ISOCLINE_GOOGLE_CLIENT_ID / ISOCLINE_GOOGLE_CLIENT_SECRET.
+ * downloads it, or from ZIRMA_GOOGLE_CLIENT_ID / ZIRMA_GOOGLE_CLIENT_SECRET.
  *
  * Connecting: the home node starts a one-shot callback server on a random
  * 127.0.0.1 port and returns Google's consent URL; a device opens it in the
@@ -21,8 +21,8 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { recordDomainEvent, type World } from "@isocline/core";
-import type { ConnectFlow, ConnectionsResponse, GoogleAccount, GoogleCapability, GoogleCheck } from "@isocline/protocol";
+import { recordDomainEvent, type World } from "@zirma/core";
+import type { ConnectFlow, ConnectionsResponse, GoogleAccount, GoogleCapability, GoogleCheck } from "@zirma/protocol";
 import type { SecretStore } from "./secrets.ts";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -54,7 +54,7 @@ export class GoogleError extends Error {
 }
 
 export function loadGoogleClient(dirs: readonly string[]): Client | null {
-  const id = process.env.ISOCLINE_GOOGLE_CLIENT_ID, secret = process.env.ISOCLINE_GOOGLE_CLIENT_SECRET;
+  const id = process.env.ZIRMA_GOOGLE_CLIENT_ID, secret = process.env.ZIRMA_GOOGLE_CLIENT_SECRET;
   if (id && secret) return { id, secret, source: "environment" };
   for (const dir of dirs) {
     const path = join(dir, "google-oauth-client.json");
@@ -152,7 +152,7 @@ export class GoogleConnections {
   /** Starts a sign-in: a new account (no `account`), or more capabilities for one already connected. */
   async start(input: { capabilities: GoogleCapability[]; account?: string }): Promise<{ id: string; url: string }> {
     const client = this.client();
-    if (!client) throw new GoogleError("no_client", "Isocline has no Google client yet: put google-oauth-client.json in the data directory");
+    if (!client) throw new GoogleError("no_client", "Zirma has no Google client yet: put google-oauth-client.json in the data directory");
     if (this.flows.size >= 3) throw new GoogleError("busy", "Too many sign-ins in progress; finish or cancel one first");
     const existing = input.account ? this.accounts().find((account) => account.email === input.account) : undefined;
     if (input.account && !existing) throw new GoogleError("unknown_account", `Not connected: ${input.account}`);
@@ -192,7 +192,7 @@ export class GoogleConnections {
         res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
         res.end(page(title, text));
       };
-      if (callback.searchParams.get("state") !== state) { reply(400, "链接不对", "这不是 Isocline 发起的登录，或者已经过期了。回到 Isocline 重新点一次「连接」。"); return; }
+      if (callback.searchParams.get("state") !== state) { reply(400, "链接不对", "这不是 Zirma 发起的登录，或者已经过期了。回到 Zirma 重新点一次「连接」。"); return; }
       const error = callback.searchParams.get("error");
       if (error) {
         finish(error === "access_denied" ? { id, status: "cancelled" } : { id, status: "failed", error });
@@ -201,12 +201,12 @@ export class GoogleConnections {
       }
       const code = callback.searchParams.get("code") ?? "";
       this.exchange(client, code, verifier, redirectUri, wanted, existing).then(
-        (done) => { finish({ id, status: "done", ...done }); reply(200, "Isocline 连上了 Google", "可以关掉这个页面，回到 Isocline。"); },
+        (done) => { finish({ id, status: "done", ...done }); reply(200, "Zirma 连上了 Google", "可以关掉这个页面，回到 Zirma。"); },
         (failure: unknown) => {
           const message = failure instanceof Error ? failure.message : String(failure);
           this.options.log?.(`google sign-in failed: ${message}`);
           finish({ id, status: "failed", error: message });
-          reply(500, "没连上", "换 token 的时候出错了。回到 Isocline 再试一次。");
+          reply(500, "没连上", "换 token 的时候出错了。回到 Zirma 再试一次。");
         },
       );
     });
@@ -267,7 +267,7 @@ export class GoogleConnections {
     return { account: email, capabilities, missing };
   }
 
-  /** Turning a capability off needs no Google round trip: Isocline stops using it. Turning one on is `start`. */
+  /** Turning a capability off needs no Google round trip: Zirma stops using it. Turning one on is `start`. */
   disable(email: string, capability: GoogleCapability): GoogleAccount {
     const accounts = this.accounts();
     const account = accounts.find((item) => item.email === email);
@@ -296,7 +296,7 @@ export class GoogleConnections {
     await this.options.secrets.delete(`google:${email}`);
     this.saveAccounts(accounts.filter((account) => account.email !== email));
     this.record("connection.disconnected", email, { revokedAtGoogle: revoked });
-    this.options.log?.(`google: disconnected ${email}${revoked ? "" : " (could not reach Google to revoke; remove Isocline at myaccount.google.com/permissions)"}`);
+    this.options.log?.(`google: disconnected ${email}${revoked ? "" : " (could not reach Google to revoke; remove Zirma at myaccount.google.com/permissions)"}`);
     return { revoked };
   }
 
@@ -309,7 +309,7 @@ export class GoogleConnections {
   /** A current access token for an account, refreshed when it is about to expire. For modules that call Google. */
   async accessToken(email: string): Promise<string> {
     const client = this.client();
-    if (!client) throw new GoogleError("no_client", "Isocline has no Google client");
+    if (!client) throw new GoogleError("no_client", "Zirma has no Google client");
     const token = await this.readToken(email);
     if (!token) throw new GoogleError("unknown_account", `Not connected: ${email}`);
     if (token.access && token.expires && token.expires - 60_000 > Date.now()) return token.access;

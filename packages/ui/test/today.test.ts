@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { CalendarEvent, CalendarSnapshot } from "@isocline/module-calendar/types";
-import type { MailMessage, MailSnapshot } from "@isocline/module-mail/types";
-import type { Todo, TodoSnapshot } from "@isocline/module-todo/types";
-import { PROTOCOL_VERSION, type Conversation, type Proposal, type Run, type StateResponse } from "@isocline/protocol";
+import type { CalendarEvent, CalendarSnapshot } from "@zirma/module-calendar/types";
+import type { MailMessage, MailSnapshot } from "@zirma/module-mail/types";
+import type { Todo, TodoSnapshot } from "@zirma/module-todo/types";
+import { PROTOCOL_VERSION, type Conversation, type Proposal, type Run, type StateResponse } from "@zirma/protocol";
 import { setLocale } from "../src/i18n/dict.ts";
 import { machineMail, todayFocus, todayLine, todayModel, todaySummary, untilText } from "../src/shell/today.ts";
 

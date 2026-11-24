@@ -11,7 +11,7 @@ export type Scheme = "light" | "dark";
 export type Appearance = Scheme | "system";
 export interface Point { x: number; y: number }
 
-const KEY = "isocline.scheme";
+const KEY = "zirma.scheme";
 const root = document.documentElement;
 const system = matchMedia("(prefers-color-scheme: dark)");
 const still = matchMedia("(prefers-reduced-motion: reduce)");
