@@ -191,6 +191,7 @@ Node 24 以上，直接运行 `.ts`（只用可擦除的语法）。原型用 `.
 - `docs/design/mail-accounts.md`：多个邮箱账户（提议，没做）。
 - `docs/design/notes.md`：笔记（已批准，没开始做）。
 - `docs/design/study-mode.md`：学习模式（v0.1，方向认可，细节没定，没写代码）。
+- `docs/packaging.md`：打包 Isocline.app 的流程、怎么安全地试、正式发布前还缺什么。
 - `docs/design/rename-isocline.md`：从 Alfred 改名为 Isocline（2026-11-23 Bruce 定了名字和 Ana/Kata 两个声音角色；文档是草案，没批准，没写代码）；字标原型 `prototype/isocline.html`。
 - `docs/design/browser.md`：用已登录的 Chrome 读登录墙（先存着，没批准）。
 - `docs/research/`：形象、视觉、远程访问、语音输入、全双工语音、工作台能力、Web 和手机安全。

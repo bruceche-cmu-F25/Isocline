@@ -23,7 +23,7 @@ On first open, the app installs the home node as a launchd user agent (`~/Librar
 - **Chat replies stay in their conversation.** Unseen replies have an unread dot. Ask the assistant to notify you when it finishes to receive an Inbox delivery. Read the morning brief in Inbox and browse previous editions in Automations.
 - **⌥Space opens Isocline from anywhere.** The menu bar item shows whether the home node is online, can hide the figure, and can restart or stop the node.
 
-Running the app from source, macOS shows it as "Electron" and asks once for permission to show notifications. To build `Isocline.app` and a disk image: `npm run package:mac` (ad hoc signed, not notarized: on another Mac, open it the first time with right-click → Open).
+Running the app from source, macOS shows it as "Electron" and asks once for permission to show notifications. To build `Isocline.app` and a disk image: `npm run package:mac` (ad hoc signed, not notarized: on another Mac, open it the first time with right-click → Open). How it is built, how to try a build without touching your real data, and what a public release still needs: [docs/packaging.md](docs/packaging.md).
 
 To remove the background service completely:
 
