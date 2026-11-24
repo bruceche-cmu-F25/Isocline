@@ -175,7 +175,7 @@ function closeWaitingNotices(db: DatabaseSync, runId: string, now: number): void
 }
 
 /** What a notice calls a run (`goal`): the user's words, or for an automation's run, the automation's name, which is
- * what the user would call it (the instruction it gives Alfred is in the run). */
+ * what the user would call it (the instruction it gives Isocline is in the run). */
 function said(db: DatabaseSync, run: Run): { goal: string; automationId?: string } {
   if (!run.automationId) return { goal: run.goal.slice(0, 200) };
   const row = db.prepare("SELECT name, template FROM core_automations WHERE id = ?").get(run.automationId);

@@ -67,7 +67,7 @@ test("a page is fetched through redirects, in its own encoding, without cookies,
     await assert.rejects(fetchPage(`${base}/members/post`, undefined, local), (error: PageFetchError) => error.code === "login");
     await assert.rejects(fetchPage(`${base}/forbidden`, undefined, local), (error: PageFetchError) => error.code === "status");
     assert.deepEqual(await fetchPage(`${base}/login`, undefined, local), { url: `${base}/login` }, "a sign-in page saved on purpose is read, though its title says nothing");
-    assert.ok(seen.every((request) => request.cookie === undefined && /Alfred link reader/.test(String(request.agent))));
+    assert.ok(seen.every((request) => request.cookie === undefined && /Isocline link reader/.test(String(request.agent))));
   } finally { server.close(); server.closeAllConnections(); }
 });
 
@@ -156,7 +156,7 @@ test("a Xiaohongshu note is asked for as a phone, which it shows; anyone else is
       { url: `http://www.xiaohongshu.com:${port}/explore/1?xsec_token=A`, title: "手冲咖啡入门", description: "三个参数就够" });
     assert.deepEqual(await fetchPage(`http://www.xiaohongshu.com:${port}/explore/1`, undefined, lookup), { url: `http://www.xiaohongshu.com:${port}/explore/1` },
       "without its token a note address lands on the front page, whose title is not the note's");
-    assert.ok(agents.every((agent) => /iPhone/.test(agent) && /Alfred link reader/.test(agent)));
+    assert.ok(agents.every((agent) => /iPhone/.test(agent) && /Isocline link reader/.test(agent)));
     assert.equal(looksLikeWall("小红书 - 你的生活指南"), true);
   } finally { server.close(); server.closeAllConnections(); }
 });

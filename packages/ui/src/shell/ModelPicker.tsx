@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { EngineModel } from "@alfred/protocol";
+import type { EngineModel } from "@isocline/protocol";
 import { api } from "../api.ts";
 import { Logo, modelMark } from "../brand/Logo.tsx";
 import { t } from "../i18n/index.ts";

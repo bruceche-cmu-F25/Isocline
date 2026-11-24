@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from "react";
-import type { Place, PlaceFolder } from "@alfred/module-links/types";
+import type { Place, PlaceFolder } from "@isocline/module-links/types";
 import { t } from "./i18n/index.ts";
 import { LinkDeleteDialog, onDeleteKey } from "./LinkDeleteDialog.tsx";
 import { SiteIcon, useOp } from "./linkControls.tsx";

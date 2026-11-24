@@ -1,4 +1,4 @@
-/* Alfred's service worker: push notifications only. It does not cache or intercept anything; every page and API call
+/* Isocline's service worker: push notifications only. It does not cache or intercept anything; every page and API call
  * goes to the home node as usual.
  *
  * iOS revokes a push subscription when a push arrives and no notification is shown, so every push shows one
@@ -10,7 +10,7 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 self.addEventListener("push", (event) => {
   let message = {};
   try { message = event.data ? event.data.json() : {}; } catch { /* malformed */ }
-  const title = typeof message.title === "string" && message.title ? message.title : "Alfred";
+  const title = typeof message.title === "string" && message.title ? message.title : "Isocline";
   const body = typeof message.body === "string" ? message.body : "";
   event.waitUntil(self.registration.showNotification(title, {
     body,

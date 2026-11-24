@@ -1,10 +1,10 @@
 /** What typing can go to, in the ask bar and in ⌘K's palette: a page, a command, a conversation. One list for both,
  * so searching is the same wherever it is done. */
-import type { Conversation } from "@alfred/protocol";
-import type { LinksSnapshot } from "@alfred/module-links/types";
-import type { TodoSnapshot } from "@alfred/module-todo/types";
-import type { CalendarSnapshot } from "@alfred/module-calendar/types";
-import type { MailSnapshot } from "@alfred/module-mail/types";
+import type { Conversation } from "@isocline/protocol";
+import type { LinksSnapshot } from "@isocline/module-links/types";
+import type { TodoSnapshot } from "@isocline/module-todo/types";
+import type { CalendarSnapshot } from "@isocline/module-calendar/types";
+import type { MailSnapshot } from "@isocline/module-mail/types";
 import { intlLocale, t } from "../i18n/index.ts";
 import type { IconName } from "./icons.tsx";
 
@@ -17,7 +17,7 @@ export interface FindItem extends FindCommand {
 }
 export interface FindSources {
   pages: ReadonlyArray<{ key: string; title: string; icon: IconName }>;
-  /** Extra commands, e.g. "new conversation", "close Alfred". */
+  /** Extra commands, e.g. "new conversation", "close Isocline". */
   commands: readonly FindCommand[];
   conversations: ReadonlyArray<Pick<Conversation, "id" | "title" | "unreadReplyId" | "automationOnly">>;
   links?: Pick<LinksSnapshot, "places" | "folders">;
@@ -71,14 +71,14 @@ function findPlaces(query: string, links: FindSources["links"], onFolder: FindSo
 }
 
 /** In the ask bar, what Enter does with the words when nothing was picked by hand: it goes to the first page or
- * command whose name contains all of them, and otherwise says them to Alfred (-1). A conversation is never the
+ * command whose name contains all of them, and otherwise says them to Isocline (-1). A conversation is never the
  * default: its title is usually a question once asked, and asking that again must not open the old one instead. */
 export function defaultPick(items: readonly FindItem[]): number {
   return items.findIndex((item) => item.kind !== "conversation");
 }
 
 /** What ⌘K finds besides places to go: the things on the pages, by their words. Only ⌘K lists them; in the ask bar a
- * line that names a todo is still something to say to Alfred. */
+ * line that names a todo is still something to say to Isocline. */
 export interface ContentSources {
   todo?: Pick<TodoSnapshot, "todos">;
   calendar?: Pick<CalendarSnapshot, "events">;

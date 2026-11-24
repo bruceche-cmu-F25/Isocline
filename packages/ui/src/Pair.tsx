@@ -3,11 +3,12 @@
  * The home node answers with the device token in an HttpOnly cookie, so this page never sees it.
  */
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { DeviceKind } from "@alfred/protocol";
+import type { DeviceKind } from "@isocline/protocol";
 import { api } from "./api.ts";
 import { Figure } from "./shell/Figure.tsx";
 import { t } from "./i18n/index.ts";
 import "./settings.css";
+import { Wordmark } from "./Wordmark.tsx";
 
 /** A name and kind the user would recognise in the Mac's device list. */
 function thisDevice(): { name: string; kind: DeviceKind } {
@@ -50,7 +51,7 @@ export function Pair({ onPaired }: { onPaired: () => void }) {
   return (
     <main className="boot pair">
       <Figure state={busy ? "flow" : error ? "error" : "hello"} size={88} />
-      <p className="wordmark">Alfred</p>
+      <Wordmark />
       <h1 className="pair-title">{t("pair.title")}</h1>
       <p className="quiet">{t("pair.sub")}</p>
       <p className="quiet small pair-how">{t("pair.how")}</p>

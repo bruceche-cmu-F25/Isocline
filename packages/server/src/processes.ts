@@ -1,5 +1,5 @@
 /** Background processes in a development session (docs/design/dev-mode.md 4.6, D5): a dev server, a watcher, anything
- * that keeps running after the command that started it. Alfred starts one with its `process_start` tool (asked like
+ * that keeps running after the command that started it. Isocline starts one with its `process_start` tool (asked like
  * any shell command), or the user does from the session's panel on this machine; either can stop it and read what it
  * printed. They run in the session's folder, as the user, in their own process group, so stopping one stops what it
  * started too.
@@ -8,7 +8,7 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { newId } from "@alfred/core";
+import { newId } from "@isocline/core";
 import { plainLines } from "./terminals.ts";
 
 export interface ProcessInfo {
@@ -75,7 +75,7 @@ export class Processes {
 
     const shell = process.env.SHELL && existsSync(process.env.SHELL) ? process.env.SHELL : "/bin/zsh";
     const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(process.env)) if (value !== undefined && !/^(ALFRED_|ELECTRON_)/.test(key)) env[key] = value;
+    for (const [key, value] of Object.entries(process.env)) if (value !== undefined && !/^(ISOCLINE_|ALFRED_|ELECTRON_)/.test(key)) env[key] = value;
     // No terminal to answer a prompt; colours are left to the tool (most turn them off without a terminal).
     Object.assign(env, { CI: env.CI ?? "", FORCE_COLOR: "0", BROWSER: "none" });
     // A login shell for the user's PATH (the home node may have a bare one), detached into its own process group.

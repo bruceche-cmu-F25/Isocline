@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CORE_MIGRATIONS, openWorld, recordDomainEvent, type World } from "@alfred/core";
-import { defineModule } from "@alfred/module-kit";
+import { CORE_MIGRATIONS, openWorld, recordDomainEvent, type World } from "@isocline/core";
+import { defineModule } from "@isocline/module-kit";
 import { modulePasses } from "../src/passes.ts";
 
 const world = (): World => openWorld(":memory:", CORE_MIGRATIONS);

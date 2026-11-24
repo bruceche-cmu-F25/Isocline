@@ -3,7 +3,7 @@
  * not edit yet (colour, estimate, work plan…) survive an import untouched.
  */
 import { createHash } from "node:crypto";
-import { changedFields, isArea, localDate, unknownArea, newId, recordDomainEvent, withDefaultActor, type World } from "@alfred/module-kit";
+import { changedFields, isArea, localDate, unknownArea, newId, recordDomainEvent, withDefaultActor, type World } from "@isocline/module-kit";
 import { CALENDAR_MODES, isDayOff, MAX_OFF_WORD, MAX_OFF_WORDS, SAMPLE_OFF_WORDS, TODO_STATUSES, type CalendarMode, type Todo, type TodoRepeat, type TodoSettings, type TodoSource, type TodoStatus } from "./types.ts";
 
 export { CALENDAR_MODES, TODO_STATUSES, type CalendarMode, type Todo, type TodoRepeat, type TodoSettings, type TodoSource, type TodoStatus };
@@ -51,7 +51,7 @@ CREATE INDEX todo_items_position ON todo_items(position);
 `,
 }, {
   // Todos that come from somewhere (sources.ts in spirit, kept here with the rules): one row per source thing, so it
-  // makes one todo, once. `seen` is what Alfred last wrote from it, to tell its own text from the user's edits.
+  // makes one todo, once. `seen` is what Isocline last wrote from it, to tell its own text from the user's edits.
   id: "todo:2",
   sql: `
 CREATE TABLE todo_sources (
@@ -191,7 +191,7 @@ export function addTodo(world: World, input: { title: string } & TodoPatch): { t
   return insertTodo(world, input, "added");
 }
 
-/** What of a todo Alfred wrote from its source, kept to tell later whether the user has changed it since. */
+/** What of a todo Isocline wrote from its source, kept to tell later whether the user has changed it since. */
 const seenOf = (todo: Todo) => ({ title: todo.title, due: todo.due ?? null, startDate: todo.startDate ?? null, at: todo.at ?? null });
 
 function insertTodo(world: World, input: { title: string } & TodoPatch, op: "added" | "suggested", from?: { source: TodoSource; account?: string; after?: string }): { todo: Todo; open: number } {
@@ -311,7 +311,7 @@ export function setTodoSettings(world: World, patch: Partial<TodoSettings>): Tod
   });
 }
 
-/** Alfred's suggestion from one thing it read (a mail): a todo that waits, marked as a suggestion, for the user to
+/** Isocline's suggestion from one thing it read (a mail): a todo that waits, marked as a suggestion, for the user to
  * keep or drop. The same thing is suggested once: not again while its todo is there, and not after the user said no. */
 export function suggestTodo(world: World, input: { title: string; due?: string; area?: string; source: TodoSource }): TodoResult<Todo> {
   return world.tx((db) => {

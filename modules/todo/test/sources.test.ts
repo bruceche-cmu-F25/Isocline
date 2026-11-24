@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CORE_MIGRATIONS, listEvents, openWorld, withCoreContext, type World } from "@alfred/core";
-import { invokeOp, runTools } from "@alfred/module-kit";
+import { CORE_MIGRATIONS, listEvents, openWorld, withCoreContext, type World } from "@isocline/core";
+import { invokeOp, runTools } from "@isocline/module-kit";
 import {
   acceptTodo, addTodo, completeTodo, deleteTodo, isDayOff, getTodoSettings, listTodos, mirrorCalendar, SAMPLE_OFF_WORDS, setTodoSettings, suggestTodo, todoModule, todosForProposedEvents, updateTodo, type SourceEvent, type TodoSnapshot,
 } from "../src/index.ts";

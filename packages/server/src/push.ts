@@ -13,10 +13,10 @@ import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import webpush from "web-push";
-import { isSession, listDevices, userLocale, type DeviceScope, type Outlet, type World } from "@alfred/core";
-import { translate, type Key } from "@alfred/ui/i18n";
-import { inboxTarget, inboxUrl } from "@alfred/ui/notice";
-import { plainText } from "@alfred/ui/markdown";
+import { isSession, listDevices, userLocale, type DeviceScope, type Outlet, type World } from "@isocline/core";
+import { getAssistant, translate, type Key } from "@isocline/ui/i18n";
+import { inboxTarget, inboxUrl } from "@isocline/ui/notice";
+import { plainText } from "@isocline/ui/markdown";
 import type { Reach } from "./attention.ts";
 import type { SecretStore } from "./secrets.ts";
 
@@ -51,14 +51,14 @@ export class PushError extends Error {
   override name = "PushError";
 }
 
-/** Who sends these, as push services ask (the VAPID subject): `ALFRED_PUSH_SUBJECT` when the person running the node
+/** Who sends these, as push services ask (the VAPID subject): `ISOCLINE_PUSH_SUBJECT` when the person running the node
  * sets it (their own site, or `mailto:` an address of theirs), else the project's home page from the repository's
- * package.json, so a copy of Alfred under another name says its own. Nothing about the user goes here. */
+ * package.json, so a copy of Isocline under another name says its own. Nothing about the user goes here. */
 export function subject(): string {
-  const set = process.env.ALFRED_PUSH_SUBJECT?.trim();
+  const set = process.env.ISOCLINE_PUSH_SUBJECT?.trim();
   if (set) return set;
   subject.homepage ??= projectHomepage();
-  if (!subject.homepage) throw new PushError("Set ALFRED_PUSH_SUBJECT (a https:// address or mailto:) to send notifications");
+  if (!subject.homepage) throw new PushError("Set ISOCLINE_PUSH_SUBJECT (a https:// address or mailto:) to send notifications");
   return subject.homepage;
 }
 subject.homepage = undefined as string | null | undefined;
@@ -107,7 +107,7 @@ export function noticeMessage(notice: { id: string; kind: string; payload: Recor
   }
   if (notice.kind === "run_interrupted") return { ...base, title: say("mac.interrupted.title"), body: say("mac.interrupted.body", { goal }), url: inbox, ack: false };
   if (notice.kind === "outbound") {
-    // A change outside Alfred (an event, an email) after the user's yes: it is told on the phone when it did not go
+    // A change outside Isocline (an event, an email) after the user's yes: it is told on the phone when it did not go
     // through, or may not have. That stays in the inbox until they have looked.
     const preview = cut(String(notice.payload.preview ?? ""), 120);
     const error = notice.payload.error ? cut(String(notice.payload.error), 100) : "";
@@ -123,7 +123,7 @@ export function noticeMessage(notice: { id: string; kind: string; payload: Recor
   // A reply is written in Markdown; a notification shows it as plain text.
   const said = typeof notice.payload.reply === "string" ? plainText(notice.payload.reply).trim() : "";
   const reply = said ? cut(said, 200) : say("mac.done.body", { goal });
-  return { ...base, title: "Alfred", body: reply, ...destination };
+  return { ...base, title: getAssistant(), body: reply, ...destination };
 }
 
 export interface PushOptions {
@@ -192,7 +192,7 @@ export class PushService {
       const subscription = this.#subscriptions[id];
       if (!device || !subscription || (requiredScope && !device.scopes.includes(requiredScope))) continue;
       const payload = this.#options.hidePreviews?.()
-        ? { title: "Alfred", body: translate(userLocale(this.#options.world), "push.privateBody"), url: "/#p=core.inbox", tag: "alfred-inbox" }
+        ? { title: getAssistant(), body: translate(userLocale(this.#options.world), "push.privateBody"), url: "/#p=core.inbox", tag: "isocline-inbox" }
         : message;
       try {
         await this.#send(subscription, JSON.stringify(payload), keys);

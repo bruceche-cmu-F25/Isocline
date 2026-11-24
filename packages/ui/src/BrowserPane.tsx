@@ -1,13 +1,13 @@
 /** The browser pane of a development session (docs/design/dev-terminal-browser.md), only in the Mac app: the app lays
  * a real browser over the rectangle this component reserves, and this draws what is around it, the address and the
- * back, forward and reload buttons. Alfred can read the page that is open here (the home node asks the app); it
+ * back, forward and reload buttons. Isocline can read the page that is open here (the home node asks the app); it
  * cannot click or type in it.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { desktop, type BrowserPaneState } from "./desktop.ts";
 import { t } from "./i18n/index.ts";
 
-const LAST = "alfred.browser.last";
+const LAST = "isocline.browser.last";
 
 export function BrowserPane({ onClose }: { onClose(): void }) {
   const bridge = desktop?.browser;

@@ -1,4 +1,4 @@
-import type { CoreEvent } from "@alfred/protocol";
+import type { CoreEvent } from "@isocline/protocol";
 import { t, type Key } from "./i18n/index.ts";
 
 const FIELD: Record<string, Key> = {

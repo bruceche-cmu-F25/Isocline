@@ -1,14 +1,14 @@
-/** Favorites: a star in Gmail, or a message saved in Alfred only.
+/** Favorites: a star in Gmail, or a message saved in Isocline only.
  *
  * The user's click is an operation like any other (`mail.favorite`): it changes the mirror at once, in one
- * transaction. If Alfred may change stars in the account, the Gmail half is an outbound change (core/outbound.ts)
+ * transaction. If Isocline may change stars in the account, the Gmail half is an outbound change (core/outbound.ts)
  * that `deliverStar` makes later, so it is retried, ordered and reported like every other outside change. A star is a
  * desired state, so delivering it again is safe (`idempotent`); the user hears about it only when it did not go
  * through (`quiet`), and the next read of the inbox then shows Gmail as it is.
  *
- * Without that permission a favorite is saved in Alfred only. A Gmail star cannot be removed from here then.
+ * Without that permission a favorite is saved in Isocline only. A Gmail star cannot be removed from here then.
  */
-import { enqueueOutbound, listOutbound, localeOf, recordDomainEvent, userLocale, type Locale, type Outbound, type World, defineOp, Type, type Delivered, type GoogleSession, type ModuleServices } from "@alfred/module-kit";
+import { enqueueOutbound, listOutbound, localeOf, recordDomainEvent, userLocale, type Locale, type Outbound, type World, defineOp, Type, type Delivered, type GoogleSession, type ModuleServices } from "@isocline/module-kit";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -60,7 +60,7 @@ export const favoriteOp = defineOp({
     return world.tx((db) => {
       const row = db.prepare(`SELECT m.starred, m.local_saved, m.subject, s.can_modify FROM mail_messages AS m
         LEFT JOIN mail_sources AS s ON s.account = m.account WHERE m.account = ? AND m.id = ?`).get(account, id);
-      if (!row) throw new MailFavoriteError("missing", "This message is no longer in Alfred Mail");
+      if (!row) throw new MailFavoriteError("missing", "This message is no longer in Isocline Mail");
       const canModify = row.can_modify === 1;
       if (!canModify && !starred && row.starred === 1) {
         throw new MailFavoriteError("permission", "Enable Gmail star syncing in Settings to remove a Gmail star");

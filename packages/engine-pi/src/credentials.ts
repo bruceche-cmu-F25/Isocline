@@ -1,4 +1,4 @@
-/** Model credentials (API keys and subscription tokens) for Pi, in Alfred's own secret store
+/** Model credentials (API keys and subscription tokens) for Pi, in Isocline's own secret store
  * (docs/design/settings-and-connections.md §3.2): one entry, "models", holding every provider's
  * credential, shared by the home node (logins) and the engine workers (requests, token refreshes).
  *
@@ -10,7 +10,7 @@
 import { mkdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { SecretStore } from "@alfred/core";
+import type { SecretStore } from "@isocline/core";
 
 /** Pi's credential storage interface and records, as ModelRuntime takes them. */
 export type CredentialStore = NonNullable<NonNullable<Parameters<typeof ModelRuntime.create>[0]>["credentials"]>;
@@ -62,7 +62,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
         // A process that died holding the lock leaves it behind; it is stale after a while.
         try { if (Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS) { rmSync(lockPath, { recursive: true, force: true }); continue; } } catch { continue; }
-        if (Date.now() > deadline) throw new Error("Model credentials are busy in another Alfred process");
+        if (Date.now() > deadline) throw new Error("Model credentials are busy in another Isocline process");
         await sleep(40);
       }
     }

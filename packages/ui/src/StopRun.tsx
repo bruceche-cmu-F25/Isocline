@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Run } from "@alfred/protocol";
+import type { Run } from "@isocline/protocol";
 import { api } from "./api.ts";
 import { t } from "./i18n/index.ts";
 

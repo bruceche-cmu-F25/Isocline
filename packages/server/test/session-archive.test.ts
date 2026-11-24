@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addProject, claimNextRun, finishRun, getConversation, getRun, openRequest, resumeRun, startSession, submitRun, trustProject } from "@alfred/core";
+import { addProject, claimNextRun, finishRun, getConversation, getRun, openRequest, resumeRun, startSession, submitRun, trustProject } from "@isocline/core";
 import { createHttpServer } from "../src/http.ts";
 import { openHome, type Home } from "../src/home.ts";
 

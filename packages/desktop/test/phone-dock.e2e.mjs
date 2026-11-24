@@ -154,7 +154,7 @@ test("the phone's fourth Dock shortcut can be changed or removed in General sett
   assert.deepEqual(await pinnedPages(), ["core.today", "core.inbox", "todo.list"]);
 });
 
-test("the wireframe animates around the centre of the phone's Alfred button", async (t) => {
+test("the wireframe animates around the centre of the phone's Isocline button", async (t) => {
   const browser = await chromium.launch({ channel: "chrome" });
   t.after(() => browser.close());
   const page = await browser.newPage({

@@ -1,9 +1,9 @@
 /** The Tailscale already installed on this machine, driven through its CLI (docs/research/remote-access.md, option A).
- * Alfred only ever touches its own HTTPS port in the Serve config; the user's other Serve entries stay as they are.
+ * Isocline only ever touches its own HTTPS port in the Serve config; the user's other Serve entries stay as they are.
  */
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import type { TailscaleStatus } from "@alfred/protocol";
+import type { TailscaleStatus } from "@isocline/protocol";
 
 /** Runs the CLI; resolves with stdout, rejects with an Error whose message is stderr (tests swap it). */
 export type Runner = (args: string[]) => Promise<string>;

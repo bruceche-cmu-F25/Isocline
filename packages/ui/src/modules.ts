@@ -5,10 +5,10 @@
  * Each module's own `types` entry defines both. The home node's tests check the operation lists against the modules
  * themselves (packages/server/test/module-types.test.ts); each module's `snapshot()` is declared with its type.
  */
-import type { CalendarOp, CalendarSnapshot } from "@alfred/module-calendar/types";
-import type { LinkOp, LinksSnapshot } from "@alfred/module-links/types";
-import type { MailOp, MailSnapshot } from "@alfred/module-mail/types";
-import type { TodoOp, TodoSnapshot } from "@alfred/module-todo/types";
+import type { CalendarOp, CalendarSnapshot } from "@isocline/module-calendar/types";
+import type { LinkOp, LinksSnapshot } from "@isocline/module-links/types";
+import type { MailOp, MailSnapshot } from "@isocline/module-mail/types";
+import type { TodoOp, TodoSnapshot } from "@isocline/module-todo/types";
 
 export interface ModuleSnapshots {
   todo: TodoSnapshot;

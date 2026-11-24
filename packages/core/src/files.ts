@@ -1,4 +1,4 @@
-/** Files the user hands to Alfred with a message: an image, a PDF, a text file (docs/design/attachments.md).
+/** Files the user hands to Isocline with a message: an image, a PDF, a text file (docs/design/attachments.md).
  *
  * The world keeps what a file is (its name, kind, size, and what was made of it for reading); its bytes are the home
  * node's to keep on disk, under the file's id. A file is uploaded first and then attached to exactly one run, the

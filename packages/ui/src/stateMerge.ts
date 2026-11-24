@@ -1,4 +1,4 @@
-import type { StateResponse } from "@alfred/protocol";
+import type { StateResponse } from "@isocline/protocol";
 import { shared } from "./share.ts";
 
 /** The state just read, made of the last one's objects wherever they say the same (share.ts), and with the module

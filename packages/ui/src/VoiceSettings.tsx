@@ -1,7 +1,7 @@
-/** Settings → Voice (docs/design/voice.md §3): whether Alfred speaks, in which voice, how fast, and the words the
+/** Settings → Voice (docs/design/voice.md §3): whether Isocline speaks, in which voice, how fast, and the words the
  * speech model should know. All of it lives on the home node, so every device speaks and hears alike. */
 import { useEffect, useState, type FormEvent } from "react";
-import type { VoiceSettings as Voice, VoiceStatus } from "@alfred/protocol";
+import type { VoiceSettings as Voice, VoiceStatus } from "@isocline/protocol";
 import { api } from "./api.ts";
 import { t, useLocale } from "./i18n/index.ts";
 import { Select } from "./shell/Select.tsx";

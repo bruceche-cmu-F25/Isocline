@@ -1,4 +1,4 @@
-/* 今天: the note Alfred writes about everything (docs/design/today-and-inbox.md, 3.1b). One column, three things,
+/* 今天: the note Isocline writes about everything (docs/design/today-and-inbox.md, 3.1b). One column, three things,
    each a closer look than the one before: one sentence, the day on one line, the rest as counts.
    Everything here is laid out by the page's own width (@container page), never the window's. */
 .today { flex: 1; min-height: 0; overflow-y: auto; }
@@ -28,7 +28,7 @@
 .today-when { min-width: 0; color: var(--muted); font-size: .8125rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .today-row[data-tone="wait"] .today-when { color: var(--k-text); font-weight: 600; }
 .today-row[data-tone="late"] .today-when, .today-row[data-tone="now"] .today-when { color: var(--now); font-weight: 600; }
-/* An hour Alfred only suggests: dashed, as a suggested todo is on its own page. */
+/* An hour Isocline only suggests: dashed, as a suggested todo is on its own page. */
 .today-row[data-tone="guess"] .today-when { text-decoration: underline dashed var(--line); text-underline-offset: 4px; }
 .today-kind { align-self: start; width: 16px; height: 16px; margin-top: 4px; display: grid; place-items: center; color: var(--k-solid, var(--muted)); }
 .today-kind svg { width: 16px; height: 16px; }

@@ -2,7 +2,7 @@
  * connection (google.ts), which owns the tokens; modules never see a token, only `get` and `send`. Errors become ServiceError:
  * `reconnect` when Google no longer honours the grant (Settings shows Reconnect), else `unavailable`.
  */
-import { ServiceError, type GoogleService } from "@alfred/module-kit";
+import { ServiceError, type GoogleService } from "@isocline/module-kit";
 import type { GoogleConnections } from "./google.ts";
 
 function requestSignal(signal?: AbortSignal): AbortSignal {

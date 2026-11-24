@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ATTENTION, claimNotice, CORE_MIGRATIONS, createNotice, listEvents, listNotices, openWorld, presentNotice, recordDomainEvent, reportPresence, type AwayDigest, type World } from "@alfred/core";
+import { ATTENTION, claimNotice, CORE_MIGRATIONS, createNotice, listEvents, listNotices, openWorld, presentNotice, recordDomainEvent, reportPresence, type AwayDigest, type World } from "@isocline/core";
 import { OUTLET_STALE_MS, Outlets, watchAttention, type Reach } from "../src/index.ts";
 
 /** The table, with a short wait before a notice nobody took is the phone's. */
@@ -211,7 +211,7 @@ test("back after a while: the welcome is made where the user turned up and tells
     const asked = make(w), news = make(w, "outbound", { state: "done" });
     await wait(150);
     assert.deepEqual(sent, [asked.id], "the question went to the phone; 'it went through' waits");
-    outlets.report("home", { client: "mac.window", kind: "window", attending: true, idleMs: 0 }); // back, and looking at Alfred
+    outlets.report("home", { client: "mac.window", kind: "window", attending: true, idleMs: 0 }); // back, and looking at Isocline
     const [welcome] = welcomesOf(w);
     assert.deepEqual([welcome.state, welcome.claimedBy, (welcome.payload as unknown as AwayDigest).waiting], ["claimed", "mac.window", 1]);
     const told = listNotices(w, { states: ["presented"] }).map((notice) => [notice.id, notice.claimedBy]);

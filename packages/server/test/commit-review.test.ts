@@ -8,7 +8,7 @@ import { reviewCommit } from "../src/commit-review.ts";
 import { createWorktree, snapshot, workspaceChanges } from "../src/workspace.ts";
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "alfred-commit-test-"));
+  const root = mkdtempSync(join(tmpdir(), "isocline-commit-test-"));
   const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
   git("init", "-q", "-b", "main");
   git("config", "user.email", "test@example.invalid");
@@ -32,7 +32,7 @@ test("review shows whole selected files versus HEAD, pins contents, and preserve
   const base = await snapshot(folder);
   put(path, "existing edit\nagent edit\n"); put("unrelated", "separate staged\n"); git("add", "unrelated");
   put("nested/editor.txt", "external edit\n"); put("nested/new.bin", Buffer.from([0, 1, 2]));
-  await assert.rejects(createWorktree(folder, join(root, "unused"), "alfred/nested"), { code: "subproject" });
+  await assert.rejects(createWorktree(folder, join(root, "unused"), "isocline/nested"), { code: "subproject" });
   assert.equal(existsSync(join(root, "unused")), false);
   const preview = await reviewCommit(folder, selected, allowed);
   assert.match(preview.patch, /\+existing edit/);
@@ -126,7 +126,7 @@ test("a failed commit leaves the existing set of baseline refs unchanged", async
   put("a", "user edit\n");
   const base = await snapshot(root);
   put("a", "user edit\nmore\n");
-  const paths = ["a"], refs = () => git("for-each-ref", "refs/alfred/snapshots");
+  const paths = ["a"], refs = () => git("for-each-ref", "refs/isocline/snapshots");
   const before = refs();
   const { token } = await reviewCommit(root, paths, paths);
   writeFileSync(join(root, ".hooks/pre-commit"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });

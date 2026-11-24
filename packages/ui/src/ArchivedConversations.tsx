@@ -1,16 +1,16 @@
-import type { ArchivedConversation, Project } from "@alfred/protocol";
+import type { ArchivedConversation, Project } from "@isocline/protocol";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "./api.ts";
 import { intlLocale, t } from "./i18n/index.ts";
 import { Icon } from "./shell/icons.tsx";
-import type { Alfred } from "./useAlfred.ts";
+import type { Isocline } from "./useIsocline.ts";
 import "./archived-conversations.css";
 
 interface ArchivedConversationsProps {
   projects: Project[];
   onClose(): void;
   onRestore(conversation: ArchivedConversation): Promise<void>;
-  onEvent: Alfred["onEvent"];
+  onEvent: Isocline["onEvent"];
 }
 
 export function ArchivedConversations({ projects, onClose, onRestore, onEvent }: ArchivedConversationsProps) {

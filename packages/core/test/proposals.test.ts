@@ -123,9 +123,9 @@ const VOICE = { speakFigure: true, muted: false, voice: null, rate: 1, words: []
 
 test("settings: the language is set once, audited, and checked", () => {
   const w = world();
-  assert.deepEqual(getSettings(w), { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE });
+  assert.deepEqual(getSettings(w), { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE, character: "ana", assistantName: null });
   assert.equal(userLocale(w), "en");
-  assert.deepEqual(updateSettings(w, { locale: "zh" }), { locale: "zh", preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE });
+  assert.deepEqual(updateSettings(w, { locale: "zh" }), { locale: "zh", preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE, character: "ana", assistantName: null });
   updateSettings(w, { locale: "zh" });
   assert.equal(listEvents(w).events.filter((event) => event.kind === "settings.changed").length, 1, "an unchanged value records nothing");
   assert.equal(userLocale(w), "zh");
@@ -133,7 +133,7 @@ test("settings: the language is set once, audited, and checked", () => {
   assert.throws(() => updateSettings(w, { theme: "dark" }), /Unknown setting/);
 });
 
-test("settings: Alfred remembers the user's chosen name across reads", () => {
+test("settings: Isocline remembers the user's chosen name across reads", () => {
   const w = world();
   assert.equal(updateSettings(w, { preferredName: "  小 林  " }).preferredName, "小 林");
   updateSettings(w, { preferredName: "小 林" });
@@ -156,10 +156,10 @@ test("settings: the first-run walkthrough is owed until it is finished or skippe
 
 test("settings: the default model and thinking level are checked", () => {
   const w = world();
-  assert.deepEqual(updateSettings(w, { model: "anthropic/claude-opus-5-5", thinking: "high" }), { locale: null, preferredName: null, model: "anthropic/claude-opus-5-5", thinking: "high", firstRunAt: null, pages: null, voice: VOICE });
+  assert.deepEqual(updateSettings(w, { model: "anthropic/claude-opus-5-5", thinking: "high" }), { locale: null, preferredName: null, model: "anthropic/claude-opus-5-5", thinking: "high", firstRunAt: null, pages: null, voice: VOICE, character: "ana", assistantName: null });
   assert.throws(() => updateSettings(w, { model: "no-slash" }), SettingsError);
   assert.throws(() => updateSettings(w, { model: 3 }), SettingsError);
   assert.throws(() => updateSettings(w, { thinking: "huge" }), SettingsError);
-  assert.deepEqual(updateSettings(w, { model: null, thinking: null }), { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE });
+  assert.deepEqual(updateSettings(w, { model: null, thinking: null }), { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE, character: "ana", assistantName: null });
 });
 

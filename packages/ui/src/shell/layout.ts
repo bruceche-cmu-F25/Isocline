@@ -1,27 +1,27 @@
-/** The workspace's arrangement: sidebar shown or folded away, its width, and Alfred's panel (beside the page,
+/** The workspace's arrangement: sidebar shown or folded away, its width, and Isocline's panel (beside the page,
  * across the whole page, or closed to a floating button). The sidebar and the widths are remembered per device in
- * localStorage, which may be unavailable: then they simply start from the defaults each time. Whether Alfred's panel
+ * localStorage, which may be unavailable: then they simply start from the defaults each time. Whether Isocline's panel
  * is open is not remembered: the workspace always opens with it closed.
  */
 import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 export type NavMode = "full" | "hidden";
-export type AlfredMode = "open" | "wide" | "closed";
-export interface Layout { nav: NavMode; navW: number; alfW: number; alfred: AlfredMode }
+export type IsoclineMode = "open" | "wide" | "closed";
+export interface Layout { nav: NavMode; navW: number; alfW: number; alfred: IsoclineMode }
 
 /** min: the top bar's lead sits over the sidebar at the same width, and in the Mac app it holds the window buttons,
  * the sidebar button and the Daily | Code switch (styles.css .topbar-lead): 200px. */
 export const NAV = { min: 200, max: 300, def: 208, foldAt: 120 };
-/** pageMin: what the page keeps while Alfred has width to give. pageFloor: what it keeps at any window size (a phone's width). */
+/** pageMin: what the page keeps while Isocline has width to give. pageFloor: what it keeps at any window size (a phone's width). */
 export const ALF = { min: 300, max: 640, def: 400, pageMin: 420, pageFloor: 320 };
-/** Below this width the workspace is a phone: one column, a dock, Alfred as a sheet. The Mac window never gets this narrow. */
+/** Below this width the workspace is a phone: one column, a dock, Isocline as a sheet. The Mac window never gets this narrow. */
 export const PHONE = "(max-width: 700px)";
-const KEY = "alfred.layout";
+const KEY = "isocline.layout";
 
-/** What is kept between visits: everything but Alfred's panel. */
+/** What is kept between visits: everything but Isocline's panel. */
 type Saved = Omit<Layout, "alfred">;
 
-/** `saved`: what localStorage holds, as text. Alfred always starts closed, whatever it was left as: the page has the
+/** `saved`: what localStorage holds, as text. Isocline always starts closed, whatever it was left as: the page has the
  * room, and the figure waits in the top right corner until it is asked something or has something to say. */
 export function startLayout(saved: string | null, windowWidth: number): Layout {
   const fallback: Layout = { nav: windowWidth < 900 ? "hidden" : "full", navW: NAV.def, alfW: ALF.def, alfred: "closed" };
@@ -68,8 +68,8 @@ export function useLayout(): [Layout, (patch: Partial<Layout>) => void] {
 }
 
 /**
- * What to draw: the page never drops below ALF.pageMin unless Alfred is already at its minimum. In a window too small
- * for a full sidebar, Alfred and a page of ALF.pageFloor, the sidebar gives way: it narrows, then folds away
+ * What to draw: the page never drops below ALF.pageMin unless Isocline is already at its minimum. In a window too small
+ * for a full sidebar, Isocline and a page of ALF.pageFloor, the sidebar gives way: it narrows, then folds away
  * (`navMode`; the remembered choice in `layout.nav` is left alone, so it comes back when there is room).
  */
 export function widths(layout: Layout, viewport: number, alfredBeside = false): { nav: number; navMode: NavMode; alf: number } {
@@ -95,7 +95,7 @@ export function useViewportWidth(): number {
 }
 
 /**
- * A divider drag. `edge` says which way is wider: the sidebar grows to the right, Alfred to the left.
+ * A divider drag. `edge` says which way is wider: the sidebar grows to the right, Isocline to the left.
  * Returns pointer handlers for the divider element.
  */
 export function dragHandle(start: number, edge: "right" | "left", onMove: (width: number) => void, onEnd?: () => void) {

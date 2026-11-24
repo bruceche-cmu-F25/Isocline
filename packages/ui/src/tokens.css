@@ -1,15 +1,15 @@
 /*
-  Alfred colour tokens: the app (packages/ui) and the prototypes (prototype/tokens.css links here) use this one file.
+  Isocline colour tokens: the app (packages/ui) and the prototypes (prototype/tokens.css links here) use this one file.
   Background and choices: docs/research/visual-style.md.
 
   After Linear's theme generator: a theme is a few inputs, and every token is derived from them in OKLCH.
     --h  --c     neutral hue and tint (how warm or cool the greys are)
-    --ah --ac    Alfred's colour (presence, things Alfred did, links)
+    --ah --ac    Isocline's colour (presence, things Isocline did, links)
   The fixed meaning colours are warm (needs you), now (current time / destructive) and ok.
   Dark is its own scale, not an inversion: surfaces get lighter as they rise, and accents lose chroma.
   The tint tapers: the same chroma looks far stronger on a mid-grey or dark text than on near-white, so --c is used
   at most at about half strength on the main surface and fades toward neutral for fills, lines and text.
-  (At full strength the paper theme's mid-tones read beige-khaki next to Alfred's indigo.)
+  (At full strength the paper theme's mid-tones read beige-khaki next to Isocline's indigo.)
 
   Use: put data-theme="paper|graphite|mist|night" and data-scheme="light|dark" on any element.
 */
@@ -30,7 +30,7 @@
   --line-soft: oklch(.925 calc(var(--c) * .5) var(--h));
   --line: oklch(.87 calc(var(--c) * .45) var(--h));
   /* Where you write: the top surface, in the same greys as everything around it. In dark it sits one step above
-     the panel it is in, never below it. No tint of Alfred's colour: a cool grey beside the warm ones reads as off. */
+     the panel it is in, never below it. No tint of Isocline's colour: a cool grey beside the warm ones reads as off. */
   --field: var(--raise);
   /* Text: ink 14:1, copy 7:1, muted ≥ 4.5:1 on bg and on the sidebar. Not pure black: firm, but easy on the eyes. Nearly neutral. */
   --muted: oklch(.535 calc(var(--c) * .4) var(--h));
@@ -38,7 +38,7 @@
   --ink: oklch(.27 calc(var(--c) * .3) var(--h));
   --alf: oklch(.54 var(--ac) var(--ah));
   --alf-soft: oklch(.54 var(--ac) var(--ah) / .09);
-  /* Alfred's colour as a filled control (a button), and what is written on it. */
+  /* Isocline's colour as a filled control (a button), and what is written on it. */
   --alf-solid: var(--alf);
   --on-alf: var(--raise);
   --warm: oklch(.57 .12 70);
@@ -132,6 +132,6 @@
   --k-text: oklch(.87 .085 var(--k, 250));
   --k-line: oklch(.47 .09 var(--k, 250));
 }
-/* Alfred and neutral reuse the roles with their own colours. */
+/* Isocline and neutral reuse the roles with their own colours. */
 [data-k="alfred"], [data-scheme="dark"] [data-k="alfred"] { --k-solid: var(--alf); --k-fill: var(--alf-soft); --k-text: var(--alf); --k-line: color-mix(in oklch, var(--alf) 50%, transparent); }
 [data-k="gray"], [data-scheme="dark"] [data-k="gray"] { --k-solid: var(--muted); --k-fill: var(--wash); --k-text: var(--copy); --k-line: var(--line); }

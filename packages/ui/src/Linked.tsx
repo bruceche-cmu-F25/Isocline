@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { linkParts } from "./links.ts";
 import "./links.css";
 
-/** A link that leads outside Alfred, drawn so it reads as one. It opens in a new tab; in the Mac app, in the
+/** A link that leads outside Isocline, drawn so it reads as one. It opens in a new tab; in the Mac app, in the
  * user's browser. A click on it is not also a click on the row or card it stands in. */
 export function OutLink({ href, children, className }: { href: string; children: ReactNode; className?: string }) {
   return (

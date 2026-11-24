@@ -1,11 +1,11 @@
-/** Link rules, shared by device commands, Alfred's tools and the page lookup (docs/design/links.md).
+/** Link rules, shared by device commands, Isocline's tools and the page lookup (docs/design/links.md).
  *
  * Two kinds of thing live here. A place is an address the user keeps going to: a name and an address, in an order
  * the user chose. A clip is something they saved: it is told what it is from its address (url.ts), looked up on the
  * web for its title (fetch.ts, later), filed under at most one topic, and marked unread, seen or to do.
  * One address is one place and one clip at most.
  */
-import { changedFields, isArea, newId, unknownArea, recordDomainEvent, type Migration, type World } from "@alfred/module-kit";
+import { changedFields, isArea, newId, unknownArea, recordDomainEvent, type Migration, type World } from "@isocline/module-kit";
 import { CLIP_STATES, type Clip, type ClipState, type Place, type PlaceFolder, type Topic } from "./types.ts";
 import { classify, isShortener, nameFromUrl, normalizeUrl, parseShareText } from "./url.ts";
 import { COVER_MIGRATION } from "./covers.ts";
@@ -366,7 +366,7 @@ export function orderPlaces(world: World, ids: readonly string[]): Place[] {
 
 export interface SaveInput {
   url: string;
-  /** A title the user or Alfred already knows; the page's own is looked up otherwise. */
+  /** A title the user or Isocline already knows; the page's own is looked up otherwise. */
   title?: string;
   /** From a platform's clipboard share. A subsequently fetched page title takes priority. */
   sharedTitle?: string;
@@ -494,7 +494,7 @@ export function pendingClips(world: World, limit = 10): Clip[] {
   return world.db.prepare("SELECT * FROM link_items WHERE kind = 'clip' AND fetch = 'pending' ORDER BY saved_at, rowid LIMIT ?").all(limit).map(toClip);
 }
 
-/** What the page said about itself. A title the user or Alfred gave stays; an address that only stood for another
+/** What the page said about itself. A title the user or Isocline gave stays; an address that only stood for another
  * (a share link) becomes the page it led to, unless that page is already saved. */
 export function recordPage(world: World, id: string, page: { url?: string; title?: string; site?: string; author?: string; description?: string; video?: boolean }): void {
   world.tx((db) => {

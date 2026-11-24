@@ -7,7 +7,7 @@ import { ConversationStatus } from "./shell/ConversationStatus.tsx";
  * page to ask from. Behind both moves a field of characters (shell/AsciiField.tsx): this is where code is written.
  */
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactElement } from "react";
-import type { Conversation as ConversationRow, CoreEvent, Project, SessionChanges, SessionMode, StateResponse } from "@alfred/protocol";
+import type { Conversation as ConversationRow, CoreEvent, Project, SessionChanges, SessionMode, StateResponse } from "@isocline/protocol";
 import { ApiError, api } from "./api.ts";
 import { sessionsOf } from "./sessions.ts";
 import { Conversation } from "./Conversation.tsx";
@@ -31,7 +31,7 @@ import { when } from "./shell/Nav.tsx";
 import { ProcessLogs, Processes, Ship, useProcesses } from "./DevWork.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { RequestDevAccess } from "./RequestDevAccess.tsx";
-import type { SessionProcess } from "@alfred/protocol";
+import type { SessionProcess } from "@isocline/protocol";
 
 const CODING_FIGURE_SIZE = 48;
 
@@ -86,7 +86,7 @@ function CodingAccessSetup({ pending, refresh }: { pending: boolean; refresh(): 
 const noView = () => {};
 
 const MODES: SessionMode[] = ["plan", "ask", "edits"];
-const PANEL_KEY = "alfred.devPanel";
+const PANEL_KEY = "isocline.devPanel";
 
 function Session({ id, conversation, state, onSession, highlighted, onEvent, pageTitle, automationTitle }: DevProps & { id: string; conversation?: ConversationRow }) {
   const project = state.projects?.find((candidate) => candidate.id === conversation?.projectId);

@@ -1,11 +1,12 @@
 {
-  "name": "@alfred/core",
+  "name": "@isocline/core",
   "version": "0.0.0",
   "private": true,
   "description": "The world (events, state), recoverable runs and notices. Engine- and UI-agnostic.",
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./legacy": "./src/legacy.ts"
   }
 }

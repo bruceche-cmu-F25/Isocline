@@ -217,7 +217,7 @@ export interface SessionProcess {
  *  POST /api/conversations/:id/processes/:pid/stop    stops it (an ended one is forgotten) */
 export interface SessionProcesses { processes: SessionProcess[] }
 
-/** A folder on the home node Alfred may work in. Sessions start only once the user trusts it. */
+/** A folder on the home node Isocline may work in. Sessions start only once the user trusts it. */
 export interface Project {
   /** Permission mode for new sessions. Older home nodes omit this field. */
   defaultMode?: SessionMode;
@@ -345,13 +345,13 @@ export interface OutletInfo {
 }
 export interface OutletsResponse { outlets: OutletInfo[] }
 
-/** The languages Alfred speaks. */
+/** The languages Isocline speaks. */
 export type Locale = "zh" | "en";
 /** The user's preferences that are not secrets, shared by every device. */
 export interface UserSettings {
   /** Null until a device sets it from its system language. */
   locale: Locale | null;
-  /** How the user wants Alfred to address them. Null until they have chosen a name. */
+  /** How the user wants Isocline to address them. Null until they have chosen a name. */
   preferredName: string | null;
   /** The model a conversation uses unless it chose its own (`provider/model`); null: the engine's default. */
   model: string | null;
@@ -363,6 +363,10 @@ export interface UserSettings {
   pages?: { order: string[]; hidden: string[] } | null;
   /** Speaking and listening; a patch may name only the fields it changes. */
   voice: VoiceSettings;
+  /** Who the assistant is: Ana (a woman's voice) or Kata (a man's). */
+  character: "ana" | "kata";
+  /** What the assistant is called; null: the character's own name. */
+  assistantName: string | null;
 }
 export interface VoiceSettings {
   /** The Mac's figure reads out what it says. Replies to quick talk are always read out, unless muted. */
@@ -378,7 +382,7 @@ export interface VoiceSettings {
 }
 export interface SettingsRequest { requestId: string; patch: Omit<Partial<UserSettings>, "voice"> & { voice?: Partial<VoiceSettings> } }
 
-/** A voice Alfred can speak in (`GET /api/voice`). */
+/** A voice Isocline can speak in (`GET /api/voice`). */
 export interface VoiceInfo { id: string; name: string; engine: "system" | "model"; lang: "zh" | "en" }
 export interface VoiceStatus {
   /** Speech to text. */
@@ -400,7 +404,7 @@ export interface ProposalStep {
   /** The whole of it, when there is more than a line to read (an email's text). */
   detail?: string;
 }
-/** Changes Alfred prepared that wait for the user's yes. Accepting runs exactly `steps`, once. */
+/** Changes Isocline prepared that wait for the user's yes. Accepting runs exactly `steps`, once. */
 export interface Proposal {
   id: string;
   state: ProposalState;
@@ -428,7 +432,7 @@ export interface ProposalResponse { proposal: Proposal; replayed: boolean; run?:
 /** A part of life things belong to (work, health…), shared by the modules that sort by it; `k` is its colour slot. */
 /** One of the user's areas (core areas.ts). `name` is in the user's language for a sample they have not renamed. */
 export interface Area { id: string; name: string; k: string; sample: boolean }
-/** Something the user said about how they like things; Alfred reads all of them each run (core preferences.ts). */
+/** Something the user said about how they like things; Isocline reads all of them each run (core preferences.ts). */
 export interface Preference { id: string; text: string; by: "user" | "alfred"; createdAt: string; updatedAt: string }
 export interface StateResponse {
   protocol: typeof PROTOCOL_VERSION;
@@ -462,7 +466,7 @@ export interface StateResponse {
   settings: UserSettings;
   /** The user's automations (the morning brief among them), with when each fires next. */
   automations: Automation[];
-  /** Folders Alfred may work in, most recently added first. */
+  /** Folders Isocline may work in, most recently added first. */
   projects: Project[];
 }
 
@@ -617,9 +621,9 @@ export type RemoteResponse =
     /** The user turned remote access on. */
     enabled: boolean;
     webLockEnabled: boolean;
-    /** Serve is set up and points at Alfred: devices can connect. */
+    /** Serve is set up and points at Isocline: devices can connect. */
     serving: boolean;
-    /** Where devices open Alfred, when serving. */
+    /** Where devices open Isocline, when serving. */
     url: string | null;
     port: number;
     tailscale: TailscaleStatus;
@@ -655,7 +659,7 @@ export interface Automation {
   notify: "always" | "changes";
   /** Colour slot (`data-k`). */
   k: string;
-  /** What Alfred is told each time; null for a template. */
+  /** What Isocline is told each time; null for a template. */
   goal: string | null;
   schedule: Schedule;
   enabled: boolean;
@@ -664,7 +668,7 @@ export interface Automation {
   lastRunId: string | null;
   createdAt: string;
   updatedAt: string;
-  /** What Alfred is told each time, in the user's language: its own words, or its sample's. */
+  /** What Isocline is told each time, in the user's language: its own words, or its sample's. */
   instruction: string;
   /** When it fires next; null when it is off. */
   nextAt: string | null;
@@ -674,7 +678,7 @@ export interface AutomationHistory { runs: Run[]; nextCursor: string | null }
 export interface NewAutomationRequest { requestId: string; name: string; goal: string; schedule: Schedule; enabled?: boolean }
 export interface UpdateAutomationRequest { requestId: string; patch: { name?: string; goal?: string; schedule?: Schedule; enabled?: boolean } }
 
-/** Models: who Alfred can think with, and signing in to them (docs/design/settings-and-connections.md §3.2).
+/** Models: who Isocline can think with, and signing in to them (docs/design/settings-and-connections.md §3.2).
  * Sign-in runs on the home node through Pi. Paired devices can read subscription usage.
  * No secret ever appears in a response.
  *
@@ -695,15 +699,15 @@ export interface ModelProvider {
   oauth: { label: string; subscription: boolean } | null;
   /** It takes an API key. */
   apiKey: boolean;
-  /** How Alfred can use it now: a credential Alfred keeps, or one from the environment. */
+  /** How Isocline can use it now: a credential Isocline keeps, or one from the environment. */
   status: { configured: boolean; method?: ModelAuthMethod; source?: "alfred" | "environment" };
   models: number;
 }
 export interface ModelAccountsResponse {
   providers: ModelProvider[];
-  /** API keys in the user's Pi setup that Alfred does not have yet and can copy. */
+  /** API keys in the user's Pi setup that Isocline does not have yet and can copy. */
   piKeys: Array<{ id: string; name: string }>;
-  /** Subscriptions signed in to in Pi but not in Alfred: they are signed in again, not copied (one token cannot serve two programs). */
+  /** Subscriptions signed in to in Pi but not in Isocline: they are signed in again, not copied (one token cannot serve two programs). */
   piSubscriptions: Array<{ id: string; name: string }>;
 }
 /** One limit window of a subscription plan, as the provider reports it. */
@@ -755,7 +759,7 @@ export interface ModelSignIn {
   error?: string;
 }
 
-/** Connectors: the MCP servers Alfred's runs can use (docs/design/settings-and-connections.md §3.3). Only on the home
+/** Connectors: the MCP servers Isocline's runs can use (docs/design/settings-and-connections.md §3.3). Only on the home
  * node's machine. No secret ever appears in a response.
  *
  *   GET  /api/connections/mcp                        McpConnectorsResponse (a server not looked at lately is `checking`: ask again)
@@ -815,10 +819,10 @@ export type McpSignIn =
   | { id: string; server: string; status: "failed"; error: string }
   | { id: string; server: string; status: "cancelled" };
 
-/** Skills: folders of instructions Alfred reads when a task calls for one (the Agent Skills format: a `SKILL.md` with
+/** Skills: folders of instructions Isocline reads when a task calls for one (the Agent Skills format: a `SKILL.md` with
  * a name and a description). They live in `<data>/skills/`, and only the home node's machine reaches these routes.
  *
- *   GET  /api/skills                       SkillsResponse (Alfred's skills, and the ones found elsewhere on this Mac)
+ *   GET  /api/skills                       SkillsResponse (Isocline's skills, and the ones found elsewhere on this Mac)
  *   GET  /api/skills/content?id=           SkillContent (its instructions, without the frontmatter)
  *   POST /api/skills/(enable|disable)      { id } -> SkillInfo
  *   POST /api/skills/remove                { id } -> {}
@@ -827,7 +831,7 @@ export type McpSignIn =
  *   POST /api/skills/updates               {} -> SkillUpdatesResponse (asks skills.sh about each skill that came from it)
  *   POST /api/skills/update                { id } -> SkillInfo
  *
- * A skill that is switched off stays on disk; Alfred is not told about it.
+ * A skill that is switched off stays on disk; Isocline is not told about it.
  */
 export interface SkillInfo {
   /** Its folder (or file) under `<data>/skills/`. */
@@ -838,7 +842,7 @@ export interface SkillInfo {
   /** Where it was installed from, when it came from skills.sh. */
   source?: { package: string; url: string };
 }
-/** A skill in another agent's folder on this Mac (`place`, written from the home folder), not among Alfred's yet. */
+/** A skill in another agent's folder on this Mac (`place`, written from the home folder), not among Isocline's yet. */
 export interface FoundSkill { name: string; description: string; path: string; place: string }
 export interface SkillsResponse { skills: SkillInfo[]; found: FoundSkill[]; /** Files that look like skills and could not be read as one. */ problems: string[] }
 export interface SkillContent { content: string }
@@ -850,7 +854,7 @@ export interface SkillSearchResult {
   source: string;
   installs: number;
   url: string;
-  /** Already among Alfred's skills. */
+  /** Already among Isocline's skills. */
   added: boolean;
 }
 export interface SkillSearchResponse { results: SkillSearchResult[] }

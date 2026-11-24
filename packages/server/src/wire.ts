@@ -7,7 +7,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { brotliCompress, constants as zlib, gzip } from "node:zlib";
-import type { ErrorResponse } from "@alfred/protocol";
+import type { ErrorResponse } from "@isocline/protocol";
 
 /** The most a command's JSON body may be. */
 export const MAX_BODY = 64 * 1024;

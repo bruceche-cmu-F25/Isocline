@@ -7,8 +7,8 @@ const isDark = () => document.documentElement.dataset.scheme === "dark";
  * (React's development double mount) hands the entrance back. */
 let entered: object | null = null;
 
-/** Alfred's figure at a given size. Its far lines fade toward whatever it sits on, and it follows light and dark.
- * Touching it makes it flinch and wobble (a poke). `anchor`: Alfred speaks from this one (shell/Says.tsx); it is
+/** Isocline's figure at a given size. Its far lines fade toward whatever it sits on, and it follows light and dark.
+ * Touching it makes it flinch and wobble (a poke). `anchor`: Isocline speaks from this one (shell/Says.tsx); it is
  * wrapped so the drawing can hop while the wrapper stays still to measure. `enter`: it comes in growing whether or
  * not it is the first. */
 export function Figure({ state, size, className, anchor, centered, enter }: { state: FigureState; size: number; className?: string; anchor?: boolean; centered?: boolean; enter?: boolean }) {

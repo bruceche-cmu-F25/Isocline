@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acceptProposal, CORE_MIGRATIONS, listEvents, listOpenProposals, openWorld, updateSettings, withCoreContext, type World } from "@alfred/core";
-import { applyStep, assistantTools, invokeOp, moduleMigrations, OpInputError, runTools } from "@alfred/module-kit";
+import { acceptProposal, CORE_MIGRATIONS, listEvents, listOpenProposals, openWorld, updateSettings, withCoreContext, type World } from "@isocline/core";
+import { applyStep, assistantTools, invokeOp, moduleMigrations, OpInputError, runTools } from "@isocline/module-kit";
 import {
   addTodo, completeTodo, formatTodo, listTodos, TodoConflictError, todoModule,
   todoRevision, updateTodo, type Todo, type TodoSnapshot,
@@ -87,17 +87,17 @@ test("a todo can belong to an area; unknown areas are refused and an empty one c
   assert.deepEqual(changes.area, ["travel", null]);
 });
 
-test("the snapshot says when Alfred made the latest change to a todo, from the event log", () => {
+test("the snapshot says when Isocline made the latest change to a todo, from the event log", () => {
   const w = world();
   const mine = addTodo(w, { title: "Mine" }).todo;
-  const its = withCoreContext({ actor: "alfred" }, () => addTodo(w, { title: "Alfred's" }).todo);
+  const its = withCoreContext({ actor: "alfred" }, () => addTodo(w, { title: "Isocline's" }).todo);
   const snapshot = () => todoModule.snapshot!(w) as TodoSnapshot;
   const by = (id: string) => snapshot().todos.find((todo) => todo.id === id)!.changedBy;
   assert.equal(by(mine.id), undefined);
   assert.equal(by(its.id)?.kind, "todo.added");
   withCoreContext({ actor: "alfred" }, () => updateTodo(w, { id: mine.id }, { area: "work" }));
   assert.equal(by(mine.id)?.kind, "todo.updated");
-  // The user's own later change is the latest: no longer shown as Alfred's.
+  // The user's own later change is the latest: no longer shown as Isocline's.
   withCoreContext({ actor: "user" }, () => updateTodo(w, { id: mine.id }, { title: "Mine, renamed" }));
   assert.equal(by(mine.id), undefined);
 });
@@ -126,7 +126,7 @@ test("a run proposes todo changes; accepting runs them pinned to the todos it sa
   assert.deepEqual(listTodos(w, { includeDone: true }).map((item) => [item.title, item.done]), [["Old idea", true]]);
 });
 
-test("editing a todo after Alfred proposed a change to it makes the proposal stale", () => {
+test("editing a todo after Isocline proposed a change to it makes the proposal stale", () => {
   const w = world();
   const { todo } = addTodo(w, { title: "Call the bank" });
   const propose = assistantTools(w, [todoModule]).find((tool) => tool.name === "propose")!;

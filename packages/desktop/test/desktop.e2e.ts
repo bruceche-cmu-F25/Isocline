@@ -14,16 +14,16 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright-core";
-import type { StateResponse, SubmitRunResponse } from "@alfred/protocol";
+import type { StateResponse, SubmitRunResponse } from "@isocline/protocol";
 
 const PORT = 7481;
-const dataDir = mkdtempSync(join(process.env.ALFRED_E2E_TMP ?? tmpdir(), "alfred-desktop-e2e-"));
+const dataDir = mkdtempSync(join(process.env.ISOCLINE_E2E_TMP ?? tmpdir(), "alfred-desktop-e2e-"));
 const label = `alfred.home-node.${createHash("sha256").update(dataDir).digest("hex").slice(0, 8)}`;
 const plist = join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
 const base = `http://127.0.0.1:${PORT}`;
 const appDir = fileURLToPath(new URL("..", import.meta.url));
 const electronPath = (await import("electron")).default as unknown as string;
-const shots = process.env.ALFRED_E2E_SHOTS ?? dataDir;
+const shots = process.env.ISOCLINE_E2E_SHOTS ?? dataDir;
 
 const step = (text: string) => console.log(`\n▸ ${text}`);
 const ok = (text: string) => console.log(`  ✓ ${text}`);
@@ -53,7 +53,7 @@ async function launch(): Promise<ElectronApplication> {
   return electron.launch({
     executablePath: electronPath,
     args: [appDir],
-    env: { ...process.env, ALFRED_DATA_DIR: dataDir, ALFRED_PORT: String(PORT), ALFRED_AWAY_MINUTES: "0.05" } as Record<string, string>,
+    env: { ...process.env, ISOCLINE_DATA_DIR: dataDir, ISOCLINE_PORT: String(PORT), ISOCLINE_AWAY_MINUTES: "0.05" } as Record<string, string>,
     timeout: 60_000,
   });
 }
@@ -77,7 +77,7 @@ try {
   // A new world opens on the first-run walkthrough (ui shell/FirstRun.tsx); this run is about what is behind it.
   await fetch(`${base}/api/settings`, { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ requestId: crypto.randomUUID(), patch: { firstRunAt: new Date().toISOString() } }) });
-  // Alfred's panel may have been left closed: open it from the floating button.
+  // Isocline's panel may have been left closed: open it from the floating button.
   await main.waitForSelector(".composer textarea, .fab");
   if (await main.$(".fab")) await main.click(".fab");
   await main.waitForSelector(".composer textarea");
@@ -97,7 +97,7 @@ try {
   step("Locking the screen and coming back greets once, in the figure");
   await sleep(500);
   await app.evaluate(({ powerMonitor }) => powerMonitor.emit("lock-screen"));
-  await sleep(3500); // longer than ALFRED_AWAY_MINUTES (3 s)
+  await sleep(3500); // longer than ISOCLINE_AWAY_MINUTES (3 s)
   await app.evaluate(({ powerMonitor }) => powerMonitor.emit("unlock-screen"));
   const card = await figure.waitForSelector(".speech .speech-foot.shown", { timeout: 10_000 }).then(() => figure.$(".speech"));
   ok(`the figure says: ${(await card!.innerText()).replace(/\s+/g, " ")}`);

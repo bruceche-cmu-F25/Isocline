@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Clip } from "@alfred/module-links/types";
-import { parseLinkPaste } from "@alfred/module-links/url";
+import type { Clip } from "@isocline/module-links/types";
+import { parseLinkPaste } from "@isocline/module-links/url";
 import { legacyShareClip, linkSaveFields } from "../src/linkShareCompat.ts";
 import { clipSections } from "../src/clipSections.ts";
 import { linkParts } from "../src/links.ts";
@@ -32,7 +32,7 @@ test("only web addresses are linked", () => {
   assert.deepEqual(links("http:// and https://"), []);
 });
 
-test("the workspace always opens with Alfred's panel closed, and keeps the sidebar as it was left", () => {
+test("the workspace always opens with Isocline's panel closed, and keeps the sidebar as it was left", () => {
   assert.equal(startLayout(null, 1400).alfred, "closed");
   const left = startLayout(JSON.stringify({ nav: "rail", navW: 250, alfW: 500, alfred: "open", v: 2 }), 1400);
   assert.deepEqual(left, { nav: "hidden", navW: 250, alfW: 500, alfred: "closed" });

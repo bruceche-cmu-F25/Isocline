@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import type { Project } from "@alfred/protocol";
+import type { Project } from "@isocline/protocol";
 import { ApiError, api } from "./api.ts";
 import { desktop } from "./desktop.ts";
 import { t } from "./i18n/index.ts";

@@ -6,8 +6,8 @@ import { createReadStream } from "node:fs";
 import { lstat, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
-import { CONVERSATION_ID, listAreas, type Area, type Run, type World } from "@alfred/core";
-import type { RunSources } from "@alfred/protocol";
+import { CONVERSATION_ID, listAreas, type Area, type Run, type World } from "@isocline/core";
+import type { RunSources } from "@isocline/protocol";
 import { readSources, type SourceRead } from "./source-reads.ts";
 
 interface Part { type?: string; text?: string; id?: string; name?: string; arguments?: Record<string, unknown> }

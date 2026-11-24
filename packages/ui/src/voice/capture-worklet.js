@@ -25,4 +25,4 @@ class Capture extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor("alfred-capture", Capture);
+registerProcessor("isocline-capture", Capture);

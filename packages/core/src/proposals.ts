@@ -1,4 +1,4 @@
-/** Proposals: changes Alfred has prepared that wait for the user's yes.
+/** Proposals: changes Isocline has prepared that wait for the user's yes.
  *
  * A run proposes and may then finish; the proposal waits (up to a week) in the user's inbox. The user accepts,
  * declines, or asks for a change (which opens a new run and supersedes this one). The user may also change a step
@@ -224,7 +224,7 @@ export function declineProposal(world: World, id: string, now: number = Date.now
 }
 
 /** The user changes one step by hand while it waits: the same operation, with what they set (a proposed event's time).
- * The caller makes the step whole again (input and preview agree); `summary` says so where Alfred's words no longer
+ * The caller makes the step whole again (input and preview agree); `summary` says so where Isocline's words no longer
  * hold. Never a run's to do: a run that wants another proposal proposes again. */
 export function amendProposal(world: World, id: string, index: number, step: ProposalStep, summary?: string, now: number = Date.now()): Proposal {
   if (coreContext()?.run) throw new Error("Only the user changes a proposal that waits for them");

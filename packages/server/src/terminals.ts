@@ -2,8 +2,8 @@
  * the session's project folder, on the home node's machine.
  *
  * It is the user's, with everything their account can do, so only the home node's own machine may open or type into
- * one (http.ts refuses other devices). Alfred never types into it: what Alfred runs goes through its own tool, shown
- * and allowed command by command. Alfred may read what the terminal last printed (`tail`), to see an error the user
+ * one (http.ts refuses other devices). Isocline never types into it: what Isocline runs goes through its own tool, shown
+ * and allowed command by command. Isocline may read what the terminal last printed (`tail`), to see an error the user
  * is looking at.
  *
  * One terminal per session. It keeps running while the page is closed (a dev server started in it stays up) and
@@ -72,7 +72,7 @@ export class Terminals {
     this.#spawn = options.spawn;
   }
 
-  /** node-pty is loaded when the first terminal is asked for: a machine where it does not load still runs Alfred. */
+  /** node-pty is loaded when the first terminal is asked for: a machine where it does not load still runs Isocline. */
   #module(): PtyModule {
     if (this.#spawn) return { spawn: this.#spawn };
     if (this.#pty === undefined) {
@@ -96,8 +96,8 @@ export class Terminals {
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) throw new TerminalError("invalid", "The session's folder is not there");
     const shell = process.env.SHELL && existsSync(process.env.SHELL) ? process.env.SHELL : "/bin/zsh";
     const env: Record<string, string> = {};
-    // The user's own environment, without what is only Alfred's.
-    for (const [key, value] of Object.entries(process.env)) if (value !== undefined && !/^(ALFRED_|ELECTRON_)/.test(key)) env[key] = value;
+    // The user's own environment, without what is only Isocline's.
+    for (const [key, value] of Object.entries(process.env)) if (value !== undefined && !/^(ISOCLINE_|ALFRED_|ELECTRON_)/.test(key)) env[key] = value;
     Object.assign(env, { TERM: "xterm-256color", COLORTERM: "truecolor", ...(env.LANG || env.LC_ALL ? {} : { LANG: "en_US.UTF-8" }) });
     // A login shell: the home node may have been started by the system with a bare PATH; the user's profile sets theirs.
     const pty = this.#module().spawn(shell, ["-l"], { name: "xterm-256color", cols: size(dimensions.cols, 100, 500), rows: size(dimensions.rows, 28, 300), cwd, env });

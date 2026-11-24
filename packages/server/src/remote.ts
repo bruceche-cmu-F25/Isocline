@@ -9,8 +9,8 @@ import { EventEmitter } from "node:events";
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { listDevices, pairDevice, revokeDevice, setDeviceScope, type Device, type DeviceKind, type DeviceScope, type World } from "@alfred/core";
-import type { PairingCode, RemoteResponse, TailscaleStatus } from "@alfred/protocol";
+import { listDevices, pairDevice, revokeDevice, setDeviceScope, type Device, type DeviceKind, type DeviceScope, type World } from "@isocline/core";
+import type { PairingCode, RemoteResponse, TailscaleStatus } from "@isocline/protocol";
 import { WebLock } from "./web-lock.ts";
 import type { Tailscale } from "./tailscale.ts";
 
@@ -22,7 +22,9 @@ const PAIRING_TRIES = 5;
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const STATUS_TTL_MS = 30_000;
 
-export const DEVICE_COOKIE = "alfred_device";
+export const DEVICE_COOKIE = "isocline_device";
+/** What the device cookie was called before the rename (Alfred → Isocline): still read, and replaced when seen. */
+export const LEGACY_DEVICE_COOKIE = "alfred_device";
 
 interface Config { enabled: boolean; port: number }
 
@@ -188,7 +190,7 @@ export class RemoteAccess {
     try {
       const served = await this.#options.tailscale.servedAt(dnsName, this.#config.port);
       if (served !== null && served !== this.target) {
-        throw new RemoteError(`Port ${this.#config.port} in this machine's Tailscale Serve is used by something else; Alfred left it alone`);
+        throw new RemoteError(`Port ${this.#config.port} in this machine's Tailscale Serve is used by something else; Isocline left it alone`);
       }
       if (served === null) {
         await this.#options.tailscale.serve(this.#config.port, this.target);

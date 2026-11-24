@@ -8,7 +8,7 @@
  * those still exist.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { RunSources, Run } from "@alfred/protocol";
+import type { RunSources, Run } from "@isocline/protocol";
 import { api } from "./api.ts";
 import { readSections, type RefKind, type Row, type Section } from "./sections.ts";
 import { Markdown } from "./Markdown.tsx";

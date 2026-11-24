@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { Area, Automation } from "@alfred/protocol";
-import type { CalendarEvent, CalendarSnapshot } from "@alfred/module-calendar/types";
-import { isDayOff, SAMPLE_OFF_WORDS, type CalendarMode, type TodoOp, type TodoSnapshot } from "@alfred/module-todo/types";
+import type { Area, Automation } from "@isocline/protocol";
+import type { CalendarEvent, CalendarSnapshot } from "@isocline/module-calendar/types";
+import { isDayOff, SAMPLE_OFF_WORDS, type CalendarMode, type TodoOp, type TodoSnapshot } from "@isocline/module-todo/types";
 import { api } from "./api.ts";
 import { AddBar, Pill, PickerPill } from "./AddBar.tsx";
 import { Linked, OutLink } from "./Linked.tsx";
-import { getLocale, t, type Key } from "./i18n/index.ts";
+import { getLocale, t, type Key, getAssistant } from "./i18n/index.ts";
 import type { PageLine } from "./shell/about.ts";
 import { todoChange } from "./shell/say.ts";
 import { PHONE, useMedia } from "./shell/layout.ts";
@@ -83,7 +83,7 @@ function repeatLabel(repeat: Repeat): string {
  * ticking one brings the time after it, so a tick ahead would look like nothing happened and use up the days to come. */
 const notYet = (todo: Item, today: string) => !!todo.source?.repeat && !todo.done && !!todo.due && (todo.startDate ?? todo.due) > today;
 
-/** Who put it on the list: the calendar, mail (picked out by Alfred), Alfred in a conversation, or the user. */
+/** Who put it on the list: the calendar, mail (picked out by Isocline), Isocline in a conversation, or the user. */
 type Origin = "calendar" | "mail" | "alfred" | "you";
 const originOf = (todo: Item): Origin => todo.source?.kind ?? (todo.changedBy?.kind === "todo.added" ? "alfred" : "you");
 const addedDay = (todo: Item) => iso(new Date(todo.createdAt));
@@ -123,7 +123,7 @@ function originShort(todo: Item): string {
   const origin = originOf(todo);
   if (origin === "calendar") return todo.source!.label;
   if (origin === "mail") return t("todo.src.mail");
-  if (origin === "alfred") return "Alfred";
+  if (origin === "alfred") return getAssistant();
   return t("todo.from.you");
 }
 function originLong(todo: Item): string {
@@ -203,7 +203,7 @@ function Check({ todo, today, onError }: { todo: Item; today: string; onError: O
   );
 }
 
-/** Alfred's suggestion: keep it as a todo, or drop it (it is not suggested again). */
+/** Isocline's suggestion: keep it as a todo, or drop it (it is not suggested again). */
 function KeepDrop({ todo, onError }: { todo: Item; onError: OnError }) {
   const { busy, run } = useRun(onError);
   return (
@@ -613,7 +613,7 @@ function Week({ todos, today, areas, onOpen, onError }: { todos: Item[]; today: 
 
 const MODES: CalendarMode[] = ["off", "allday", "all"];
 
-/** What becomes a todo without the user writing it: calendar events (which ones), and what Alfred picks out of
+/** What becomes a todo without the user writing it: calendar events (which ones), and what Isocline picks out of
  * mail (an automation, switched on and off here and run on its schedule). */
 function Sources({ mode, words, picking, onError }: { mode: CalendarMode; words: string[]; picking?: Automation; onError: OnError }) {
   const [word, setWord] = useState("");
@@ -681,7 +681,7 @@ function Sources({ mode, words, picking, onError }: { mode: CalendarMode; words:
 /* ── The page ── */
 
 const VIEWS: Array<[View, Key]> = [["list", "todo.view.list"], ["board", "todo.view.board"], ["week", "todo.view.week"]];
-const VIEW_KEY = "alfred.todo.view";
+const VIEW_KEY = "isocline.todo.view";
 const savedView = (): View => { try { const view = localStorage.getItem(VIEW_KEY); return VIEWS.some(([id]) => id === view) ? view as View : "list"; } catch { return "list"; } };
 
 /** The todo page: what is open, day by day with today beside it, or as a board, or what repeats as a week (the
@@ -701,7 +701,7 @@ export function Todos({ snapshot, fresh, areas, automations, calendar, line }: {
   const phone = useMedia(PHONE);
   const { today, todos } = snapshot;
   /** Puts a todo in the line under the page: a day, an hour or "done" changes it at once (shell/say.ts); words that
-   * say more go to Alfred with the todo. */
+   * say more go to Isocline with the todo. */
   const say = (todo: Item) => {
     if (!line) return;
     setOpened(null);

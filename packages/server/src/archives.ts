@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { ConversationError, getConversation, getProject, requestCancel, requireOpenSession, setArchivePlan, updateConversation, withCoreContext, type World } from "@alfred/core";
+import { ConversationError, getConversation, getProject, requestCancel, requireOpenSession, setArchivePlan, updateConversation, withCoreContext, type World } from "@isocline/core";
 import type { Processes } from "./processes.ts";
 import type { Terminals } from "./terminals.ts";
 import { removeWorktree, uncommitted, WorkspaceError } from "./workspace.ts";

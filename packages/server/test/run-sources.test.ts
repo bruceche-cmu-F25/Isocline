@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { claimNextRun, CORE_MIGRATIONS, createAutomation, deleteAutomation, finishRun, openWorld, runAutomationNow } from "@alfred/core";
+import { claimNextRun, CORE_MIGRATIONS, createAutomation, deleteAutomation, finishRun, openWorld, runAutomationNow } from "@isocline/core";
 import { readSources } from "../src/source-reads.ts";
 import { sourcesToday, runSources } from "../src/run-sources.ts";
 

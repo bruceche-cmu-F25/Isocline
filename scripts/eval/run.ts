@@ -1,6 +1,6 @@
 /** node scripts/eval/run.ts [--only a,b] [--repeat n] [--model provider/model] [--thinking low] [--jobs 4] [--out dir]
  *
- * Says each scenario to a throwaway Alfred with a real model and prints what went wrong. Uses the model sign-in in
+ * Says each scenario to a throwaway Isocline with a real model and prints what went wrong. Uses the model sign-in in
  * the keychain; never connects Google, so nothing leaves this machine except the model calls.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -19,7 +19,7 @@ const { values } = parseArgs({
 const only = values.only?.split(",");
 const repeat = Number(values.repeat ?? 1);
 const jobs = Number(values.jobs ?? 4);
-const out = values.out ?? join(tmpdir(), `alfred-eval-${Date.now()}`);
+const out = values.out ?? join(tmpdir(), `isocline-eval-${Date.now()}`);
 mkdirSync(out, { recursive: true });
 
 const queue = SCENARIOS.filter((s) => !only || only.includes(s.id)).flatMap((s) => Array.from({ length: repeat }, (_, i) => ({ s, i })));

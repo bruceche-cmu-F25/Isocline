@@ -6,7 +6,7 @@ import {
 
 const world = () => openWorld(":memory:", CORE_MIGRATIONS);
 
-test("preferences are the user's words: added by them or by Alfred, changed by hand, removed, each change an event", () => {
+test("preferences are the user's words: added by them or by Isocline, changed by hand, removed, each change an event", () => {
   const w = world();
   assert.equal(describePreferences(w), "", "nothing to say yet");
   const short = addPreference(w, { text: "  Keep answers   short  ", by: "alfred" });
@@ -25,7 +25,7 @@ test("preferences are the user's words: added by them or by Alfred, changed by h
   assert.throws(() => updatePreference(w, "nope", "x"), /No such/);
 });
 
-test("Alfred is told the name the user goes by and every preference, with ids to forget one by", () => {
+test("Isocline is told the name the user goes by and every preference, with ids to forget one by", () => {
   const w = world();
   updateSettings(w, { preferredName: "Sam" });
   const kept = addPreference(w, { text: "No meetings before 10" });

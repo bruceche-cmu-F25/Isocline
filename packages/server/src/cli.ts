@@ -5,12 +5,12 @@
  */
 import { parseArgs } from "node:util";
 import { join } from "node:path";
-import { createPiEngine } from "@alfred/engine-pi";
-import { todoModule } from "@alfred/module-todo";
-import { calendarModule } from "@alfred/module-calendar";
-import { mailModule } from "@alfred/module-mail";
-import { linksModule } from "@alfred/module-links";
-import type { ModuleServices } from "@alfred/module-kit";
+import { createPiEngine } from "@isocline/engine-pi";
+import { todoModule } from "@isocline/module-todo";
+import { calendarModule } from "@isocline/module-calendar";
+import { mailModule } from "@isocline/module-mail";
+import { linksModule } from "@isocline/module-links";
+import type { ModuleServices } from "@isocline/module-kit";
 import { googleService } from "./google-service.ts";
 import { DEFAULT_PORT, defaultDataDir, defaultUiDir } from "./config.ts";
 import { openHome } from "./home.ts";
@@ -21,13 +21,16 @@ import { RemoteAccess } from "./remote.ts";
 import { PushService } from "./push.ts";
 import { cliRunner, findTailscale, Tailscale } from "./tailscale.ts";
 import { GoogleConnections } from "./google.ts";
-import { createCredentialStore, McpConnectors, ModelAccounts, Skills } from "@alfred/engine-pi";
-import { recordDomainEvent } from "@alfred/core";
+import { createCredentialStore, McpConnectors, ModelAccounts, Skills } from "@isocline/engine-pi";
+import { adoptLegacyEnv, recordDomainEvent } from "@isocline/core";
 import { defaultSecretStore } from "./secrets.ts";
 import { watchTodoSources } from "./todo-sources.ts";
+import { moveRenamedFolders } from "./rename.ts";
 
 const MODULES = [todoModule, calendarModule, mailModule, linksModule];
-const log = (message: string) => console.log(`[alfred] ${message}`);
+// Settings an install made before the rename still apply: ALFRED_X is read as ISOCLINE_X.
+adoptLegacyEnv();
+const log = (message: string) => console.log(`[isocline] ${message}`);
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -37,16 +40,18 @@ const { values, positionals } = parseArgs({
     "ingress-port": { type: "string" },
   },
 });
+// An install from before the rename keeps its world: the old folders move to the new names (once; not for --data-dir).
+if (!values["data-dir"]) moveRenamedFolders(undefined, log);
 const dataDir = values["data-dir"] ?? defaultDataDir();
 const command = positionals[0] ?? "serve";
 
 if (command === "serve") {
-  const port = Number(values.port ?? process.env.ALFRED_PORT ?? DEFAULT_PORT);
+  const port = Number(values.port ?? process.env.ISOCLINE_PORT ?? DEFAULT_PORT);
   // The model runs in worker processes; each conversation keeps its session under <data>/engine/sessions.
   // MCP servers come from <data>/mcp.json, skills from <data>/skills/.
   const engine = createPiEngine({ cwd: join(dataDir, "engine"), config: dataDir, log });
   // How long a locked screen counts as "away" before coming back is a return (default 10 minutes).
-  const awayMinutes = Number(process.env.ALFRED_AWAY_MINUTES);
+  const awayMinutes = Number(process.env.ISOCLINE_AWAY_MINUTES);
   const presence = Number.isFinite(awayMinutes) && awayMinutes > 0 ? { awayReturnMs: awayMinutes * 60_000 } : {};
   let home: ReturnType<typeof openHome>;
   let services: ModuleServices = {};
@@ -54,10 +59,10 @@ if (command === "serve") {
     home = openHome({ dataDir, engine, modules: MODULES, presence, log, services: () => services });
   } catch (error) {
     if (!(error instanceof Error && error.name === "AlreadyRunningError")) throw error;
-    console.error(`[alfred] ${error.message}. Stop it first, or use another --data-dir.`);
+    console.error(`[isocline] ${error.message}. Stop it first, or use another --data-dir.`);
     process.exit(1);
   }
-  // Google accounts: tokens in the keychain, Alfred's own OAuth client from the data directory (or the default one).
+  // Google accounts: tokens in the keychain, Isocline's own OAuth client from the data directory (or the default one).
   const google = new GoogleConnections({ dataDir, secrets: defaultSecretStore(dataDir), world: home.world, clientDirs: [...new Set([dataDir, defaultDataDir()])], log });
   // Model sign-in: credentials in the keychain too, shared with the engine workers (which use the same store).
   const models = new ModelAccounts({
@@ -77,7 +82,7 @@ if (command === "serve") {
   // The calendar and mail modules read the connected accounts through it.
   services = { google: googleService(google) };
   // Other devices: Tailscale Serve forwards to the ingress port, where every request needs a paired device.
-  const ingressPort = Number(values["ingress-port"] ?? process.env.ALFRED_INGRESS_PORT ?? port + 10);
+  const ingressPort = Number(values["ingress-port"] ?? process.env.ISOCLINE_INGRESS_PORT ?? port + 10);
   const tailscaleBinary = findTailscale();
   const remote = new RemoteAccess({ dataDir, world: home.world, tailscale: new Tailscale(tailscaleBinary ? cliRunner(tailscaleBinary) : null), ingressPort, log });
   // Notices nobody took within seconds go to the devices that turned notifications on.
@@ -96,7 +101,7 @@ if (command === "serve") {
     void engine.close();
     home.close();
     if (error.code === "EADDRINUSE") {
-      console.error(`[alfred] Port ${port} is already in use (another Alfred, or something else). Stop it, or pick another port: npm start -- --port <n>`);
+      console.error(`[isocline] Port ${port} is already in use (another Isocline, or something else). Stop it, or pick another port: npm start -- --port <n>`);
       process.exit(1);
     }
     throw error;

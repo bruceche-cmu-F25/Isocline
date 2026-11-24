@@ -1,4 +1,4 @@
-/* Alfred's figure: a wireframe tesseract (the body), and a 3D wireframe one step simpler for every other state.
+/* Isocline's figure: a wireframe tesseract (the body), and a 3D wireframe one step simpler for every other state.
  *
  *   rest    tesseract, breathing, now and then a blink  hello   tesseract, slowly unfolding and back (the body)
  *   listen  a globe turning, swelling with your voice   think    an octahedron spinning like a top

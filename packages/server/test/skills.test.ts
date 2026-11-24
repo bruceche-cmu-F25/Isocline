@@ -5,13 +5,13 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { EnginePort } from "@alfred/core";
-import { Skills } from "@alfred/engine-pi";
-import { todoModule } from "@alfred/module-todo";
-import type { SkillInfo, SkillsResponse } from "@alfred/protocol";
+import type { EnginePort } from "@isocline/core";
+import { Skills } from "@isocline/engine-pi";
+import { todoModule } from "@isocline/module-todo";
+import type { SkillInfo, SkillsResponse } from "@isocline/protocol";
 import { createHttpServer, openHome } from "../src/index.ts";
 
-test("the skills routes list, show, switch and remove Alfred's skills, and add one found on this machine", async () => {
+test("the skills routes list, show, switch and remove Isocline's skills, and add one found on this machine", async () => {
   const base = mkdtempSync(join(tmpdir(), "alfred-skills-http-"));
   const dataDir = join(base, "data"), userHome = join(base, "home");
   const put = (root: string, name: string) => {
@@ -46,7 +46,7 @@ test("the skills routes list, show, switch and remove Alfred's skills, and add o
     const added = await post("/api/skills/add", { path: listed.found[0].path });
     assert.equal(((await added.json()) as SkillInfo).id, "tdd");
     assert.equal((await post("/api/skills/add", { path: join(userHome, ".ssh") })).status, 404);
-    // skills.sh is away: said as such, not as a fault of Alfred's.
+    // skills.sh is away: said as such, not as a fault of Isocline's.
     assert.equal((await post("/api/skills/search", { query: "pdf" })).status, 502);
 
     assert.equal((await post("/api/skills/remove", { id: "notes" })).status, 200);

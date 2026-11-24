@@ -1,11 +1,11 @@
-/** The inbox (the 通知 page): one list of what needs the user or what Alfred wants them to know, read from the
+/** The inbox (the 通知 page): one list of what needs the user or what Isocline wants them to know, read from the
  * core's state. It stores nothing of its own: an item leaves when its proposal is decided, its run moves on, or its
  * notice is acknowledged.
  *   decide  a proposal; a run waiting on an answer or a permission; a run that was interrupted
  *   result  a run finished (not yet seen)
  *   away    what happened while the user was away
  */
-import type { AwayDigest, Notice, Proposal, Run, StateResponse } from "@alfred/protocol";
+import type { AwayDigest, Notice, Proposal, Run, StateResponse } from "@isocline/protocol";
 import { getLocale, t, type Key } from "../i18n/dict.ts";
 import { plainText } from "../markdown.ts";
 import { automationTitle, editionTitle } from "../automationText.ts";
@@ -110,7 +110,7 @@ export function inboxItems(state: StateResponse): InboxItem[] {
       if (edition) delivered.set(edition.runId, item);
       items.push(item);
     } else if (notice.kind === "outbound") {
-      // A change outside Alfred (an event, an email) after the user's yes: how it went. Unknown needs them to check.
+      // A change outside Isocline (an event, an email) after the user's yes: how it went. Unknown needs them to check.
       const status = notice.payload.state, module = notice.payload.module;
       const summary = status === "unknown"
         ? t(module === "mail" ? "inbox.mail.unknown" : module === "calendar" ? "inbox.calendar.unknown" : "inbox.sent.unknown")

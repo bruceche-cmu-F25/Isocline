@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   answerRequest, CORE_MIGRATIONS, createRunDrain, getRun, listEvents, openWorld, recordDomainEvent, submitRun, updateConversation,
   type EngineRequest, type RunTool, type World,
-} from "@alfred/core";
+} from "@isocline/core";
 import { createWorkerEngine, type WorkerEngine } from "../src/index.ts";
 
 const worker = fileURLToPath(new URL("./fixtures/fake-worker.ts", import.meta.url));

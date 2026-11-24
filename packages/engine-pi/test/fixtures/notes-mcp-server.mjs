@@ -1,4 +1,4 @@
-// A tiny MCP server over stdio for checking Alfred's gate by hand or in tests.
+// A tiny MCP server over stdio for checking Isocline's gate by hand or in tests.
 // Tools: lookup_weather (marked read-only) and save_note (not marked: may change things).
 // save_note appends to the file named by NOTES_FILE.
 import { appendFileSync } from "node:fs";

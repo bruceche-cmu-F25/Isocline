@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fileStore } from "@alfred/core";
+import { fileStore } from "@isocline/core";
 import { createCredentialStore, ModelAccounts } from "../src/index.ts";
 import { parseAnthropic, parseCodex, parseKimi, readUsage } from "../src/usage.ts";
 

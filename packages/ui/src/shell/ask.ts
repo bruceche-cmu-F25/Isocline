@@ -1,6 +1,6 @@
 /** Asking from the bar under the page (shell/AskBar.tsx): which conversation the words go to, and which run the
  * bar's card is about. */
-import type { Conversation, Run } from "@alfred/protocol";
+import type { Conversation, Run } from "@isocline/protocol";
 
 /** How long after a conversation last moved the bar still adds to it. After that a question starts a new one: what
  * was said this morning is not what this afternoon's question is about. */

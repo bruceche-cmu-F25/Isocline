@@ -1,11 +1,11 @@
-/** Alfred's voice on this device (docs/design/voice.md §2): the home node makes the sound, this plays it.
+/** Isocline's voice on this device (docs/design/voice.md §2): the home node makes the sound, this plays it.
  *
  * One voice at a time in a window. Saying something new stops what was being said; so does the user starting to
  * talk (useDictation calls `stopSpeaking`), and closing the card it belongs to. Text is said sentence by sentence:
  * the next one is asked for while the first plays, so even the slower local model starts within a few seconds.
  */
 import { useEffect, useSyncExternalStore } from "react";
-import type { VoiceSettings } from "@alfred/protocol";
+import type { VoiceSettings } from "@isocline/protocol";
 import { api } from "../api.ts";
 
 // ── The user's voice settings, as this window last heard them from the home node ──

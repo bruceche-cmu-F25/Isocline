@@ -1,5 +1,5 @@
 {
-  "name": "@alfred/module-calendar",
+  "name": "@isocline/module-calendar",
   "version": "0.0.0",
   "private": true,
   "description": "Calendar module: the user's Google Calendar, mirrored for reading.",
@@ -10,7 +10,7 @@
     "./types": "./src/types.ts"
   },
   "dependencies": {
-    "@alfred/core": "*",
-    "@alfred/module-kit": "*"
+    "@isocline/core": "*",
+    "@isocline/module-kit": "*"
   }
 }

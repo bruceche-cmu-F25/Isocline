@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CORE_MIGRATIONS, openWorld } from "@alfred/core";
+import { CORE_MIGRATIONS, openWorld } from "@isocline/core";
 import { WEB_LOCK_IDLE_MS, WebLock } from "../src/web-lock.ts";
 
 const password = "a temporary test password";

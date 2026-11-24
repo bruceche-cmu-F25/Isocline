@@ -2,7 +2,7 @@
  * do: a figure always on screen that tells the user things itself (system
  * notifications only when it cannot), a menu bar item, a global hotkey, and
  * knowing when the user locks the screen and comes back.
- * The home node runs under launchd, so none of Alfred's work depends on it.
+ * The home node runs under launchd, so none of Isocline's work depends on it.
  */
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -13,19 +13,21 @@ import {
   app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, Notification, powerMonitor, screen, shell, Tray,
   type IpcMainEvent, type MenuItemConstructorOptions,
 } from "electron";
-import type { AwayDigest, Notice, PresenceResponse, StateResponse } from "@alfred/protocol";
-import { detectLocale, translate, type Key, type Locale } from "@alfred/ui/i18n";
-import { waitingCount } from "@alfred/ui/inbox";
-import { inboxTarget, inboxUrl, noticeLines } from "@alfred/ui/notice";
-import { awayUpdate, welcomeLines } from "@alfred/ui/welcome";
+import type { AwayDigest, Notice, PresenceResponse, StateResponse } from "@isocline/protocol";
+import { assistantNameFor, detectLocale, setAssistant, translate, type Key, type Locale } from "@isocline/ui/i18n";
+import { waitingCount } from "@isocline/ui/inbox";
+import { inboxTarget, inboxUrl, noticeLines } from "@isocline/ui/notice";
+import { awayUpdate, welcomeLines } from "@isocline/ui/welcome";
 import { BrowserPane } from "./browser.ts";
 import { HomeClient } from "./client.ts";
-import { ensureHomeNode, healthy, homeNodeConfig, restartHomeNode, stopHomeNode, type HomeNodeMode } from "./home-node.ts";
+import { ensureHomeNode, healthy, homeNodeConfig, restartHomeNode, retireLegacyAgent, stopHomeNode, type HomeNodeMode } from "./home-node.ts";
+import { adoptLegacyEnv } from "@isocline/core/legacy";
+import { moveRenamedFolders } from "@isocline/server/rename";
 import { appIcon, trayIcon } from "./icon.ts";
 import { installTextMenu } from "./text-menu.ts";
 
 const HOTKEY = "Alt+Space";
-/** Quick talk (docs/design/voice.md §1.1): press to start talking to Alfred, press again to send. Not ⌥Space, which
+/** Quick talk (docs/design/voice.md §1.1): press to start talking to Isocline, press again to send. Not ⌥Space, which
  * opens the window here and is a dictation app's default too. */
 const TALK_HOTKEY = "Alt+Shift+Space";
 /** Room for the figure to hop and grow and for its speech card; the transparent rest lets clicks through. */
@@ -40,10 +42,17 @@ const OUTLET_CHECK_MS = 5_000;
 /** Untouched for this long at the last report, and touched since: the user came back. */
 const BACK_AFTER_S = 30;
 
-app.setName("Alfred");
+// An install from before the rename (Alfred → Isocline): its settings still apply, its home node agent is retired, and
+// its folders move to the new names, all before anything below opens a file in either place.
+adoptLegacyEnv();
+const renamed = homeNodeConfig({ runtime: process.execPath, cli: "", env: process.env });
+retireLegacyAgent(renamed);
+moveRenamedFolders(undefined, (message) => console.log(`[isocline] ${message}`));
+
+app.setName("Isocline");
 // The app's own files (window state, device id) live beside the world, never inside it:
-// ~/Library/Application Support/Alfred/Desktop, or <data dir>/desktop for a development world.
-app.setPath("userData", process.env.ALFRED_DATA_DIR ? join(process.env.ALFRED_DATA_DIR, "desktop") : join(app.getPath("appData"), "Alfred", "Desktop"));
+// ~/Library/Application Support/Isocline/Desktop, or <data dir>/desktop for a development world.
+app.setPath("userData", process.env.ISOCLINE_DATA_DIR ? join(process.env.ISOCLINE_DATA_DIR, "desktop") : join(app.getPath("appData"), "Isocline", "Desktop"));
 if (!app.requestSingleInstanceLock()) app.quit();
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
@@ -125,14 +134,14 @@ function sayAttention(window: BrowserWindow | null = main, locked: boolean = scr
 
 function createMain(path = "/"): BrowserWindow {
   const window = new BrowserWindow({
-    width: 1120, height: 760, minWidth: 720, minHeight: 480, show: false, title: "Alfred",
+    width: 1120, height: 760, minWidth: 720, minHeight: 480, show: false, title: "Isocline",
     titleBarStyle: "hiddenInset", trafficLightPosition: { x: 18, y: 19 }, // centred in the 52 px top bar (styles.css --top-h)
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#171613" : "#fcf9f6", // the paper theme's page colour (tokens.css)
     webPreferences: webPreferences("main"),
   });
   installTextMenu(window, window.webContents);
   window.on("close", (event) => {
-    // Closing the window hides it; Alfred keeps running.
+    // Closing the window hides it; Isocline keeps running.
     if (!quitting) { event.preventDefault(); window.hide(); }
   });
   const attention = () => sayAttention(window);
@@ -271,7 +280,7 @@ function createPresence(): BrowserWindow {
     x: figurePlace.x,
     y: figurePlace.y,
     frame: false, transparent: true, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
-    alwaysOnTop: true, skipTaskbar: true, focusable: false, hasShadow: false, show: false, title: "Alfred",
+    alwaysOnTop: true, skipTaskbar: true, focusable: false, hasShadow: false, show: false, title: "Isocline",
     webPreferences: webPreferences("presence"),
   });
   window.setAlwaysOnTop(true, "floating");
@@ -332,7 +341,7 @@ async function greet(notice: Notice, preferredName: string | null): Promise<void
   notify(greeting, summary, () => openNotice(notice));
 }
 
-/** Alfred says these from the figure. If the user hid the figure, it comes out just to say them and hides again
+/** Isocline says these from the figure. If the user hid the figure, it comes out just to say them and hides again
  * when the page settles. False when there is no figure window to say them. */
 function speak(notices: Notice[]): boolean {
   if (!presence || presence.isDestroyed() || presence.webContents.isLoading()) return false;
@@ -394,7 +403,7 @@ async function handleNotices(state: StateResponse): Promise<void> {
     const { title, body } = noticeLines(notice, LOCALE);
     notify(title, body, () => openNotice(notice));
   } else {
-    notify("Alfred", say("mac.several", { n: presented.length }), () => showMain({ inbox: null }));
+    notify("Isocline", say("mac.several", { n: presented.length }), () => showMain({ inbox: null }));
   }
 }
 
@@ -406,7 +415,7 @@ function dockBadge(state: StateResponse): void {
 }
 
 /** Menus and notifications follow the user's language setting. */
-/** Whether Alfred is muted, as the home node last said: the menus show it and turn it on and off. */
+/** Whether Isocline is muted, as the home node last said: the menus show it and turn it on and off. */
 let muted = false;
 function followVoice(state: StateResponse): void {
   const now = state.settings?.voice?.muted ?? false;
@@ -421,10 +430,15 @@ function setMuted(next: boolean): void {
     .catch(() => { muted = !next; updateTray(); });
 }
 
+let ASSISTANT = "";
+/** The menus speak the user's language and call the assistant by its name: rebuilt when either changes. */
 function followLocale(state: StateResponse): void {
+  const name = assistantNameFor(state.settings);
   const locale = state.settings?.locale;
-  if (!locale || locale === LOCALE) return;
-  LOCALE = locale;
+  if (name === ASSISTANT && (!locale || locale === LOCALE)) return;
+  ASSISTANT = name;
+  setAssistant(name);
+  if (locale) LOCALE = locale;
   appMenu();
   updateTray();
 }
@@ -448,7 +462,7 @@ function reportPresence(kind: "active" | "away"): void {
     .catch(() => { /* the node is down; the next report catches up */ });
 }
 
-/** The figure, as a place where Alfred can tell the user something. It says what this Mac sees: whether its screen
+/** The figure, as a place where Isocline can tell the user something. It says what this Mac sees: whether its screen
  * can be seen (not locked, no screen saver), and how long since it was touched. The home node decides from that
  * whether a notice is the figure's to say (docs/design/attention.md).
  *
@@ -513,7 +527,7 @@ function updateTray(): void {
         { label: say("mac.log"), enabled: existsSync(config.logFile), click: () => void shell.openPath(config.logFile) },
       ],
     },
-    { label: say("mac.restart"), enabled: !restarting, click: () => void restartAlfred() },
+    { label: say("mac.restart"), enabled: !restarting, click: () => void restartIsocline() },
     {
       label: say("mac.loginItem"), type: "checkbox", checked: app.getLoginItemSettings().openAtLogin,
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }),
@@ -522,7 +536,7 @@ function updateTray(): void {
     { label: say("mac.quit"), click: () => app.quit() },
   ];
   tray.setContextMenu(Menu.buildFromTemplate(items));
-  tray.setToolTip(`Alfred · ${statusLabel()}`);
+  tray.setToolTip(`Isocline · ${statusLabel()}`);
 }
 
 /** A node someone started by hand (npm start) went away: run our own under launchd. */
@@ -548,14 +562,14 @@ function toggleHomeNode(): void {
 }
 
 /**
- * Restart Alfred to see a change: when run from the source tree, rebuild the page, restart the home node (when this
+ * Restart Isocline to see a change: when run from the source tree, rebuild the page, restart the home node (when this
  * app runs it), then start the app again. The node keeps working if the build fails; the page tells why.
  */
 let restarting = false;
-async function restartAlfred(): Promise<void> {
+async function restartIsocline(): Promise<void> {
   if (restarting) return;
   restarting = true;
-  tray?.setToolTip(`Alfred · ${say("mac.restart")}…`);
+  tray?.setToolTip(`Isocline · ${say("mac.restart")}…`);
   try {
     if (!app.isPackaged) {
       await new Promise<void>((done, fail) => execFile(process.execPath, [here("../../../node_modules/vite/bin/vite.js"), "build"],
@@ -580,7 +594,7 @@ function appMenu(): void {
     { role: "editMenu" },
     {
       label: say("mac.view"), submenu: [
-        { role: "reload" }, { label: say("mac.restart"), accelerator: "CmdOrCtrl+Shift+R", click: () => void restartAlfred() },
+        { role: "reload" }, { label: say("mac.restart"), accelerator: "CmdOrCtrl+Shift+R", click: () => void restartIsocline() },
         { role: "toggleDevTools" }, { type: "separator" },
         { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, { type: "separator" }, { role: "togglefullscreen" },
       ],
@@ -651,15 +665,15 @@ function wireIpc(): void {
 
 app.on("second-instance", () => showMain({ composer: true }));
 app.on("activate", () => showMain());
-app.on("window-all-closed", () => { /* Alfred stays in the menu bar */ });
+app.on("window-all-closed", () => { /* Isocline stays in the menu bar */ });
 app.on("before-quit", () => { quitting = true; });
 app.on("will-quit", () => globalShortcut.unregisterAll());
 
 /** launchd starts the home node from wherever this app is. Run from a disk image or a translocated Downloads copy,
  * that place is gone after the next restart, so a packaged app offers to move itself first (a development world,
- * ALFRED_DATA_DIR, is left where it is). Moving quits and reopens the app from Applications. */
+ * ISOCLINE_DATA_DIR, is left where it is). Moving quits and reopens the app from Applications. */
 function offerToMove(): void {
-  if (!app.isPackaged || process.env.ALFRED_DATA_DIR || app.isInApplicationsFolder()) return;
+  if (!app.isPackaged || process.env.ISOCLINE_DATA_DIR || app.isInApplicationsFolder()) return;
   const choice = dialog.showMessageBoxSync({
     type: "question", message: say("mac.move.title"), detail: say("mac.move.detail"),
     buttons: [say("mac.move.yes"), say("mac.move.no")], defaultId: 0, cancelId: 1,
@@ -698,8 +712,8 @@ app.whenReady().then(async () => {
   presence = createPresence();
   void serveDesk();
   if (!app.getLoginItemSettings().wasOpenedAtLogin) showMain();
-  if (!globalShortcut.register(HOTKEY, toggleMain)) console.warn(`[alfred] could not register ${HOTKEY}`);
-  if (!globalShortcut.register(TALK_HOTKEY, quickTalk)) console.warn(`[alfred] could not register ${TALK_HOTKEY}`);
+  if (!globalShortcut.register(HOTKEY, toggleMain)) console.warn(`[isocline] could not register ${HOTKEY}`);
+  if (!globalShortcut.register(TALK_HOTKEY, quickTalk)) console.warn(`[isocline] could not register ${TALK_HOTKEY}`);
   watchPresence();
 }).catch((error: unknown) => {
   console.error(error);

@@ -1,10 +1,10 @@
 {
-  "name": "alfred",
+  "name": "isocline",
   "version": "0.1.0",
   "private": true,
   "description": "An open-source personal agent: one home node, every device a window onto it.",
   "license": "MIT",
-  "homepage": "https://github.com/bruceche-cmu-F25/Alfred",
+  "homepage": "https://github.com/bruceche-cmu-F25/Isocline",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
@@ -14,12 +14,12 @@
     "modules/*"
   ],
   "scripts": {
-    "alfred": "node packages/server/src/cli.ts",
+    "isocline": "node packages/server/src/cli.ts",
     "start": "npm run build:ui && node packages/server/src/cli.ts serve",
-    "dev:ui": "npm run dev --workspace @alfred/ui",
-    "build:ui": "npm run build --workspace @alfred/ui",
+    "dev:ui": "npm run dev --workspace @isocline/ui",
+    "build:ui": "npm run build --workspace @isocline/ui",
     "test": "node --test \"packages/*/test/*.test.ts\" \"modules/*/test/*.test.ts\"",
-    "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspace @alfred/ui",
+    "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspace @isocline/ui",
     "desktop": "npm run build:ui && electron packages/desktop",
     "package:mac": "node scripts/package-mac.ts"
   },

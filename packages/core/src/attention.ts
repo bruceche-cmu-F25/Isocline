@@ -21,7 +21,7 @@ export type NoticeClass = (typeof NOTICE_CLASSES)[number];
 export function noticeClass(kind: string, payload: Record<string, unknown>): NoticeClass {
   if (kind === "welcome") return "greeting";
   if (kind === "run_request" || kind === "proposal" || kind === "run_interrupted") return "needs_you";
-  // A change outside Alfred that went through is news; one that was refused or may not have happened needs a look.
+  // A change outside Isocline that went through is news; one that was refused or may not have happened needs a look.
   if (kind === "outbound") return payload.state === "done" ? "tells_you" : "needs_you";
   return "tells_you";
 }

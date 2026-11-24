@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acceptProposal, CORE_MIGRATIONS, listNotices, listOpenProposals, listOutbound, openWorld, updateSettings, type World } from "@alfred/core";
-import { applyStep, assistantTools, deliverQueued, invokeOp, runQuery, runTools, ServiceError, type GoogleService } from "@alfred/module-kit";
+import { acceptProposal, CORE_MIGRATIONS, listNotices, listOpenProposals, listOutbound, openWorld, updateSettings, type World } from "@isocline/core";
+import { applyStep, assistantTools, deliverQueued, invokeOp, runQuery, runTools, ServiceError, type GoogleService } from "@isocline/module-kit";
 import { calendarModule, listEvents, syncCalendar, type CalendarSnapshot } from "../src/index.ts";
 import { sameTitle } from "../src/write.ts";
 
@@ -48,7 +48,7 @@ function fakeGoogle(options: { capabilities?: string[]; answers?: Array<{ status
   return { google, sent };
 }
 
-/** Alfred proposes `calls` the way a run does (the propose tool), and the user accepts. */
+/** Isocline proposes `calls` the way a run does (the propose tool), and the user accepts. */
 async function proposeAndAccept(w: World, calls: Array<{ tool: string; params: Record<string, unknown> }>): Promise<void> {
   const propose = assistantTools(w, [calendarModule]).find((tool) => tool.name === "propose")!;
   const said = await propose.execute({ title: "Calendar changes?", summary: "", calls }, signal);
@@ -83,7 +83,7 @@ test("holding time: proposed in the user's words, accepted, created under its ow
   const body = sent[0].body as { id: string; summary: string; start: { dateTime: string } };
   assert.equal(sent[0].method, "POST");
   assert.equal(sent[0].url, "/calendars/me%40example.com/events?sendUpdates=none");
-  assert.match(body.id, /^alfred[0-9a-v]{20}$/);
+  assert.match(body.id, /^isocline[0-9a-v]{20}$/);
   assert.equal((sent[1].body as { id: string }).id, body.id, "the same event id both times");
   assert.deepEqual([body.summary, Date.parse(body.start.dateTime)], ["写方案", start.getTime()]);
 });
@@ -279,7 +279,7 @@ test("by hand: an event typed into the page goes out with no proposal, shows as 
   await syncCalendar(w, { google });
 
   const said = byHand(w, "calendar.create", { account: "me@example.com", calendarId: "me@example.com", title: " Lunch with Mia ", when: { start: start.toISOString(), end: end.toISOString() }, location: "Cafe", notes: "Bring the draft" });
-  assert.match(said.id!, /^me@example\.com:alfred[0-9a-v]{20}$/);
+  assert.match(said.id!, /^me@example\.com:isocline[0-9a-v]{20}$/);
   assert.deepEqual(listOpenProposals(w), [], "saving was the yes");
   const [pending] = snapshotOf(w).pending;
   assert.deepEqual(pending, { id: said.id, account: "me@example.com", calendarId: "me@example.com", added: true, title: "Lunch with Mia", when: { start: start.toISOString(), end: end.toISOString() }, location: "Cafe", k: said.k });

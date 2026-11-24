@@ -2,7 +2,7 @@
  * internet, filed by topic. L1: saving looks the page up for its title and what it says about itself; reading the
  * page and writing a summary come later.
  */
-import { acceptLanguage, describeAreas, lastChangesOf, userLocale, type World, defineModule, defineOp, defineTool, Type, type AlfredModule } from "@alfred/module-kit";
+import { acceptLanguage, describeAreas, lastChangesOf, userLocale, type World, defineModule, defineOp, defineTool, Type, type IsoclineModule } from "@isocline/module-kit";
 import {
   ensureTopic, formatClip, getIcon, groupPlaces, hostOf, iconsToFetch, listClips, listFolders, listPlaces, listTopics, MIGRATIONS, movePlace, noteIcons, orderPlaces, pendingClips, pinPlace,
   moveTopicsOutOfArea, recordIcon, recordPage, recordPageFailure, refetchClip, removeLink, removeTopic, renamePlace, saveClip, ungroupPlaces, updateClip, updateTopic,
@@ -35,7 +35,7 @@ function snapshot(world: World): LinksSnapshot {
     sharedTitles: true,
     places: listPlaces(world),
     folders: listFolders(world),
-    clips: clips.map((clip) => (changes.get(`link:${clip.id}`)?.actor === "alfred" ? { ...clip, byAlfred: true } : clip)),
+    clips: clips.map((clip) => (changes.get(`link:${clip.id}`)?.actor === "alfred" ? { ...clip, byIsocline: true } : clip)),
     topics: listTopics(world),
   };
 }
@@ -99,7 +99,7 @@ function lookUp(fetcher: PageFetcher, icons: IconFetcher, covers: typeof fetchCo
 }
 
 /** `fetcher`, `icons`: how a page and a site's icon are looked up; the real ones unless a test passes its own. */
-export function createLinksModule(options: { fetcher?: PageFetcher; icons?: IconFetcher; covers?: typeof fetchCover } = {}): AlfredModule {
+export function createLinksModule(options: { fetcher?: PageFetcher; icons?: IconFetcher; covers?: typeof fetchCover } = {}): IsoclineModule {
   return defineModule({
     id: "link",
     title: "Links",

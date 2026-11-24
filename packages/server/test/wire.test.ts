@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ConversationError, ProjectError, ProposalStateError, RunError } from "@alfred/core";
-import { McpConnectorError, ModelSignInError, SkillError } from "@alfred/engine-pi";
-import { OpInputError, UnknownOpError } from "@alfred/module-kit";
+import { ConversationError, ProjectError, ProposalStateError, RunError } from "@isocline/core";
+import { McpConnectorError, ModelSignInError, SkillError } from "@isocline/engine-pi";
+import { OpInputError, UnknownOpError } from "@isocline/module-kit";
 import { TerminalError, VoiceError } from "../src/index.ts";
 import { Fault, HttpError, parseObject, statusOf } from "../src/wire.ts";
 

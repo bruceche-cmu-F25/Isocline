@@ -4,7 +4,7 @@
  * The terminal library is loaded only when a terminal is first opened.
  */
 import { useEffect, useRef, useState } from "react";
-import type { TerminalInfo } from "@alfred/protocol";
+import type { TerminalInfo } from "@isocline/protocol";
 import { ApiError, request as post } from "./api.ts";
 import { t } from "./i18n/index.ts";
 import "@xterm/xterm/css/xterm.css";

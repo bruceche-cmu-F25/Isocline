@@ -1,6 +1,6 @@
 /** Secrets (account tokens, model credentials, keys) live in the macOS keychain, never in the world
  * database, a config file or a log. On other systems, and when
- * ALFRED_SECRETS=file (tests), a 0600 JSON file in the data directory stands in.
+ * ISOCLINE_SECRETS=file (tests), a 0600 JSON file in the data directory stands in.
  *
  * Values go to the `security` tool on its standard input, never in its
  * arguments (which other processes can read), base64-encoded so any text
@@ -15,6 +15,7 @@ import { execFile, spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { carryingOver, LEGACY_KEYCHAIN_SERVICE } from "./legacy.ts";
 
 export interface SecretStore {
   readonly kind: "keychain" | "file";
@@ -53,7 +54,7 @@ export interface KeychainItems {
 /** The command that stores one item, as `security -i` reads it. Throws rather than build a line the tool would cut,
  * or one whose words could run into each other. */
 export function keychainLine(service: string, account: string, text: string): string {
-  if (!SERVICE.test(service) || !ACCOUNT.test(account) || !TEXT.test(text)) throw new Error("Not a keychain item Alfred writes");
+  if (!SERVICE.test(service) || !ACCOUNT.test(account) || !TEXT.test(text)) throw new Error("Not a keychain item Isocline writes");
   const line = `add-generic-password -U -s "${service}" -a "${account}" -w "${text}"`;
   if (line.length > MAX_LINE) throw new Error("Too long for one keychain item");
   return line;
@@ -115,7 +116,7 @@ function securityItems(service: string): KeychainItems {
   };
 }
 
-export function keychainStore(service = process.env.ALFRED_KEYCHAIN_SERVICE || "Alfred", items: KeychainItems = securityItems(service)): SecretStore {
+export function keychainStore(service = process.env.ISOCLINE_KEYCHAIN_SERVICE || "Isocline", items: KeychainItems = securityItems(service)): SecretStore {
   const part = (name: string, generation: string, index: number) => `${name}/${generation}/${index}`;
   const hash = (text: string) => createHash("sha256").update(text).digest("hex");
   const decode = (text: string) => Buffer.from(text, "base64").toString("utf8");
@@ -201,5 +202,7 @@ export function fileStore(path: string): SecretStore {
 }
 
 export function defaultSecretStore(dataDir: string): SecretStore {
-  return process.platform === "darwin" && process.env.ALFRED_SECRETS !== "file" ? keychainStore() : fileStore(join(dataDir, "secrets.json"));
+  if (process.platform !== "darwin" || process.env.ISOCLINE_SECRETS === "file") return fileStore(join(dataDir, "secrets.json"));
+  // Secrets kept before the rename, under the old service, come over the first time each is read.
+  return process.env.ISOCLINE_KEYCHAIN_SERVICE ? keychainStore() : carryingOver(keychainStore(), keychainStore(LEGACY_KEYCHAIN_SERVICE));
 }

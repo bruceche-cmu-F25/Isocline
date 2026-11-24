@@ -4,7 +4,7 @@
         python engines/local_whisper.py <hf-repo> <jobs.json>
 
 Whisper is told the speech is Chinese (it otherwise guesses one language per clip and may pick English for
-mostly-English sentences). It sometimes writes traditional characters, which Alfred would convert anyway, so the
+mostly-English sentences). It sometimes writes traditional characters, which Isocline would convert anyway, so the
 text is converted to simplified; the untouched output is kept as "raw". The word list goes in as the initial prompt.
 """
 import json

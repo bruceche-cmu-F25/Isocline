@@ -1,4 +1,4 @@
-/* The only bridge between Alfred's pages and the Mac app. Sandboxed, so it
+/* The only bridge between Isocline's pages and the Mac app. Sandboxed, so it
  * stays CommonJS and exposes a few narrow calls, nothing of Node or Electron.
  */
 const { contextBridge, ipcRenderer } = require("electron");

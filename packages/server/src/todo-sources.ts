@@ -5,10 +5,10 @@
  * This is the one place that knows both modules. Neither reads the other's tables: the calendar's events are taken
  * from its snapshot, as a device would get them, and handed to the todo module as plain data.
  */
-import { onEvents, type World } from "@alfred/core";
-import type { AlfredModule } from "@alfred/module-kit";
-import type { CalendarSnapshot } from "@alfred/module-calendar";
-import { getTodoSettings, mirrorCalendar } from "@alfred/module-todo";
+import { onEvents, type World } from "@isocline/core";
+import type { IsoclineModule } from "@isocline/module-kit";
+import type { CalendarSnapshot } from "@isocline/module-calendar";
+import { getTodoSettings, mirrorCalendar } from "@isocline/module-todo";
 
 const EVERY_MS = 60 * 60_000;
 
@@ -16,7 +16,7 @@ const EVERY_MS = 60 * 60_000;
  * (if it was one time of what repeats weekly, the next time takes its place). */
 const NEWS = ["calendar.synced", "todo.sources_set", "todo.completed", "todo.updated"];
 
-export function watchTodoSources(world: World, calendar: AlfredModule, log?: (message: string) => void): () => void {
+export function watchTodoSources(world: World, calendar: IsoclineModule, log?: (message: string) => void): () => void {
   let timer: NodeJS.Timeout | null = null;
   let mirroring = false;
   const mirror = () => {

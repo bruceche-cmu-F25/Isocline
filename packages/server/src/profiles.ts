@@ -2,13 +2,16 @@
  * assistant's (an everyday conversation), a development session's, and an automation's (nobody is there).
  * The home node hands these to the run drain; commands.ts says which profile a new run gets.
  */
-import { coreContext, describePreferences, userLocale, type Locale, getConversation, getRun, sessionRoot, type RunProfile, type RunTool, type SessionMode, type World } from "@alfred/core";
-import { askUserTool, assistantTools, moduleGuidance, runTools, type AlfredModule } from "@alfred/module-kit";
+import { assistantNameOf, coreContext, describePreferences, getSettings, userLocale, type Locale, getConversation, getRun, sessionRoot, type RunProfile, type RunTool, type SessionMode, type World } from "@isocline/core";
+import { askUserTool, assistantTools, moduleGuidance, runTools, type IsoclineModule } from "@isocline/module-kit";
 import { isLocalPage, type BrowserPage, type Desk } from "./desk.ts";
 import type { Processes } from "./processes.ts";
 import type { Terminals } from "./terminals.ts";
 
 export const ASSISTANT_PROFILE = "assistant";
+/** The assistant's name as the user set it (core settings), put where a text says `{assistant}`. */
+const named = (world: World, text: string): string => text.replaceAll("{assistant}", assistantNameOf(getSettings(world)));
+
 /** Project sessions get their own tools for working in the selected folder. */
 export const DEVELOPER_PROFILE = "developer";
 /** What an automation's runs get: nobody is there, so only reading and reversible changes; the rest is proposed. */
@@ -16,12 +19,12 @@ export const AUTOMATION_PROFILE = "automation";
 /** Not for an automation's own runs: asking (nobody answers), and making or changing automations (only the user does). */
 /** What the user is asked before a tool of a session goes further, in their language. */
 const ASK: Record<Locale, { readPage: string; background: string }> = {
-  zh: { readPage: "允许 Alfred 读浏览器里这个页面吗？", background: "允许 Alfred 在后台运行这条命令吗？" },
-  en: { readPage: "Let Alfred read this page in the browser?", background: "Let Alfred run this command in the background?" },
+  zh: { readPage: "允许 {assistant} 读浏览器里这个页面吗？", background: "允许 {assistant} 在后台运行这条命令吗？" },
+  en: { readPage: "Let {assistant} read this page in the browser?", background: "Let {assistant} run this command in the background?" },
 };
 const UNATTENDED_EXCLUDED = new Set(["ask_user", "automation_add", "automation_update", "area_add", "preference_add", "preference_remove"]);
 
-const PERSONA = `You are Alfred, the user's personal assistant, carrying out one request in a conversation.
+const PERSONA = `You are {assistant}, the user's personal assistant in Isocline, carrying out one request in a conversation.
 Use only the tools you have. Make exactly the changes the request asks for. If the request needs something
 your tools cannot do, change nothing and say briefly what is missing.
 Act on the first message; the user would rather correct a guess than answer questions. Where the request leaves
@@ -41,7 +44,7 @@ nothing there but what they should read, never your deliberation (that belongs i
 Reply in one to three short sentences. Write your reply, and any title or summary you write, in the language of
 the user's message, even when the app or their data is in another language.`;
 
-const DEVELOPER = `You are Alfred, the user's personal assistant, working with them on code in a development session in
+const DEVELOPER = `You are {assistant}, the user's personal assistant in Isocline, working with them on code in a development session in
 one of their projects (a folder on their computer; its name and path are below). The user may have a terminal of
 their own open in this session; you can read what it last printed with terminal_read, never type into it. Their
 Mac app also has a browser pane; browser_read gives you the page open in it. For something that keeps running
@@ -49,7 +52,7 @@ Mac app also has a browser pane; browser_read gives you the page open in it. For
 it printed, process_stop ends one.
 Everything the user asks in this session is about this project: "add my birthday" means to the project's content
 or code, not to a calendar. You have no calendar, todo, mail or other everyday tools here; for those the user has
-the everyday Alfred. Look in the project before asking where something is; ask only when the code leaves it open. You can read, search (grep, find)
+Isocline's everyday pages. Look in the project before asking where something is; ask only when the code leaves it open. You can read, search (grep, find)
 and list its files freely, and those of the user's other projects when they are listed below: when a request names
 one of them, go and read it, never ask where it is. Any other file needs the user's yes each time; if you need a
 folder that is not listed, say its likely path in your question so one answer is enough. Whether you may change files and run
@@ -57,13 +60,13 @@ commands depends on the session's mode, given below. Answer from the code you re
 say so when you have not checked something. If a wrong guess would matter, ask with ask_user. Never claim a change
 you did not make with a tool. Reply in the language of the request, as long as the answer needs and no longer.`;
 
-const COMMANDS = "You can run shell commands in the project with bash (tests, builds, git). Alfred checks the user's current permission mode at each call. Prefer commands that only read or check. Only run destructive commands, push, publish or work outside the project when the user asked for exactly that. Respect a declined tool call. Report the command's real result, including a failure.";
+const COMMANDS = "You can run shell commands in the project with bash (tests, builds, git). Isocline checks the user's current permission mode at each call. Prefer commands that only read or check. Only run destructive commands, push, publish or work outside the project when the user asked for exactly that. Respect a declined tool call. Report the command's real result, including a failure.";
 
 /** What each permission mode lets a session's run do in its folder (core projects.ts SESSION_MODES), as the run is
  * told. The engine enforces it; this only keeps the run's words in step with what its tools will do. */
 const SESSION_MODE: Record<SessionMode, string> = {
   plan: "This session is in plan mode: you can read but not change files, and you cannot run commands. When a change or a command is needed, say exactly what you would change or run, and where.",
-  ask: `This session is in ask mode: you can change files and run commands. Alfred shows the user each file edit and each command for approval, unless they already allowed that command. ${COMMANDS}`,
+  ask: `This session is in ask mode: you can change files and run commands. Isocline shows the user each file edit and each command for approval, unless they already allowed that command. ${COMMANDS}`,
   edits: `In always allow mode, project file edits, shell commands and background commands can proceed without asking. File tools still ask before editing outside the project. Make only the changes the request needs, and say which files you changed. ${COMMANDS}`,
 };
 
@@ -111,7 +114,7 @@ function browserTool(world: World, desk: Desk): RunTool {
       try { page = await desk.ask<BrowserPage>("browser.where"); } catch { return "The browser pane is not available: it exists only in the Mac app, and the app is not answering."; }
       if (!page.open || !page.url) return "The browser pane is not open, or shows no page. Ask the user to open it on the page.";
       if (!isLocalPage(page.url)) {
-        const answer = context ? await context.ask({ kind: "permission", question: `${ASK[userLocale(world)].readPage}\n${page.url}` }) : "deny";
+        const answer = context ? await context.ask({ kind: "permission", question: `${named(world, ASK[userLocale(world)].readPage)}\n${page.url}` }) : "deny";
         if (answer !== "allow") return "The user did not allow reading this page. Nothing was read; do not try it another way.";
       }
       try { page = await desk.ask<BrowserPage>("browser.read"); } catch { return "The page could not be read."; }
@@ -160,7 +163,7 @@ function processTools(world: World, processes: Processes): RunTool[] {
       if (!here) return "There is no development session here to start a process in.";
       const command = String(params.command ?? "").trim();
       if (!command) return "Give the command to run.";
-      const answer = context?.command ? await context.command(ASK[userLocale(world)].background, command) : "deny";
+      const answer = context?.command ? await context.command(named(world, ASK[userLocale(world)].background), command) : "deny";
       if (answer !== "allow") return "The user did not allow this command (or the session is in plan mode). Nothing was started; do not try it another way.";
       const started = processes.start(here.conversationId, { command, cwd: here.root, name: typeof params.name === "string" ? params.name : undefined, by: "alfred" });
       // A few seconds for it to say whether it came up, and where.
@@ -217,7 +220,7 @@ function processTools(world: World, processes: Processes): RunTool[] {
   }];
 }
 
-export function profiles(world: World, modules: readonly AlfredModule[], devices: { terminals?: Terminals; desk?: Desk; processes?: Processes } = {}): Record<string, RunProfile> {
+export function profiles(world: World, modules: readonly IsoclineModule[], devices: { terminals?: Terminals; desk?: Desk; processes?: Processes } = {}): Record<string, RunProfile> {
   const { terminals, desk, processes } = devices;
   // Read for each run: some modules' guidance names the user's own data (their areas).
   const guidance = () => moduleGuidance(world, modules);
@@ -225,13 +228,13 @@ export function profiles(world: World, modules: readonly AlfredModule[], devices
   const user = () => describePreferences(world);
   return {
     [ASSISTANT_PROFILE]: {
-      get instructions() { return [PERSONA, user(), guidance()].filter(Boolean).join("\n\n"); },
+      get instructions() { return named(world, [PERSONA, user(), guidance()].filter(Boolean).join("\n\n")); },
       tools: [...runTools(world, modules), ...assistantTools(world, modules)],
     },
     [DEVELOPER_PROFILE]: {
       // A session is about its project's code, kept apart from the everyday: none of the modules' tools (todos,
       // calendar, mail…) or their guidance, no proposals or automations, no page to open. Only asking the user.
-      get instructions() { return [DEVELOPER, user()].filter(Boolean).join("\n\n"); },
+      get instructions() { return named(world, [DEVELOPER, user()].filter(Boolean).join("\n\n")); },
       tools: [
         askUserTool(),
         ...(terminals ? [terminalTool(world, terminals)] : []),
@@ -242,7 +245,7 @@ export function profiles(world: World, modules: readonly AlfredModule[], devices
       modes: SESSION_MODE,
     },
     [AUTOMATION_PROFILE]: {
-      get instructions() { return [PERSONA, UNATTENDED, user(), guidance()].filter(Boolean).join("\n\n"); },
+      get instructions() { return named(world, [PERSONA, UNATTENDED, user(), guidance()].filter(Boolean).join("\n\n")); },
       // Nothing irreversible is offered at all (not even to ask about), and nothing that asks.
       tools: [...runTools(world, modules, { askFor: [] }), ...assistantTools(world, modules).filter((tool) => !UNATTENDED_EXCLUDED.has(tool.name))],
       unattended: true,

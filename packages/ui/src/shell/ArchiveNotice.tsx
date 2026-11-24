@@ -1,4 +1,4 @@
-import type { Conversation } from "@alfred/protocol";
+import type { Conversation } from "@isocline/protocol";
 import { useEffect, useRef, useState } from "react";
 import { t } from "../i18n/index.ts";
 import { Icon } from "./icons.tsx";

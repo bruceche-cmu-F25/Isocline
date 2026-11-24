@@ -3,7 +3,7 @@
  * of sight, and the browser fades from the old one to it. The fading is the browser's own, at the screen's rate, so the
  * field flows and no character pops; the page's script only runs for the four frames. Still when the user asks for
  * less motion; stopped while the window is hidden or not the one in use. Decoration only: it takes no input and is
- * hidden from assistive tech. Its colours come from CSS (`color`, and `outline-color` for Alfred's).
+ * hidden from assistive tech. Its colours come from CSS (`color`, and `outline-color` for Isocline's).
  */
 import { useEffect, useRef } from "react";
 

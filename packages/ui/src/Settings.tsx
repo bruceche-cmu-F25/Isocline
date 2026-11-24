@@ -6,9 +6,9 @@
  * looking at another tab. The tab last looked at is where the page opens next time, on this device.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { RemoteResponse, StateResponse } from "@alfred/protocol";
+import type { RemoteResponse, StateResponse } from "@isocline/protocol";
 import { api, ApiError } from "./api.ts";
-import type { Alfred } from "./useAlfred.ts";
+import type { Isocline } from "./useIsocline.ts";
 import { Accounts } from "./Accounts.tsx";
 import { Connectors } from "./Connectors.tsx";
 import { Devices } from "./Devices.tsx";
@@ -26,7 +26,7 @@ import { SETTINGS_TAB_EVENT, SETTINGS_TAB_KEY, type SettingsTab } from "./settin
 import "./settings.css";
 
 type Tab = SettingsTab;
-/** `home`: only where Alfred runs. */
+/** `home`: only where Isocline runs. */
 const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
   { id: "general", icon: "gear" },
   { id: "voice", icon: "speaker" },
@@ -39,7 +39,7 @@ const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
 const KEY = SETTINGS_TAB_KEY;
 const saved = (): Tab => { try { const value = localStorage.getItem(KEY); return TABS.some((tab) => tab.id === value) ? value as Tab : "general"; } catch { return "general"; } };
 
-export function Settings({ name, saveName, dockOptions, onEvent, state }: GeneralProps & Pick<Alfred, "onEvent"> & { state: StateResponse }) {
+export function Settings({ name, saveName, dockOptions, onEvent, state }: GeneralProps & Pick<Isocline, "onEvent"> & { state: StateResponse }) {
   useLocale();
   /** Null until known; an older home node without remote access answers 404, which is treated as the Mac. */
   const [remote, setRemote] = useState<RemoteResponse | null | "old" | "unavailable">(null);
@@ -99,7 +99,7 @@ export function Settings({ name, saveName, dockOptions, onEvent, state }: Genera
           </button>
         ))}
       </div>
-      {pane("general", <><General name={name} saveName={saveName} dockOptions={dockOptions} /><Preferences state={state} /><Areas state={state} /><PagesSetting state={state} /></>)}
+      {pane("general", <><General name={name} saveName={saveName} dockOptions={dockOptions} assistant={{ character: state.settings.character ?? "ana", name: state.settings.assistantName ?? null }} /><Preferences state={state} /><Areas state={state} /><PagesSetting state={state} /></>)}
       {pane("voice", <VoiceSettings />)}
       {pane("models", local ? <ModelSettings /> : remote === null
         ? <p className="quiet" role="status">{t("models.usage.checking")}</p>

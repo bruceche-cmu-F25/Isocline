@@ -1,6 +1,6 @@
-# Everyday Alfred, with a real model
+# Everyday Isocline, with a real model
 
-Says ordinary things to Alfred ("周四下午要和张伟见面", "牛奶买了", "每周二下午3点有组会") and checks what landed: todos, calendar proposals, questions asked, the reply.
+Says ordinary things to Isocline ("周四下午要和张伟见面", "牛奶买了", "每周二下午3点有组会") and checks what landed: todos, calendar proposals, questions asked, the reply.
 
 ```bash
 node scripts/eval/run.ts                       # every scenario once

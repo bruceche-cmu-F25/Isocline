@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CORE_MIGRATIONS, enqueueOutbound, listNotices, listOutbound, openWorld, OUTBOUND_MAX_ATTEMPTS, withCoreContext, type Outbound, type World } from "@alfred/core";
-import { defineModule, deliverQueued, ServiceError, type AlfredModule, type Delivered, type GoogleService } from "../src/index.ts";
+import { CORE_MIGRATIONS, enqueueOutbound, listNotices, listOutbound, openWorld, OUTBOUND_MAX_ATTEMPTS, withCoreContext, type Outbound, type World } from "@isocline/core";
+import { defineModule, deliverQueued, ServiceError, type IsoclineModule, type Delivered, type GoogleService } from "../src/index.ts";
 
 const world = (): World => openWorld(":memory:", CORE_MIGRATIONS);
 /** A module whose deliveries go as `answer` says. */
-const post = (answer: (outbound: Outbound) => Delivered | Promise<Delivered>): AlfredModule =>
+const post = (answer: (outbound: Outbound) => Delivered | Promise<Delivered>): IsoclineModule =>
   defineModule({ id: "post", title: "Post", migrations: [], ops: [], tools: [], deliver: async (_world, outbound) => answer(outbound) });
 const queue = (w: World, preview: string, idempotent: boolean) => withCoreContext({ actor: "user" }, () =>
   enqueueOutbound(w, { module: "post", action: "send", payload: { account: "me@example.com" }, preview, idempotent }));

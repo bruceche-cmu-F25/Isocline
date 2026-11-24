@@ -69,7 +69,7 @@ Alfred 是从 pi-web-robin 抽出来的开源个人助手 harness：一个常驻
 | 记忆（偏好、做事方法） | 架构里有位置，没有设计文档 | `docs/ARCHITECTURE.md` §8 |
 | 打包 Alfred.app | **第一版已打（0.1.0，2026-11-23，未提交）**：`npm run package:mac` → `dist/mac/Alfred.app` 和 `Alfred-0.1.0-arm64.dmg`。不加打包依赖：拿 node_modules 里的 Electron.app 改名，只放生产依赖，不用 asar；ad hoc 签名、没公证（别的 Mac 第一次要右键→打开）；不在「应用程序」里运行时提示移过去。在临时世界上启动验证过（主节点从包里由 launchd 起、四个模块、页面无报错）；**没在真实世界上装过**，装上后会接管 `alfred.home-node`（下次重启主节点生效）。语音转写仍要本机有 `uv`；只有 arm64 | `scripts/package-mac.ts` |
 | Google 应用验证（公开发布前） | 没做；现在是"已发布、未验证"，上限 100 人 | 设置与连接 §3.1 |
-| 公开名字 | "Alfred" 和一个知名 macOS 应用重名，发布前要换 | |
+| 公开名字 | **2026-11-23 定为 Isocline**（美国商标查过：ALFRED 被 Running With Crayons 注册，ISOCLINE 全部失效）；两个声音角色 Ana（女）、Kata（男）。改名方案是草案，没动代码 | `docs/design/rename-isocline.md` |
 
 ### 5.1 结构上看到、还没动的（2026-11-20）
 
@@ -191,6 +191,7 @@ Node 24 以上，直接运行 `.ts`（只用可擦除的语法）。原型用 `.
 - `docs/design/mail-accounts.md`：多个邮箱账户（提议，没做）。
 - `docs/design/notes.md`：笔记（已批准，没开始做）。
 - `docs/design/study-mode.md`：学习模式（v0.1，方向认可，细节没定，没写代码）。
+- `docs/design/rename-isocline.md`：从 Alfred 改名为 Isocline（2026-11-23 Bruce 定了名字和 Ana/Kata 两个声音角色；文档是草案，没批准，没写代码）；字标原型 `prototype/isocline.html`。
 - `docs/design/browser.md`：用已登录的 Chrome 读登录墙（先存着，没批准）。
 - `docs/research/`：形象、视觉、远程访问、语音输入、全双工语音、工作台能力、Web 和手机安全。
 

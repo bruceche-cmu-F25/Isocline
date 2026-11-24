@@ -1,4 +1,4 @@
-/** Alfred core: the world's event log, recoverable runs, notices and commands.
+/** Isocline core: the world's event log, recoverable runs, notices and commands.
  * Moved out of Robin's extension/robin/alfred-core; it knows nothing about
  * HTTP, pages, engines or any particular module.
  */
@@ -46,7 +46,7 @@ export {
   openProposal, getProposal, listOpenProposals, acceptProposal, declineProposal, supersedeProposal, amendProposal, expireProposals, ProposalStateError, PROPOSAL_TTL_MS,
   type Proposal, type ProposalState, type ProposalStep,
 } from "./proposals.ts";
-export { getSettings, updateSettings, userLocale, localeOf, LOCALES, LOCALE_TAGS, localeTag, acceptLanguage, SettingsError, MAX_VOICE_WORDS, type Locale, type PageLayout, type UserSettings, type VoiceSettings } from "./settings.ts";
+export { getSettings, updateSettings, userLocale, localeOf, LOCALES, LOCALE_TAGS, localeTag, acceptLanguage, SettingsError, MAX_VOICE_WORDS, CHARACTERS, CHARACTER_NAMES, assistantNameOf, type Character, type Locale, type PageLayout, type UserSettings, type VoiceSettings } from "./settings.ts";
 export {
   createAutomation, updateAutomation, deleteAutomation, getAutomation, listAutomations, fireDueAutomations, runAutomationNow, ensureTemplates,
   latestSlot, nextSlot, automationName, automationGoal, AutomationError, AUTOMATION_TEMPLATES, CATCH_UP_MS,
@@ -59,6 +59,7 @@ export {
 } from "./files.ts";
 export { simpleCommand, commandAllowed, normalizeCommand, listCommandGrants, grantCommand, revokeCommand, type CommandGrant } from "./shell.ts";
 export { defaultSecretStore, fileStore, keychainStore, type SecretStore } from "./secrets.ts";
+export { adoptLegacyEnv, carryingOver, LEGACY_KEYCHAIN_SERVICE } from "./legacy.ts";
 export { tidyWorld, OUTPUT_DAYS, COMMAND_DAYS, type Upkeep } from "./upkeep.ts";
 export {
   enqueueOutbound, claimOutbound, finishOutbound, retryOutbound, interruptOutbound, getOutbound, listOutbound, OUTBOUND_STATES, OUTBOUND_MAX_ATTEMPTS,

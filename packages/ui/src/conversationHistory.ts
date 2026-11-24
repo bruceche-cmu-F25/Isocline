@@ -1,4 +1,4 @@
-import type { ConversationDetail } from "@alfred/protocol";
+import type { ConversationDetail } from "@isocline/protocol";
 
 /** Historical pages may include a pending turn the reader already saw. Keep the refreshed version of that
  * turn and its activity; refreshing live data must likewise leave the reader's oldest cursor in place. */

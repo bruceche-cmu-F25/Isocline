@@ -1,5 +1,5 @@
 {
-  "name": "@alfred/engine-pi",
+  "name": "@isocline/engine-pi",
   "version": "0.0.0",
   "private": true,
   "description": "The Pi engine adapter: runs one core run as a tool-scoped Pi agent session.",
@@ -9,8 +9,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@alfred/core": "*",
-    "@alfred/protocol": "*",
+    "@isocline/core": "*",
+    "@isocline/protocol": "*",
     "@earendil-works/pi-coding-agent": "1.5.2",
     "@earendil-works/pi-mcp": "1.5.2"
   }

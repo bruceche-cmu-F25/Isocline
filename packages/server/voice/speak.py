@@ -1,4 +1,4 @@
-"""Alfred's text-to-speech worker: Qwen3-TTS on this Mac (MLX), kept loaded while the home node needs it.
+"""Isocline's text-to-speech worker: Qwen3-TTS on this Mac (MLX), kept loaded while the home node needs it.
 
     uv run --no-project --python 3.12 --with mlx-audio==0.6.7 --with soundfile python -I speak.py [model]
 

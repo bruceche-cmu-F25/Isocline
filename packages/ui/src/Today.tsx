@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Todo } from "@alfred/module-todo/types";
-import type { StateResponse } from "@alfred/protocol";
+import type { Todo } from "@isocline/module-todo/types";
+import type { StateResponse } from "@isocline/protocol";
 import { api } from "./api.ts";
 import { Detail } from "./Inbox.tsx";
 import type { InboxItem } from "./shell/inbox.ts";
@@ -36,7 +36,7 @@ function useNow(everyMs = 30_000): number {
   return now;
 }
 
-/** A link out of Alfred drawn as a button: an event's call, or the event in its calendar. */
+/** A link out of Isocline drawn as a button: an event's call, or the event in its calendar. */
 function Out({ href, children, solid }: { href: string; children: ReactNode; solid?: boolean }) {
   return <a className="today-btn" data-solid={solid || undefined} href={href} target="_blank" rel="noreferrer noopener">{children}</a>;
 }
@@ -84,7 +84,7 @@ function Lede({ model, focus, over, name, go, doing, noModel }: {
   } else if (model.next) {
     said = <><b>{t("today.next", { at: model.next.at, title: model.next.event.title })}</b><span>{t("today.next.in", { left: untilText(model.next.startMs - model.now) })}</span></>;
   } else if (noModel) {
-    // Without a model Alfred can do nothing it is asked: that comes before the calendar.
+    // Without a model Isocline can do nothing it is asked: that comes before the calendar.
     said = <><b>{t("today.noModel")}</b><span>{t("today.noModel.hint")}</span></>;
   } else if (model.calendar === "none") {
     said = <><b>{t("today.noCalendar")}</b><span>{t("today.noCalendar.hint")}</span></>;
@@ -146,7 +146,7 @@ interface RowProps {
   pulse?: boolean;
   what: string;
   why?: string;
-  /** A way in that leaves Alfred: a call, a site. */
+  /** A way in that leaves Isocline: a call, a site. */
   out?: { href: string; label: string };
   past?: boolean;
   /** A line that only says there is more. */
@@ -244,7 +244,7 @@ const Counted = ({ text }: { text: string }) => <>{text.split(/(\d+)/).map((part
 
 type Rest = "mail" | "doing" | "done";
 
-/** 今天: the note Alfred writes about everything (docs/design/today-and-inbox.md, 3.1b). One sentence on what is
+/** 今天: the note Isocline writes about everything (docs/design/today-and-inbox.md, 3.1b). One sentence on what is
  * next; the day on one line, every row the same shape; the rest as counts that open in place. Nothing empty is shown. */
 export function Today({ state, name, go, onOpenConversation, line: bar }: TodayProps) {
   const now = useNow();

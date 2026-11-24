@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type FormEvent } from "react";
-import type { SendInput } from "@alfred/module-mail/types";
+import type { SendInput } from "@isocline/module-mail/types";
 import { Icon } from "./shell/icons.tsx";
 import { Select } from "./shell/Select.tsx";
 import { t } from "./i18n/index.ts";

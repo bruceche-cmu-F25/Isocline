@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CORE_MIGRATIONS, openWorld } from "@alfred/core";
-import { invokeOp } from "@alfred/module-kit";
+import { CORE_MIGRATIONS, openWorld } from "@isocline/core";
+import { invokeOp } from "@isocline/module-kit";
 import { classify, linksModule, listClips, MIGRATIONS, nameFromUrl, parseLinkPaste, recordPage, recordPageFailure, saveClip, updateClip, type LinksSnapshot } from "../src/index.ts";
 
 const bili = "https://www.bilibili.com/video/BV1KoW16NEBf";

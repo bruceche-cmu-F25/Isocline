@@ -1,5 +1,5 @@
 import { ConversationStatus } from "./ConversationStatus.tsx";
-import type { Conversation, StateResponse } from "@alfred/protocol";
+import type { Conversation, StateResponse } from "@isocline/protocol";
 import { useState } from "react";
 import { ApiError, api, type Connection } from "../api.ts";
 import { getLocale, intlLocale, localeTag, nextLocale, t } from "../i18n/index.ts";

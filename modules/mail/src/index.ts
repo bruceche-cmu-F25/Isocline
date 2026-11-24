@@ -1,5 +1,5 @@
 /** Gmail's recent inbox and previously seen saved or important messages, mirrored for reading on the home node. */
-import { listOutbound, recordDomainEvent, withDefaultActor, type World, defineModule, defineOp, defineQuery, defineTool, ServiceError, Type, type ModuleServices } from "@alfred/module-kit";
+import { listOutbound, recordDomainEvent, withDefaultActor, type World, defineModule, defineOp, defineQuery, defineTool, ServiceError, Type, type ModuleServices } from "@isocline/module-kit";
 import { deliverStar, favoriteOp, starsOnTheirWay } from "./favorites.ts";
 import { INBOX_MAX, readInbox, unescapeHtml } from "./google.ts";
 import { deliverMail, mailOps, mailWriteTools } from "./write.ts";
@@ -42,7 +42,7 @@ CREATE TABLE mail_sources (
 ) STRICT;
 `,
 }, {
-  // Whether the user let Alfred send from the account (write.ts checks it before proposing).
+  // Whether the user let Isocline send from the account (write.ts checks it before proposing).
   id: "mail:2",
   sql: "ALTER TABLE mail_sources ADD COLUMN can_send INTEGER NOT NULL DEFAULT 0 CHECK (can_send IN (0, 1));",
 }, {
@@ -216,7 +216,7 @@ export function getMail(world: World, id: string, account?: string): MailDetail 
 }
 
 const SENT_DAYS = 14, SENT_MAX = 30;
-/** What the user sent from Alfred lately, oldest first: the mail page shows a reply under the message it answers. */
+/** What the user sent from Isocline lately, oldest first: the mail page shows a reply under the message it answers. */
 export function listSent(world: World, now: number = Date.now()): MailSent[] {
   const since = new Date(now - SENT_DAYS * 86_400_000).toISOString();
   return listOutbound(world, { module: "mail" }).filter((outbound) => outbound.action === "send" && outbound.createdAt >= since).slice(-SENT_MAX).map((outbound) => {

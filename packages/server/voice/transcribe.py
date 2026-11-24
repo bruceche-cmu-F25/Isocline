@@ -1,4 +1,4 @@
-"""Alfred's speech-to-text worker: Qwen3-ASR on this Mac (MLX), kept loaded while the home node needs it.
+"""Isocline's speech-to-text worker: Qwen3-ASR on this Mac (MLX), kept loaded while the home node needs it.
 
     uv run --no-project --python 3.12 --with mlx-qwen3-asr==0.4.4 python -I transcribe.py [model]
 

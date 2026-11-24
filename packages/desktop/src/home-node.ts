@@ -1,43 +1,46 @@
 /** Keeps the home node running as a launchd user agent, independent of this
- * app: closing windows or quitting the app never stops Alfred's work, and the
+ * app: closing windows or quitting the app never stops Isocline's work, and the
  * node starts again at login. The app's own runtime runs it (Electron as
  * Node), so nothing else needs to be installed.
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export interface HomeNodeConfig {
   label: string;
+  /** The agent this world ran under before the rename (Alfred → Isocline): retired before this one starts. */
+  legacyLabel: string;
   port: number;
-  /** Absent: the home node's default (~/Library/Application Support/Alfred). */
+  /** Absent: the home node's default (~/Library/Application Support/Isocline). */
   dataDir?: string;
   /** The executable that runs the node (this app's binary, as Node). */
   runtime: string;
   /** packages/server/src/cli.ts */
   cli: string;
   logFile: string;
-  /** Passed through to the node, e.g. ALFRED_AWAY_MINUTES. */
+  /** Passed through to the node, e.g. ISOCLINE_AWAY_MINUTES. */
   env: Record<string, string>;
 }
 
 export const DEFAULT_PORT = 7480;
 
 export function homeNodeConfig(options: { runtime: string; cli: string; env: NodeJS.ProcessEnv }): HomeNodeConfig {
-  const dataDir = options.env.ALFRED_DATA_DIR || undefined;
+  const dataDir = options.env.ISOCLINE_DATA_DIR || undefined;
   // A non-default data directory gets its own agent, so a development world never replaces the real one.
-  const label = dataDir ? `alfred.home-node.${createHash("sha256").update(dataDir).digest("hex").slice(0, 8)}` : "alfred.home-node";
+  const label = dataDir ? `isocline.home-node.${createHash("sha256").update(dataDir).digest("hex").slice(0, 8)}` : "isocline.home-node";
   const env: Record<string, string> = {};
-  if (options.env.ALFRED_AWAY_MINUTES) env.ALFRED_AWAY_MINUTES = options.env.ALFRED_AWAY_MINUTES;
+  if (options.env.ISOCLINE_AWAY_MINUTES) env.ISOCLINE_AWAY_MINUTES = options.env.ISOCLINE_AWAY_MINUTES;
   return {
     label,
-    port: Number(options.env.ALFRED_PORT) || DEFAULT_PORT,
+    legacyLabel: label.replace(/^isocline\./, "alfred."),
+    port: Number(options.env.ISOCLINE_PORT) || DEFAULT_PORT,
     dataDir,
     runtime: options.runtime,
     cli: options.cli,
-    logFile: join(homedir(), "Library", "Logs", "Alfred", `${label}.log`),
+    logFile: join(homedir(), "Library", "Logs", "Isocline", `${label}.log`),
     env,
   };
 }
@@ -75,7 +78,22 @@ ${Object.entries(env).map(([key, value]) => `    <key>${xml(key)}</key><string>$
 `;
 }
 
-/** Whether an Alfred home node answers on the port. */
+/** Stops and removes the agent this world ran under before the rename (`alfred.home-node`), so the new one is the
+ * only home node on it. Synchronous: the Mac app calls it before it moves the old folders (rename.ts) and before
+ * anything opens a file in them. Waits briefly for the old node to let go; its lock file would stop the new one
+ * anyway if it had not. Returns whether there was one. */
+export function retireLegacyAgent(config: HomeNodeConfig): boolean {
+  const path = plistPath(config.legacyLabel);
+  const loaded = launchctl("print", `${domain()}/${config.legacyLabel}`).ok;
+  if (!loaded && !existsSync(path)) return false;
+  if (loaded) launchctl("bootout", `${domain()}/${config.legacyLabel}`);
+  rmSync(path, { force: true });
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  for (let waited = 0; waited < 10_000 && launchctl("print", `${domain()}/${config.legacyLabel}`).ok; waited += 200) Atomics.wait(pause, 0, 0, 200);
+  return true;
+}
+
+/** Whether an Isocline home node answers on the port. */
 export async function healthy(port: number): Promise<boolean> {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/state?modules=0`, { signal: AbortSignal.timeout(1500) });
@@ -120,7 +138,7 @@ export async function ensureHomeNode(config: HomeNodeConfig): Promise<HomeNodeMo
     return "launchd";
   }
   mkdirSync(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
-  mkdirSync(join(homedir(), "Library", "Logs", "Alfred"), { recursive: true });
+  mkdirSync(join(homedir(), "Library", "Logs", "Isocline"), { recursive: true });
   writeFileSync(path, plist, { mode: 0o644 });
   if (isLoaded(config)) launchctl("bootout", `${domain()}/${config.label}`);
   const loaded = launchctl("bootstrap", domain(), path);

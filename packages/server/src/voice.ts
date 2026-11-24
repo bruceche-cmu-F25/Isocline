@@ -71,7 +71,7 @@ export class Transcriber {
   async transcribe(wav: Buffer, context = ""): Promise<Transcript> {
     const why = await this.unavailable();
     if (why) throw new VoiceError("unavailable", why);
-    this.dir ??= mkdtemp(join(tmpdir(), "alfred-voice-"));
+    this.dir ??= mkdtemp(join(tmpdir(), "isocline-voice-"));
     const file = join(await this.dir, `${++this.seq}.wav`);
     try {
       const answer = await this.model.call({ wav: file, context }, () => writeFile(file, wav));

@@ -8,10 +8,10 @@
  * while, when another worker takes the conversation over, or on shutdown.
  *
  * What the model can use:
- * - Alfred's tools (todos and the rest), executed in the home node.
- * - MCP servers from Alfred's own `<config>/mcp.json` (same format as Pi's and
+ * - Isocline's tools (todos and the rest), executed in the home node.
+ * - MCP servers from Isocline's own `<config>/mcp.json` (same format as Pi's and
  *   Claude Desktop's), reached directly, through `tool_search` or `codemode`.
- *   Their secrets and the tokens of the user's sign-ins come from Alfred's
+ *   Their secrets and the tokens of the user's sign-ins come from Isocline's
  *   secret store (mcp-store.ts), never from that file; signing in happens on
  *   the home node (Settings), and a server that needs it is simply not reached.
  * - Skills from `<config>/skills/`, and the `read` tool to load them.
@@ -27,13 +27,13 @@
  * Nothing else: no shell and no writing or editing files outside a session,
  * none of the user's own Pi extensions or packages.
  *
- * A gate checks every call to a tool Alfred did not define. MCP tools their
- * server marks read-only, reading Alfred's skills, and reading, searching or
+ * A gate checks every call to a tool Isocline did not define. MCP tools their
+ * server marks read-only, reading Isocline's skills, and reading, searching or
  * listing inside a session's project folder (or another project the user
  * trusted) run freely. For project edits and shell commands the home node checks
  * the current session mode before each call. A command runs as the user from the
  * session folder, without a shell sandbox. A permitted call that may
- * have changed something outside Alfred is kept as a receipt.
+ * have changed something outside Isocline is kept as a receipt.
  * Credentials and the default model come from the user's Pi setup.
  *
  *   worker.ts --cwd <dir> --sessions <dir> --config <dir> [--agent-dir <dir>]
@@ -51,11 +51,11 @@ import {
 import { change, CHANGERS, countPatch, type Change } from "./changing.ts";
 import { fasterPayload } from "./speed.ts";
 import { LOOKERS, look, real } from "./looking.ts";
-import { loadAlfredMcpConfig, mcpPath } from "./mcp-config.ts";
+import { loadIsoclineMcpConfig, mcpPath } from "./mcp-config.ts";
 import { createMcpTransport, createMcpVault, type McpSecrets } from "./mcp-store.ts";
 import { composePrompt, type ExternalStep, type ModelInfo, type RunJob, type ToParent, type ToWorker } from "./protocol.ts";
 import { Skills } from "./skills.ts";
-import { defaultSecretStore, normalizeCommand, type Attachment } from "@alfred/core";
+import { defaultSecretStore, normalizeCommand, type Attachment } from "@isocline/core";
 import { createCredentialStore } from "./credentials.ts";
 
 const { values } = parseArgs({ options: { cwd: { type: "string" }, sessions: { type: "string" }, config: { type: "string" }, "agent-dir": { type: "string" } } });
@@ -63,7 +63,7 @@ const cwd = values.cwd!;
 const sessions = values.sessions!;
 const config = values.config ?? cwd;
 const agentDir = values["agent-dir"];
-// Model credentials are Alfred's own (credentials.ts, in the keychain), shared with the home node, where sign-in
+// Model credentials are Isocline's own (credentials.ts, in the keychain), shared with the home node, where sign-in
 // happens; a fresh runtime per session sees the latest. Custom models from Pi's models.json still apply.
 const modelOptions = { credentials: createCredentialStore({ secrets: defaultSecretStore(config), lockDir: config }), ...(agentDir ? { modelsPath: join(agentDir, "models.json") } : {}) };
 const skillsDir = join(config, "skills");
@@ -76,7 +76,7 @@ const textOf = (path: string) => { try { return readFileSync(path, "utf8"); } ca
 const mcpRevision = () => createHash("sha256").update(textOf(mcpPath(config))).update("\0").update(textOf(join(config, "mcp.rev"))).digest("hex");
 /** The stamp the home node moves when a skill is added, removed or switched (skills.ts). */
 const skillsRevision = () => textOf(join(config, "skills.rev"));
-// Pi discovers extensions, skills and context files in an agent directory; Alfred's is empty on purpose.
+// Pi discovers extensions, skills and context files in an agent directory; Isocline's is empty on purpose.
 const resourcesDir = join(cwd, "resources");
 for (const dir of [cwd, resourcesDir, skillsDir]) mkdirSync(dir, { recursive: true });
 
@@ -153,19 +153,19 @@ function exitOf(event: { isError?: boolean; details?: unknown; content?: unknown
   return event.isError ? null : 0;
 }
 
-/** The gate: every call to a tool Alfred did not define passes here first. `root` is a development session's project folder. */
+/** The gate: every call to a tool Isocline did not define passes here first. `root` is a development session's project folder. */
 type Language = "zh" | "en";
 /** What the user is asked before a tool goes further, in their language. */
 const ASK: Record<Language, {
   command: string; create: string; rewrite: string; edit: string; read: string; look: string; call(tool: string, server?: string): string;
 }> = {
   zh: {
-    command: "允许 Alfred 运行这条命令吗？", create: "允许 Alfred 新建这个文件吗？", rewrite: "允许 Alfred 重写这个文件吗？", edit: "允许 Alfred 改这个文件吗？",
-    read: "允许 Alfred 读取这个文件吗？", look: "允许 Alfred 查看这个位置吗？", call: (tool, server) => `允许 Alfred 调用${server ? ` ${server} 的` : ""}「${tool}」吗？`,
+    command: "允许 Isocline 运行这条命令吗？", create: "允许 Isocline 新建这个文件吗？", rewrite: "允许 Isocline 重写这个文件吗？", edit: "允许 Isocline 改这个文件吗？",
+    read: "允许 Isocline 读取这个文件吗？", look: "允许 Isocline 查看这个位置吗？", call: (tool, server) => `允许 Isocline 调用${server ? ` ${server} 的` : ""}「${tool}」吗？`,
   },
   en: {
-    command: "Let Alfred run this command?", create: "Let Alfred create this file?", rewrite: "Let Alfred rewrite this file?", edit: "Let Alfred change this file?",
-    read: "Let Alfred read this file?", look: "Let Alfred look in this place?", call: (tool, server) => `Let Alfred use ${server ? `${server}'s ` : ""}“${tool}”?`,
+    command: "Let Isocline run this command?", create: "Let Isocline create this file?", rewrite: "Let Isocline rewrite this file?", edit: "Let Isocline change this file?",
+    read: "Let Isocline read this file?", look: "Let Isocline look in this place?", call: (tool, server) => `Let Isocline use ${server ? `${server}'s ` : ""}“${tool}”?`,
   },
 };
 
@@ -200,7 +200,7 @@ function gate(state: Pick<Warm, "run" | "files" | "locale">, ours: ReadonlySet<s
         detail = file.patch ? (file.patch.length > MAX_DIFF ? `${file.patch.slice(0, MAX_DIFF)}\n… (diff truncated)` : file.patch) : undefined;
         changes = false;
       } else if (Object.hasOwn(LOOKERS, name)) {
-        // Alfred's own skills are instructions, and a session's project is the user's to read in it, as are the
+        // Isocline's own skills are instructions, and a session's project is the user's to read in it, as are the
         // other projects they trusted; any other file is the user's and needs a yes.
         const seen = look(name, input, { root, cwd, skills: skillsDir, others });
         step.label = seen.label;
@@ -302,11 +302,11 @@ async function open(job: RunJob): Promise<Warm> {
     ? `\n\nThe user's other projects on this computer (read, search and list them freely when the request involves one; changing anything there asks first):\n${others.map((other) => `- ${other.name}: ${other.root}`).join("\n")}`
     : "";
   // The servers, and each one's secrets, read once here: Pi asks for both without waiting.
-  const mcp = loadAlfredMcpConfig(config);
+  const mcp = loadIsoclineMcpConfig(config);
   const mcpSecrets = new Map<string, McpSecrets>();
   await Promise.all(mcp.servers.map(async (server) => { mcpSecrets.set(server.name, await mcpVault.secrets(server.name).catch(() => ({}))); }));
   const loader = new DefaultResourceLoader({
-    // Resources are discovered in Alfred's own folder, never the project's: its .pi/ settings and extensions stay out.
+    // Resources are discovered in Isocline's own folder, never the project's: its .pi/ settings and extensions stay out.
     cwd,
     agentDir: resourcesDir,
     additionalSkillPaths: [skillsDir],
@@ -317,13 +317,13 @@ async function open(job: RunJob): Promise<Warm> {
     noThemes: true,
     systemPrompt: job.workspace ? `${job.instructions}\n\nProject: ${job.workspace.name}\nFolder: ${root}${elsewhere}` : job.instructions,
     extensionFactories: [
-      { name: "alfred-gate", factory: gate(state, new Set(definitions.map((tool) => tool.name)), root, others.map((other) => other.root)), hidden: true },
+      { name: "isocline-gate", factory: gate(state, new Set(definitions.map((tool) => tool.name)), root, others.map((other) => other.root)), hidden: true },
       createCodemodeExtension(),
       createToolSearchExtension(),
-      // Alfred's own servers, not the user's Pi configuration.
+      // Isocline's own servers, not the user's Pi configuration.
       createMcpExtension({
         loadConfig: () => mcp as never,
-        // Alfred's own connection: secrets and sign-in tokens from its secret store, not Pi's files.
+        // Isocline's own connection: secrets and sign-in tokens from its secret store, not Pi's files.
         createTransport: (entry, where) => createMcpTransport({ name: entry.name, config: entry.config as unknown as Record<string, unknown> }, { cwd: where, vault: mcpVault, secrets: mcpSecrets.get(entry.name) ?? {} }),
         logPath: join(cwd, "mcp.log"),
         startupWaitMs: 5000,

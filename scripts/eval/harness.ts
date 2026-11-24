@@ -1,19 +1,19 @@
-/** Real-model checks of the everyday Alfred: one throwaway home node per scenario (its own data directory, a fake
+/** Real-model checks of the everyday Isocline: one throwaway home node per scenario (its own data directory, a fake
  * writable calendar account, a few todos and events), the user's real model sign-in from the keychain, no Google
- * connection (nothing is delivered anywhere). A scenario says one thing to Alfred and checks what landed: todos,
+ * connection (nothing is delivered anywhere). A scenario says one thing to Isocline and checks what landed: todos,
  * proposals, questions asked, the reply.
  */
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   answerRequest, getRun, listOpenProposals, submitRun, updateSettings, withCoreContext, type World,
-} from "@alfred/core";
-import { createPiEngine } from "@alfred/engine-pi";
-import { todoModule, addTodo, listTodos, type Todo } from "@alfred/module-todo";
-import { calendarModule } from "@alfred/module-calendar";
-import { mailModule } from "@alfred/module-mail";
-import { linksModule } from "@alfred/module-links";
-import type { GoogleService } from "@alfred/module-kit";
+} from "@isocline/core";
+import { createPiEngine } from "@isocline/engine-pi";
+import { todoModule, addTodo, listTodos, type Todo } from "@isocline/module-todo";
+import { calendarModule } from "@isocline/module-calendar";
+import { mailModule } from "@isocline/module-mail";
+import { linksModule } from "@isocline/module-links";
+import type { GoogleService } from "@isocline/module-kit";
 import { openHome } from "../../packages/server/src/home.ts";
 
 export const ACCOUNT = "test@example.com";
@@ -47,7 +47,7 @@ export interface Scenario {
   /** What the user says. A list is one conversation, said in turn. */
   say: string | string[];
   seed?: Seed;
-  /** What to answer if Alfred asks; otherwise its first option, or "你看着办". */
+  /** What to answer if Isocline asks; otherwise its first option, or "你看着办". */
   answer?: string;
   /** Problems found, as short lines; empty when it went right. */
   check(result: Result, h: Helpers): string[];

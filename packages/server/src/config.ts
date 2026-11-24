@@ -6,14 +6,14 @@ export const DEFAULT_PORT = 7480;
 
 /** Where the world lives. Never inside the repository. */
 export function defaultDataDir(): string {
-  if (process.env.ALFRED_DATA_DIR) return resolve(process.env.ALFRED_DATA_DIR);
-  if (process.platform === "darwin") return join(homedir(), "Library", "Application Support", "Alfred");
-  return join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "alfred");
+  if (process.env.ISOCLINE_DATA_DIR) return resolve(process.env.ISOCLINE_DATA_DIR);
+  if (process.platform === "darwin") return join(homedir(), "Library", "Application Support", "Isocline");
+  return join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "isocline");
 }
 
-/** The built interface, next to this package in the workspace (or where ALFRED_UI_DIR says, to try a build that
+/** The built interface, next to this package in the workspace (or where ISOCLINE_UI_DIR says, to try a build that
  * is not the one in use). */
 export function defaultUiDir(): string {
-  if (process.env.ALFRED_UI_DIR) return resolve(process.env.ALFRED_UI_DIR);
+  if (process.env.ISOCLINE_UI_DIR) return resolve(process.env.ISOCLINE_UI_DIR);
   return resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui", "dist");
 }

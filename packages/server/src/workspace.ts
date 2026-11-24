@@ -1,11 +1,11 @@
 /** A development session's folder as git sees it: the snapshot it started from, what has changed since, and one
  * file's diff (docs/design/dev-mode.md 4.5). Towards the user's repository it only adds: `git stash create` makes a
  * commit object of the working tree without touching the tree, the index's contents, a branch or the stash, and one
- * ref under `refs/alfred/snapshots/` points at that commit, because git deletes a commit nothing points at.
+ * ref under `refs/isocline/snapshots/` (before the rename, `refs/alfred/snapshots/`) points at that commit, because git deletes a commit nothing points at.
  * A folder that is not a git repository has no snapshot; its changes are the session's own receipts.
  */
 import { execFile } from "node:child_process";
-import type { ProjectBranches } from "@alfred/protocol";
+import type { ProjectBranches } from "@isocline/protocol";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, sep } from "node:path";
 
@@ -28,7 +28,7 @@ function git(root: string, args: string[]): Promise<{ ok: boolean; out: string }
 }
 
 /** Where the snapshots of working trees are kept from git's garbage collection. */
-export const SNAPSHOT_REFS = "refs/alfred/snapshots/";
+export const SNAPSHOT_REFS = "refs/isocline/snapshots/";
 
 /** The snapshot a session's changes are measured against: the working tree as it is now, or HEAD when it is clean.
  * Null when the folder is not in a git repository (or has no commit yet). */
@@ -160,11 +160,11 @@ function tool(file: "git" | "gh", cwd: string, args: string[], timeout = 120_000
 /** The last few lines of what git said, for an error the user reads. */
 const said = (text: string) => text.split("\n").filter(Boolean).slice(-6).join("\n").slice(0, 1200);
 
-/** A branch name from a session's title: its latin words, else `session`; under `alfred/`. */
+/** A branch name from a session's title: its latin words, else `session`; under `isocline/`. */
 export function branchName(title: string): string {
   const words = title.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().match(/[a-z0-9]+/g) ?? [];
   const slug = words.join("-").slice(0, 40).replace(/-+$/, "");
-  return `alfred/${slug || "session"}`;
+  return `isocline/${slug || "session"}`;
 }
 
 async function requireRepositoryRoot(project: string): Promise<void> {
@@ -251,7 +251,7 @@ export async function createWorktree(project: string, dir: string, want: string)
   }
 }
 
-/** Undo only Alfred's newly allocated ref when it still points at the original commit. Git's normal
+/** Undo only Isocline's newly allocated ref when it still points at the original commit. Git's normal
  * branch deletion additionally protects checked-out branches and commits that have not been merged. */
 export async function releaseNewBranch(project: string, branch: string, createdFrom: string) {
   const tip = await git(project, ["rev-parse", "--verify", `refs/heads/${branch}`]);

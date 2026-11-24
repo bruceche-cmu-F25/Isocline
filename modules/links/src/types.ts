@@ -33,7 +33,7 @@ export interface Clip {
   url: string;
   /** The page's own title; until it is fetched, a name made from the address. */
   title: string;
-  /** Where the title came from: the user or Alfred gave it, the page or a platform share named it, or it is derived from the address. */
+  /** Where the title came from: the user or Isocline gave it, the page or a platform share named it, or it is derived from the address. */
   titleSource: "given" | "page" | "share" | "url";
   /** A known platform (`youtube`, `bilibili`, `xiaohongshu`, `github`…), or `web`. */
   platform: string;
@@ -59,8 +59,8 @@ export interface Clip {
   cover?: string;
   /** Playback time when published by the source. */
   durationSeconds?: number;
-  /** Alfred saved or last changed it (from the event log). */
-  byAlfred?: boolean;
+  /** Isocline saved or last changed it (from the event log). */
+  byIsocline?: boolean;
 }
 
 /** What a clip is about. A topic sits in one of the shared areas, whose colour it takes. */

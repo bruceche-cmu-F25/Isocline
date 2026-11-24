@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { todoModule } from "@alfred/module-todo";
-import { updateSettings } from "@alfred/core";
+import { todoModule } from "@isocline/module-todo";
+import { updateSettings } from "@isocline/core";
 import { createHttpServer, openHome, parseSystemVoices, Speaker, type Home } from "../src/index.ts";
 
 const SAY = fileURLToPath(new URL("./fixtures/fake-say.sh", import.meta.url));
@@ -68,7 +68,7 @@ test("speaks with the system voice for the language, at the chosen pace; the tex
     assert.equal((await speak(base, {})).status, 400);
 
     const status = await (await fetch(`${base}/api/voice`)).json() as { speak: { voices: Array<{ id: string }>; current: string; model: string } };
-    assert.deepEqual(status.speak.voices.map((voice) => voice.id), ["system:Samantha", "system:Tingting", "system:Flo (Chinese (China mainland))"]);
+    assert.deepEqual(status.speak.voices.map((voice) => voice.id), ["system:Samantha", "system:Daniel", "system:Tingting", "system:Eddy (Chinese (China mainland))", "system:Flo (Chinese (China mainland))"]);
     assert.equal(status.speak.current, "system:Samantha");
     assert.equal(status.speak.model, "absent");
   } finally {
@@ -102,10 +102,10 @@ test("voice settings: a patch changes only what it names, and bad values are ref
   const speaker = new Speaker({ sayCommand: SAY, modelPresent: () => false });
   const { home, server } = await start(speaker);
   try {
-    let settings = updateSettings(home.world, { voice: { words: [" Alfred ", "useSpeech", "Alfred"] } });
-    assert.deepEqual(settings.voice, { speakFigure: true, muted: false, voice: null, rate: 1, words: ["Alfred", "useSpeech"] });
+    let settings = updateSettings(home.world, { voice: { words: [" Isocline ", "useSpeech", "Isocline"] } });
+    assert.deepEqual(settings.voice, { speakFigure: true, muted: false, voice: null, rate: 1, words: ["Isocline", "useSpeech"] });
     settings = updateSettings(home.world, { voice: { muted: true } });
-    assert.deepEqual(settings.voice.words, ["Alfred", "useSpeech"]);
+    assert.deepEqual(settings.voice.words, ["Isocline", "useSpeech"]);
     assert.equal(settings.voice.muted, true);
     assert.throws(() => updateSettings(home.world, { voice: { rate: 3 } }), /rate/);
     assert.throws(() => updateSettings(home.world, { voice: { voice: "cloud:x" } }), /voice\.voice/);
@@ -116,4 +116,13 @@ test("voice settings: a patch changes only what it names, and bad values are ref
     server.close();
     home.close();
   }
+});
+
+test("the default voice is the character's: Ana's a woman's, Kata's a man's; a voice the user picked is kept", async () => {
+  const speaker = new Speaker({ sayCommand: SAY, modelPresent: () => false });
+  assert.equal(await speaker.pick(null, "zh"), "system:Tingting");
+  assert.equal(await speaker.pick(null, "en", "ana"), "system:Samantha");
+  assert.equal(await speaker.pick(null, "zh", "kata"), "system:Eddy (Chinese (China mainland))");
+  assert.equal(await speaker.pick(null, "en", "kata"), "system:Daniel");
+  assert.equal(await speaker.pick("system:Flo (Chinese (China mainland))", "zh", "kata"), "system:Flo (Chinese (China mainland))");
 });

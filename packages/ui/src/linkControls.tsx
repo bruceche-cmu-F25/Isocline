@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { LinkOp } from "@alfred/module-links/types";
+import type { LinkOp } from "@isocline/module-links/types";
 import { api } from "./api.ts";
 
 export function linkFileUrl(key?: string) {

@@ -4,8 +4,8 @@ import { test } from "node:test";
 import {
   acknowledgeNotice, addProject, claimNextRun, CORE_MIGRATIONS, ensureTemplates, finishRun, getSettings, listAutomations,
   listNotices, listRuns, openWorld, reportPresence, runAutomationNow, startSession, submitRun, trustProject,
-} from "@alfred/core";
-import { PROTOCOL_VERSION, type AwayDigest, type StateResponse } from "@alfred/protocol";
+} from "@isocline/core";
+import { PROTOCOL_VERSION, type AwayDigest, type StateResponse } from "@isocline/protocol";
 import { setLocale } from "../src/i18n/dict.ts";
 import { editionTitle } from "../src/automationText.ts";
 import { inboxItems } from "../src/shell/inbox.ts";

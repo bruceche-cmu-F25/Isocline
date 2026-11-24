@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CORE_MIGRATIONS, listEvents as coreEvents, openWorld, type World } from "@alfred/core";
-import { ServiceError, type GoogleService } from "@alfred/module-kit";
+import { CORE_MIGRATIONS, listEvents as coreEvents, openWorld, type World } from "@isocline/core";
+import { ServiceError, type GoogleService } from "@isocline/module-kit";
 import { calendarModule, describeEvents, mapEvent, mirrorWindow, syncCalendar, type CalendarSnapshot } from "../src/index.ts";
 
 const world = (): World => openWorld(":memory:", [...CORE_MIGRATIONS, ...calendarModule.migrations]);
@@ -111,7 +111,7 @@ test("an account that cannot be read keeps its last events and says why; one dis
   await syncCalendar(w, {}, undefined, NOW);
 });
 
-test("Alfred reads the schedule with calendar_list, a week by default", async () => {
+test("Isocline reads the schedule with calendar_list, a week by default", async () => {
   const w = world();
   const today = new Date();
   const iso = (hours: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours).toISOString();

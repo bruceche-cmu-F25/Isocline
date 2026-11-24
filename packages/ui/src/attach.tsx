@@ -3,7 +3,7 @@
  * image, a PDF or text; past 20 MB) is said so on its chip and never sent.
  */
 import { useMemo, useRef, useSyncExternalStore, type ClipboardEvent, type DragEvent } from "react";
-import type { FileInfo } from "@alfred/protocol";
+import type { FileInfo } from "@isocline/protocol";
 import { ApiError, api } from "./api.ts";
 import { t, type Key } from "./i18n/index.ts";
 import { Icon } from "./shell/icons.tsx";

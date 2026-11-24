@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
-import { updateSettings } from "@alfred/core";
-import { createLinksModule, PageFetchError, saveClip } from "@alfred/module-links";
-import { createHttpServer, openHome } from "@alfred/server";
+import { updateSettings } from "@isocline/core";
+import { createLinksModule, PageFetchError, saveClip } from "@isocline/module-links";
+import { createHttpServer, openHome } from "@isocline/server";
 
 test("a phone keeps shared titles and personal notes distinct, and can name a sign-in-only post", async (t) => {
   const browser = await chromium.launch({ channel: "chrome" });

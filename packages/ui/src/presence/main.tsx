@@ -1,7 +1,7 @@
-/** The presence window: Alfred's figure, always on screen in the Mac app.
- * It shows what Alfred is doing, and it is how Alfred tells the user things on the Mac: the welcome when they come
- * back, a finished task, a question, a proposal. Alfred hops up, grows, and the words come out of the figure as a
- * speech card; then it folds the card back in. When the user hid the figure, Alfred rises from the screen's edge to
+/** The presence window: Isocline's figure, always on screen in the Mac app.
+ * It shows what Isocline is doing, and it is how Isocline tells the user things on the Mac: the welcome when they come
+ * back, a finished task, a question, a proposal. Isocline hops up, grows, and the words come out of the figure as a
+ * speech card; then it folds the card back in. When the user hid the figure, Isocline rises from the screen's edge to
  * say it and sinks away after.
  *
  * The figure is the user's to move: drag it anywhere, and it settles toward the nearest corner, with the card on the
@@ -16,10 +16,10 @@
  */
 import { StrictMode, useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { createRoot } from "react-dom/client";
-import type { AwayDigest, Notice } from "@alfred/protocol";
+import type { AwayDigest, Notice } from "@isocline/protocol";
 import { desktop, type FigureSide } from "../desktop.ts";
 import { createFigure, type Figure, type FigureState } from "../entity/tesseract.js";
-import { setLocale, t, useLocale } from "../i18n/index.ts";
+import { assistantNameFor, setAssistant, setLocale, t, useLocale, getAssistant } from "../i18n/index.ts";
 import { waitingCount } from "../shell/inbox.ts";
 import { noticeLines } from "../noticeText.ts";
 import { SpeechCard } from "../speech/SpeechCard.tsx";
@@ -27,9 +27,9 @@ import { useSpeech, type Said } from "../speech/useSpeech.ts";
 import { firstSentences, forSpeech, say, stopSpeaking, useKeepVoiceSettings, voiceSettings } from "../speech/voice.ts";
 import { useQuickTalk } from "../voice/useQuickTalk.ts";
 import { api } from "../api.ts";
-import type { Run } from "@alfred/protocol";
+import type { Run } from "@isocline/protocol";
 import { WebLockGate } from "../WebLockGate.tsx";
-import { useAlfred } from "../useAlfred.ts";
+import { useIsocline } from "../useIsocline.ts";
 import { welcomeLines } from "../welcome.ts";
 import "./presence.css";
 
@@ -42,7 +42,7 @@ const DRAG_PX = 4;
 /** Held this long without moving, a press becomes talking (quick talk). */
 const HOLD_MS = 350;
 /** Quick talk goes on in one conversation, remembered here (docs/design/voice.md §1.2). */
-const QUICK_KEY = "alfred.quick.conversation";
+const QUICK_KEY = "isocline.quick.conversation";
 /** A reply to quick talk, said by the figure; not a notice of the home node's. */
 const VOICE_PREFIX = "voice:";
 const isReply = (notice: Notice) => notice.id.startsWith(VOICE_PREFIX);
@@ -63,12 +63,13 @@ function demoSide(): FigureSide {
 }
 
 function Presence() {
-  const { state } = useAlfred();
+  const { state } = useIsocline();
   // Speak the user's language, as set on the home node.
   useLocale();
   useKeepVoiceSettings(state?.settings?.voice);
   const locale = state?.settings?.locale;
   useEffect(() => { if (locale) setLocale(locale); }, [locale]);
+  setAssistant(assistantNameFor(state?.settings));
 
   const svg = useRef<SVGSVGElement>(null);
   const figure = useRef<Figure | null>(null);
@@ -124,7 +125,7 @@ function Presence() {
   const { current, said, phase } = speech;
 
   // Says the card out loud as it comes out (docs/design/voice.md §2.2), unless the user turned that off or muted
-  // Alfred.
+  // Isocline.
   const spoken = useRef<string | null>(null);
   useEffect(() => {
     if (phase !== "speak" || !current || !said || spoken.current === current.id) return;
@@ -257,7 +258,7 @@ function Presence() {
     figure.current?.play("unfold");
   }, [mood, phase, speech.complete, current]);
 
-  const label = working ? t("presence.working") : waiting ? t("presence.waiting") : "Alfred";
+  const label = working ? t("presence.working") : waiting ? t("presence.waiting") : getAssistant();
   const speaking = phase === "idle" || phase === "next" ? undefined : phase;
   const cardShown = said && current && (phase === "speak" || phase === "fold");
   // While talking or waiting for the answer, one short line where the card goes.

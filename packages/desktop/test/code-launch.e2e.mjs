@@ -6,7 +6,7 @@ import { chromium } from "playwright-core";
 // The screenshot regression depends on the space left by the desktop sidebar, not just viewport width.
 const dist = process.env.UI_DIST ? pathToFileURL(process.env.UI_DIST.replace(/\/$/, "") + "/") : new URL("../../ui/dist/", import.meta.url);
 const now = "2026-01-01T12:00:00Z";
-const project = { id: "project", name: "Alfred", path: "/Users/sample/projects/" + "long-project-name/".repeat(8), gitRoot: true, trustedAt: now, createdAt: now };
+const project = { id: "project", name: "Isocline", path: "/Users/sample/projects/" + "long-project-name/".repeat(8), gitRoot: true, trustedAt: now, createdAt: now };
 const branches = { current: "main", branches: [{ name: "main", checkedOut: true }, { name: "topic/existing", checkedOut: false }] };
 const models = [{ id: "one", name: "Project default model", provider: "fixture", reasoning: true, engineDefault: true },
   { id: "two", name: "Another model", provider: "fixture", reasoning: true }];

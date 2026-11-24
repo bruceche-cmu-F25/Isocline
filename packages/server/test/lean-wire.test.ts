@@ -8,9 +8,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
-import type { EnginePort } from "@alfred/core";
-import { todoModule } from "@alfred/module-todo";
-import type { LiveUpdate, StateResponse, SubmitRunResponse } from "@alfred/protocol";
+import type { EnginePort } from "@isocline/core";
+import { todoModule } from "@isocline/module-todo";
+import type { LiveUpdate, StateResponse, SubmitRunResponse } from "@isocline/protocol";
 import { createHttpServer, openHome, type Home } from "../src/index.ts";
 import { overTheWire, send } from "../src/wire.ts";
 

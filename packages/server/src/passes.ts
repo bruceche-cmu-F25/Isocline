@@ -6,8 +6,8 @@
  * refresh (`sync`), when a change was just accepted (`deliver`), or after an event the module named (`sync.onEvents`).
  * Whatever asks, a module never has two passes at a time: what arrives during one gets one more pass right after it.
  */
-import { listOutbound, onEvents, type World } from "@alfred/core";
-import { deliverQueued, type AlfredModule, type ModuleServices } from "@alfred/module-kit";
+import { listOutbound, onEvents, type World } from "@isocline/core";
+import { deliverQueued, type IsoclineModule, type ModuleServices } from "@isocline/module-kit";
 
 /** How often changes that had to wait go out again, for a module that has no mirror of its own to refresh. */
 const DELIVER_EVERY_MS = 5 * 60_000;
@@ -16,7 +16,7 @@ const FIRST_PASS_MS = 2_000;
 
 export interface PassesOptions {
   world: World;
-  modules: readonly AlfredModule[];
+  modules: readonly IsoclineModule[];
   /** The outside services the user has connected (read when each pass runs). */
   services?: () => ModuleServices;
   log?: (message: string) => void;
@@ -42,7 +42,7 @@ export function modulePasses(options: PassesOptions): ModulePasses {
   const stale = new Set<string>();
   const queued = (id: string) => listOutbound(world, { module: id, states: ["queued"] }).length > 0;
 
-  const pass = (module: AlfredModule): Promise<void> => {
+  const pass = (module: IsoclineModule): Promise<void> => {
     const running = passes.get(module.id);
     if (running) return running;
     const services = options.services?.() ?? {};

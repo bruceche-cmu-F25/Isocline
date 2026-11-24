@@ -1,5 +1,5 @@
 {
-  "name": "@alfred/server",
+  "name": "@isocline/server",
   "version": "0.0.0",
   "private": true,
   "description": "The home node: holds the world, executes runs, serves the client protocol and the UI.",
@@ -9,18 +9,19 @@
     "alfred": "./src/cli.ts"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./rename": "./src/rename.ts"
   },
   "dependencies": {
-    "@alfred/core": "*",
-    "@alfred/engine-pi": "*",
-    "@alfred/module-calendar": "*",
-    "@alfred/module-kit": "*",
-    "@alfred/module-links": "*",
-    "@alfred/module-mail": "*",
-    "@alfred/module-todo": "*",
-    "@alfred/protocol": "*",
-    "@alfred/ui": "*",
+    "@isocline/core": "*",
+    "@isocline/engine-pi": "*",
+    "@isocline/module-calendar": "*",
+    "@isocline/module-kit": "*",
+    "@isocline/module-links": "*",
+    "@isocline/module-mail": "*",
+    "@isocline/module-todo": "*",
+    "@isocline/protocol": "*",
+    "@isocline/ui": "*",
     "node-pty": "1.2.0-beta.15",
     "web-push": "3.6.7"
   },

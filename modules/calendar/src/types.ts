@@ -23,7 +23,7 @@ export interface CalendarEvent {
   attendees: number;
   /** Its colour slot (tokens.css `data-k`): its series' own in one of the user's calendars, else its calendar's. */
   k: string;
-  /** Alfred may propose moving it: the user organizes it, in a calendar they may change. */
+  /** Isocline may propose moving it: the user organizes it, in a calendar they may change. */
   editable: boolean;
   /** An invitation the user can answer. */
   invited: boolean;
@@ -39,7 +39,7 @@ export interface CalendarSource {
   error: string | null;
   /** The account must be connected again in Settings. */
   reconnect: boolean;
-  /** The user let Alfred change this account's calendar (Settings: 日历：替你加和改). */
+  /** The user let Isocline change this account's calendar (Settings: 日历：替你加和改). */
   canWrite: boolean;
   /** `varied`: one of the user's own, whose events are coloured series by series; the others are all `k`. */
   calendars: Array<{ id: string; name: string; k: string; writable: boolean; varied: boolean }>;

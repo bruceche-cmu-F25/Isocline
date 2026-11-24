@@ -5,10 +5,10 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fileStore } from "@alfred/core";
-import { createCredentialStore, ModelAccounts } from "@alfred/engine-pi";
-import { todoModule } from "@alfred/module-todo";
-import type { ModelAccountsResponse, ModelSignIn } from "@alfred/protocol";
+import { fileStore } from "@isocline/core";
+import { createCredentialStore, ModelAccounts } from "@isocline/engine-pi";
+import { todoModule } from "@isocline/module-todo";
+import type { ModelAccountsResponse, ModelSignIn } from "@isocline/protocol";
 import { createHttpServer, openHome } from "../src/index.ts";
 
 test("over HTTP: list providers, sign in with a key by answering Pi's question, import from Pi, sign out", async () => {

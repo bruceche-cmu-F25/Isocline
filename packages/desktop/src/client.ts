@@ -1,7 +1,7 @@
 /** The Mac app's own connection to the home node: it is one device among
  * others and speaks only the public protocol.
  */
-import type { StateResponse } from "@alfred/protocol";
+import type { StateResponse } from "@isocline/protocol";
 
 /** Events that are only a run's own progress. Inside a payload the quotes are escaped, so this is the event's kind. */
 const QUIET = /"kind":"run\.(step|usage)"/;

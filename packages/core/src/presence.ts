@@ -51,7 +51,7 @@ export interface AwayDigest {
     /** Up to three recent everyday results. Older saved welcomes only have goal fragments. */
     results?: Array<{ runId: string; conversationId: string; at: string; name: string | null }>;
   };
-  /** World changes Alfred or the system made, by module (`todo`, …). Yours are not news. */
+  /** World changes Isocline or the system made, by module (`todo`, …). Yours are not news. */
   changes: Record<string, number>;
   /** Things that wait on the user right now (a question, a proposal, an interrupted run, a change outside that
    * failed or may not have happened), whether or not a phone was told, and from before they left too. News is not

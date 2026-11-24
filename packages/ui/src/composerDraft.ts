@@ -1,4 +1,4 @@
-import type { FileInfo } from "@alfred/protocol";
+import type { FileInfo } from "@isocline/protocol";
 
 export interface Pending {
   key: string;
@@ -64,7 +64,7 @@ export function composerDraft(sessionId?: string) {
   if (!sessionId) return createDraft();
   let draft = drafts.get(sessionId);
   if (!draft) {
-    draft = createDraft(`alfred.codingDraft.${sessionId}`);
+    draft = createDraft(`isocline.codingDraft.${sessionId}`);
     drafts.set(sessionId, draft);
   }
   return draft;

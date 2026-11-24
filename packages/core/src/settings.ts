@@ -22,9 +22,9 @@ export function acceptLanguage(locale: Locale): string {
 }
 
 export interface UserSettings {
-  /** The language Alfred speaks on every device. Null until a device sets it from its system language. */
+  /** The language Isocline speaks on every device. Null until a device sets it from its system language. */
   locale: Locale | null;
-  /** How the user wants Alfred to address them. Null until they have chosen a name. */
+  /** How the user wants Isocline to address them. Null until they have chosen a name. */
   preferredName: string | null;
   /** The model a conversation uses unless it chose its own (`provider/model`); null: the engine's default. */
   model: string | null;
@@ -38,13 +38,24 @@ export interface UserSettings {
   pages: PageLayout | null;
   /** Speaking and listening (docs/design/voice.md §3). */
   voice: VoiceSettings;
+  /** Who the assistant is: one of the two characters, each with its own name and voice (docs/design/rename-isocline.md §4). */
+  character: Character;
+  /** What the assistant is called; null: the character's own name. The user's to change (Bruce calls his Alfred). */
+  assistantName: string | null;
 }
+/** The two directions of the fourth dimension: Ana (a woman's voice) and Kata (a man's). */
+export const CHARACTERS = ["ana", "kata"] as const;
+export type Character = (typeof CHARACTERS)[number];
+export const CHARACTER_NAMES: Record<Character, string> = { ana: "Ana", kata: "Kata" };
+/** The name the assistant goes by: the user's choice, else the character's. */
+export const assistantNameOf = (settings: Pick<UserSettings, "character" | "assistantName">): string =>
+  settings.assistantName ?? CHARACTER_NAMES[settings.character] ?? CHARACTER_NAMES.ana;
 export interface PageLayout { order: string[]; hidden: string[] }
 export interface VoiceSettings {
   /** The Mac's figure reads out what it says (the welcome, a result, a question). Replies to quick talk are always
    * read out, unless muted. */
   speakFigure: boolean;
-  /** For now: Alfred says nothing out loud anywhere, only shows. */
+  /** For now: Isocline says nothing out loud anywhere, only shows. */
   muted: boolean;
   /** `system:<name>` or `model:<name>`; null: the default for the language. */
   voice: string | null;
@@ -60,7 +71,7 @@ export class SettingsError extends Error {
   override name = "SettingsError";
 }
 
-const DEFAULTS: UserSettings = { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE_DEFAULTS };
+const DEFAULTS: UserSettings = { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE_DEFAULTS, character: "ana", assistantName: null };
 const VOICE_ID = /^(system|model):[^\n\r]{1,80}$/;
 const PAGE_KEY = /^[a-z][a-z0-9_-]{0,31}\.[a-z][a-z0-9_-]{0,31}$/;
 const MODEL = /^[A-Za-z0-9._-]{1,64}\/[^\s/][^\s]{0,199}$/;
@@ -97,6 +108,20 @@ function pick(value: Record<string, unknown>): Partial<UserSettings> {
       const trimmed = name.trim();
       if (!trimmed || trimmed.length > 80) throw new SettingsError("preferredName must be between 1 and 80 characters");
       out.preferredName = trimmed;
+    }
+  }
+  if ("character" in value) {
+    if (!CHARACTERS.includes(value.character as Character)) throw new SettingsError(`character must be one of: ${CHARACTERS.join(", ")}`);
+    out.character = value.character as Character;
+  }
+  if ("assistantName" in value) {
+    const name = value.assistantName;
+    if (name === null) out.assistantName = null;
+    else {
+      if (typeof name !== "string" || /\p{Cc}/u.test(name)) throw new SettingsError("assistantName must be text without control characters");
+      const trimmed = name.trim();
+      if (trimmed.length > 40) throw new SettingsError("assistantName is at most 40 characters");
+      out.assistantName = trimmed || null;
     }
   }
   if ("model" in value) {

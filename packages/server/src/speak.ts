@@ -6,7 +6,7 @@
  * - a local model (Qwen3-TTS 0.6B on MLX, about 2 GB, downloaded only when the user asks): sounds more like a
  *   person, takes about three seconds to a sentence and about 5 GB while loaded, so it runs in a worker that is
  *   started when wanted and stopped after a while unused, like the speech-to-text one.
- * Both were measured on Alfred's kind of sentences, Chinese with English in it (docs/design/voice.md §6).
+ * Both were measured on Isocline's kind of sentences, Chinese with English in it (docs/design/voice.md §6).
  *
  * A voice is named `system:<name>` or `model:<name>`.
  */
@@ -55,8 +55,14 @@ const MODEL_VOICES: VoiceInfo[] = [
 /** The Mac's novelty voices (bells, whispers, robots): not voices to be told things in. */
 const NOVELTY = new Set(["Albert", "Bad News", "Bahh", "Bells", "Boing", "Bubbles", "Cellos", "Good News", "Jester", "Organ",
   "Superstar", "Trinoids", "Whisper", "Wobble", "Zarvox", "Fred", "Junior", "Kathy", "Ralph"]);
-/** First choice of system voice for each language, when it is there. */
-const PREFERRED: Record<"zh" | "en", string> = { zh: "Tingting", en: "Samantha" };
+/** First choice of system voice for each language, when it is there: Ana speaks in a woman's voice, Kata in a man's
+ * (docs/design/rename-isocline.md §4). The rest of a character's list is what to try when the first is missing. */
+export type Character = "ana" | "kata";
+const PREFERRED_BY: Record<Character, Record<"zh" | "en", string[]>> = {
+  ana: { zh: ["Tingting", "Flo (Chinese (China mainland))", "Shelley (Chinese (China mainland))"], en: ["Samantha", "Flo (English (US))", "Shelley (English (US))"] },
+  kata: { zh: ["Eddy (Chinese (China mainland))", "Reed (Chinese (China mainland))", "Rocko (Chinese (China mainland))"], en: ["Daniel", "Eddy (English (US))", "Reed (English (US))"] },
+};
+const PREFERRED: Record<"zh" | "en", string> = { zh: PREFERRED_BY.ana.zh[0]!, en: PREFERRED_BY.ana.en[0]! };
 
 /** `say -v '?'` lines: `Tingting             zh_CN    # 你好！我叫婷婷。` or `Eddy (Chinese (China mainland)) zh_CN    # …`. */
 export function parseSystemVoices(listing: string): VoiceInfo[] {
@@ -97,6 +103,8 @@ export interface SpeakRequest {
   rate?: number;
   /** The app's language: the default voice for text in neither Chinese nor a Latin script. */
   locale: "zh" | "en";
+  /** Whose voice the default is: Ana's (a woman's) or Kata's (a man's). */
+  character?: Character;
 }
 
 /** Where Hugging Face keeps a model, if it has it. */
@@ -180,12 +188,13 @@ export class Speaker {
   }
 
   /** The voice that will be used: the one asked for if it is here, else the language's default. */
-  async pick(voice: string | null | undefined, locale: "zh" | "en"): Promise<string> {
+  async pick(voice: string | null | undefined, locale: "zh" | "en", character: Character = "ana"): Promise<string> {
     if (voice?.startsWith("model:") && MODEL_VOICES.some((known) => known.id === voice) && this.modelPresent()) return voice;
     const system = await this.voicesOfSystem();
     if (voice && system.some((known) => known.id === voice)) return voice;
     const own = system.filter((known) => known.lang === locale);
-    const fallback = own.find((known) => known.name === PREFERRED[locale]) ?? own[0] ?? system[0];
+    const wanted = PREFERRED_BY[character][locale];
+    const fallback = wanted.map((name) => own.find((known) => known.name === name)).find(Boolean) ?? own[0] ?? system[0];
     if (!fallback) throw new VoiceError("unavailable", "No voice to speak with");
     return fallback.id;
   }
@@ -201,8 +210,8 @@ export class Speaker {
     // With no voice of the user's choosing, the text's own language picks: an English app still reads Chinese in a
     // Chinese voice.
     const language = /\p{Script=Han}/u.test(text) ? "zh" : /\p{Script=Latin}/u.test(text) ? "en" : request.locale;
-    const voice = await this.pick(request.voice, language);
-    this.dir ??= mkdtemp(join(tmpdir(), "alfred-speak-"));
+    const voice = await this.pick(request.voice, language, request.character);
+    this.dir ??= mkdtemp(join(tmpdir(), "isocline-speak-"));
     const out = join(await this.dir, `${++this.seq}.wav`);
     try {
       const [engine, name] = [voice.slice(0, voice.indexOf(":")), voice.slice(voice.indexOf(":") + 1)];

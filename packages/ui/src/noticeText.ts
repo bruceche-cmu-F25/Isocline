@@ -1,9 +1,9 @@
-import type { Notice } from "@alfred/protocol";
+import type { Notice } from "@isocline/protocol";
 import type { FigureState } from "./entity/tesseract.js";
-import { getLocale, translate, type Locale } from "./i18n/dict.ts";
+import { getLocale, translate, type Locale, getAssistant } from "./i18n/dict.ts";
 import { plainText } from "./markdown.ts";
 
-/** What Alfred says about a notice, how the figure looks while saying it, and what opening it means. */
+/** What Isocline says about a notice, how the figure looks while saying it, and what opening it means. */
 export interface NoticeLines {
   title: string;
   body: string;
@@ -62,5 +62,5 @@ export function noticeLines(notice: Notice, locale: Locale = getLocale()): Notic
   const status = notice.payload.status;
   if (status === "failed") return { title: say("mac.failed.title"), body: say("mac.goal", { goal }), mood: "error", closesOnOpen: true, action: look };
   if (status === "cancelled") return { title: say("mac.cancelled.title"), body: say("mac.goal", { goal }), mood: "rest", closesOnOpen: true, action: look };
-  return { title: goal ? say("mac.goal", { goal }) : "Alfred", body: (typeof notice.payload.reply === "string" && plainText(notice.payload.reply)) || say("mac.done.body", { goal }), mood: "done", closesOnOpen: true, action: look };
+  return { title: goal ? say("mac.goal", { goal }) : getAssistant(), body: (typeof notice.payload.reply === "string" && plainText(notice.payload.reply)) || say("mac.done.body", { goal }), mood: "done", closesOnOpen: true, action: look };
 }

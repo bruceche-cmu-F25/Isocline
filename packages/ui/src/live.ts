@@ -5,7 +5,7 @@
  * (`useLiveText`), and the rest of the app hears just that a run began or stopped writing (`useWriting`).
  */
 import { useCallback, useSyncExternalStore } from "react";
-import type { LiveUpdate } from "@alfred/protocol";
+import type { LiveUpdate } from "@isocline/protocol";
 
 /** How long a finished reply's last words are kept, for whoever is still showing them. */
 const KEEP_MS = 60_000;

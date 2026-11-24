@@ -1,7 +1,7 @@
 /** Preferences: what the user has said about how they like things done ("answer in short lines", "my week starts on
  * Monday", "never book meetings before 10"). ARCHITECTURE.md §8 calls it `USER.md`: written down as it is said, by the
- * user in Settings or by Alfred when the user tells it something lasting, and always visible, changeable and
- * removable there (docs/design/user-defined.md §8). Alfred reads all of it, with the name the user wants to be called,
+ * user in Settings or by Isocline when the user tells it something lasting, and always visible, changeable and
+ * removable there (docs/design/user-defined.md §8). Isocline reads all of it, with the name the user wants to be called,
  * at the start of every run.
  *
  * One row a preference, in the user's own words. Each change is an event, so who wrote what, and when, stays known.
@@ -17,7 +17,7 @@ export const MAX_PREFERENCES = 60;
 export interface Preference {
   id: string;
   text: string;
-  /** Who wrote it down: the user in Settings, or Alfred from something the user said. */
+  /** Who wrote it down: the user in Settings, or Isocline from something the user said. */
   by: "user" | "alfred";
   createdAt: string;
   updatedAt: string;
@@ -101,7 +101,7 @@ export function removePreference(world: World, id: string, by: Preference["by"] 
   });
 }
 
-/** What Alfred is told at the start of a run: the name the user goes by, and every preference, as the user's own
+/** What Isocline is told at the start of a run: the name the user goes by, and every preference, as the user's own
  * words. Empty when there is nothing to say. */
 export function describePreferences(world: World): string {
   const name = getSettings(world).preferredName;

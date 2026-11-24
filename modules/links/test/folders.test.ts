@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { CORE_MIGRATIONS, openWorld, type World } from "@alfred/core";
-import { invokeOp } from "@alfred/module-kit";
+import { CORE_MIGRATIONS, openWorld, type World } from "@isocline/core";
+import { invokeOp } from "@isocline/module-kit";
 import { groupPlaces, linksModule, listFolders, listPlaces, MIGRATIONS, movePlace, orderPlaces, pinPlace, removeLink, type LinksSnapshot } from "../src/index.ts";
 
 function ok<T extends object>(value: T | { error: string }): T {

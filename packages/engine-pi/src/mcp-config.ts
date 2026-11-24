@@ -1,4 +1,4 @@
-/** Alfred's MCP servers: `<config>/mcp.json`, in the format Pi, Claude Desktop
+/** Isocline's MCP servers: `<config>/mcp.json`, in the format Pi, Claude Desktop
  * and other MCP clients use ({ "mcpServers": { name: { command, args, env } |
  * { url, headers } } }). `${VAR}` placeholders in headers and env are filled from
  * the environment when a server is connected. Invalid entries are skipped and
@@ -6,7 +6,7 @@
  *
  * Secrets are not in this file. A header or an environment variable the user
  * gave in Settings is kept in the keychain (mcp-store.ts), and the entry only
- * names it, under `alfred`, with what else Alfred itself knows about the entry
+ * names it, under `alfred`, with what else Isocline itself knows about the entry
  * (its title, the catalog entry it came from). Other clients ignore that key,
  * and Pi is handed the entry without it.
  */
@@ -21,8 +21,8 @@ export interface McpServerEntry {
 }
 export interface LoadedMcpConfig { servers: McpServerEntry[]; errors: string[] }
 
-/** What Alfred keeps with an entry, beside what every MCP client reads. */
-export interface AlfredMeta {
+/** What Isocline keeps with an entry, beside what every MCP client reads. */
+export interface IsoclineMeta {
   /** How the entry is named to the user; its key in the file otherwise. */
   title?: string;
   /** The catalog entry it was added from. */
@@ -53,8 +53,8 @@ export function mcpEntryProblem(name: string, config: unknown): string | null {
 
 export const mcpPath = (dir: string) => join(dir, "mcp.json");
 
-/** What Alfred keeps with an entry. */
-export function alfredMeta(config: Record<string, unknown>): AlfredMeta {
+/** What Isocline keeps with an entry. */
+export function alfredMeta(config: Record<string, unknown>): IsoclineMeta {
   const meta = record(config.alfred) ? config.alfred : {};
   return {
     ...(typeof meta.title === "string" ? { title: meta.title } : {}),
@@ -64,7 +64,7 @@ export function alfredMeta(config: Record<string, unknown>): AlfredMeta {
   };
 }
 
-/** The file's entries exactly as written (Alfred's own key included), or what is wrong with the file. */
+/** The file's entries exactly as written (Isocline's own key included), or what is wrong with the file. */
 export function readMcpFile(dir: string): { servers: Record<string, Record<string, unknown>>; error?: string } {
   const path = mcpPath(dir);
   if (!existsSync(path)) return { servers: {} };
@@ -89,8 +89,8 @@ export function writeMcpFile(dir: string, servers: Record<string, Record<string,
   renameSync(temp, path);
 }
 
-/** The servers as Pi takes them: valid entries only, without Alfred's own key. */
-export function loadAlfredMcpConfig(dir: string): LoadedMcpConfig {
+/** The servers as Pi takes them: valid entries only, without Isocline's own key. */
+export function loadIsoclineMcpConfig(dir: string): LoadedMcpConfig {
   const path = mcpPath(dir);
   const file = readMcpFile(dir);
   const result: LoadedMcpConfig = { servers: [], errors: file.error ? [file.error] : [] };

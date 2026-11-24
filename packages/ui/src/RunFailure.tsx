@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Run } from "@alfred/protocol";
+import type { Run } from "@isocline/protocol";
 import { createFigure, drawFigurePose } from "./entity/tesseract.js";
 import { t } from "./i18n/index.ts";
 import { errorText } from "./receipts.ts";

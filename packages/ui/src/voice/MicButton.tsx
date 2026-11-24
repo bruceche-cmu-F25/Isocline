@@ -1,4 +1,4 @@
-/** The microphone next to every place you talk to Alfred. Click to start, click again to stop (Esc throws it away);
+/** The microphone next to every place you talk to Isocline. Click to start, click again to stop (Esc throws it away);
  * the words land where the cursor is, to read over before sending. */
 import type { CSSProperties } from "react";
 import { Icon } from "../shell/icons.tsx";

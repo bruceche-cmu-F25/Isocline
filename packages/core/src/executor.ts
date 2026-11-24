@@ -3,7 +3,7 @@
  * lifecycle. Code decides which tools a profile gets, not the model.
  *
  * Around every tool call the executor records a step, so devices can show
- * what Alfred is doing; a tool that needs the user's permission is asked for
+ * what Isocline is doing; a tool that needs the user's permission is asked for
  * first, once, for exactly that call.
  */
 import { existsSync } from "node:fs";
@@ -69,7 +69,7 @@ export interface Workspace {
   commands: string[];
   /** Set when the session works in a worktree of its own: the branch checked out there. */
   branch?: string;
-  /** The user's other trusted projects: the run may look in them without asking (the user already let Alfred read
+  /** The user's other trusted projects: the run may look in them without asking (the user already let Isocline read
    * each one), and is told where they are. Changing anything there asks, like any place outside the project. */
   others?: Array<{ name: string; root: string }>;
 }
@@ -136,7 +136,7 @@ export interface TurnUsage {
 }
 /** A model an engine can run, for choosing one per conversation. */
 export interface EngineModel { id: string; provider: string; name: string; reasoning: boolean; supportsImages?: boolean; engineDefault?: boolean; contextWindow?: number }
-/** How an engine reports calls to its own tools, which Alfred did not define. */
+/** How an engine reports calls to its own tools, which Isocline did not define. */
 export interface ExternalHooks {
   /** Checks the current session mode for a command or a file edit (`inProject` uses its resolved path).
    * Other calls always ask. A command can also return `always` for its narrower prefix grant. */
@@ -149,10 +149,10 @@ export interface ExternalHooks {
   }): Promise<"allow" | "deny" | "always">;
   /** A file in the session's project changed: kept as a receipt. */
   changed?(file: FileChange): void;
-  /** A step, shown like Alfred's own tool calls. A command's step ends with its exit code, how long it took and
+  /** A step, shown like Isocline's own tool calls. A command's step ends with its exit code, how long it took and
    * the end of what it printed. */
   step(step: { id: string; tool: string; label: string; about?: string; status: "started" | "done" | "failed" | "declined"; exit?: number | null; ms?: number; output?: string }): void;
-  /** A call that may have changed something outside Alfred's world succeeded: kept as a receipt. */
+  /** A call that may have changed something outside Isocline's world succeeded: kept as a receipt. */
   receipt(call: { tool: string; label: string; about?: string }): void;
 }
 export interface EnginePort {

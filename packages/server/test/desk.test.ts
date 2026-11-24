@@ -5,8 +5,8 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { addProject, answerRequest, getRun, startSession, submitRun, trustProject, type EnginePort } from "@alfred/core";
-import { todoModule } from "@alfred/module-todo";
+import { addProject, answerRequest, getRun, startSession, submitRun, trustProject, type EnginePort } from "@isocline/core";
+import { todoModule } from "@isocline/module-todo";
 import { createHttpServer, Desk, DeskError, isLocalPage, openHome, type BrowserPage, type DeskRequest } from "../src/index.ts";
 
 const tick = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -37,7 +37,7 @@ test("a page on this machine is the user's own app; anything else is a website",
   for (const url of ["https://example.com", "http://localhost.evil.com", "http://192.168.1.4:3000", "file:///etc/passwd", "nonsense"]) assert.equal(isLocalPage(url), false, url);
 });
 
-test("Alfred reads the browser pane through the Mac app: its own app freely, a website only on the user's yes", async () => {
+test("Isocline reads the browser pane through the Mac app: its own app freely, a website only on the user's yes", async () => {
   const replies: string[] = [];
   const engine: EnginePort = {
     async submit(request) {

@@ -1,4 +1,4 @@
-/** The connectors Alfred offers by name: remote MCP servers run by the service itself, each checked on the date
+/** The connectors Isocline offers by name: remote MCP servers run by the service itself, each checked on the date
  * beside it (an unauthenticated `initialize`, and the authorization server's metadata). `oauth`: the server takes a
  * sign-in in the browser and lets a client register itself, so connecting is one click. `none`: it needs no account.
  * `token`: it takes a token the user makes at the service and pastes once; it is kept in the keychain.

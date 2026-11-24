@@ -5,9 +5,9 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fileStore } from "@alfred/core";
-import type { McpConnector } from "@alfred/protocol";
-import { createMcpVault, loadAlfredMcpConfig, McpConnectorError, McpConnectors, readMcpFile } from "../src/index.ts";
+import { fileStore } from "@isocline/core";
+import type { McpConnector } from "@isocline/protocol";
+import { createMcpVault, loadIsoclineMcpConfig, McpConnectorError, McpConnectors, readMcpFile } from "../src/index.ts";
 
 function setup(probe?: ConstructorParameters<typeof McpConnectors>[0]["probe"]) {
   const dataDir = mkdtempSync(join(tmpdir(), "alfred-mcp-"));
@@ -62,8 +62,8 @@ test("a connector from the catalog is one entry in mcp.json; a token goes to the
   assert.deepEqual(readMcpFile(t.dataDir).servers.github.alfred, { title: "GitHub", catalog: "github", secretHeaders: ["Authorization"] });
   assert.deepEqual(await t.vault.secrets("github"), { headers: { Authorization: "Bearer github_pat_SECRET" }, env: {} });
 
-  // Pi is handed the entries without Alfred's own key, and other clients' entries are left as they are.
-  assert.deepEqual(loadAlfredMcpConfig(t.dataDir).servers.map((server) => [server.name, server.config]), [
+  // Pi is handed the entries without Isocline's own key, and other clients' entries are left as they are.
+  assert.deepEqual(loadIsoclineMcpConfig(t.dataDir).servers.map((server) => [server.name, server.config]), [
     ["notion", { url: "https://mcp.notion.com/mcp" }], ["github", { url: "https://api.githubcopilot.com/mcp/" }],
   ]);
   const again = await t.connectors.describe();

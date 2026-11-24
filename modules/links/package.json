@@ -1,5 +1,5 @@
 {
-  "name": "@alfred/module-links",
+  "name": "@isocline/module-links",
   "version": "0.0.0",
   "private": true,
   "description": "Links module: the places you keep going to, and what you saved from the internet (docs/design/links.md).",
@@ -11,8 +11,8 @@
     "./url": "./src/url.ts"
   },
   "dependencies": {
-    "@alfred/core": "*",
-    "@alfred/module-kit": "*",
+    "@isocline/core": "*",
+    "@isocline/module-kit": "*",
     "sharp": "^0.35.5"
   }
 }

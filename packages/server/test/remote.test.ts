@@ -6,10 +6,10 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { addProject, CORE_MIGRATIONS, deviceForToken, fileStore, listDevices, listEvents, openWorld, pairDevice, revokeDevice, startSession, submitRun, trustProject, type EnginePort } from "@alfred/core";
-import { createCredentialStore, ModelAccounts } from "@alfred/engine-pi";
-import { todoModule } from "@alfred/module-todo";
-import type { ArchivedConversation, ModelUsageResponse, OutletsResponse, PairingCode, RemoteResponse, StateResponse, SubmitRunResponse } from "@alfred/protocol";
+import { addProject, CORE_MIGRATIONS, deviceForToken, fileStore, listDevices, listEvents, openWorld, pairDevice, revokeDevice, startSession, submitRun, trustProject, type EnginePort } from "@isocline/core";
+import { createCredentialStore, ModelAccounts } from "@isocline/engine-pi";
+import { todoModule } from "@isocline/module-todo";
+import type { ArchivedConversation, ModelUsageResponse, OutletsResponse, PairingCode, RemoteResponse, StateResponse, SubmitRunResponse } from "@isocline/protocol";
 import { createHttpServer, createIngressServer, openHome, PushService, RemoteAccess, Tailscale, type Home, type Runner } from "../src/index.ts";
 
 const DNS = "mini.tail1234.ts.net";
@@ -102,7 +102,7 @@ test("devices: tokens are kept only as hashes, and a revoked device is refused a
   world.close();
 });
 
-test("turning remote access on adds one Serve entry for Alfred and leaves the user's others alone", async () => {
+test("turning remote access on adds one Serve entry for Isocline and leaves the user's others alone", async () => {
   const { local, ingress, tailscale, close } = await setUp();
   try {
     const off = (await ask(local, "/api/remote")).body as Extract<RemoteResponse, { local: true }>;
@@ -153,7 +153,7 @@ test("a device pairs with a one-time code, then reaches everything but credentia
     const paired = await ask(ingress, "/api/pair", { headers: viaServe(), body: { code: pairing.code.toLowerCase(), name: "Bruce's iPhone", kind: "phone" } });
     assert.equal(paired.status, 200);
     const cookie = String(paired.headers["set-cookie"]?.[0]);
-    assert.match(cookie, /^alfred_device=[\w-]{43}; Path=\/; Max-Age=\d+; HttpOnly; Secure; SameSite=Strict$/);
+    assert.match(cookie, /^isocline_device=[\w-]{43}; Path=\/; Max-Age=\d+; HttpOnly; Secure; SameSite=Strict$/);
     const token = cookie.split(";")[0];
     // The code was spent.
     assert.equal((await ask(ingress, "/api/pair", { headers: viaServe(), body: { code: pairing.code, name: "Again", kind: "phone" } })).body.code, "none");
@@ -171,7 +171,7 @@ test("a device pairs with a one-time code, then reaches everything but credentia
       assert.equal(reply.status, 403, path);
       assert.equal(reply.body.code, "local_only", path);
     }
-    // An address Alfred does not list is not reachable, whatever the device may do.
+    // An address Isocline does not list is not reachable, whatever the device may do.
     assert.equal((await ask(ingress, "/api/not-an-address", { headers: as, body: {} })).status, 404);
 
     // Another tailnet account's device is turned away even with a token; so is a foreign Host or Origin.
@@ -214,7 +214,7 @@ test("a paired phone reads and refreshes subscription usage while model accounts
     assert.equal((await ask(ingress, usage, { headers: viaServe() })).status, 401);
     const token = "p".repeat(43);
     pairDevice(home.world, { name: "Phone", kind: "phone", token });
-    const headers = viaServe({ Cookie: `alfred_device=${token}` });
+    const headers = viaServe({ Cookie: `isocline_device=${token}` });
     const first = await ask(ingress, usage, { headers });
     assert.equal(first.status, 200);
     const [item] = (first.body as unknown as ModelUsageResponse).usage;
@@ -386,7 +386,7 @@ test("a paired device requests development access for itself and the decision ta
   try {
     const token = "p".repeat(43);
     const phone = pairDevice(home.world, { name: "Phone", kind: "phone", token });
-    const as = viaServe({ Cookie: `alfred_device=${token}` });
+    const as = viaServe({ Cookie: `isocline_device=${token}` });
     const otherToken = "b".repeat(43);
     const other = pairDevice(home.world, { name: "Browser", kind: "browser", token: otherToken });
     const request = "/api/device/request-dev";
@@ -417,7 +417,7 @@ test("a paired device requests development access for itself and the decision ta
     assert.equal(listEvents(home.world, { subject: `device:${phone.id}` }).events.filter((event) => event.kind === "device.dev_requested").length, 1);
     assert.equal(await status(), "pending");
     assert.deepEqual(await outstanding(), [{ id: phone.id, name: phone.name }]);
-    const otherState = (await ask(ingress, "/api/state", { headers: viaServe({ Cookie: `alfred_device=${otherToken}` }) })).body;
+    const otherState = (await ask(ingress, "/api/state", { headers: viaServe({ Cookie: `isocline_device=${otherToken}` }) })).body;
     assert.equal(otherState.devAccess, "off");
     assert.equal(otherState.devAccessRequests, undefined);
     assert.equal((await ask(ingress, scope, { headers: as, body: { scope: "dev", enabled: true } })).body.code, "local_only");
@@ -452,7 +452,7 @@ test("the host controls the web lock and paired clients need their own unlock se
   try {
     const device = pairDevice(home.world, { name: "Existing phone", kind: "phone", token: "p".repeat(43) });
     pairDevice(home.world, { name: "Other browser", kind: "browser", token: "b".repeat(43) });
-    const paired = "alfred_device=" + "p".repeat(43);
+    const paired = "isocline_device=" + "p".repeat(43);
     const phone = viaServe({ Cookie: paired });
     const localStatus = await ask(local, "/api/device/web-lock");
     assert.deepEqual(localStatus.body, { enabled: false, locked: false, expiresAt: null });
@@ -487,7 +487,7 @@ test("the host controls the web lock and paired clients need their own unlock se
     assert.equal((await status()).body.locked, true);
     assert.equal((await ask(ingress, "/api/state", { headers: opened })).status, 200);
     assert.equal((await ask(ingress, "/api/remote/web-lock", { headers: opened, body: { enabled: false } })).status, 403);
-    assert.equal((await ask(ingress, "/api/state", { headers: viaServe({ Cookie: "alfred_device=" + "b".repeat(43) + "; " + cookie }) })).status, 423);
+    assert.equal((await ask(ingress, "/api/state", { headers: viaServe({ Cookie: "isocline_device=" + "b".repeat(43) + "; " + cookie }) })).status, 423);
     assert.equal((await ask(ingress, "/api/device/web-lock", { headers: opened })).body.expiresAt, ok.body.expiresAt);
     const activity = await ask(ingress, "/api/device/activity", { headers: opened, body: {} });
     assert.ok(Number(activity.body.expiresAt) >= Number(ok.body.expiresAt));

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { fastSpeed, type ConversationDetail, type CoreEvent, type FileInfo, type Run, type RunRequest, type SessionMode, type ThinkingLevel, type ViewContext } from "@alfred/protocol";
+import { fastSpeed, type ConversationDetail, type CoreEvent, type FileInfo, type Run, type RunRequest, type SessionMode, type ThinkingLevel, type ViewContext } from "@isocline/protocol";
 import { mergeHistory } from "./conversationHistory.ts";
 import { useLiveText } from "./live.ts";
 import { ApiError, api } from "./api.ts";
@@ -444,7 +444,7 @@ export interface ConversationProps {
   /** A run in this conversation opened a module view. */
   onView(module: string, view: string): void;
   onStarted(conversationId: string): void;
-  /** In Alfred's panel beside a daily page: the words and what was done, and nothing about the model. No title and
+  /** In Isocline's panel beside a daily page: the words and what was done, and nothing about the model. No title and
    * usage row, no model and thinking under the composer, and suggestions only before the first question. */
   slim?: boolean;
   sessionToolbar?: SessionToolbar;
@@ -619,7 +619,7 @@ export function Conversation({ id, preferredModel, highlighted, context, suggest
   const startedBy = (run: Run) => run.automationId
     ? t("auto.fromAt", { name: automationTitle(run.automationId) ?? t("auto.removed"), at: new Date(run.createdAt).toTimeString().slice(0, 5) })
     : undefined;
-  // Leaving the page is said too: a question asked with Alfred across the window is not about the page before it.
+  // Leaving the page is said too: a question asked with Isocline across the window is not about the page before it.
   const askedOn = (run: Run, previous: Run | undefined) => {
     if (run.automationId || run.context?.view === previous?.context?.view) return undefined;
     if (run.context?.view === "core.voice") return t("conv.askedByVoice");

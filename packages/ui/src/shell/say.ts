@@ -1,7 +1,7 @@
 /** A few words about one thing that is already on the page, read without a model: "明天" moves a todo's day, "晚1小时"
  * an event's hour, "做完了" finishes a todo. The thing is in the ask bar (shell/about.ts) and the words go to it.
- * Words that say more than a day and an hour are not guessed at: the caller hands them to Alfred with the thing. */
-import type { CalendarWhen } from "@alfred/module-calendar/types";
+ * Words that say more than a day and an hour are not guessed at: the caller hands them to Isocline with the thing. */
+import type { CalendarWhen } from "@isocline/module-calendar/types";
 import { readClause } from "./read.ts";
 
 const pad = (n: number) => String(n).padStart(2, "0");

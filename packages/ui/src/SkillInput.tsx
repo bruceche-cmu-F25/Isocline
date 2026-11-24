@@ -1,6 +1,6 @@
-/** A leading slash opens Alfred's installed skills and the ones available to add on this Mac. */
+/** A leading slash opens Isocline's installed skills and the ones available to add on this Mac. */
 import { useEffect, useId, useRef, useState, type ComponentProps, type KeyboardEvent, type RefObject } from "react";
-import type { FoundSkill, SkillInfo, SkillsResponse } from "@alfred/protocol";
+import type { FoundSkill, SkillInfo, SkillsResponse } from "@isocline/protocol";
 import { ApiError, request } from "./api.ts";
 import { t } from "./i18n/index.ts";
 import "./skill-input.css";

@@ -19,7 +19,7 @@ test("in a session, looking inside the project is free; outside it, or through a
   assert.equal(look("ls", {}, places).free, true, "the project itself");
   assert.equal(look("grep", { pattern: "checkout", path: root }, places).about, "checkout · .", "named from the project root");
   assert.equal(look("read", { path: "src/app.ts" }, places).about, join("src", "app.ts"));
-  assert.equal(look("read", { path: join(skills, "notes", "SKILL.md") }, places).free, true, "Alfred's skills");
+  assert.equal(look("read", { path: join(skills, "notes", "SKILL.md") }, places).free, true, "Isocline's skills");
   assert.equal(look("read", { path: join(base, "secrets", "key.txt") }, places).free, false);
   assert.equal(look("read", { path: "../secrets/key.txt" }, places).free, false);
   const linked = look("read", { path: "out/key.txt" }, places);

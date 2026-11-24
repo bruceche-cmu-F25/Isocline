@@ -1,9 +1,9 @@
 import { useRef, type CSSProperties, type ReactNode } from "react";
 import type { QuickTalk } from "../voice/useQuickTalk.ts";
-import type { StateResponse } from "@alfred/protocol";
+import type { StateResponse } from "@isocline/protocol";
 import type { FigureState } from "../entity/tesseract.js";
 import { Figure } from "./Figure.tsx";
-import { t } from "../i18n/index.ts";
+import { t, getAssistant } from "../i18n/index.ts";
 import { useDockShortcut } from "../prefs.ts";
 import { Icon } from "./icons.tsx";
 import { dockPages, moduleOf, type PageDef } from "./pages.tsx";
@@ -14,25 +14,25 @@ export interface DockProps {
   page: string;
   figure: FigureState;
   onPage(key: string): void;
-  onAlfred(): void;
+  onIsocline(): void;
   /** Open the sidebar's sheet: every page, the conversations, the settings. */
   onMenu(): void;
-  /** The ask bar, while the user is talking to Alfred: it takes the tabs' place, and Alfred stays where it is. */
+  /** The ask bar, while the user is talking to Isocline: it takes the tabs' place, and Isocline stays where it is. */
   ask?: ReactNode;
-  /** Quick talk: holding Alfred is talking to it; letting go sends. */
+  /** Quick talk: holding Isocline is talking to it; letting go sends. */
   talk?: QuickTalk;
 }
 
-/** Held this long, a press on Alfred is talking, not a tap. */
+/** Held this long, a press on Isocline is talking, not a tap. */
 const HOLD_MS = 350;
 
 /** The phone's dock, two bubbles floating over the foot of the page. At the left one pill, icons alone: three
  * lines for the sidebar's sheet (it comes in from that side, and holds the conversations and every page), then 今天
- * and the daily pages, followed by this device's optional shortcut. At the right Alfred, in a circle of its own.
+ * and the daily pages, followed by this device's optional shortcut. At the right Isocline, in a circle of its own.
  * Each button's name is its label for a screen reader; the page in view says its name at its top.
- * Tapping Alfred turns the pill into the ask bar; tapping it again opens the whole conversation. Holding it is
+ * Tapping Isocline turns the pill into the ask bar; tapping it again opens the whole conversation. Holding it is
  * quick talk (docs/design/voice.md §1.1): it listens while held, and what was said is sent on letting go. */
-export function Dock({ state, pages, page, figure, onPage, onAlfred, onMenu, ask, talk }: DockProps) {
+export function Dock({ state, pages, page, figure, onPage, onIsocline, onMenu, ask, talk }: DockProps) {
   const hold = useRef<{ timer: number; talking: boolean } | null>(null);
   const listening = talk?.state === "recording" || talk?.state === "starting";
   const shortcut = useDockShortcut();
@@ -59,7 +59,7 @@ export function Dock({ state, pages, page, figure, onPage, onAlfred, onMenu, ask
         </div>
       )}
       {listening && <span className="dock-listening" role="status" style={{ "--level": talk!.dictation.level.toFixed(2) } as CSSProperties}>{t("voice.quick.listening")}</span>}
-      <button type="button" className="dock-alfred" aria-label="Alfred" data-listening={listening || undefined}
+      <button type="button" className="dock-alfred" aria-label={getAssistant()} data-listening={listening || undefined}
         onPointerDown={(event) => {
           if (!talk || event.button !== 0) return;
           const held = { timer: 0, talking: false };
@@ -75,7 +75,7 @@ export function Dock({ state, pages, page, figure, onPage, onAlfred, onMenu, ask
         onPointerCancel={() => { const held = hold.current; hold.current = null; if (held) { window.clearTimeout(held.timer); if (held.talking) talk?.cancel(); } }}
         onContextMenu={(event) => event.preventDefault()}
         // A hold ends in a click too: that one is not a tap.
-        onClick={(event) => { if (talk && talk.state !== "idle") { event.preventDefault(); return; } onAlfred(); }}
+        onClick={(event) => { if (talk && talk.state !== "idle") { event.preventDefault(); return; } onIsocline(); }}
       ><Figure state={figure} size={40} anchor centered /></button>
     </nav>
   );

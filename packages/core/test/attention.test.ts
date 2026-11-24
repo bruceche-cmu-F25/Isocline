@@ -179,7 +179,7 @@ test("whoever was handed a notice has a while to show it; after that it is open 
   world.close();
 });
 
-test("the welcome is handed to the device that saw the return; handing notices about is not counted as Alfred's work", () => {
+test("the welcome is handed to the device that saw the return; handing notices about is not counted as Isocline's work", () => {
   const world = openWorld(":memory:", CORE_MIGRATIONS);
   const now = Date.now(), hour = 3_600_000;
   reportPresence(world, { clientId: "mac", kind: "active", now: now - 5 * hour });

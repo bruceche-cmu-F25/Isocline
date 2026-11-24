@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { WebLockStatus } from "@alfred/protocol";
+import type { WebLockStatus } from "@isocline/protocol";
 import { api, ApiError, isUnpaired } from "./api.ts";
 import { desktop } from "./desktop.ts";
 import { t, useLocale } from "./i18n/index.ts";
 import { Pair } from "./Pair.tsx";
+import { Wordmark } from "./Wordmark.tsx";
 
 type Screen = "checking" | "unavailable" | "pair" | "locked" | "open";
 const inputs = ["pointerdown", "keydown", "input", "wheel", "touchmove"] as const;
@@ -28,7 +29,7 @@ function Unlock({ onUnlock }: { onUnlock(password: string): Promise<void> }) {
     }
   };
   return <main className="boot pair web-access-screen">
-    <p className="wordmark">Alfred</p>
+    <Wordmark />
     <h1 className="pair-title">{t("webLock.title")}</h1>
     <p className="quiet">{t("webLock.prompt")}</p>
     <form className="pair-form web-password-form" onSubmit={submit}>
@@ -60,7 +61,7 @@ function BrowserGate({ children }: { children: ReactNode }) {
     let sequence = 0;
     let lastInput = -Infinity;
     let checking = false;
-    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("alfred.web-lock") : null;
+    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("isocline.web-lock") : null;
     const cover = (hide: boolean) => document.documentElement.toggleAttribute("data-web-covered", hide);
     function close(next: Screen) {
       ++sequence;
@@ -131,7 +132,7 @@ function BrowserGate({ children }: { children: ReactNode }) {
     unlocked.current = () => { channel?.postMessage("unlocked"); verify(); };
     if (channel) channel.onmessage = () => { if (!document.hidden) verify(); };
     verify();
-    window.addEventListener("alfred:web-locked", locked);
+    window.addEventListener("isocline:web-locked", locked);
     window.addEventListener("pagehide", conceal);
     window.addEventListener("pageshow", restored);
     window.addEventListener("focus", focus);
@@ -144,7 +145,7 @@ function BrowserGate({ children }: { children: ReactNode }) {
       channel?.close();
       window.clearTimeout(timer);
       cover(false);
-      window.removeEventListener("alfred:web-locked", locked);
+      window.removeEventListener("isocline:web-locked", locked);
       window.removeEventListener("pagehide", conceal);
       window.removeEventListener("pageshow", restored);
       window.removeEventListener("focus", focus);
@@ -167,7 +168,7 @@ function BrowserGate({ children }: { children: ReactNode }) {
     }
   }} />;
   return <main className="boot web-access-screen" role="status">
-    <p className="wordmark">Alfred</p>
+    <Wordmark />
     <p className="quiet">{t(screen === "unavailable" ? "webLock.unavailable" : "boot.connecting")}</p>
     {screen === "unavailable" && <button className="set-button" type="button" onClick={() => check.current()}>{t("devices.ts.retry")}</button>}
   </main>;

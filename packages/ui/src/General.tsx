@@ -4,7 +4,7 @@
  */
 import { useState, type FormEvent } from "react";
 import { api } from "./api.ts";
-import { LOCALE_INFO, LOCALES, setLocale, t, useLocale, type Key, type Locale } from "./i18n/index.ts";
+import { CHARACTER_NAMES, LOCALE_INFO, LOCALES, setAssistant, setLocale, t, useLocale, type Key, type Locale } from "./i18n/index.ts";
 import { SEND_KEYS, setDockShortcut, setSendKey, setTextSize, TEXT_SIZES, useDockShortcut, useSendKey, useTextSize } from "./prefs.ts";
 import { origin, setAppearance, useAppearance, type Appearance } from "./scheme.ts";
 import { PHONE, useMedia } from "./shell/layout.ts";
@@ -14,6 +14,8 @@ import { SHOW_FIRST_RUN } from "./firstRunEvent.ts";
 export interface NamePreference { name: string | null; saveName(name: string): Promise<void> }
 export interface GeneralProps extends NamePreference {
   dockOptions: ReadonlyArray<{ key: string; title: string }>;
+  /** Who the assistant is and what it is called (shared by every device). */
+  assistant?: { character: "ana" | "kata"; name: string | null };
 }
 export { SHOW_FIRST_RUN };
 
@@ -23,7 +25,7 @@ const APPEARANCES: Appearance[] = ["system", "light", "dark"];
 /** ⌘ on a Mac or an iPhone, Ctrl elsewhere. */
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
 
-export function General({ name: savedName, saveName, dockOptions }: GeneralProps) {
+export function General({ name: savedName, saveName, dockOptions, assistant = { character: "ana", name: null } }: GeneralProps) {
   const phone = useMedia(PHONE);
   const dockShortcut = useDockShortcut();
   const locale = useLocale();
@@ -51,6 +53,25 @@ export function General({ name: savedName, saveName, dockOptions }: GeneralProps
     }
   };
 
+  // The assistant: Ana or Kata, and the name it goes by (empty: the character's own).
+  const [draftAssistant, setDraftAssistant] = useState<string | null>(null);
+  const assistantDefault = CHARACTER_NAMES[assistant.character];
+  const assistantName = draftAssistant ?? assistant.name ?? "";
+  const canSaveAssistant = (assistantName.trim() || null) !== assistant.name;
+  const chooseCharacter = (character: "ana" | "kata") => {
+    if (character === assistant.character) return;
+    // The voice goes with the character: a voice picked for the other one is let go, so the new one speaks in its own.
+    if (!assistant.name) setAssistant(CHARACTER_NAMES[character]);
+    api.settings({ character, voice: { voice: null } }).catch((reason: Error) => setError(reason.message));
+  };
+  const submitAssistant = (event: FormEvent) => {
+    event.preventDefault();
+    if (!canSaveAssistant) return;
+    const next = assistantName.trim() || null;
+    setAssistant(next ?? assistantDefault);
+    api.settings({ assistantName: next }).then(() => setDraftAssistant(null), (reason: Error) => setError(reason.message));
+  };
+
   const chooseLanguage = (next: Locale) => {
     // The UI switches at once; the home node keeps it, and every device follows.
     setLocale(next);
@@ -71,6 +92,27 @@ export function General({ name: savedName, saveName, dockOptions }: GeneralProps
                 setDraftName(event.target.value === savedName ? null : event.target.value);
               }} />
             <button type="submit" className="set-button" disabled={!canSaveName}>{t("settings.save")}</button>
+          </div>
+        </form>
+        <div className="set-row">
+          <span className="set-name">{t("settings.character")}</span>
+          <span className="set-note">{t("settings.character.note")}</span>
+          <span className="set-end">
+            <span className="chips set-chips" role="radiogroup" aria-label={t("settings.character")}>
+              {(["ana", "kata"] as const).map((id) => (
+                <button type="button" key={id} className="chip" role="radio" data-character={id} aria-checked={assistant.character === id} aria-pressed={assistant.character === id}
+                  onClick={() => chooseCharacter(id)}>{t(`settings.character.${id}`)}</button>
+              ))}
+            </span>
+          </span>
+        </div>
+        <form className="set-row set-preferred-name" onSubmit={submitAssistant}>
+          <label className="set-name" htmlFor="assistant-name">{t("settings.assistantName")}</label>
+          <span className="set-note">{t("settings.assistantName.note", { name: assistantDefault })}</span>
+          <div className="set-end">
+            <input id="assistant-name" className="model-input" maxLength={40} placeholder={assistantDefault}
+              value={assistantName} onChange={(event) => setDraftAssistant(event.target.value)} />
+            <button type="submit" className="set-button" disabled={!canSaveAssistant}>{t("settings.save")}</button>
           </div>
         </form>
         <div className="set-row">

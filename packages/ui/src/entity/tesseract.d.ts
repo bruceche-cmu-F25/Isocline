@@ -40,7 +40,7 @@ export interface Figure {
   destroy(): void;
 }
 
-/** Animates Alfred's figure in an <svg viewBox="0 0 120 120">. */
+/** Animates Isocline's figure in an <svg viewBox="0 0 120 120">. */
 export function createFigure(svg: SVGSVGElement, options?: FigureOptions): Figure;
 
 /** Draws a single settled frame without starting an animation. */

@@ -8,8 +8,9 @@ import { join } from "node:path";
 import {
   CORE_MIGRATIONS, createRunDrain, expireProposals, interruptOutbound, ensureTemplates, fireDueAutomations, interruptOrphanedRuns, openWorld, tidyWorld,
   type AttentionPolicy, type EngineModel, type EnginePort, type LiveUpdate, type PresenceOptions, type Run, type World,
-} from "@alfred/core";
-import { moduleMigrations, type AlfredModule, type ModuleServices } from "@alfred/module-kit";
+} from "@isocline/core";
+import { moduleMigrations, type IsoclineModule, type ModuleServices } from "@isocline/module-kit";
+import { syncAssistantName } from "./assistant-name.ts";
 import { Outlets, watchAttention, type Reach } from "./attention.ts";
 import { FileStore, type FileStoreOptions } from "./files.ts";
 import { Terminals } from "./terminals.ts";
@@ -27,7 +28,7 @@ const TIDY_EVERY_MS = 24 * 3600_000;
 export interface HomeOptions {
   dataDir: string;
   engine: EnginePort;
-  modules: readonly AlfredModule[];
+  modules: readonly IsoclineModule[];
   /** How long away counts as away (a user preference). */
   presence?: PresenceOptions;
   /** The attention table's waits, when not the usual ones (tests). */
@@ -44,7 +45,7 @@ export interface HomeOptions {
 
 export interface Home {
   world: World;
-  modules: readonly AlfredModule[];
+  modules: readonly IsoclineModule[];
   presence: PresenceOptions;
   owner: string;
   /** What runs are writing right now (not recorded). Emits `update` with a LiveUpdate. */
@@ -58,7 +59,7 @@ export interface Home {
   files: FileStore;
   /** The user's own terminals, one per development session (this machine only). */
   terminals: Terminals;
-  /** Background processes in development sessions (dev servers), started by Alfred or the user. */
+  /** Background processes in development sessions (dev servers), started by Isocline or the user. */
   processes: Processes;
   archives: SessionArchives;
   /** Where a development session's worktree is made: one folder per session, under the data directory. */
@@ -109,7 +110,7 @@ function lock(path: string): () => void {
       const pid = Number(readFileSync(path, "utf8"));
       const ours = pid === process.pid && held.has(path);
       if (ours || (Number.isInteger(pid) && pid > 0 && pid !== process.pid && alive(pid))) {
-        throw new AlreadyRunningError(`Another Alfred home node is running (pid ${pid}) on this data directory`);
+        throw new AlreadyRunningError(`Another Isocline home node is running (pid ${pid}) on this data directory`);
       }
       unlinkSync(path); // stale: its process is gone
     }
@@ -127,6 +128,8 @@ export function openHome(options: HomeOptions): Home {
     unlock();
     throw error;
   }
+  // What the node writes itself calls the assistant by the name the user gave it.
+  syncAssistantName(world);
   const owner = `home-${process.pid}-${Date.now().toString(36)}`;
   const orphaned = interruptOrphanedRuns(world, owner);
   // Changes outside (an event, an email) the last node was in the middle of delivering: retried if that is safe.

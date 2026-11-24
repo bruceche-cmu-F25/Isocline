@@ -3,7 +3,7 @@
  * one that has things in it says how many, and where they go: to no area, or to another.
  */
 import { useState, type FormEvent } from "react";
-import type { Area, StateResponse } from "@alfred/protocol";
+import type { Area, StateResponse } from "@isocline/protocol";
 import { api } from "./api.ts";
 import { t } from "./i18n/index.ts";
 import { Icon } from "./shell/icons.tsx";

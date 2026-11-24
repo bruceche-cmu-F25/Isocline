@@ -1,4 +1,4 @@
-/** Other companies' marks, shown where Alfred connects to them: model providers, Google, Tailscale, connectors.
+/** Other companies' marks, shown where Isocline connects to them: model providers, Google, Tailscale, connectors.
  *
  * The drawings are the files in ./svg (where each came from: ./README.md). To add one, put a cleaned SVG there;
  * its file name is its name here. A mark in one colour has no fill of its own, so it is drawn in the text colour

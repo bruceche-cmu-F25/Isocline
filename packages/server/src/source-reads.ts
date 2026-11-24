@@ -1,5 +1,5 @@
-import type { Area } from "@alfred/core";
-import type { RunSources } from "@alfred/protocol";
+import type { Area } from "@isocline/core";
+import type { RunSources } from "@isocline/protocol";
 
 /** Source formats emitted by the calendar, todo and mail modules. Read the stored tool results,
  * never the model's interpretation or today's mirrors, and do not return mail bodies or snippets. */

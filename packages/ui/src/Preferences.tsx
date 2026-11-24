@@ -1,9 +1,9 @@
 /** Settings → General → Preferences: what the user has said about how they like things (core preferences.ts;
- * ARCHITECTURE.md §8's USER.md). Alfred reads every line at the start of each run. A line Alfred wrote down from
+ * ARCHITECTURE.md §8's USER.md). Isocline reads every line at the start of each run. A line Isocline wrote down from
  * something the user said is marked so; every line is the user's to change or remove, in place.
  */
 import { useState, type FormEvent } from "react";
-import type { Preference, StateResponse } from "@alfred/protocol";
+import type { Preference, StateResponse } from "@isocline/protocol";
 import { api } from "./api.ts";
 import { t } from "./i18n/index.ts";
 import { Icon } from "./shell/icons.tsx";
@@ -48,7 +48,7 @@ export function Preferences({ state }: { state: StateResponse }) {
                   if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.blur(); }
                   if (event.key === "Escape") setDraft(({ [preference.id]: _, ...rest }) => rest);
                 }} />
-              <span className="area-count">{preference.by === "alfred" ? t("prefs.byAlfred") : ""}</span>
+              <span className="area-count">{preference.by === "alfred" ? t("prefs.byIsocline") : ""}</span>
               <span className="area-tools">
                 <button type="button" className="area-tool" aria-label={t("prefs.remove", { text: preference.text.slice(0, 40) })} disabled={busy}
                   onClick={() => void act(() => api.removePreference(preference.id))}><Icon name="trash" /></button>

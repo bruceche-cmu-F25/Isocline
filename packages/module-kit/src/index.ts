@@ -3,7 +3,7 @@
  * that reach them, its tables, and what devices need to draw it.
  *
  * Modules are first-party code with full Node privileges; installing one means
- * trusting its code. Third parties extend Alfred through MCP and skills instead.
+ * trusting its code. Third parties extend Isocline through MCP and skills instead.
  */
 import {
   coreContext, getProposal, getRun, openProposal, runCommand, withCoreContext, type Actor, type Migration, type ProposalStep, type RunTool, type World,
@@ -11,15 +11,15 @@ import {
   addArea, deleteAreaRow, describeAreas, listAreas, type Area,
   addPreference, listPreferences, removePreference, MAX_PREFERENCE,
   claimOutbound, finishOutbound, retryOutbound, type Outbound,
-} from "@alfred/core";
+} from "@isocline/core";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 export { Type, type Static, type TSchema };
 
 /** What of the core a module may use: the world and its migrations, recording its own events, the shared areas of
- * life, the user's language, the outbound queue for changes outside Alfred, and amending its own proposed steps.
- * Modules import these from here, never from @alfred/core (packages/server/test/module-types.test.ts holds them to
+ * life, the user's language, the outbound queue for changes outside Isocline, and amending its own proposed steps.
+ * Modules import these from here, never from @isocline/core (packages/server/test/module-types.test.ts holds them to
  * it), so the core can change everything else, run internals included, without touching a module. */
 export {
   type World, type Migration, type Locale, type Outbound, type Proposal,
@@ -28,9 +28,9 @@ export {
   userLocale, localeOf, localeTag, acceptLanguage,
   enqueueOutbound, listOutbound,
   getProposal, amendProposal, ProposalStateError,
-} from "@alfred/core";
+} from "@isocline/core";
 
-/** How much consent an operation needs (ARCHITECTURE.md §5.2). `external` changes something outside Alfred (the
+/** How much consent an operation needs (ARCHITECTURE.md §5.2). `external` changes something outside Isocline (the
  * user's Google Calendar, an email sent from their Gmail): a run never does it directly, it can only propose it. */
 export const PERMISSION_LEVELS = ["read", "local", "batch", "irreversible", "external"] as const;
 export type PermissionLevel = (typeof PERMISSION_LEVELS)[number];
@@ -75,7 +75,7 @@ export interface ModuleView {
   title: string;
 }
 
-export interface AlfredModule {
+export interface IsoclineModule {
   /** Lowercase; prefixes its ops, tools, event kinds and tables. */
   id: string;
   title: string;
@@ -181,9 +181,9 @@ function forOnePass(services: ModuleServices): ModuleServices {
 /** One pass over the changes waiting for `module`: each is claimed, handed to the module's `deliver`, and ended as
  * the module says, oldest first, once per pass (one that must wait is tried again in a later pass, not this one).
  * A ServiceError thrown instead of an answer is read the same way for every module: `reconnect` means the account
- * no longer lets Alfred in, so it did not happen; anything else is unclear. Stops between changes when `signal`
+ * no longer lets Isocline in, so it did not happen; anything else is unclear. Stops between changes when `signal`
  * says the home node is closing. Returns how many changes it handled. */
-export async function deliverQueued(world: World, module: AlfredModule, services: ModuleServices, signal: AbortSignal = new AbortController().signal): Promise<number> {
+export async function deliverQueued(world: World, module: IsoclineModule, services: ModuleServices, signal: AbortSignal = new AbortController().signal): Promise<number> {
   if (!module.deliver) return 0;
   const pass = forOnePass(services);
   const tried = new Set<string>();
@@ -214,7 +214,7 @@ export interface ModuleQuery<P extends TSchema = TSchema> {
 export const defineQuery = <P extends TSchema>(query: ModuleQuery<P>): ModuleQuery => query as unknown as ModuleQuery;
 
 /** Answers a device's query; the input is checked like an op's. */
-export function runQuery(modules: readonly AlfredModule[], world: World, name: string, input: unknown): unknown {
+export function runQuery(modules: readonly IsoclineModule[], world: World, name: string, input: unknown): unknown {
   const query = modules.flatMap((module) => module.queries ?? []).find((candidate) => candidate.name === name);
   if (!query) throw new UnknownOpError(name);
   return query.run(world, checked(query.input, input ?? {}, `input for ${query.name}`));
@@ -224,7 +224,7 @@ export function runQuery(modules: readonly AlfredModule[], world: World, name: s
 export const defineOp = <P extends TSchema>(op: ModuleOp<P>): ModuleOp => op as unknown as ModuleOp;
 export const defineTool = <P extends TSchema>(tool: ModuleTool<P>): ModuleTool => tool as unknown as ModuleTool;
 
-export function defineModule(module: AlfredModule): AlfredModule {
+export function defineModule(module: IsoclineModule): IsoclineModule {
   if (!/^[a-z][a-z0-9]{0,31}$/.test(module.id)) throw new Error(`Invalid module id: ${module.id}`);
   for (const migration of module.migrations) {
     if (!migration.id.startsWith(`${module.id}:`)) throw new Error(`Migration ${migration.id} must be named ${module.id}:<n>`);
@@ -273,7 +273,7 @@ export function runOp(world: World, op: ModuleOp, request: { requestId: string; 
 /** A device's command to a module, by the operation's name. */
 export function invokeOp(
   world: World,
-  modules: readonly AlfredModule[],
+  modules: readonly IsoclineModule[],
   request: { op: string; requestId: string; input: unknown; actor?: Actor },
 ): { result: unknown; replayed: boolean } {
   const op = modules.flatMap((module) => module.ops).find((candidate) => candidate.name === request.op);
@@ -287,7 +287,7 @@ export function invokeOp(
  */
 export function runTools(
   world: World,
-  modules: readonly AlfredModule[],
+  modules: readonly IsoclineModule[],
   policy: { levels?: readonly PermissionLevel[]; askFor?: readonly PermissionLevel[] } = {},
 ): RunTool[] {
   const levels = policy.levels ?? RUN_LEVELS;
@@ -312,7 +312,7 @@ export function runTools(
 
 /** Runs one proposal step as the device operation it is, with the same input checks as a click. Throws on failure
  * (including an operation that answers with `{ error }`), so the proposal's steps roll back together. */
-export function applyStep(world: World, modules: readonly AlfredModule[], step: ProposalStep): unknown {
+export function applyStep(world: World, modules: readonly IsoclineModule[], step: ProposalStep): unknown {
   const op = modules.flatMap((module) => module.ops).find((candidate) => candidate.name === step.op);
   if (!op) throw new UnknownOpError(step.op);
   const result = op.run(world, checked(op.input, step.input, `input for ${op.name}`));
@@ -340,12 +340,12 @@ export function askUserTool(): RunTool {
 }
 
 /** A module's guidance as a run reads it now. */
-export function moduleGuidance(world: World, modules: readonly AlfredModule[]): string {
+export function moduleGuidance(world: World, modules: readonly IsoclineModule[]): string {
   return modules.map((module) => (typeof module.guidance === "function" ? module.guidance(world) : module.guidance)).filter(Boolean).join("\n\n");
 }
 
 /** Removes one of the user's areas, and moves what every module had in it to `moveTo` or to no area, at once. */
-export function removeArea(world: World, modules: readonly AlfredModule[], id: string, moveTo: string | null = null): Area {
+export function removeArea(world: World, modules: readonly IsoclineModule[], id: string, moveTo: string | null = null): Area {
   return world.tx(() => {
     const removed = deleteAreaRow(world, id, moveTo);
     for (const module of modules) module.areaRemoved?.(world, id, moveTo);
@@ -354,7 +354,7 @@ export function removeArea(world: World, modules: readonly AlfredModule[], id: s
 }
 
 /** The everyday assistant's tools for questions, proposals, automations and opening views. */
-export function assistantTools(world: World, modules: readonly AlfredModule[]): RunTool[] {
+export function assistantTools(world: World, modules: readonly IsoclineModule[]): RunTool[] {
   const tools = [askUserTool()];
   const proposable = modules.flatMap((module) => module.tools).filter((tool) => tool.pin && tool.level !== "read");
   if (proposable.length) {
@@ -555,6 +555,6 @@ export function assistantTools(world: World, modules: readonly AlfredModule[]): 
   return tools;
 }
 
-export function moduleMigrations(modules: readonly AlfredModule[]): Migration[] {
+export function moduleMigrations(modules: readonly IsoclineModule[]): Migration[] {
   return modules.flatMap((module) => module.migrations);
 }

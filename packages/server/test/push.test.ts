@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { ATTENTION, addProject, claimNotice, CORE_MIGRATIONS, createNotice, listNotices, openWorld, pairDevice, recordDomainEvent, revokeDevice, setDeviceScope, startSession, trustProject, type World } from "@alfred/core";
+import { ATTENTION, addProject, claimNotice, CORE_MIGRATIONS, createNotice, listNotices, openWorld, pairDevice, recordDomainEvent, revokeDevice, setDeviceScope, startSession, trustProject, type World } from "@isocline/core";
 import { checkSubscription, noticeMessage, PushService, watchAttention, type PushSender } from "../src/index.ts";
 import type { SecretStore } from "../src/secrets.ts";
 
@@ -55,13 +55,13 @@ test("a notice reads on a lock screen as on the Mac, in the user's language", ()
   assert.equal(brief.url, "/#p=core.inbox&item=n%3Abrief");
   assert.equal(brief.ack, false, "opening a push leaves the report available to the Inbox reader");
   const done = noticeMessage({ id: "n1", kind: "run_result", payload: { goal: "Book", reply: "Booked for Friday.", conversationId: "c 1", status: "completed" } }, "en");
-  assert.deepEqual(done, { tag: "notice:n1", notice: "n1", title: "Alfred", body: "Booked for Friday.", url: "/#c=c%201", ack: true });
+  assert.deepEqual(done, { tag: "notice:n1", notice: "n1", title: "Ana", body: "Booked for Friday.", url: "/#c=c%201", ack: true });
   const proposal = noticeMessage({ id: "n2", kind: "proposal", payload: { proposalId: "change-1", title: "Move 3 todos to next week?" } }, "zh");
-  assert.equal(proposal.title, "Alfred 有个提议等你决定");
+  assert.equal(proposal.title, "Ana 有个提议等你决定");
   assert.equal(proposal.url, "/#p=core.inbox&item=p%3Achange-1");
   assert.equal(proposal.ack, false);
   const question = noticeMessage({ id: "n3", kind: "run_request", payload: { kind: "input", question: "Which Friday?", conversationId: "c1" } }, "zh");
-  assert.deepEqual([question.title, question.body, question.ack], ["Alfred 在等你回答", "Which Friday?", false]);
+  assert.deepEqual([question.title, question.body, question.ack], ["Ana 在等你回答", "Which Friday?", false]);
   assert.ok(noticeMessage({ id: "n4", kind: "run_result", payload: { reply: "x".repeat(500) } }, "en").body.length <= 200);
 });
 
@@ -127,7 +127,7 @@ test("a revoked device gets nothing", async () => {
   try {
     push.subscribe(phone.id, APPLE);
     revokeDevice(world, phone.id);
-    const result = await push.sendTo({ title: "Alfred", body: "hi", url: "/", tag: "t" });
+    const result = await push.sendTo({ title: "Isocline", body: "hi", url: "/", tag: "t" });
     assert.deepEqual(result, { accepted: 0, failed: 0, expired: 0 });
     assert.deepEqual(sent, []);
   } finally { close(); world.close(); }
@@ -142,7 +142,7 @@ test("protected web notifications contain no work content, even with the app in 
     const message = { title: "Private title", body: "Private text", tag: "sensitive", url: "/#c=private", notice: "private-id", ack: true };
     await push.sendTo(message);
     const hidden = JSON.parse(sent[0]);
-    assert.equal(hidden.title, "Alfred");
+    assert.equal(hidden.title, "Ana", "the assistant, by its name");
     assert.ok(hidden.body.length > 0);
     assert.equal(hidden.url, "/#p=core.inbox");
     assert.doesNotMatch(sent[0], /private|sensitive|"ack"|"notice"/i);

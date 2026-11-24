@@ -2,7 +2,7 @@
  * say unread, important, starred and category; a body is a tree of MIME parts, of which only text is read (never an
  * attachment). Adapted from Robin's extension/robin/gmail.ts.
  */
-import { ServiceError, type GoogleSession } from "@alfred/module-kit";
+import { ServiceError, type GoogleSession } from "@isocline/module-kit";
 import type { MailCategory } from "./types.ts";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";

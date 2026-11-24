@@ -1,0 +1,174 @@
+<!doctype html>
+<!--
+  Isocline: the wordmark in Geist Serif, and what can sit where the i's dot is. A prototype: no build step.
+  Lowercase "isocline" has two i's: two dots, one for each voice (Ana and Kata, the two directions of the fourth
+  dimension). Each row is one idea, at hero size, at the sidebar's size and small; the strip switches light/dark.
+
+  The dot is drawn by us, not the font: each i is set as a dotless ı (U+0131) and the mark is placed where Geist
+  Serif's own dot sits (its tittle: x 91–203, y 607–717 of a 288-wide glyph, 1000 units to the em, ascent 1005,
+  descent 295). With line-height 1 that is 0.147em from the glyph's left and 0.193em down from the box's top.
+  The "control" row draws our round dot over the font's own i, to show the two coincide.
+
+  Font: Geist Serif 1.9.2 by Vercel with Andrés Briganti and Mark Davis, https://github.com/vercel/geist-font,
+  SIL Open Font License 1.1 (fonts/GeistSerif-OFL.txt). The tesseract mark is figure.js (packages/ui/src/entity).
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Isocline 字标</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+@font-face {
+  font-family: "Geist Serif";
+  src: url("fonts/GeistSerifVF.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: block;
+}
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  --geist: "Geist Serif", Georgia, serif;
+  /* The two voices: Ana warm, Kata the app's own blue. */
+  --ana: oklch(.62 .13 40);
+  --kata: var(--alf);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { min-height: 100vh; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+h1, h2, p { margin: 0; }
+
+.bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; padding: 12px 24px;
+  background: color-mix(in oklch, var(--bg) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line-soft, var(--line)); }
+.bar b { font-weight: 600; }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); }
+.seg button { padding: 3px 12px; border-radius: 999px; font-size: 13px; color: var(--copy, var(--ink)); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+main { max-width: 1080px; margin: 0 auto; padding: 32px 24px 96px; display: grid; gap: 14px; }
+.intro { color: var(--copy, var(--ink)); max-width: 68ch; margin-bottom: 18px; }
+.intro h1 { font-size: 22px; font-weight: 650; margin-bottom: 8px; color: var(--ink); }
+
+.row { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: center; padding: 22px 24px; border-radius: 16px;
+  background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft, var(--line)); }
+.row h2 { font-size: 15px; font-weight: 650; }
+.row p { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+.sizes { display: flex; flex-wrap: wrap; align-items: baseline; gap: 18px 40px; }
+@container (max-width: 0) {}
+@media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+
+/* The wordmark. Each i is a dotless ı with our dot over it. */
+.wm { font-family: var(--geist); font-weight: 400; line-height: 1; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap;
+  font-variation-settings: "ELSH" var(--elsh, 0); }
+.wm.xl { font-size: 88px; } .wm.md { font-size: 30px; } .wm.sm { font-size: 17px; }
+.i { position: relative; display: inline-block; }
+.dot { position: absolute; left: 0.147em; top: 0.193em; width: 0.112em; height: 0.112em; transform: translate(-50%, -50%); }
+.dot.round { border-radius: 50%; background: currentColor; }
+.dot.square { background: currentColor; }
+.dot.diamond { background: currentColor; transform: translate(-50%, -50%) rotate(45deg) scale(.9); }
+.dot.tilt { background: currentColor; transform: translate(-50%, -50%) rotate(var(--turn, 30deg)) scale(.95); }
+.dot.mark { width: 0.21em; height: 0.21em; top: 0.215em; }
+.dot.mark svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.dot.ring { border-radius: 50%; box-shadow: inset 0 0 0 0.022em currentColor; width: 0.13em; height: 0.13em; }
+.ana { color: var(--ana); } .kata { color: var(--kata); }
+.up { top: 0.15em; } .down { top: 0.235em; }
+.control .dot { background: oklch(.65 .2 25 / .55); }
+
+/* Turning together: both squares through the same angle at the same time (an isoclinic turn, in miniature). */
+.spin .dot.tilt { animation: turn 6s linear infinite; }
+@keyframes turn { from { transform: translate(-50%, -50%) rotate(0deg) scale(.95); } to { transform: translate(-50%, -50%) rotate(360deg) scale(.95); } }
+@media (prefers-reduced-motion: reduce) { .spin .dot.tilt { animation: none; } }
+
+/* In place: the app's sidebar head and a Dock-sized tile. */
+.place { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; }
+.side { width: 240px; padding: 14px 16px; border-radius: 12px; background: var(--side, var(--bg)); box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; gap: 10px; }
+.side svg { width: 22px; height: 22px; flex: none; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <b>Isocline 字标</b>
+  <div class="seg" id="scheme"><button data-v="light" aria-pressed="true">浅色</button><button data-v="dark" aria-pressed="false">深色</button></div>
+  <span style="color:var(--muted);font-size:13px">两个 i 的点：左边是 Ana，右边是 Kata</span>
+</div>
+<main>
+  <div class="intro">
+    <h1>i 上的点可以是什么</h1>
+    <p>字体还是 Geist Serif，一个字重、不用斜体。小写 isocline 正好有两个 i：两个点，一个给 Ana，一个给 Kata（第四维的两个方向）。每行一个想法，依次是大标题、侧栏、小字三种尺寸。</p>
+  </div>
+  <div id="rows"></div>
+</main>
+
+<script type="module">
+import { drawMark } from "./figure.js";
+
+/** One wordmark: the word, with each i given the dot `dot(index)` returns (null keeps the font's own i). */
+function wordmark(word, size, dot, extra = "") {
+  let n = 0;
+  const html = [...word].map((ch) => {
+    if (ch !== "i") return ch;
+    const d = dot(n++);
+    return d === null ? "i" : `<span class="i">ı${d}</span>`;
+  }).join("");
+  return `<span class="wm ${size} ${extra}">${html}</span>`;
+}
+const round = (cls = "") => `<span class="dot round ${cls}"></span>`;
+const ROWS = [
+  { title: "原样", note: "Geist Serif 自己的圆点。对照用。", word: "isocline", dot: () => null },
+  { title: "对照：位置", note: "红色是我们画的点，叠在字体原来的点上。重合说明位置算对了。", word: "isocline", dot: () => null, overlay: true },
+  { title: "字体自带的心形点", note: "Geist Serif 可变字体有一个 ELSH 轴，拉到 100，i 的点变成心形。是字体作者留的彩蛋，不用改字；但气质偏甜。", word: "isocline", dot: () => null, elsh: 100 },
+  { title: "两种颜色", note: "圆点，左边 Ana 暖色，右边 Kata 蓝色。两个声音一眼可见。", word: "isocline", dot: (i) => round(i ? "kata" : "ana") },
+  { title: "同角度的方块", note: "两个点都是方块，转同样的角度：等斜旋转的意思。悬停在上面时它们一起转。", word: "isocline", dot: (i) => `<span class="dot tilt ${i ? "kata" : "ana"}"></span>`, spin: true },
+  { title: "菱形", note: "两个 45° 的方块，安静、几何。", word: "isocline", dot: () => `<span class="dot diamond"></span>` },
+  { title: "一上一下", note: "ana 是第四维的「上」，kata 是「下」：左点略高，右点略低。差别很小，懂的人会发现。", word: "isocline", dot: (i) => round(i ? "down" : "up") },
+  { title: "超立方体", note: "两个点换成形象的线框。大尺寸好看，小尺寸会糊。", word: "isocline", dot: () => `<span class="dot mark"><svg viewBox="0 0 120 120" data-mark></svg></span>` },
+  { title: "一个超立方体", note: "只把第一个点换成形象，另一个保持圆点。", word: "isocline", dot: (i) => (i ? round() : `<span class="dot mark"><svg viewBox="0 0 120 120" data-mark></svg></span>`) },
+  { title: "大写 Isocline", note: "大写 I 没有点，只剩一个 i：放形象。两个声音的故事就讲不出来了。", word: "Isocline", dot: () => `<span class="dot mark"><svg viewBox="0 0 120 120" data-mark></svg></span>` },
+];
+
+const rows = document.getElementById("rows");
+rows.innerHTML = ROWS.map((row, index) => {
+  const size = (s) => wordmark(row.word, s, row.dot, row.spin ? "spin-on-hover" : "");
+  const overlay = row.overlay
+    ? `<span style="position:relative;display:inline-block">${wordmark(row.word, "xl", () => null)}<span style="position:absolute;inset:0">${wordmark(row.word, "xl", () => `<span class="dot round"></span>`, "control").replace(/class="wm/, 'style="color:transparent" class="wm')}</span></span>`
+    : "";
+  return `<section class="row" data-row="${index}" style="${row.elsh ? `--elsh:${row.elsh}` : ""}">
+    <div><h2>${row.title}</h2><p>${row.note}</p></div>
+    <div class="sizes">${overlay || size("xl")}${size("md")}${size("sm")}</div>
+  </section>`;
+}).join("") + `<section class="row">
+    <div><h2>放在界面里</h2><p>侧栏顶上的样子：形象加字标。两种点各放一个。</p></div>
+    <div class="place">
+      <div class="side"><svg viewBox="0 0 120 120" data-mark></svg>${wordmark("isocline", "md", (i) => round(i ? "kata" : "ana"))}</div>
+      <div class="side"><svg viewBox="0 0 120 120" data-mark></svg>${wordmark("isocline", "md", (i) => `<span class="dot tilt ${i ? "kata" : "ana"}"></span>`)}</div>
+      <div class="side"><svg viewBox="0 0 120 120" data-mark></svg>${wordmark("isocline", "md", () => null)}</div>
+    </div>
+  </section>`;
+
+// The control row: our dot drawn red over the font's own i (the font's i stays visible underneath).
+for (const el of document.querySelectorAll(".control")) {
+  el.style.color = "transparent";
+  el.innerHTML = el.innerHTML.replaceAll("ı", "i");
+}
+
+const paint = () => {
+  const dark = document.documentElement.dataset.scheme === "dark";
+  for (const svg of document.querySelectorAll("svg[data-mark]")) drawMark(svg, { width: svg.closest(".dot") ? 9 : 6, dark });
+};
+paint();
+
+// Hovering the turning row sets both squares turning together.
+for (const el of document.querySelectorAll(".spin-on-hover")) {
+  el.addEventListener("mouseenter", () => el.classList.add("spin"));
+  el.addEventListener("mouseleave", () => el.classList.remove("spin"));
+}
+
+const buttons = [...document.querySelectorAll("#scheme button")];
+for (const button of buttons) button.addEventListener("click", () => {
+  for (const other of buttons) other.setAttribute("aria-pressed", String(other === button));
+  if (button.dataset.v === "dark") document.documentElement.dataset.scheme = "dark"; else delete document.documentElement.dataset.scheme;
+  paint();
+});
+</script>
+</body>
+</html>

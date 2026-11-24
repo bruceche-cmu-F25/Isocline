@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { Automation, Run, StateResponse } from "@alfred/protocol";
+import type { Automation, Run, StateResponse } from "@isocline/protocol";
 import { api, type AutomationOptions } from "./api.ts";
 import { automationTitle, scheduleText, whenText } from "./automationText.ts";
 import { AutomationHistory } from "./AutomationHistory.tsx";

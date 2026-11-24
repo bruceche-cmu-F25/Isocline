@@ -1,4 +1,4 @@
-/** Which of Pi's looking tools (read, grep, find, ls) may run without asking: reading Alfred's own skills, and, in a
+/** Which of Pi's looking tools (read, grep, find, ls) may run without asking: reading Isocline's own skills, and, in a
  * development session, anything inside the project's folder or inside another project the user trusted. Symlinks are
  * resolved first, so a link inside a project to a file outside it counts as outside. Everything else asks the user.
  */

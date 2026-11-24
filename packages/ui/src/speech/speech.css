@@ -1,4 +1,4 @@
-/* Alfred's speech card, in the Mac app's figure window and in the app. Colours from tokens.css.
+/* Isocline's speech card, in the Mac app's figure window and in the app. Colours from tokens.css.
    It grows out of the figure (transform-origin at the tail) and folds back into it. Timings match useSpeech.ts.
    --tail-at: where the tail sits along its edge (from the top for left/right tails, from the left for top/bottom). */
 .speech {
@@ -47,7 +47,7 @@
 .speech-said { color: var(--copy); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .unsaid { color: transparent; }
 
-/* Brief: only the title, in a pill, while there is no room for the whole card (the user is talking with Alfred). */
+/* Brief: only the title, in a pill, while there is no room for the whole card (the user is talking with Isocline). */
 .speech.brief { display: flex; align-items: center; min-width: 0; max-width: min(250px, calc(100vw - 24px)); border-radius: 999px; font-size: 12px; line-height: 1.4; box-shadow: 0 4px 14px #00000029; }
 .speech.brief .speech-body { flex-direction: row; align-items: center; gap: 6px; min-width: 0; padding: 4px 2px 4px 11px; }
 .speech.brief .speech-title { min-width: 0; font-weight: 500; }

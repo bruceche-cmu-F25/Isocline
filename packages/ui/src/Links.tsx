@@ -4,9 +4,9 @@
  * L1: a saved page is looked up for its title; it is not read or summarised yet, and the card does not pretend so.
  */
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import type { Area } from "@alfred/protocol";
-import type { Clip, ClipState, LinksSnapshot, LinkType, Topic } from "@alfred/module-links/types";
-import { classify, parseLinkPaste } from "@alfred/module-links/url";
+import type { Area } from "@isocline/protocol";
+import type { Clip, ClipState, LinksSnapshot, LinkType, Topic } from "@isocline/module-links/types";
+import { classify, parseLinkPaste } from "@isocline/module-links/url";
 import { clipSections, playbackTime } from "./clipSections.ts";
 import { legacyShareClip, linkSaveFields } from "./linkShareCompat.ts";
 import { AddBar, Pill } from "./AddBar.tsx";
@@ -160,7 +160,7 @@ function Card({ clip, topics, areas, open, fresh, onOpen, onError }: {
             {topic && <span className="tag">{topic.name}</span>}
             <span className="lk-state" data-s={clip.state}><i />{stateName(clip.state)}</span>
             {looking && <span className="lk-looking"><span className="pulse" />{t("links.looking")}</span>}
-            {clip.byAlfred && <span className="by">{t("links.byAlfred")}</span>}
+            {clip.byIsocline && <span className="by">{t("links.byIsocline")}</span>}
           </span>
         </span>
       </button>

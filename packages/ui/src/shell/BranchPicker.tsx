@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ProjectBranches } from "@alfred/protocol";
+import type { ProjectBranches } from "@isocline/protocol";
 import { api } from "../api.ts";
 import { t } from "../i18n/index.ts";
 import { Icon } from "./icons.tsx";

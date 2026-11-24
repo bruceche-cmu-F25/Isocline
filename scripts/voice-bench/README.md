@@ -1,6 +1,6 @@
 # 语音识别比较
 
-拿 Bruce 自己的录音比几家识别引擎，给 Alfred 的语音输入选默认引擎。背景见 [docs/research/voice-input.md](../../docs/research/voice-input.md) 第 6 节。
+拿 Bruce 自己的录音比几家识别引擎，给 Isocline 的语音输入选默认引擎。背景见 [docs/research/voice-input.md](../../docs/research/voice-input.md) 第 6 节。
 
 不进 App。录音、结果和 key 都只在这台 Mac 上（`clips/`、`results/`、`.env` 都在 `.gitignore` 里）。
 
@@ -57,7 +57,7 @@ VOLC_API_KEY=...            # 火山引擎新控制台；旧控制台用 VOLC_AP
 node scripts/voice-bench/run.ts
 ```
 
-- 每个能跑的引擎跑两遍：不带词表、带词表（「+词表」）。词表 = `vocab.txt` + 同一类所有句子的关键词，模拟 Alfred 按场景拼的词表。
+- 每个能跑的引擎跑两遍：不带词表、带词表（「+词表」）。词表 = `vocab.txt` + 同一类所有句子的关键词，模拟 Isocline 按场景拼的词表。
 - 结果缓存在 `results/raw/`，再跑只转新的或改过的；`--fresh` 全部重来。
 - 只跑某几个：`--engines qwen3-asr-0.6b,soniox-async-v6`；只跑不带词表的：`--context none`。
 
@@ -104,7 +104,7 @@ uv run --no-project --with pyarrow python -I scripts/voice-bench/import_ascend.p
 
 ## 声音（朗读）的比较
 
-给 Alfred 开口选默认声音，背景和结果见 [docs/design/voice.md](../../docs/design/voice.md) 第 6 节。
+给 Isocline 开口选默认声音，背景和结果见 [docs/design/voice.md](../../docs/design/voice.md) 第 6 节。
 
 ```bash
 cd scripts/voice-bench

@@ -25,7 +25,25 @@ export function detectLocale(language: string | undefined = typeof navigator ===
   return language && /^zh\b/i.test(language) ? "zh" : "en";
 }
 
+/** The product's name: what the app is called, on every device and in every language. */
+export const PRODUCT = "Isocline";
+
+/* The assistant's name, as the user set it (UserSettings.assistant, docs/design/rename-isocline.md §3.2): every
+ * sentence in which the assistant speaks or acts says `{assistant}`, and this fills it. A device sets it from the home
+ * node's settings; until then it is the default character's. */
+let assistant = "Ana";
+export const getAssistant = (): string => assistant;
+/** The two characters' own names (core settings CHARACTER_NAMES); used when the user has not renamed the assistant. */
+export const CHARACTER_NAMES = { ana: "Ana", kata: "Kata" } as const;
+export const assistantNameFor = (settings: { character?: "ana" | "kata"; assistantName?: string | null } | null | undefined): string =>
+  settings?.assistantName || CHARACTER_NAMES[settings?.character ?? "ana"] || CHARACTER_NAMES.ana;
+/** Pages re-render with the state the name came in, so nobody needs telling. */
+export function setAssistant(name: string): void {
+  if (name) assistant = name;
+}
+
 export function translate(locale: Locale, key: Key, vars: Record<string, string | number> = {}): string {
+  vars = { assistant, ...vars };
   const template = DICTS[locale][key] ?? DICTS.en[key] ?? key;
   return template
     .replace(/\{(\w+)\|([^|{}]*)\|((?:[^{}]|\{\w+\})*)\}/g, (_, name: string, one: string, other: string) => (Number(vars[name]) === 1 ? one : other))

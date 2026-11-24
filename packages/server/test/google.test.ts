@@ -5,9 +5,9 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { listEvents } from "@alfred/core";
-import { todoModule } from "@alfred/module-todo";
-import type { ConnectFlow, ConnectionsResponse } from "@alfred/protocol";
+import { listEvents } from "@isocline/core";
+import { todoModule } from "@isocline/module-todo";
+import type { ConnectFlow, ConnectionsResponse } from "@isocline/protocol";
 import { createHttpServer, openHome } from "../src/index.ts";
 import { googleService } from "../src/google-service.ts";
 import { GoogleConnections } from "../src/google.ts";
@@ -110,7 +110,7 @@ test("more capabilities later ask for the account's existing scopes plus the new
   assert.deepEqual(google.status().accounts[0].capabilities, ["calRead"]);
 });
 
-test("cancelling at Google, and cancelling from Alfred, end the sign-in without connecting", async () => {
+test("cancelling at Google, and cancelling from Isocline, end the sign-in without connecting", async () => {
   const t = setup();
   const google = new GoogleConnections({ dataDir: t.dataDir, secrets: t.secrets, fetch: t.fakeFetch });
   const denied = await google.start({ capabilities: ["calRead"] });

@@ -1,5 +1,5 @@
 {
-  "name": "@alfred/module-kit",
+  "name": "@isocline/module-kit",
   "version": "0.0.0",
   "private": true,
   "description": "The module contract: domain operations, agent tools, permission levels.",
@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@alfred/core": "*",
+    "@isocline/core": "*",
     "typebox": "1.3.27"
   }
 }

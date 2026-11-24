@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CORE_MIGRATIONS, listEvents, openWorld, type World } from "@alfred/core";
-import { invokeOp, runQuery, ServiceError, type GoogleService } from "@alfred/module-kit";
+import { CORE_MIGRATIONS, listEvents, openWorld, type World } from "@isocline/core";
+import { invokeOp, runQuery, ServiceError, type GoogleService } from "@isocline/module-kit";
 import { extractBody, listMail, mailModule, mapMessage, parseAddress, syncMail, type MailDetail, type MailSnapshot } from "../src/index.ts";
 
 const world = (): World => openWorld(":memory:", [...CORE_MIGRATIONS, ...mailModule.migrations]);
@@ -106,7 +106,7 @@ test("a sync mirrors the inbox: new mail read once in full, read and archived ma
   assert.deepEqual([snapshot.sources[0].error, snapshot.sources[0].reconnect], ["Google answered 503", false]);
 });
 
-test("Alfred finds mail with mail_list and reads it with mail_read; a device reads one body through the query", async () => {
+test("Isocline finds mail with mail_list and reads it with mail_read; a device reads one body through the query", async () => {
   const w = world();
   assert.match(tool("mail_list").execute(w, {} as never), /not connected/);
   const messages = {

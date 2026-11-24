@@ -1,8 +1,8 @@
-/** The menu bar icon: Alfred's mark, the tesseract seen as a cube in a cube (the 8 edges joining the two cubes are
+/** The menu bar icon: Isocline's mark, the tesseract seen as a cube in a cube (the 8 edges joining the two cubes are
  * dropped at this size). Drawn at 2x as a template image so macOS tints it for light and dark menu bars.
  */
 import { nativeImage, type NativeImage } from "electron";
-import { markSegments } from "@alfred/ui/figure";
+import { markSegments } from "@isocline/ui/figure";
 import { appIconPixels } from "./icon-art.ts";
 
 export function trayIcon(): NativeImage {
@@ -33,7 +33,7 @@ export function trayIcon(): NativeImage {
 }
 
 /** The Dock icon: the tesseract on a paper rounded square (icon-art.ts). Set at launch; a packaged
- * Alfred.app would carry the same picture in its bundle, so it shows before launch too. */
+ * Isocline.app would carry the same picture in its bundle, so it shows before launch too. */
 export function appIcon(size = 512): NativeImage {
   const rgba = appIconPixels(size);
   const bgra = Buffer.alloc(rgba.length);

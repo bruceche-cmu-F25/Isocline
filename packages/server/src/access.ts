@@ -29,7 +29,7 @@ export interface Asker {
   dev: boolean;
 }
 
-export const LOCAL_ONLY = "Only on the machine Alfred runs on";
+export const LOCAL_ONLY = "Only on the machine Isocline runs on";
 export const NEEDS_DEV = "This device needs permission to use development sessions.";
 
 interface Rule {
@@ -89,7 +89,7 @@ export const ACCESS: readonly Rule[] = [
   rule("*", "/api/conversations/:id/read", "device"),
   rule("*", "/api/conversations/:id", "device"),
 
-  // Project folders mean something only on this machine, and trusting one lets Alfred read it.
+  // Project folders mean something only on this machine, and trusting one lets Isocline read it.
   rule("GET", "/api/projects/:id/branches", "dev"),
   rule("*", "/api/projects/*", "local"),
 
@@ -104,7 +104,7 @@ export const ACCESS: readonly Rule[] = [
   rule("*", "/api/skills/*", "local"),
 ];
 
-/** The level an address needs, or null for an address Alfred does not have. */
+/** The level an address needs, or null for an address Isocline does not have. */
 export function accessFor(method: string, path: string): Access | null {
   return ACCESS.find((candidate) => (candidate.method === "*" || candidate.method === method) && candidate.pattern.test(path))?.access ?? null;
 }

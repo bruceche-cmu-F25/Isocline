@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Automation, Run } from "@alfred/protocol";
+import type { Automation, Run } from "@isocline/protocol";
 import { api } from "./api.ts";
 import { automationTitle, editionDate, editionTitle, hhmm } from "./automationText.ts";
 import { t } from "./i18n/index.ts";

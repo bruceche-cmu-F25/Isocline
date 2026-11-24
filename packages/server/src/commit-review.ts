@@ -57,7 +57,7 @@ async function guardHooks(root: string, temp: string) {
     throw error;
   })) {
     if (entry.isDirectory() || entry.name === "reference-transaction" || !await original(entry.name)) continue;
-    await writeFile(join(hooks, entry.name), '#!/bin/sh\nexec "$ALFRED_HOOKS/${0##*/}" "$@"\n', { mode: 0o700 });
+    await writeFile(join(hooks, entry.name), '#!/bin/sh\nexec "$ISOCLINE_HOOKS/${0##*/}" "$@"\n', { mode: 0o700 });
   }
   const guard = join(hooks, "reference-transaction");
   await copyFile(new URL("./commit-guard.sh", import.meta.url), guard);
@@ -75,7 +75,7 @@ export async function reviewCommit(root: string, requested: string[], allowed: r
   if (!paths.length) throw new WorkspaceError("nothing", "Select files to commit");
   const candidates = new Set(allowed);
   if (paths.some((path) => !inProject(root, path) || !candidates.has(path))) throw changed();
-  const temp = await mkdtemp(join(tmpdir(), "alfred-commit-"));
+  const temp = await mkdtemp(join(tmpdir(), "isocline-commit-"));
   const buildIndex = (args: string[]) => git(root, ["-c", "core.hooksPath=/dev/null", ...args], { GIT_INDEX_FILE: join(temp, "candidate") });
   try {
     const head = (await git(root, ["rev-parse", "--verify", "HEAD"]).catch(() => { throw new WorkspaceError("no_commit", "This repository has no commit yet"); })).trim();
@@ -110,7 +110,7 @@ export async function reviewCommit(root: string, requested: string[], allowed: r
       await buildIndex(["read-tree", base]);
       await buildIndex(["reset", "-q", tree, "--", ...paths]);
       const baseTree = (await buildIndex(["write-tree"])).trim();
-      base = (await git(root, ["commit-tree", baseTree, "-p", base, "-m", "Alfred session baseline"])).trim();
+      base = (await git(root, ["commit-tree", baseTree, "-p", base, "-m", "Isocline session baseline"])).trim();
     }
 
     const index = (await git(root, ["rev-parse", "--path-format=absolute", "--git-path", "index"])).trim();
@@ -124,7 +124,7 @@ export async function reviewCommit(root: string, requested: string[], allowed: r
     const stale = join(temp, "stale");
     const revisionFile = join(temp, "revision");
     const privateIndex = join(temp, "commit-index");
-    const env = { GIT_INDEX_FILE: privateIndex, ALFRED_REF: ref, ALFRED_PARENT: head, ALFRED_TREE: tree, ALFRED_HOOKS: hooks.source, ALFRED_STALE: stale, ALFRED_REVISION: revisionFile, ALFRED_REF_INPUT: join(temp, "ref-input") };
+    const env = { GIT_INDEX_FILE: privateIndex, ISOCLINE_REF: ref, ISOCLINE_PARENT: head, ISOCLINE_TREE: tree, ISOCLINE_HOOKS: hooks.source, ISOCLINE_STALE: stale, ISOCLINE_REVISION: revisionFile, ISOCLINE_REF_INPUT: join(temp, "ref-input") };
     try {
       if ((await git(root, ["rev-parse", "--symbolic-full-name", "HEAD"])).trim() !== ref || (await git(root, ["rev-parse", "HEAD"])).trim() !== head) throw changed();
       await copyFile(index, privateIndex);
