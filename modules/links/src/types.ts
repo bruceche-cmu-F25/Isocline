@@ -15,6 +15,10 @@ export interface Place {
   title: string;
   url: string;
   folderId?: string;
+  /** Where it sits in the category tree. */
+  topicId?: string;
+  /** Kept in the tree only, not on the top row (an imported site starts so). */
+  unpinned?: true;
   /** Order within its folder or among the top-level places and folders. */
   position?: number;
   /** The site's own icon is kept: its name under the module's files (`/api/modules/link/files/<icon>`). */
@@ -67,8 +71,10 @@ export interface Clip {
 export interface Topic {
   id: string;
   name: string;
-  /** An area id from the core (work, life…), when it has one. */
+  /** An area id from the core (work, life…), when it has one. A topic under another has its parent's area. */
   area?: string;
+  /** The topic it sits under; none for a topic at the top of its area. */
+  parentId?: string;
 }
 
 export interface LinksSnapshot {
@@ -83,5 +89,5 @@ export interface LinksSnapshot {
 
 /** The operations a device may ask of this module (POST /api/ops/<name>), as the module defines them. A test on the
  * home node checks this list against the module's own, so a device cannot name one that is not there. */
-export const LINK_OPS = ["link.save", "link.update", "link.remove", "link.refetch", "link.pin", "link.rename", "link.ungroup", "link.group", "link.move", "link.order", "link.topic"] as const;
+export const LINK_OPS = ["link.save", "link.update", "link.remove", "link.refetch", "link.pin", "link.rename", "link.ungroup", "link.group", "link.move", "link.order", "link.topic", "link.place", "link.merge", "link.import", "link.import_undo"] as const;
 export type LinkOp = (typeof LINK_OPS)[number];

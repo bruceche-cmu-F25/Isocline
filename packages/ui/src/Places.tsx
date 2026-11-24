@@ -196,16 +196,15 @@ export function Places({ places, folders, focus, onFocused, onError }: {
       setOpen(undefined); select(undefined);
     }}>
       <h3>{t("links.places")}
+        {/* Adding sits beside Edit, not as a tile: on a phone a tile of its own took a row of its own. */}
+        {!editing && <button type="button" ref={addButton} className="lk-edit lk-add-place" onClick={() => setAdding(!adding)} aria-expanded={adding}
+          aria-label={t(adding ? "common.close" : "links.place.add")} title={t(adding ? "common.close" : "links.place.add")}>{adding ? "×" : "+"}</button>}
         <button type="button" className="lk-edit" aria-pressed={editing} onClick={() => {
           setEditing(!editing); setAdding(false); select(undefined); setNameFocus(undefined);
         }}>{t(editing ? "links.done" : "links.edit")}</button>
       </h3>
       <div className="lk-places lk-organizer" data-organizing={editing || undefined}>
         {siblings().map(tile)}
-        {!editing && <button type="button" ref={addButton} className="lk-place add" onClick={() => setAdding(!adding)} aria-expanded={adding}>
-          <span className="lk-tile" aria-hidden="true">{adding ? "×" : "+"}</span>
-          <span className="lk-place-name">{t(adding ? "common.close" : "links.place.add")}</span>
-        </button>}
         {editing && folder && <span data-root-drop="" className="lk-root-drop" data-over={hint?.side === "out" || undefined}>{t("links.folder.dropOut")}</span>}
       </div>
       {folder && <div className="lk-folder-panel" aria-label={t("links.folder.label", { title: folder.title })}>

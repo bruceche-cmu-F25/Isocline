@@ -10,6 +10,8 @@ Alfred 是从 pi-web-robin 抽出来的开源个人助手 harness：一个常驻
 
 ## 2. 工作约定（先读）
 
+怎么起开发环境、什么绝对不碰、怎么验证、提交和推送的规矩：以仓库根目录的 `AGENTS.md` 为准。下面是补充。
+
 - 分支 `alfred-harness`；`main` 受保护。**origin 是公开仓库**：只推应用开发的内容，推之前扫一遍有没有私人信息和参考图。
 - 提交不带 Claude 的 co-author 行。只有 Bruce 说了才提交、才推。
 - Robin 仓库有别的 session 正在改的未提交内容：**只读，不整理、不回退**。
@@ -174,7 +176,7 @@ npm run typecheck              类型检查（服务端 + 界面）
 npm run package:mac            打包 dist/mac/Alfred.app 和 .dmg
 ```
 
-Node 24 以上，直接运行 `.ts`（只用可擦除的语法）。原型用 `.claude/launch.json` 里的 `alfred-prototype`（:4173）。
+Node 24 以上，直接运行 `.ts`（只用可擦除的语法）。开发配置在 `.claude/launch.json`：`isocline-dev`（临时世界，:7520）、`isocline-ui`（:5173）、`isocline-prototype`（:4173）。
 
 ## 8. 文档地图
 

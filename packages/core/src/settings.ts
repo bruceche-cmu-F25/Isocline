@@ -57,7 +57,7 @@ export interface VoiceSettings {
   speakFigure: boolean;
   /** For now: Isocline says nothing out loud anywhere, only shows. */
   muted: boolean;
-  /** `system:<name>` or `model:<name>`; null: the default for the language. */
+  /** `system:<name>`, `model:<name>` or `elevenlabs|inworld|boson:<voice id>`; null: the default for the language. */
   voice: string | null;
   /** 0.7–1.5; 1 is the voice's own pace. */
   rate: number;
@@ -72,7 +72,8 @@ export class SettingsError extends Error {
 }
 
 const DEFAULTS: UserSettings = { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE_DEFAULTS, character: "ana", assistantName: null };
-const VOICE_ID = /^(system|model):[^\n\r]{1,80}$/;
+/** The Mac's voice, the local model's, or a speech service's (its own voice id). */
+const VOICE_ID = /^(system|model|elevenlabs|inworld|boson):[^\n\r]{1,120}$/;
 const PAGE_KEY = /^[a-z][a-z0-9_-]{0,31}\.[a-z][a-z0-9_-]{0,31}$/;
 const MODEL = /^[A-Za-z0-9._-]{1,64}\/[^\s/][^\s]{0,199}$/;
 
@@ -161,7 +162,7 @@ function voiceSettings(input: unknown): VoiceSettings {
     }
   }
   if ("voice" in value) {
-    if (value.voice !== null && (typeof value.voice !== "string" || !VOICE_ID.test(value.voice))) throw new SettingsError("voice.voice is system:<name> or model:<name>, or null");
+    if (value.voice !== null && (typeof value.voice !== "string" || !VOICE_ID.test(value.voice))) throw new SettingsError("voice.voice is system:<name>, model:<name> or <service>:<voice id>, or null");
     out.voice = value.voice as string | null;
   }
   if ("rate" in value) {

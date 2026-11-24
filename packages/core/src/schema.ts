@@ -408,4 +408,11 @@ UPDATE core_notices SET payload = json_set(payload, '$.layout', 'sections', '$.k
 }, {
   id: "core:32",
   sql: "ALTER TABLE core_projects ADD COLUMN default_mode TEXT NOT NULL DEFAULT 'edits' CHECK (default_mode IN ('plan', 'ask', 'edits'));",
+}, {
+  // A proposal the user asked to change stays in the inbox while this run writes the new version (proposals.ts).
+  id: "core:33",
+  sql: `
+ALTER TABLE core_proposals ADD COLUMN revising_run_id TEXT;
+ALTER TABLE core_proposals ADD COLUMN revising_request TEXT;
+`,
 }];

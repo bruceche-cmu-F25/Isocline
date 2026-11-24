@@ -73,7 +73,10 @@ test("a saved address is a clip: told what it is from the address, saved once, f
   assert.deepEqual([listTopics(w).map((topic) => topic.name), moved.state, moved.note], [["Cooking", "Essays"], "todo", undefined]);
   assert.equal(ok(updateClip(w, bare.clip.id, { topicId: "" })).topicId, undefined);
   invokeOp(w, [linksModule], { op: "link.topic", requestId: "t1", input: { id: cooking.id, name: "Food" } });
-  assert.deepEqual(invokeOp(w, [linksModule], { op: "link.topic", requestId: "t2", input: { id: cooking.id, name: "essays" } }).result, { error: 'There is already a topic named "essays".' });
+  // Names are unique among a node's children: Essays has no area, so it only clashes once it is in Cooking's.
+  const essays = listTopics(w).find((topic) => topic.name === "Essays")!;
+  invokeOp(w, [linksModule], { op: "link.topic", requestId: "t1b", input: { id: essays.id, area: "life" } });
+  assert.deepEqual(invokeOp(w, [linksModule], { op: "link.topic", requestId: "t2", input: { id: cooking.id, name: "essays" } }).result, { error: 'There is already a category named "essays" there.' });
   invokeOp(w, [linksModule], { op: "link.topic", requestId: "t3", input: { id: cooking.id, remove: true } });
   assert.equal(listClips(w).find((clip) => clip.id === first.clip.id)!.topicId, undefined, "removing a topic unfiles what was in it");
   ok(removeLink(w, first.clip.id));
@@ -128,11 +131,12 @@ test("Isocline saves, files, pins and lists through its tools; deleting asks fir
   ok(saveClip(w, { url: "https://example.com/coffee", note: "water temperature" }));
 
   const listed = call("link_list", {});
-  assert.match(listed, /Places: Google \(place-1\), Gmail .*Canvas/);
-  assert.match(listed, /Topics: RAG \[learn\]\./);
+  assert.match(listed, /Places \(4\):\nplace-1 {2}Google \| site, pinned \| no topic/);
+  assert.match(listed, /Canvas \| site, pinned/);
+  assert.match(listed, /Categories:\n\[learn\]\n {2}- RAG \(\S+\) 1/);
   assert.match(call("link_list", { search: "water" }), /Clips \(1\):\n\S+ {2}example\.com · coffee/);
   assert.match(call("link_list", { topic: "rag", state: "unread" }), /Clips \(1\)/);
-  assert.match(call("link_list", { topic: "Nope" }), /No topic named "Nope"\. Topics: RAG\./);
+  assert.match(call("link_list", { topic: "Nope" }), /No topic "Nope"\. Categories:\n\[learn\]\n {2}- RAG/);
 
   const [coffee, paper] = listClips(w);
   assert.match(call("link_update", { id: coffee.id, topic: "Coffee", area: "life", state: "todo" }), /topic: Coffee \| todo/);

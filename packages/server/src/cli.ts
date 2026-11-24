@@ -101,7 +101,7 @@ if (command === "serve") {
   const stopTodoSources = watchTodoSources(home.world, calendarModule, log);
   // Speech to text for every device; the model loads when someone starts talking.
   const voice = new Transcriber({ log });
-  const speaker = new Speaker({ log });
+  const speaker = new Speaker({ log, secrets: defaultSecretStore(dataDir) });
   const server = createHttpServer(home, { port, uiDir: defaultUiDir(), log, google, models, mcp, skills, remote, push, voice, speaker });
   const ingress = createIngressServer(home, { port: ingressPort, uiDir: defaultUiDir(), log, google, models, mcp, skills, remote, push, voice, speaker });
   server.on("error", (error: NodeJS.ErrnoException) => {

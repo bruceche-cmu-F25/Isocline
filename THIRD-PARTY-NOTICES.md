@@ -11,6 +11,7 @@ says what, where, and under which licence. Where code was adapted, the file it l
 | `packages/engine-pi/src/usage.ts`: the request and response formats for a subscription's usage windows | [pi-web](https://github.com/agegr/pi-web), `lib/provider-usage.ts`, which follows [@narumitw/pi-usage](https://github.com/narumiruna/pi-extensions) | MIT, © 2026 agegr; MIT, © 2026 narumiruna |
 | `packages/ui/src/brand/svg/`: model-provider and service logos (all but the ones below) | [LobeHub Icons](https://github.com/lobehub/lobe-icons), through `@lobehub/icons-static-svg` 1.104.0 | MIT, © 2023 LobeHub |
 | `packages/ui/src/brand/svg/`: `tailscale`, `xiaomi`, `notion`, `linear`, `sentry`, `atlassian`, `github` | [Simple Icons](https://simpleicons.org) 16.38.0 | CC0-1.0 |
+| `packages/ui/src/brand/svg/`: `inworld`, `boson` | The companies' own sites: inworld.ai (its wordmark, cropped to the mark) and boson.ai (`/logo.svg`) | The owners' marks, not openly licensed; used only to name their services in Settings → Voice |
 | `packages/ui/src/brand/svg/`: `gmail`, `google-calendar` | [gilbarbara/logos](https://github.com/gilbarbara/logos), through `@iconify-json/logos` 1.2.20 | CC0-1.0 |
 | `packages/ui/src/fonts/GeistSerif-Regular.woff2`: the Geist Serif font, for the wordmark; `prototype/fonts/GeistSerifVF.woff2`: the same font with its variable axis, for `prototype/serif.html` | [Geist](https://github.com/vercel/geist-font), through `geist` 1.9.2 | SIL OFL 1.1, © 2023 Vercel; the licence text is beside each file (`GeistSerif-OFL.txt`) |
 

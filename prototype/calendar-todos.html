@@ -1,0 +1,415 @@
+<!doctype html>
+<!--
+  Isocline: todos on the calendar (docs/design/calendar-todos.md). A prototype: no build step, sample data around
+  today's date, nothing is sent anywhere.
+
+    Every day gets a 「待办」 row under the all-day row: what is due that day, what is planned for that day, and
+    multi-day work as a bar. Todos whose day has passed unfinished are not left behind on that day: they all land
+    on TODAY, first and red, "2 days late". A todo with an hour also draws a dashed deadline line at that hour.
+    The circle ticks it off in place (undo for a few seconds); the title opens the todo's card over the blurred
+    page, where the day can be changed. Nothing is written to Google Calendar.
+
+  The strip at the top switches the view (今天 / 周 / 月), the todos on or off, language and scheme.
+  Also by URL: ?view=today|week|month &lang=zh|en &scheme=light|dark
+  Below 700px the week is a list of days, as in the app.
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Isocline：日历上的待办</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root { --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif; --ease: cubic-bezier(.23, 1, .32, 1); --hour: 44px; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; min-height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
+h1, h2, h3, p, ol, ul { margin: 0; padding: 0; }
+ol, ul { list-style: none; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+
+/* ── The prototype's own strip ── */
+.proto { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; }
+.proto .lab { flex: none; padding: 0 4px 0 10px; opacity: .6; }
+.proto button { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; }
+.proto button:hover { opacity: 1; }
+.proto button[aria-pressed="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+@media (max-width: 700px) { .proto .lab { display: none; } }
+
+/* ── The page ── */
+.page { max-width: 1180px; margin: 0 auto; padding: 18px 24px 80px; }
+.head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.head h1 { font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+.head .sum { color: var(--muted); font-size: 13px; }
+.head .sum b { color: var(--k-text); font-weight: 600; }
+.seg { margin-left: auto; display: inline-flex; padding: 2px; border-radius: 9px; background: var(--wash); }
+.seg button { padding: 3px 12px; border-radius: 7px; color: var(--copy); font-size: 13px; }
+.seg button[aria-pressed="true"] { background: var(--raise); color: var(--ink); box-shadow: 0 1px 2px oklch(0 0 0 / .08); }
+@media (max-width: 700px) { .page { padding: 14px 16px 80px; } .seg { margin-left: 0; } }
+
+/* A todo, wherever it is drawn: a circle and a title. */
+.td { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px 6px 2px 4px; border-radius: 6px; font-size: 12.5px; line-height: 1.35; }
+.td:hover { background: var(--wash); }
+.td .ring { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; }
+.td .ring:hover { border-color: var(--ok); }
+.td .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td small { flex: none; color: var(--muted); font-size: 11px; }
+.td[data-late] .ring { border-color: var(--now); }
+.td[data-late] small { color: var(--now); font-weight: 600; }
+.td[data-done] { opacity: .5; }
+.td[data-done] .t { text-decoration: line-through; }
+.td[data-done] .ring { background: var(--ok); border-color: var(--ok); }
+.td[data-done] .ring::after { content: ""; width: 6px; height: 3px; border: solid var(--raise); border-width: 0 0 1.5px 1.5px; transform: translateY(-1px) rotate(-45deg); }
+.td[data-proposed] { border: 1px dashed var(--line); }
+.td.span { background: var(--alf-soft); }
+.td.more { color: var(--muted); padding-left: 24px; }
+.td.gone { animation: fade .5s var(--ease) both; }
+@keyframes fade { to { opacity: .5; } }
+
+/* ── Week ── */
+.week { border: 1px solid var(--line-soft); border-radius: 12px; background: var(--raise); overflow: hidden; }
+.wk-row { display: grid; grid-template-columns: 56px repeat(7, minmax(0, 1fr)); }
+.wk-row > .lab { padding: 6px 8px; color: var(--muted); font-size: 11px; text-align: right; }
+.wk-head > div { padding: 8px 6px 6px; text-align: center; color: var(--muted); font-size: 12px; border-left: 1px solid var(--line-soft); }
+.wk-head > div b { display: block; color: var(--ink); font-size: 17px; font-weight: 600; }
+.wk-head > div[data-today] b { color: var(--raise); background: var(--now); width: 28px; height: 28px; line-height: 28px; border-radius: 50%; margin: 0 auto; }
+.wk-head .count { display: block; margin-top: 3px; font-size: 11px; color: var(--now); }
+.wk-allday { border-top: 1px solid var(--line-soft); }
+.wk-allday > div { border-left: 1px solid var(--line-soft); padding: 3px; min-height: 26px; }
+.chip { display: block; padding: 2px 6px; border-radius: 5px; background: var(--k-fill); color: var(--k-text); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The todo row: a grid of its own, so a multi-day bar spans its days. */
+.wk-todos { border-top: 1px solid var(--line-soft); background: color-mix(in oklch, var(--paper), var(--raise) 40%); }
+.wk-todos .cells { grid-column: 2 / -1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 2px 0; padding: 4px 0; position: relative; min-height: 30px; }
+.wk-todos .cells .td { margin: 0 3px; }
+.wk-todos .rule { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(7, 1fr); pointer-events: none; }
+.wk-todos .rule i { border-left: 1px solid var(--line-soft); }
+.wk-todos .rule i[data-today] { background: color-mix(in oklch, var(--now) 5%, transparent); }
+.wk-body { position: relative; display: grid; grid-template-columns: 56px repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.wk-gutter div { height: var(--hour); padding: 0 8px; text-align: right; color: var(--muted); font-size: 11px; transform: translateY(-7px); }
+.wk-col { position: relative; border-left: 1px solid var(--line-soft); background-image: linear-gradient(var(--line-soft) 1px, transparent 1px); background-size: 100% var(--hour); }
+.wk-col[data-today] { background-color: color-mix(in oklch, var(--now) 3%, transparent); }
+.ev { position: absolute; left: 3px; right: 3px; padding: 3px 6px; border-radius: 6px; background: var(--k-fill); border-left: 3px solid var(--k-solid); color: var(--k-text); font-size: 12px; line-height: 1.3; overflow: hidden; }
+.ev small { display: block; opacity: .8; font-size: 11px; }
+.dl { position: absolute; left: 0; right: 0; height: 0; border-top: 1.5px dashed var(--now); z-index: 2; }
+.dl button { position: absolute; right: 3px; top: -10px; max-width: calc(100% - 6px); padding: 0 6px; border-radius: 9px; background: var(--raise); border: 1px solid color-mix(in oklch, var(--now) 45%, transparent); color: var(--now); font-size: 11px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now { position: absolute; left: 0; right: 0; border-top: 2px solid var(--now); z-index: 3; }
+.now::before { content: ""; position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--now); }
+
+/* ── Lists: today, and the week on a phone ── */
+.days { display: grid; gap: 18px; }
+.day h3 { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 650; padding-bottom: 6px; border-bottom: 1px solid var(--line-soft); margin-bottom: 6px; }
+.day h3 small { color: var(--muted); font-weight: 400; font-size: 12px; }
+.day[data-today] h3 { color: var(--now); }
+.sec { color: var(--muted); font-size: 11.5px; letter-spacing: .02em; margin: 10px 0 4px; }
+.day .td { font-size: 14px; padding: 6px 6px 6px 2px; }
+.day .td .ring { width: 18px; height: 18px; }
+.day .td small { font-size: 12px; }
+.agenda-ev { display: grid; grid-template-columns: 96px 1fr; gap: 10px; padding: 6px 2px; align-items: baseline; }
+.agenda-ev time { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.agenda-ev span { padding-left: 8px; border-left: 3px solid var(--k-solid); overflow-wrap: anywhere; }
+.quiet { color: var(--muted); }
+
+/* ── Month ── */
+.month { border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; background: var(--raise); }
+.mo-head, .mo-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.mo-head div { padding: 6px; text-align: center; color: var(--muted); font-size: 12px; }
+.mo-grid > div { min-height: 104px; padding: 4px; border-top: 1px solid var(--line-soft); border-left: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mo-grid > div:nth-child(7n + 1) { border-left: 0; }
+.mo-grid > div[data-out] { background: var(--paper); }
+.mo-grid > div[data-out] .n { color: var(--muted); }
+.mo-grid .n { font-size: 12px; font-weight: 600; padding: 0 2px; }
+.mo-grid > div[data-today] .n { color: var(--now); }
+.mo-grid .chip { font-size: 11px; padding: 1px 5px; }
+.mo-grid .td { font-size: 11px; padding: 1px 3px; gap: 4px; }
+.mo-grid .td .ring { width: 10px; height: 10px; border-width: 1.5px; }
+.mo-grid .td.more { padding-left: 17px; }
+@media (max-width: 700px) {
+  .mo-grid > div { min-height: 64px; padding: 2px; }
+  .mo-grid .chip, .mo-grid .td .t { display: none; }
+  .mo-grid .dots { display: flex; flex-wrap: wrap; gap: 3px; padding: 2px; }
+  .mo-grid .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--k-solid, var(--line)); }
+  .mo-grid .dots i.late { background: var(--now); }
+  .mo-grid .dots i.todo { background: transparent; border: 1.5px solid var(--muted); width: 7px; height: 7px; }
+  .mo-grid .td, .mo-grid .td.more { display: none; }
+}
+@media (min-width: 701px) { .mo-grid .dots { display: none; } }
+
+/* ── The todo's card, over the blurred page ── */
+.veil { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: oklch(0 0 0 / .12); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: in .18s var(--ease) both; }
+.card { width: min(380px, 100%); padding: 18px; border-radius: 16px; background: var(--raise); box-shadow: var(--shadow); }
+.card h2 { font-size: 17px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.card .when { margin-top: 6px; color: var(--copy); font-size: 13px; }
+.card .when b { color: var(--now); }
+.card .lab2 { margin-top: 14px; color: var(--muted); font-size: 12px; }
+.card .chips { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.card .chips button { padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; }
+.card .chips button:hover { background: var(--wash); }
+.card .acts { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { padding: 7px 14px; border-radius: 10px; background: var(--alf-solid); color: var(--on-alf); font-weight: 600; font-size: 13.5px; }
+.btn.ghost { background: none; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+.link { color: var(--alf); font-size: 13px; margin-left: auto; }
+@keyframes in { from { opacity: 0; } }
+.toast { position: fixed; left: 50%; bottom: 24px; z-index: 50; transform: translateX(-50%); display: flex; gap: 14px; align-items: center; max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 12px; background: var(--ink); color: var(--bg); font-size: 13px; box-shadow: var(--shadow); }
+.toast button { color: var(--bg); font-weight: 600; text-decoration: underline; flex: none; }
+</style>
+</head>
+<body>
+<div class="proto" role="toolbar">
+  <span class="lab">视图</span>
+  <button data-view="today">今天</button><button data-view="week">周</button><button data-view="month">月</button>
+  <span class="lab">待办</span>
+  <button data-todos="on">开</button><button data-todos="off">关</button>
+  <span class="lab">语言</span>
+  <button data-lang="zh">中文</button><button data-lang="en">English</button>
+  <span class="lab">外观</span>
+  <button data-scheme="light">浅</button><button data-scheme="dark">深</button>
+</div>
+<main class="page" id="page"></main>
+<div id="layer"></div>
+<script>
+const params = new URLSearchParams(location.search);
+const S = { view: params.get("view") || (matchMedia("(max-width: 700px)").matches ? "today" : "week"), todos: true, lang: params.get("lang") === "en" ? "en" : "zh", scheme: params.get("scheme") || "light" };
+const T = {
+  zh: { title: "日历", today: "今天", week: "周", month: "月", allDay: "全天", todos: "待办", late: (n) => `拖了 ${n} 天`, due: (d) => `截止 ${d}`, by: (h) => `${h} 截止`,
+    more: (n) => `还有 ${n} 件`, sum: (n, l) => l ? `今天 ${n} 件待办，<b>拖下来 ${l} 件</b>` : `今天 ${n} 件待办`, wd: "日,一,二,三,四,五,六", events: "日程", nothing: "没有日程",
+    moveTo: "挪到", tomorrow: "明天", nextMon: "下周一", done: "勾掉", undone: "还没做完", openTodos: "打开待办页", toCal: "放进日历", ticked: (t) => `勾掉了「${t}」`, undo: "撤销",
+    moved: (t, d) => `「${t}」挪到 ${d}`, toCalSaid: "原型：这里会在日历上打开一个日程草稿，你存了才写进 Google。", todoPage: "原型：这里会打开待办页。", wasDue: (d) => `原定 ${d}`, span: (a, b) => `${a} – ${b}`, planned: (d) => `打算 ${d} 做` },
+  en: { title: "Calendar", today: "Today", week: "Week", month: "Month", allDay: "All day", todos: "Todos", late: (n) => `${n} ${n === 1 ? "day" : "days"} late`, due: (d) => `due ${d}`, by: (h) => `by ${h}`,
+    more: (n) => `${n} more`, sum: (n, l) => l ? `${n} todos today, <b>${l} carried over</b>` : `${n} todos today`, wd: "Sun,Mon,Tue,Wed,Thu,Fri,Sat", events: "Events", nothing: "No events",
+    moveTo: "Move to", tomorrow: "Tomorrow", nextMon: "Next Monday", done: "Tick off", undone: "Not done", openTodos: "Open todos", toCal: "Put on calendar", ticked: (t) => `Ticked off “${t}”`, undo: "Undo",
+    moved: (t, d) => `“${t}” moved to ${d}`, toCalSaid: "Prototype: this opens an event draft on the calendar; it goes to Google only when you save it.", todoPage: "Prototype: this opens the todo page.", wasDue: (d) => `was due ${d}`, span: (a, b) => `${a} – ${b}`, planned: (d) => `planned for ${d}` },
+};
+const L = () => T[S.lang];
+
+/* ── Dates ── */
+const pad = (n) => String(n).padStart(2, "0");
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parse = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const add = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return ymd(d); };
+const diff = (a, b) => Math.round((parse(b) - parse(a)) / 864e5);
+const md = (s) => `${+s.slice(5, 7)}/${+s.slice(8)}`;
+const wd = (s) => L().wd.split(",")[parse(s).getDay()];
+const TODAY = ymd(new Date());
+const monday = (s) => add(s, -((parse(s).getDay() + 6) % 7));
+
+/* ── Sample data, around today ── */
+const ev = (day, from, to, title, k) => ({ day: add(TODAY, day), from, to, title, k });
+const EVENTS = [
+  ev(-1, "10:00", "11:30", "组会", "blue"), ev(0, "09:30", "10:45", "14848 lecture", "violet"), ev(0, "14:00", "17:00", "跑实验", "green"),
+  ev(1, "13:30", "15:00", "14848 lecture", "violet"), ev(1, "19:00", "20:00", "和 Leo 通话", "orange"), ev(2, "10:00", "11:30", "组会", "blue"),
+  ev(3, "14:00", "16:30", "复习课", "violet"), ev(4, "18:30", "21:00", "看电影", "pink"), ev(-3, "15:00", "16:00", "办公时间", "teal"),
+];
+const ALLDAY = [{ day: add(TODAY, 3), title: "期末周", k: "yellow" }, { day: add(TODAY, -2), title: "感恩节放假", k: "gray" }];
+let TODOS = [
+  { id: 1, title: "交报销单", due: add(TODAY, -2) },
+  { id: 2, title: "回 Leo 合同第二版", due: add(TODAY, -1) },
+  { id: 3, title: "订回家的机票", due: TODAY },
+  { id: 4, title: "交 14848 作业 6", due: TODAY, at: "21:00" },
+  { id: 5, title: "实验报告初稿", due: add(TODAY, 1), at: "12:00" },
+  { id: 6, title: "写实验 final report", startDate: add(TODAY, 1), due: add(TODAY, 3) },
+  { id: 7, title: "复习 14848 final", plannedOn: add(TODAY, 2), due: add(TODAY, 4) },
+  { id: 8, title: "买猫粮", due: add(TODAY, 5) },
+  { id: 9, title: "整理课堂笔记", due: add(TODAY, -1), done: add(TODAY, -1) },
+  { id: 10, title: "预约体检", due: add(TODAY, 9) },
+  { id: 11, title: "还图书馆的书", due: add(TODAY, 2) },
+  { id: 12, title: "给妈妈打电话", due: add(TODAY, 2) },
+  { id: 13, title: "发周报", due: add(TODAY, 2) },
+  { id: 14, title: "改简历", due: add(TODAY, 2) },
+];
+
+/* ── The rule (docs/design/calendar-todos.md §2) ── */
+const dayOf = (todo) => todo.plannedOn || todo.due;
+const lateBy = (todo) => !todo.done && dayOf(todo) && dayOf(todo) < TODAY && !(todo.startDate && todo.due >= TODAY) ? diff(dayOf(todo), TODAY) : 0;
+/** What one day shows: what is late (only today), what falls on it, and what was ticked off on it. */
+function todosOn(day) {
+  if (!S.todos) return [];
+  const late = day === TODAY ? TODOS.filter((todo) => lateBy(todo)).sort((a, b) => lateBy(b) - lateBy(a)) : [];
+  const on = TODOS.filter((todo) => !todo.done && !lateBy(todo) && !todo.startDate && dayOf(todo) === day);
+  const done = TODOS.filter((todo) => todo.done === day);
+  return [...late, ...on, ...done];
+}
+const spans = () => S.todos ? TODOS.filter((todo) => todo.startDate && !todo.done && todo.due >= TODAY) : [];
+const atLine = (day) => S.todos ? TODOS.filter((todo) => todo.at && !todo.done && todo.due === day && !lateBy(todo)) : [];
+
+/* ── Drawing ── */
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function todoEl(todo, extra = "", style = "") {
+  const late = lateBy(todo);
+  const note = late ? L().late(late) : todo.startDate ? L().due(md(todo.due)) : todo.at ? L().by(todo.at) : todo.plannedOn ? L().due(md(todo.due)) : "";
+  return `<div class="td ${extra}" ${late ? "data-late" : ""} ${todo.done ? "data-done" : ""} style="${style}">
+    <button class="ring" data-tick="${todo.id}" aria-label="${esc(todo.done ? L().undone : L().done)}"></button>
+    <button class="t" data-open="${todo.id}" title="${esc(todo.title)}">${esc(todo.title)}</button>${note ? `<small>${esc(note)}</small>` : ""}</div>`;
+}
+const MAX = 4;
+function cellTodos(day, max = MAX) {
+  const list = todosOn(day);
+  if (list.length <= max) return list.map((todo) => todoEl(todo)).join("");
+  return list.slice(0, max - 1).map((todo) => todoEl(todo)).join("") + `<div class="td more">${esc(L().more(list.length - max + 1))}</div>`;
+}
+const narrow = () => matchMedia("(max-width: 700px)").matches;
+const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+const yOf = (hm) => { const [h, m] = hm.split(":").map(Number); return ((h - HOURS[0]) + m / 60) * 44; };
+
+function week() {
+  const first = monday(TODAY), days = [...Array(7)].map((_, i) => add(first, i));
+  if (narrow()) return dayList(days);
+  const late = TODOS.filter(lateBy).length;
+  const head = days.map((day) => {
+    const n = todosOn(day).filter((todo) => !todo.done).length;
+    return `<div ${day === TODAY ? "data-today" : ""}>${wd(day)}<b>${parse(day).getDate()}</b>${day === TODAY && S.todos && n ? `<span class="count">${esc(S.lang === "zh" ? `${n} 件${late ? `，拖了 ${late}` : ""}` : `${n}${late ? `, ${late} late` : ""}`)}</span>` : ""}</div>`;
+  }).join("");
+  const allday = days.map((day) => `<div>${ALLDAY.filter((a) => a.day === day).map((a) => `<span class="chip" data-k="${a.k}">${esc(a.title)}</span>`).join("")}</div>`).join("");
+  // The todo row: one grid, so a bar can span its days; each day's own todos fill its column.
+  const cells = [];
+  for (const todo of spans()) {
+    const a = Math.max(0, diff(first, todo.startDate)), b = Math.min(6, diff(first, todo.due));
+    if (b < 0 || a > 6) continue;
+    cells.push(todoEl(todo, "span", `grid-column: ${a + 1} / ${b + 2}`));
+  }
+  days.forEach((day, i) => {
+    const list = todosOn(day);
+    const shown = list.length <= MAX ? list : list.slice(0, MAX - 1);
+    for (const todo of shown) cells.push(todoEl(todo, "", `grid-column: ${i + 1}`));
+    if (list.length > MAX) cells.push(`<div class="td more" style="grid-column: ${i + 1}">${esc(L().more(list.length - MAX + 1))}</div>`);
+  });
+  const todoRow = S.todos ? `<div class="wk-row wk-todos"><div class="lab">${L().todos}</div><div class="cells"><div class="rule">${days.map((d) => `<i ${d === TODAY ? "data-today" : ""}></i>`).join("")}</div>${cells.join("")}</div></div>` : "";
+  const now = new Date(), nowTop = yOf(`${now.getHours()}:${now.getMinutes()}`);
+  const cols = days.map((day) => `<div class="wk-col" ${day === TODAY ? "data-today" : ""} style="height:${HOURS.length * 44}px">
+    ${EVENTS.filter((e) => e.day === day).map((e) => `<div class="ev" data-k="${e.k}" style="top:${yOf(e.from)}px;height:${yOf(e.to) - yOf(e.from) - 2}px">${esc(e.title)}<small>${e.from}–${e.to}</small></div>`).join("")}
+    ${atLine(day).map((todo) => `<div class="dl" style="top:${yOf(todo.at)}px"><button data-open="${todo.id}">${esc(todo.at)} ${esc(todo.title)}</button></div>`).join("")}
+    ${day === TODAY && nowTop > 0 && nowTop < HOURS.length * 44 ? `<div class="now" style="top:${nowTop}px"></div>` : ""}</div>`).join("");
+  return `<div class="week">
+    <div class="wk-row wk-head"><span></span>${head}</div>
+    <div class="wk-row wk-allday"><div class="lab">${L().allDay}</div>${allday}</div>
+    ${todoRow}
+    <div class="wk-body"><div class="wk-gutter">${HOURS.map((h) => `<div>${pad(h)}:00</div>`).join("")}</div>${cols}</div>
+  </div>`;
+}
+
+function dayList(days) {
+  return `<div class="days">${days.map((day) => {
+    const evs = EVENTS.filter((e) => e.day === day).sort((a, b) => a.from.localeCompare(b.from));
+    const alls = ALLDAY.filter((a) => a.day === day);
+    const todos = [...spans().filter((todo) => todo.startDate <= day && todo.due >= day), ...todosOn(day)];
+    return `<section class="day" ${day === TODAY ? "data-today" : ""}>
+      <h3>${day === TODAY ? L().today : wd(day)} <small>${md(day)}</small></h3>
+      ${todos.length ? `<p class="sec">${L().todos}</p>${todos.map((todo) => todoEl(todo, todo.startDate ? "span" : "")).join("")}` : ""}
+      ${evs.length || alls.length ? `<p class="sec">${L().events}</p>` : ""}
+      ${alls.map((a) => `<div class="agenda-ev" data-k="${a.k}"><time>${L().allDay}</time><span>${esc(a.title)}</span></div>`).join("")}
+      ${evs.map((e) => `<div class="agenda-ev" data-k="${e.k}"><time>${e.from}–${e.to}</time><span>${esc(e.title)}</span></div>`).join("")}
+      ${!todos.length && !evs.length && !alls.length ? `<p class="quiet">—</p>` : ""}
+    </section>`;
+  }).join("")}</div>`;
+}
+
+function month() {
+  const first = `${TODAY.slice(0, 8)}01`, start = monday(first);
+  const days = [...Array(42)].map((_, i) => add(start, i));
+  const wds = [1, 2, 3, 4, 5, 6, 0].map((i) => L().wd.split(",")[i]);
+  return `<div class="month"><div class="mo-head">${wds.map((w) => `<div>${w}</div>`).join("")}</div><div class="mo-grid">${days.map((day) => {
+    const evs = EVENTS.filter((e) => e.day === day), alls = ALLDAY.filter((a) => a.day === day);
+    const todos = [...spans().filter((todo) => todo.startDate <= day && todo.due >= day), ...todosOn(day).filter((todo) => !todo.done)];
+    const room = Math.max(0, 4 - evs.length - alls.length);
+    const shownTodos = todos.length > Math.max(room, 2) ? todos.slice(0, Math.max(room, 2) - 1) : todos;
+    const rest = todos.length - shownTodos.length;
+    return `<div ${day.slice(0, 7) !== TODAY.slice(0, 7) ? "data-out" : ""} ${day === TODAY ? "data-today" : ""}>
+      <span class="n">${parse(day).getDate()}</span>
+      ${alls.map((a) => `<span class="chip" data-k="${a.k}">${esc(a.title)}</span>`).join("")}
+      ${evs.slice(0, 2).map((e) => `<span class="chip" data-k="${e.k}">${e.from} ${esc(e.title)}</span>`).join("")}
+      ${shownTodos.map((todo) => todoEl(todo, todo.startDate ? "span" : "")).join("")}
+      ${rest ? `<div class="td more">${esc(`+${rest}`)}</div>` : ""}
+      <span class="dots">${[...alls, ...evs].map((e) => `<i data-k="${e.k}"></i>`).join("")}${todos.map((todo) => `<i class="${lateBy(todo) ? "late" : "todo"}"></i>`).join("")}</span>
+    </div>`;
+  }).join("")}</div></div>`;
+}
+
+function render() {
+  document.documentElement.lang = S.lang === "zh" ? "zh-CN" : "en";
+  document.documentElement.dataset.scheme = S.scheme;
+  for (const b of document.querySelectorAll(".proto button")) {
+    const [k, v] = Object.entries(b.dataset)[0];
+    b.setAttribute("aria-pressed", String(k === "todos" ? (v === "on") === S.todos : S[k] === v));
+  }
+  const n = todosOn(TODAY).filter((todo) => !todo.done).length, late = TODOS.filter(lateBy).length;
+  document.getElementById("page").innerHTML = `
+    <div class="head"><h1>${L().title}</h1>${S.todos ? `<span class="sum" data-k="now">${L().sum(n, late)}</span>` : ""}
+      <div class="seg">${["today", "week", "month"].map((v) => `<button data-view="${v}" aria-pressed="${S.view === v}">${L()[v]}</button>`).join("")}</div></div>
+    ${S.view === "week" ? week() : S.view === "month" ? month() : dayList([TODAY, add(TODAY, 1)])}`;
+}
+
+/* ── Doing things ── */
+const layer = document.getElementById("layer");
+let toastTimer;
+function toast(text, undo) {
+  clearTimeout(toastTimer);
+  layer.querySelector(".toast")?.remove();
+  const el = document.createElement("div");
+  el.className = "toast"; el.setAttribute("role", "status");
+  el.innerHTML = `<span>${esc(text)}</span>${undo ? `<button>${esc(L().undo)}</button>` : ""}`;
+  if (undo) el.querySelector("button").onclick = () => { undo(); el.remove(); render(); };
+  layer.append(el);
+  toastTimer = setTimeout(() => el.remove(), 4000);
+}
+function tick(id) {
+  const todo = TODOS.find((each) => each.id === id);
+  if (todo.done) { delete todo.done; render(); return; }
+  todo.done = TODAY;
+  render();
+  toast(L().ticked(todo.title), () => { delete todo.done; });
+}
+function move(todo, day) {
+  const was = { ...todo };
+  if (todo.plannedOn) todo.plannedOn = day; else todo.due = day;
+  if (todo.startDate && todo.due < todo.startDate) delete todo.startDate;
+  closeCard(); render();
+  toast(L().moved(todo.title, `${wd(day)} ${md(day)}`), () => Object.assign(todo, was));
+}
+function closeCard() { layer.querySelector(".veil")?.remove(); }
+function openCard(id) {
+  const todo = TODOS.find((each) => each.id === id), late = lateBy(todo);
+  const when = todo.startDate ? L().span(md(todo.startDate), md(todo.due))
+    : todo.plannedOn ? `${L().planned(md(todo.plannedOn))} · ${L().due(md(todo.due))}`
+    : `${wd(todo.due)} ${md(todo.due)}${todo.at ? ` · ${L().by(todo.at)}` : ""}`;
+  let next = add(TODAY, 1); while (parse(next).getDay() !== 1) next = add(next, 1);
+  const veil = document.createElement("div");
+  veil.className = "veil";
+  veil.innerHTML = `<div class="card" role="dialog" aria-modal="true" aria-label="${esc(todo.title)}">
+    <h2>${esc(todo.title)}</h2>
+    <p class="when">${late ? `<b>${esc(L().late(late))}</b> · ${esc(L().wasDue(md(dayOf(todo))))}` : esc(when)}</p>
+    <p class="lab2">${L().moveTo}</p>
+    <div class="chips"><button data-to="${TODAY}">${L().today}</button><button data-to="${add(TODAY, 1)}">${L().tomorrow}</button><button data-to="${next}">${L().nextMon}</button></div>
+    <div class="acts"><button class="btn" data-done>${todo.done ? L().undone : L().done}</button><button class="btn ghost" data-cal>${L().toCal}</button><button class="link" data-page>${L().openTodos}</button></div>
+  </div>`;
+  veil.addEventListener("click", (e) => {
+    if (e.target === veil) return closeCard();
+    const to = e.target.closest("[data-to]");
+    if (to) return move(todo, to.dataset.to);
+    if (e.target.closest("[data-done]")) { closeCard(); return tick(id); }
+    if (e.target.closest("[data-cal]")) { closeCard(); return toast(L().toCalSaid); }
+    if (e.target.closest("[data-page]")) { closeCard(); return toast(L().todoPage); }
+  });
+  layer.append(veil);
+  veil.querySelector("[data-done]").focus();
+}
+addEventListener("keydown", (e) => { if (e.key === "Escape") closeCard(); });
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b || b.closest(".veil") || b.closest(".toast")) return;
+  if (b.dataset.tick) return tick(+b.dataset.tick);
+  if (b.dataset.open) return openCard(+b.dataset.open);
+  if (b.dataset.view) S.view = b.dataset.view;
+  else if (b.dataset.todos) S.todos = b.dataset.todos === "on";
+  else if (b.dataset.lang) S.lang = b.dataset.lang;
+  else if (b.dataset.scheme) S.scheme = b.dataset.scheme;
+  else return;
+  render();
+});
+let wasNarrow = narrow();
+addEventListener("resize", () => { if (narrow() !== wasNarrow) { wasNarrow = narrow(); render(); } });
+render();
+</script>
+</body>
+</html>

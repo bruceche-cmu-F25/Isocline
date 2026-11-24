@@ -2,6 +2,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSS
 import type { AwayDigest, Conversation, Notice, StateResponse } from "@isocline/protocol";
 import { ApiError, api, deviceId } from "./api.ts";
 import { desktop } from "./desktop.ts";
+import { resumePush } from "./push.ts";
 import { useRoute } from "./shell/useRoute.ts";
 import { IsoclinePanel, figureState } from "./shell/IsoclinePanel.tsx";
 import { Welcome } from "./shell/Welcome.tsx";
@@ -161,6 +162,9 @@ export function App() {
   const { state, error, unpaired } = alfred;
   useLocale(); // re-render in the new language when it changes
   useKeepVoiceSettings(state?.settings?.voice);
+  // A phone that had notifications on gets its subscription back if the home node lost it.
+  const connected = !!state;
+  useEffect(() => { if (connected && !desktop) resumePush().catch(() => {}); }, [connected]);
 
   // What the assistant is called (Ana, Kata, or the user's own name for it): every sentence it says uses it.
   setAssistant(assistantNameFor(state?.settings));

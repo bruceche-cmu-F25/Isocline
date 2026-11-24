@@ -36,7 +36,7 @@ type Shown = CalendarEvent & { pending?: boolean; draft?: boolean; proposed?: { 
 /** What Isocline proposes to add or move, drawn where it would land: an open proposal's calendar steps as events of
  * their own, dashed until the user says yes (on the event itself, or in the inbox). */
 function proposedEvents(proposals: readonly Proposal[], sources: CalendarSource[]): Shown[] {
-  return proposals.flatMap((proposal) => proposal.state !== "open" || proposal.stale ? [] : proposal.steps.flatMap((step, n): Shown[] => {
+  return proposals.flatMap((proposal) => proposal.state !== "open" || proposal.stale || proposal.revising ? [] : proposal.steps.flatMap((step, n): Shown[] => {
     if (step.op !== "calendar.add" && step.op !== "calendar.move") return [];
     const input = step.input as { account?: string; calendarId?: string; calendar?: string; title?: string; when?: CalendarWhen };
     if (!input?.account || !input.calendarId || !input.title || !input.when) return [];

@@ -1,5 +1,5 @@
 /** Settings, one tab per kind of thing (docs/design/settings-and-connections.md §3.7; the tabs after pi-web's
- * settings panel, github.com/agegr/pi-web, MIT): General, Voice, Models, Accounts, Skills, Connectors, Devices.
+ * settings panel, github.com/agegr/pi-web, MIT): General, Models, Skills, Connectors, Voice, Accounts, Devices.
  *
  * Paired devices can view subscription usage. Credentials, skills and connectors are managed on the home node. A tab
  * that was opened stays mounted while the page is, so a sign-in that is waiting for the browser is not lost by
@@ -26,14 +26,16 @@ import { SETTINGS_TAB_EVENT, SETTINGS_TAB_KEY, type SettingsTab } from "./settin
 import "./settings.css";
 
 type Tab = SettingsTab;
-/** `home`: only where Isocline runs. */
+/** `home`: only where Isocline runs. In the order they are used, most often first: the model and its usage are
+ * looked at often; skills and connectors change now and then; the voice, the accounts and the devices are set up
+ * once and seldom touched again (muting is in the figure's menu and the menu bar). */
 const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
   { id: "general", icon: "gear" },
-  { id: "voice", icon: "speaker" },
   { id: "models", icon: "model" },
-  { id: "accounts", icon: "person", home: true },
   { id: "skills", icon: "layers", home: true },
   { id: "connectors", icon: "plug", home: true },
+  { id: "voice", icon: "speaker" },
+  { id: "accounts", icon: "person", home: true },
   { id: "devices", icon: "phone" },
 ];
 const KEY = SETTINGS_TAB_KEY;
@@ -100,7 +102,7 @@ export function Settings({ name, saveName, dockOptions, onEvent, state }: Genera
         ))}
       </div>
       {pane("general", <><General name={name} saveName={saveName} dockOptions={dockOptions} assistant={{ character: state.settings.character ?? "ana", name: state.settings.assistantName ?? null }} /><Preferences state={state} /><Areas state={state} /><PagesSetting state={state} /></>)}
-      {pane("voice", <VoiceSettings />)}
+      {pane("voice", <VoiceSettings local={local} />)}
       {pane("models", local ? <ModelSettings /> : remote === null
         ? <p className="quiet" role="status">{t("models.usage.checking")}</p>
         : <SubscriptionUsage />)}

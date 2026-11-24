@@ -8,33 +8,19 @@
  *
  * Without that permission a favorite is saved in Isocline only. A Gmail star cannot be removed from here then.
  */
-import { enqueueOutbound, listOutbound, localeOf, recordDomainEvent, userLocale, type Locale, type Outbound, type World, defineOp, Type, type Delivered, type GoogleSession, type ModuleServices } from "@isocline/module-kit";
-
-const API = "https://gmail.googleapis.com/gmail/v1/users/me";
+import { enqueueOutbound, listOutbound, localeOf, recordDomainEvent, userLocale, type Locale, type Outbound, type World, defineOp, Type, type Delivered, type ModuleServices } from "@isocline/module-kit";
+import { changeGmailLabel, MailLabelError } from "./labels.ts";
 
 export interface StarInput { account: string; id: string; starred: boolean }
 
-class MailFavoriteError extends Error {
-  override name = "MailFavoriteError";
-  readonly code: "missing" | "permission";
-  constructor(code: MailFavoriteError["code"], message: string) {
-    super(message);
-    this.code = code;
-  }
-}
-
-const SAY: Record<Locale, { star(subject: string): string; unstar(subject: string): string; noPermission: string; missing: string }> = {
+const SAY: Record<Locale, { star(subject: string): string; unstar(subject: string): string }> = {
   zh: {
     star: (subject) => `在 Gmail 中给「${subject}」加星`,
     unstar: (subject) => `取消「${subject}」的 Gmail 星标`,
-    noPermission: "这个账户没有开启 Gmail 星标同步",
-    missing: "这封邮件在 Gmail 里已经不在了",
   },
   en: {
     star: (subject) => `Star “${subject}” in Gmail`,
     unstar: (subject) => `Remove the Gmail star from “${subject}”`,
-    noPermission: "Gmail star syncing is not enabled for this account",
-    missing: "This message no longer exists in Gmail",
   },
 };
 
@@ -60,10 +46,10 @@ export const favoriteOp = defineOp({
     return world.tx((db) => {
       const row = db.prepare(`SELECT m.starred, m.local_saved, m.subject, s.can_modify FROM mail_messages AS m
         LEFT JOIN mail_sources AS s ON s.account = m.account WHERE m.account = ? AND m.id = ?`).get(account, id);
-      if (!row) throw new MailFavoriteError("missing", "This message is no longer in Isocline Mail");
+      if (!row) throw new MailLabelError("missing", "This message is no longer in Isocline Mail");
       const canModify = row.can_modify === 1;
       if (!canModify && !starred && row.starred === 1) {
-        throw new MailFavoriteError("permission", "Enable Gmail star syncing in Settings to remove a Gmail star");
+        throw new MailLabelError("permission", "Enable Gmail star syncing in Settings to remove a Gmail star");
       }
       const scope: "gmail" | "local" = canModify || row.starred === 1 ? "gmail" : "local";
       // Starring in Gmail keeps a local save until Gmail has it (deliverStar clears it), so a star Gmail refuses
@@ -93,23 +79,8 @@ export const favoriteOp = defineOp({
  * have turned star syncing off since the click. */
 export async function deliverStar(world: World, outbound: Outbound, services: ModuleServices, signal?: AbortSignal): Promise<Delivered> {
   const { account, id, starred } = outbound.payload as StarInput;
-  const say = SAY[localeOf(world.db)];
-  const allowed = () => {
-    const capabilities = services.google?.accounts().find((candidate) => candidate.email === account)?.capabilities ?? [];
-    return capabilities.includes("mailRead") && capabilities.includes("mailModify");
-  };
-  if (!allowed()) return { state: "failed", error: say.noPermission };
-  // A thrown ServiceError is the queue's to read: reconnect fails it, anything else is tried again later.
-  const session: GoogleSession = await services.google!.session(account);
-  // Getting a session may refresh the account's token, which can outlast the user turning star syncing off.
-  if (!allowed()) return { state: "failed", error: say.noPermission };
-  const changes = starred ? { addLabelIds: ["STARRED"] } : { removeLabelIds: ["STARRED"] };
-  const { status, body } = await session.send("POST", `${API}/messages/${encodeURIComponent(id)}/modify`, changes, { signal });
-  if (status === 404 || status === 410) return { state: "failed", error: say.missing };
-  if (status >= 400 && status < 500) return { state: "failed", error: `Gmail answered ${status}` };
-  if (status >= 300 || (Array.isArray(body.labelIds) && body.labelIds.includes("STARRED") !== starred)) {
-    return { state: "unclear", error: `Gmail did not confirm the star change (${status})` };
-  }
+  const outcome = await changeGmailLabel(services, account, id, "STARRED", starred, localeOf(world.db), signal);
+  if (outcome.state !== "done") return outcome;
   // Gmail holds it now: a local save under the star is no longer needed.
   if (starred) world.tx((db) => db.prepare("UPDATE mail_messages SET local_saved = 0 WHERE account = ? AND id = ? AND starred = 1").run(account, id));
   return { state: "done" };

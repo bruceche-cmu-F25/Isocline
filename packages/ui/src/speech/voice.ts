@@ -49,8 +49,21 @@ function audio(): AudioContext {
   return context;
 }
 
+/** What the sound on this device is for (Safari 17+, `navigator.audioSession`; elsewhere nothing happens).
+ * - `playback`: Isocline speaking. Left as it is, an iPhone treats page sound as `ambient`: the silent switch mutes
+ *   it, and after the microphone was used it can stay in the quiet earpiece. Playback is heard either way, from the
+ *   loudspeaker, like a podcast.
+ * - `play-and-record`: the microphone is about to be used.
+ * - `auto`: the browser decides again. */
+export function audioSession(type: "playback" | "play-and-record" | "auto"): void {
+  const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+  if (!session || session.type === type) return;
+  try { session.type = type; } catch { /* not allowed now: the browser's own choice stands */ }
+}
+
 /** Call from a click or key press on a phone: browsers only let sound start after one. */
 export function unlockAudio(): void {
+  audioSession("playback");
   void audio().resume().catch(() => {});
 }
 
@@ -80,6 +93,7 @@ export async function say(text: string, options: SayOptions = {}): Promise<"done
   const mine = ++generation;
   speakingKey = options.key ?? "";
   notify();
+  audioSession("playback");
   const ctx = audio();
   void ctx.resume().catch(() => {});
   const fetchPiece = async (piece: string) => {

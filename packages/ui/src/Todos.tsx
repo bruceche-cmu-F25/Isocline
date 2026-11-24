@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Area, Automation } from "@isocline/protocol";
 import type { CalendarEvent, CalendarSnapshot } from "@isocline/module-calendar/types";
@@ -11,6 +11,7 @@ import type { PageLine } from "./shell/about.ts";
 import { todoChange } from "./shell/say.ts";
 import { PHONE, useMedia } from "./shell/layout.ts";
 import { Select } from "./shell/Select.tsx";
+import "./todos-phone.css";
 
 type Item = TodoSnapshot["todos"][number];
 type View = "list" | "board" | "week";
@@ -149,7 +150,7 @@ function Countdown({ todo, now }: { todo: Item; now: number }) {
 }
 
 /** The small facts under a title: area, in progress, repeat, where from, how long it has waited, a link. */
-function Meta({ todo, today, all, areas, when }: { todo: Item; today: string; all: Item[]; areas: Area[]; when?: boolean }) {
+function Meta({ todo, today, all, areas, when, hour, children }: { todo: Item; today: string; all: Item[]; areas: Area[]; when?: boolean; hour?: string | null; children?: ReactNode }) {
   const area = areas.find((candidate) => candidate.id === todo.area);
   const origin = originOf(todo);
   const streak = streakOf(todo, all);
@@ -157,6 +158,8 @@ function Meta({ todo, today, all, areas, when }: { todo: Item; today: string; al
   const due = when ? dueLabel(todo, today) : null;
   return (
     <span className="todo-meta">
+      {hour && <span className="hour">{hour}</span>}
+      {children}
       {todo.suggested && <span className="by"><Icon name="alfred" />{t("todo.g.suggested")}</span>}
       {area && <span className="tag" data-k={area.k}>{area.name}</span>}
       {due && <span className="due">{due}</span>}
@@ -352,6 +355,8 @@ interface ViewProps {
   events: CalendarEvent[];
   onOpen(id: string): void;
   onError: OnError;
+  /** A phone: one column, facts on one line under the title, lanes one at a time. */
+  phone?: boolean;
 }
 type TodayHeading = (title: ReactNode) => ReactNode;
 interface DayOff { from: string; to: string; title: string }
@@ -364,7 +369,7 @@ const timedOn = (events: CalendarEvent[], date: string) => events.filter((event)
 
 /** A: by day. The next two weeks as a strip (how full each day is, the days off), then the todos day by day, each
  * with its hour. */
-function ByDay({ open, suggested, all, today, now, areas, fresh, daysOff, events, onOpen, onError, todayHeading }: ViewProps & { todayHeading?: TodayHeading }) {
+function ByDay({ open, suggested, all, today, now, areas, fresh, daysOff, events, onOpen, onError, phone, todayHeading }: ViewProps & { todayHeading?: TodayHeading }) {
   const days = Array.from({ length: 14 }, (_, index) => addDays(today, index));
   const shown = [...open, ...suggested];
   const groups = new Map<string, Item[]>();
@@ -387,14 +392,15 @@ function ByDay({ open, suggested, all, today, now, areas, fresh, daysOff, events
     return (
       <li key={todo.id} className="todo" data-k={area?.k} data-suggested={todo.suggested || undefined} data-fresh={fresh.has(`todo:${todo.id}`) || undefined}
         onClick={() => onOpen(todo.id)}>
-        <span className="todo-at">{at}{sub && <small>{sub}</small>}</span>
+        {/* A phone has no room for a column of hours: the hour leads the facts under the title, with how long is left. */}
+        {!phone && <span className="todo-at">{at}{sub && <small>{sub}</small>}</span>}
         <Lead todo={todo} today={today} onError={onError} />
         <span className="todo-body">
           <span className="todo-title"><Linked text={todo.title} /></span>
-          <Meta todo={todo} today={today} all={all} areas={areas} />
+          <Meta todo={todo} today={today} all={all} areas={areas} hour={phone ? at : null}>{phone && <Countdown todo={todo} now={now} />}</Meta>
           {todo.suggested && <KeepDrop todo={todo} onError={onError} />}
         </span>
-        <span className="todo-end"><Countdown todo={todo} now={now} /></span>
+        {!phone && <span className="todo-end"><Countdown todo={todo} now={now} /></span>}
       </li>
     );
   };
@@ -448,10 +454,28 @@ function ByDay({ open, suggested, all, today, now, areas, fresh, daysOff, events
 const hhmm = (instant: string) => { const at = new Date(instant); return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`; };
 const minuteOf = (instant: string) => { const at = new Date(instant); return at.getHours() * 60 + at.getMinutes(); };
 
-/** B: a board. Today, tomorrow, the rest of this week, later, any time; a card dragged to another column moves there. */
-function Board({ open, suggested, all, today, now, areas, fresh, daysOff, onOpen, onError, todayHeading }: ViewProps & { todayHeading?: TodayHeading }) {
+/** B: a board. Today, tomorrow, the rest of this week, later, any time; a card dragged to another column moves there.
+ * On a phone one lane fills the width and the next peeks in at the edge: swiped between, or picked by name in the
+ * row above (a card is moved with the days in its own card; there is no dragging on a touch screen). */
+function Board({ open, suggested, all, today, now, areas, fresh, daysOff, onOpen, onError, phone, todayHeading }: ViewProps & { todayHeading?: TodayHeading }) {
   const { run } = useRun(onError);
   const [over, setOver] = useState<string | null>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(0);
+  const lanesOf = () => Array.from(strip.current?.children ?? []) as HTMLElement[];
+  const showLane = (index: number) => {
+    const board = strip.current, lane = lanesOf()[index];
+    if (board && lane) board.scrollTo({ left: lane.offsetLeft - board.offsetLeft - parseFloat(getComputedStyle(board).paddingLeft), behavior: "smooth" });
+  };
+  const followScroll = () => {
+    const board = strip.current;
+    if (!board) return;
+    const lanes = lanesOf();
+    const at = board.scrollLeft + board.offsetLeft + parseFloat(getComputedStyle(board).paddingLeft);
+    let nearest = 0;
+    lanes.forEach((lane, index) => { if (Math.abs(lane.offsetLeft - at) < Math.abs(lanes[nearest].offsetLeft - at)) nearest = index; });
+    setInView(nearest);
+  };
   const end = toSunday(today);
   const first = (todo: Item) => todo.startDate ?? todo.due!;
   const lanes = [
@@ -467,11 +491,24 @@ function Board({ open, suggested, all, today, now, areas, fresh, daysOff, onOpen
     run("todo.update", { id: todo.id, revision: todo.revision, patch: to ? { due: to, startDate: "" } : { due: "", startDate: "" } });
   };
   const seen = new Set<string>();
+  const filled = lanes.map((lane) => {
+    const items = [...open, ...suggested].filter((todo) => !seen.has(todo.id) && lane.test(todo)).sort(byDue);
+    items.forEach((todo) => seen.add(todo.id));
+    return { lane, items };
+  });
   return (
-    <div className="todo-board">
-      {lanes.map((lane) => {
-        const items = [...open, ...suggested].filter((todo) => !seen.has(todo.id) && lane.test(todo)).sort(byDue);
-        items.forEach((todo) => seen.add(todo.id));
+    <>
+    {phone && (
+      <div className="lane-tabs" role="group" aria-label={t("todo.view.board")}>
+        {filled.map(({ lane, items }, index) => (
+          <button type="button" key={lane.id} aria-pressed={inView === index} data-today={lane.id === "today" || undefined} onClick={() => showLane(index)}>
+            {lane.name}{items.length > 0 && <span className="count">{items.length}</span>}
+          </button>
+        ))}
+      </div>
+    )}
+    <div className="todo-board" ref={strip} onScroll={phone ? followScroll : undefined}>
+      {filled.map(({ lane, items }) => {
         const laneOff = lane.id === "any" ? [] : daysOff.filter((off) => {
           const from = lane.id === "today" ? today : lane.id === "tomorrow" ? addDays(today, 1) : lane.id === "week" ? addDays(today, 2) : lane.to;
           const to = lane.id === "today" ? today : lane.id === "tomorrow" ? addDays(today, 1) : lane.id === "week" ? addDays(today, end) : "9999";
@@ -494,18 +531,23 @@ function Board({ open, suggested, all, today, now, areas, fresh, daysOff, onOpen
                     draggable={movable} onDragStart={(event) => { event.dataTransfer.setData("text/todo", todo.id); event.dataTransfer.effectAllowed = "move"; }}
                     onClick={() => onOpen(todo.id)}>
                     <div className="todo-tile-top"><Lead todo={todo} today={today} onError={onError} /><span className="todo-title"><Linked text={todo.title} /></span></div>
-                    {todo.due && <div className="todo-tile-when"><span className="due">{todo.due < today && !todo.startDate ? md(todo.due) : dueLabel(todo, today)}</span><Countdown todo={todo} now={now} /></div>}
-                    <Meta todo={todo} today={today} all={all} areas={areas} />
+                    {todo.due && !phone && <div className="todo-tile-when"><span className="due">{todo.due < today && !todo.startDate ? md(todo.due) : dueLabel(todo, today)}</span><Countdown todo={todo} now={now} /></div>}
+                    {/* A phone: the day joins the other facts on one line, and only says what the lane does not. */}
+                    <Meta todo={todo} today={today} all={all} areas={areas} hour={phone && todo.due === lane.to && !todo.startDate ? todo.at : null}>
+                      {phone && todo.due && !(todo.due === lane.to && !todo.startDate) && <span className="due">{todo.due < today && !todo.startDate ? md(todo.due) : dueLabel(todo, today)}</span>}
+                      {phone && <Countdown todo={todo} now={now} />}
+                    </Meta>
                     {todo.suggested && <KeepDrop todo={todo} onError={onError} />}
                   </li>
                 );
               })}
             </ul>
-            {items.length === 0 && <p className="quiet todo-lane-empty">{t("todo.dropHere")}</p>}
+            {items.length === 0 && <p className="quiet todo-lane-empty">{t(phone ? "todo.laneEmpty" : "todo.dropHere")}</p>}
           </section>
         );
       })}
     </div>
+    </>
   );
 }
 
@@ -633,9 +675,9 @@ function Sources({ mode, words, picking, onError }: { mode: CalendarMode; words:
   }, [open]);
   return (
     <div className="todo-sources">
-      <button type="button" className="chip" aria-expanded={open} onClick={() => setOpen(!open)} title={t("todo.sources")}>
+      <button type="button" className="chip" aria-expanded={open} onClick={() => setOpen(!open)} title={t("todo.sources")} aria-label={t("todo.sources")}>
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h8M15 6h1M4 14h2M9 14h7" /><circle cx="13.5" cy="6" r="1.5" /><circle cx="7.5" cy="14" r="1.5" /></svg>
-        {t("todo.sourcesShort")}
+        <span className="todo-sources-word">{t("todo.sourcesShort")}</span>
       </button>
       {open && (
         <div className="todo-sources-pop" role="group" aria-label={t("todo.sources")}>
@@ -755,7 +797,7 @@ export function Todos({ snapshot, fresh, areas, automations, calendar, line }: {
   const addArea = areas.find((area) => area.id === newArea);
   const props: ViewProps = {
     open: open.filter(shown), suggested: suggested.filter(shown), all: todos, today, now, areas, fresh, daysOff, events,
-    onOpen: setOpened, onError: setError,
+    onOpen: setOpened, onError: setError, phone,
   };
   const openedTodo = todos.find((todo) => todo.id === opened);
   const nothing = props.open.length === 0 && props.suggested.length === 0;

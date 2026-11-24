@@ -89,17 +89,26 @@ export function Detail({ item, onDone, onOpenConversation, conversationTitle, li
       </header>
       {edition
         ? <RunResult key={edition.runId} runId={edition.runId} run={edition.run} preview={edition.preview} sections={edition.sections} reading />
-        : item.summary && <p className="inbox-summary"><Linked text={item.summary} /></p>}
+        : (proposal?.revising ? proposal.summary : item.summary) && <p className="inbox-summary"><Linked text={proposal?.revising ? proposal.summary : item.summary} /></p>}
 
       {proposal && (
         <>
           <div className="card">
-            <p className="card-label">{proposal.stale ? t("inbox.stepsStale") : t("inbox.steps", { n: proposal.steps.length })}</p>
+            <p className="card-label">{proposal.revising ? t("inbox.stepsWas", { n: proposal.steps.length }) : proposal.stale ? t("inbox.stepsStale") : t("inbox.steps", { n: proposal.steps.length })}</p>
             <ol className="proposal-steps">{proposal.steps.map((step, n) => (
               <li key={n}><Linked text={step.preview} />{step.detail && <pre className="step-detail"><Linked text={step.detail} /></pre>}</li>
             ))}</ol>
           </div>
-          {proposal.stale ? (
+          {proposal.revising ? (
+            <>
+              <p className="inbox-revising" role="status"><span className="working-label">{t("inbox.revisingShort")}</span></p>
+              {proposal.revising.request && <p className="quiet small inbox-revising-asked">{t("inbox.revising", { request: proposal.revising.request })}</p>}
+              <div className="inbox-actions">
+                {proposal.conversationId && <button type="button" className="ghost" onClick={() => onOpenConversation(proposal.conversationId!, proposal.revising!.runId)}>{t("inbox.openConversation")}</button>}
+                <button type="button" className="ghost" disabled={busy} onClick={() => act(() => api.decline(proposal.id).then(() => undefined))}>{t("common.no")}</button>
+              </div>
+            </>
+          ) : proposal.stale ? (
             <>
               <p className="problem small">{t("inbox.staleWarn")}</p>
               <div className="inbox-actions">
@@ -120,7 +129,7 @@ export function Detail({ item, onDone, onOpenConversation, conversationTitle, li
               <button type="button" className="ghost" disabled={busy} onClick={() => act(() => api.decline(proposal.id).then(() => undefined))}>{t("common.no")}</button>
             </div>
           )}
-          <p className="quiet small">{t("inbox.expires", { date: new Date(proposal.expiresAt).toLocaleDateString(intlLocale(), { month: "long", day: "numeric" }) })}</p>
+          {!proposal.revising && <p className="quiet small">{t("inbox.expires", { date: new Date(proposal.expiresAt).toLocaleDateString(intlLocale(), { month: "long", day: "numeric" }) })}</p>}
         </>
       )}
 
@@ -133,6 +142,11 @@ export function Detail({ item, onDone, onOpenConversation, conversationTitle, li
         </>
       )}
 
+      {notice && outbound && Array.isArray(outbound.previews) && outbound.previews.length > 1 && (
+        <div className="card">
+          <ol className="proposal-steps">{outbound.previews.map((preview, n) => <li key={n}><Linked text={String(preview)} /></li>)}</ol>
+        </div>
+      )}
       {notice && outbound && (
         <div className="inbox-actions">
           {providerLink && <OutLink href={providerLink.href}>{providerLink.label}</OutLink>}

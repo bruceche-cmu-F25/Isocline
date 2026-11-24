@@ -1,0 +1,32 @@
+/* The on-screen keyboard (viewport.ts): `--kb` is how much of the screen's foot it covers, `--vvh` the height left
+   above it, `html[data-keyboard]` set while it is up. Only the visible part shrinks, not the layout, so whatever is
+   fixed to the foot of the screen would stay behind the keyboard: each of those layers ends at its top instead.
+   With no keyboard --kb is 0 and nothing here moves. */
+
+/* Cards over the blurred page (a todo, an event): centred in what the keyboard leaves. */
+.ev-pop, .palette, .first, .welcome { bottom: var(--kb, 0px); }
+
+@media (max-width: 700px) {
+  /* The dock, and the ask bar that takes its pill's place: right on top of the keyboard. The home bar is under the
+     keyboard then, so no room is kept for it. */
+  .dock { bottom: var(--kb, 0px); }
+  html[data-keyboard] .dock { padding-bottom: 8px; }
+  /* Only while typing in it: the ask bar left open would otherwise ride up over the field on the page being typed in. */
+  html[data-keyboard] .dock:not(:focus-within) { display: none; }
+  /* A field brought into view stops a little short of the keyboard's edge. */
+  input, textarea, [contenteditable] { scroll-margin-block: 12px; }
+  html[data-keyboard] .ask[data-dock] .ask-over { bottom: calc(var(--kb, 0px) + 52px + 16px); }
+  /* The sheets: the sidebar's, and Isocline's (its composer at its foot). */
+  .sidebar[data-visible] { bottom: var(--kb, 0px); }
+  html[data-keyboard] .sidebar[data-visible] { padding-bottom: 0; }
+  .mail-phone-actions { bottom: calc(var(--kb, 0px) + max(12px, env(safe-area-inset-bottom))); }
+  html[data-keyboard] .mail-phone-actions { bottom: calc(var(--kb, 0px) + 8px); }
+
+  /* A card over the page is a sheet from the foot of the screen on a phone: in reach of the thumb, and with the
+     keyboard up it sits right on top of it, its field in sight. Taller than the room left, it scrolls in itself. */
+  .ev-pop { padding: max(12px, env(safe-area-inset-top)) 8px 0; align-items: flex-end; overscroll-behavior: contain; }
+  .ev-pop > .ev-edit { width: 100%; max-height: 100%; margin: auto 0 0; overflow-y: auto; overscroll-behavior: contain;
+    border-radius: 18px 18px 0 0; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); animation-name: sheet-in; }
+  html[data-keyboard] .ev-pop > .ev-edit { padding-bottom: 12px; }
+}
+@keyframes sheet-in { from { transform: translateY(24px); opacity: 0; } }

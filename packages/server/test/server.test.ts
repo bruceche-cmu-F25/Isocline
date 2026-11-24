@@ -314,13 +314,14 @@ test("proposals over HTTP: a run proposes, the user accepts once, or asks for a 
     assert.equal((await post(base, "/api/settings", { requestId: "lang-2", patch: { locale: "fr" } })).status, 400);
     assert.equal(((await (await fetch(`${base}/api/state`)).json()) as StateResponse).settings.locale, "zh");
 
-    // Asking for a change: this one is superseded and a new run in the same conversation revises it.
+    // Asking for a change: a new run in the same conversation revises it; until it proposes, this one stays, marked.
     await post(base, "/api/ops/todo.add", { requestId: "t2", input: { title: "Old" } });
     await post(base, "/api/runs", { requestId: "r2", goal: "tidy up again", conversationId: proposal.conversationId });
     await home.idle();
     const second = ((await (await fetch(`${base}/api/state`)).json()) as StateResponse).proposals[0];
-    const revised = await (await post(base, `/api/proposals/${second.id}/revise`, { requestId: "change-1", text: "先别删，改成完成" })).json() as { proposal: { state: string }; run: { conversationId: string; goal: string } };
-    assert.equal(revised.proposal.state, "superseded");
+    const revised = await (await post(base, `/api/proposals/${second.id}/revise`, { requestId: "change-1", text: "先别删，改成完成" })).json() as { proposal: { state: string; revising?: { runId: string; request: string } }; run: { id: string; conversationId: string; goal: string } };
+    assert.equal(revised.proposal.state, "open");
+    assert.deepEqual(revised.proposal.revising, { runId: revised.run.id, request: "先别删，改成完成" });
     assert.equal(revised.run.conversationId, second.conversationId);
     assert.match(revised.run.goal, /先别删，改成完成/);
     await home.idle();
@@ -764,8 +765,9 @@ test("calendar and mail changes over HTTP: proposed by a run, delivered right af
     assert.deepEqual(sent.map((line) => line.split(" ")[0]), ["POST", "POST"]);
     assert.ok(sent.some((line) => line.includes("/calendars/primary/events")) && sent.some((line) => line.includes("/messages/send")));
     const after = (await (await fetch(`${base}/api/state`)).json()) as StateResponse;
-    const told = after.notices.filter((notice) => notice.kind === "outbound").map((notice) => [notice.payload.state, notice.payload.proposalId]);
-    assert.deepEqual(told, [["done", proposal.id], ["done", proposal.id]]);
+    // Both went through: told once, together.
+    const told = after.notices.filter((notice) => notice.kind === "outbound").map((notice) => [notice.payload.state, notice.payload.proposalId, notice.payload.count]);
+    assert.deepEqual(told, [["done", proposal.id, 2]]);
   } finally {
     server.close(); server.closeAllConnections();
     home.close();

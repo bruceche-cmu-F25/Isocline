@@ -1,9 +1,12 @@
 /** Settings → Voice (docs/design/voice.md §3): whether Isocline speaks, in which voice, how fast, and the words the
- * speech model should know. All of it lives on the home node, so every device speaks and hears alike. */
+ * speech model should know; and the speech services (ElevenLabs, Inworld, Boson AI) whose voices it can use with the
+ * user's own key. All of it lives on the home node, so every device speaks and hears alike; keys are given only on
+ * that machine. */
 import { useEffect, useState, type FormEvent } from "react";
-import type { VoiceSettings as Voice, VoiceStatus } from "@isocline/protocol";
+import type { SpeechServiceStatus, VoiceSettings as Voice, VoiceStatus } from "@isocline/protocol";
 import { api } from "./api.ts";
 import { t, useLocale } from "./i18n/index.ts";
+import { Logo } from "./brand/Logo.tsx";
 import { Select } from "./shell/Select.tsx";
 import { say, stopSpeaking, useSpeaking, useVoiceSettings } from "./speech/voice.ts";
 
@@ -11,7 +14,7 @@ const RATES: Array<[number, "slow" | "normal" | "fast"]> = [[0.85, "slow"], [1, 
 const MAX_WORDS = 40;
 const TRY = "voice-try";
 
-export function VoiceSettings() {
+export function VoiceSettings({ local }: { local: boolean }) {
   const locale = useLocale();
   const voice = useVoiceSettings();
   const speaking = useSpeaking() === TRY;
@@ -32,13 +35,16 @@ export function VoiceSettings() {
   const save = (patch: Partial<Voice>) => api.settings({ voice: patch }).then(() => setError(null), (reason: Error) => setError(reason.message));
   const speak = status?.speak;
   const lang = locale === "zh" ? "zh" : "en";
-  // This language's voices first, the model's after the system's; the other language's after those.
-  const voices = speak ? [...speak.voices.filter((item) => item.lang === lang), ...speak.voices.filter((item) => item.lang !== lang)] : [];
+  // The services' voices first (the user brought a key for them), then this language's own, then the rest.
+  const rank = (item: VoiceStatus["speak"]["voices"][number]) => (item.engine !== "system" && item.engine !== "model" ? 0 : item.lang === lang ? 1 : 2);
+  const voices = speak ? [...speak.voices].sort((a, b) => rank(a) - rank(b)) : [];
+  const serviceName = (engine: string) => speak?.providers.find((item) => item.id === engine)?.name;
   const current = voice.voice && voices.some((item) => item.id === voice.voice) ? voice.voice : speak?.current ?? "";
   const label = (id: string) => {
     const item = voices.find((known) => known.id === id);
     if (!item) return id;
-    return `${item.name}${item.engine === "model" ? ` · ${t("voice.settings.lifelike")}` : ""}${item.lang !== lang ? ` · ${item.lang === "zh" ? "中文" : "English"}` : ""}`;
+    const service = serviceName(item.engine);
+    return `${item.name}${service ? ` · ${service}` : item.engine === "model" ? ` · ${t("voice.settings.lifelike")}` : ""}${item.lang !== lang && item.lang !== "any" ? ` · ${item.lang === "zh" ? "中文" : "English"}` : ""}`;
   };
   const sample = t("voice.settings.sample");
 
@@ -95,6 +101,16 @@ export function VoiceSettings() {
             </span>
           </div>
         )}
+        {speak && speak.providers.length > 0 && (
+          <div className="set-row voice-services-head">
+            <span className="set-name">{t("voice.services")}</span>
+            <span className="set-note">{t("voice.services.note")}</span>
+          </div>
+        )}
+        {speak?.providers.map((service) => (
+          <ServiceRow key={service.id} service={service} local={local}
+            onChange={(next) => setStatus((last) => (last ? { ...last, speak: { ...next, current: last.speak.current } } : last))} onError={setError} />
+        ))}
         <div className="set-row">
           <span className="set-name">{t("voice.settings.rate")}</span>
           <span className="set-end">
@@ -129,6 +145,43 @@ export function VoiceSettings() {
         </div>
       </div>
     </section>
+  );
+}
+
+/** One speech service: connected or not, and on the home node a field for its key. */
+function ServiceRow({ service, local, onChange, onError }: {
+  service: SpeechServiceStatus; local: boolean; onChange(next: Omit<VoiceStatus["speak"], "current">): void; onError(message: string | null): void;
+}) {
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const act = (work: Promise<Omit<VoiceStatus["speak"], "current">>) => {
+    setBusy(true);
+    work.then((next) => { onChange(next); onError(null); setKey(""); }, (reason: Error) => onError(t("voice.services.refused", { name: service.name, reason: reason.message })))
+      .finally(() => setBusy(false));
+  };
+  const note = service.error ? t("voice.services.error", { reason: service.error })
+    : service.key === "saved" ? t("voice.services.connected")
+    : service.key === "env" ? t("voice.services.env")
+    : local ? t("voice.services.none") : t("voice.services.onMac");
+  return (
+    <form className="set-row has-logo voice-service" aria-busy={busy} onSubmit={(event) => { event.preventDefault(); if (key.trim()) act(api.voiceServiceKey(service.id, key.trim())); }}>
+      <span className="set-logo" data-k="gray"><Logo name={service.id} /></span>
+      <span className="set-name">{service.name}</span>
+      <span className="set-note" data-problem={service.error ? "" : undefined}>
+        {note}{local && !service.key && <> · <a href={service.keyUrl} target="_blank" rel="noreferrer">{t("voice.services.getKey")}</a></>}
+      </span>
+      {local && (
+        <span className="set-end">
+          {service.key === "saved"
+            ? <button type="button" className="set-button ghost" disabled={busy} onClick={() => act(api.voiceServiceForget(service.id))}>{t("voice.services.forget")}</button>
+            : <>
+                <input className="model-input" type="password" autoComplete="off" spellCheck={false} value={key} disabled={busy}
+                  placeholder={t("voice.services.key")} aria-label={t("voice.services.keyFor", { name: service.name })} onChange={(event) => setKey(event.target.value)} />
+                <button type="submit" className="set-button" disabled={busy || !key.trim()}>{busy ? t("voice.services.checking") : t("voice.services.connect")}</button>
+              </>}
+        </span>
+      )}
+    </form>
   );
 }
 

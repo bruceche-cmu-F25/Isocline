@@ -4,7 +4,8 @@ dist/
 *.log
 # Local Alfred data during development; the real data lives outside the repo.
 .alfred-data/
-# This machine's Claude Code settings (launch.json holds absolute paths).
-.claude/
+# This machine's Claude Code settings; launch.json is shared (relative paths, see AGENTS.md).
+.claude/*
+!.claude/launch.json
 # A throwaway home node with a scripted engine, for looking at the UI without model calls.
 packages/server/.ui-demo.ts

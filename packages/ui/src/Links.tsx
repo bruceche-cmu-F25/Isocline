@@ -1,15 +1,22 @@
-/** The Links page (docs/design/links.md): the places you keep going to, as a row of tiles, and what you saved from
- * the internet, as cards in one block per topic. A card says what the thing is called, where it is, why you saved
+/** The Links page (docs/design/links.md): the places you keep going to, as a row of tiles, and everything kept in a
+ * tree of categories beside it (§4.10): a list or cards per category, one search for categories and links, and
+ * bookmarks brought in from a browser. A card says what the thing is called, where it is, why you saved
  * it and what it is filed under; opened, it shows what the page says of itself and what you can do with it.
  * L1: a saved page is looked up for its title; it is not read or summarised yet, and the card does not pretend so.
  */
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Area } from "@isocline/protocol";
 import type { Clip, ClipState, LinksSnapshot, LinkType, Topic } from "@isocline/module-links/types";
 import { classify, parseLinkPaste } from "@isocline/module-links/url";
+import { topicChain, topicTree } from "@isocline/module-links/tree";
+import { byNewest, counts, inNode, isRecent, itemsOf, linkTree, nodePath, nodeTopics, readViews, searchItems, searchTopics, searchWords, writeViews, type Item, type ItemType, type View } from "./linkTree.ts";
+import { Menu, TreeNav } from "./LinksTree.tsx";
+import { Mark, PlaceCard, Row, Tile, sourceOf } from "./LinkRows.tsx";
+import { ImportBookmarks } from "./LinkImport.tsx";
+import { Pop } from "./shell/Pop.tsx";
 import { clipSections, playbackTime } from "./clipSections.ts";
 import { legacyShareClip, linkSaveFields } from "./linkShareCompat.ts";
-import { AddBar, Pill } from "./AddBar.tsx";
+import { Pill } from "./AddBar.tsx";
 import { SiteIcon, linkFileUrl, useOp } from "./linkControls.tsx";
 import { Places } from "./Places.tsx";
 import { LinkDeleteDialog, onDeleteKey } from "./LinkDeleteDialog.tsx";
@@ -19,6 +26,7 @@ import { OutLink } from "./Linked.tsx";
 import { getLocale, t, type Key, type Locale } from "./i18n/index.ts";
 import { when } from "./shell/Nav.tsx";
 import "./links-page.css";
+import "./links-tree.css";
 
 /** How a platform is called; anything else goes by its site. */
 const PLATFORM: Record<string, string | Record<Locale, string>> = {
@@ -64,9 +72,14 @@ function TopicPick({ topics, areas, value, disabled, label, onPick }: {
 /** The menu's value for 「new topic」: no topic id has this shape. */
 const NEW_TOPIC = "+";
 function topicChoices(topics: Topic[], areaName: (id: string | undefined) => string | undefined) {
+  const tree = topicTree(topics);
+  const path = (topic: Topic) => {
+    const chain = topicChain(tree, topic.id);
+    return [areaName(chain[0]?.area), ...chain.map((step) => step.name)].filter(Boolean).join(" › ");
+  };
   return [
     { value: "", label: t("links.topic.none") },
-    ...topics.map((topic) => ({ value: topic.id, label: areaName(topic.area) ? `${topic.name} · ${areaName(topic.area)}` : topic.name })),
+    ...topics.map((topic) => ({ value: topic.id, label: path(topic) })).sort((a, b) => a.label.localeCompare(b.label)),
     { value: NEW_TOPIC, label: t("links.topic.new") },
   ];
 }
@@ -204,110 +217,320 @@ function Card({ clip, topics, areas, open, fresh, onOpen, onError }: {
   );
 }
 
+const NODE_KEY = "isocline.links.node";
+const OPEN_KEY = "isocline.links.open";
+const stored = <T,>(key: string, fallback: T): T => { try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; } };
+const store = (key: string, value: unknown) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* not remembered */ } };
+/** Below this width the tree folds into the page: areas first, then category after category, tapped into. */
+const NARROW = 720;
+
 export function Links({ snapshot, fresh, areas, focus, onFocused }: { snapshot: LinksSnapshot | undefined; fresh: ReadonlySet<string>; areas: Area[]; focus?: string | null; onFocused?(): void }) {
-  const { places = [], folders = [], clips = [], topics = [] } = snapshot ?? {};
+  const { places = [], folders = [], clips: rawClips = [], topics = [] } = snapshot ?? {};
+  const clips = useMemo(() => snapshot?.sharedTitles ? rawClips : rawClips.map(legacyShareClip), [rawClips, snapshot?.sharedTitles]);
   const [draft, setDraft] = useState("");
   const [pick, setPick] = useState<{ topicId: string } | { topic: string }>({ topicId: "" });
-  const [type, setType] = useState<LinkType | "all">("all");
-  const [expandedShelf, setExpandedShelf] = useState(false);
-  const [only, setOnly] = useState<ClipState | "all">("all");
-  const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { busy, run } = useOp(setError);
 
-  // Preview the same platform title and personal note that the home node will save.
+  const tree = useMemo(() => linkTree(topics, areas.map((area) => area.id)), [topics, areas]);
+  const items = useMemo(() => itemsOf(places, clips), [places, clips]);
+  const [nodeRaw, setNodeRaw] = useState<string>(() => stored(NODE_KEY, "all"));
+  // A category that is gone (removed, merged, or on another device) falls back to everything.
+  const node = nodeRaw === "all" || nodeRaw === "recent" || nodeRaw === "none" || (nodeRaw.startsWith("area:") ? tree.roots.includes(nodeRaw) : tree.byId.has(nodeRaw)) ? nodeRaw : "all";
+  const [open, setOpen] = useState<Set<string>>(() => new Set(stored<string[]>(OPEN_KEY, [])));
+  const [scopeAll, setScopeAll] = useState(false);
+  const [views, setViews] = useState(readViews);
+  const [type, setType] = useState<ItemType | "all">("all");
+  const [only, setOnly] = useState<"all" | "unread" | "todo">("all");
+  const [opened, setOpened] = useState<string | null>(null);
+  const [expandedShelf, setExpandedShelf] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [treeHidden, setTreeHidden] = useState(() => stored("isocline.links.treeHidden", false));
+  const [said, setSaid] = useState<{ text: string; undo?: () => void } | null>(null);
+  const [narrow, setNarrow] = useState(false);
+  const page = useRef<HTMLElement>(null);
+  const field = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const element = page.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width < NARROW));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!said) return;
+    const timer = setTimeout(() => setSaid(null), 6000);
+    return () => clearTimeout(timer);
+  }, [said]);
+  useEffect(() => {
+    const find = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "f" && page.current?.offsetParent) { event.preventDefault(); field.current?.focus(); field.current?.select(); }
+    };
+    document.addEventListener("keydown", find);
+    return () => document.removeEventListener("keydown", find);
+  }, []);
+
+  const go = (next: string) => {
+    setNodeRaw(next); store(NODE_KEY, next);
+    setType("all"); setOnly("all"); setScopeAll(false);
+    // Opening a node shows where it is in the tree.
+    const chain = next.startsWith("area:") || !tree.byId.has(next) ? [] : topicChain(tree, next);
+    const nextOpen = new Set(open);
+    if (chain.length) nextOpen.add(tree.roots.includes(`area:${chain[0].area ?? ""}`) ? `area:${chain[0].area ?? ""}` : "area:");
+    for (const topic of chain) nextOpen.add(topic.id);
+    if (next.startsWith("area:")) nextOpen.add(next);
+    if (nextOpen.size !== open.size) { setOpen(nextOpen); store(OPEN_KEY, [...nextOpen]); }
+    page.current?.querySelector(".lk-col")?.scrollTo({ top: 0 });
+  };
+  const toggle = (key: string) => { const next = new Set(open); if (next.has(key)) next.delete(key); else next.add(key); setOpen(next); store(OPEN_KEY, [...next]); };
+  const view: View = views[node] ?? "list";
+  const setView = (next: View) => { const all = { ...views, [node]: next }; setViews(all); writeViews(all); };
+
+  // One field on top: words search what is kept; an address offers to keep it (in the open category unless another is
+  // chosen). A bare host ("roadmap.sh") does both.
   const found = useMemo(() => parseLinkPaste(draft), [draft]);
   const kind = found ? classify(found.url) : null;
+  const query = found && /https?:\/\//i.test(draft) ? "" : draft;
   const save = () => {
     if (!found || busy) return;
-    void run("link.save", { ...linkSaveFields(draft, found, snapshot?.sharedTitles), ...("topic" in pick ? { topic: pick.topic } : pick.topicId ? { topicId: pick.topicId } : {}) },
-      () => { setDraft(""); setPick({ topicId: "" }); });
+    const where = "topic" in pick ? { topic: pick.topic } : pick.topicId ? { topicId: pick.topicId } : tree.byId.has(node) ? { topicId: node } : {};
+    void run("link.save", { ...linkSaveFields(draft, found, snapshot?.sharedTitles), ...where }, () => { setDraft(""); setPick({ topicId: "" }); });
   };
 
-  const { recent, filed, shelf } = clipSections(clips, type, only, Date.now());
-  // Topics of one area sit together; a topic with a single clip joins the loose ends, so no block holds one card.
-  const order = (topic: Topic) => { const index = areas.findIndex((area) => area.id === topic.area); return index < 0 ? areas.length : index; };
-  const blocks = [...topics].sort((a, b) => order(a) - order(b)).map((topic) => ({ topic, items: filed.filter((clip) => clip.topicId === topic.id) })).filter((block) => block.items.length >= 2);
-  const inBlocks = new Set(blocks.flatMap((block) => block.items.map((clip) => clip.id)));
-  const loose = filed.filter((clip) => !inBlocks.has(clip.id));
-  // A selected filter stays available until cleared, even when its last matching clip changes or is removed.
-  const types = TYPES.filter((candidate) => candidate === type || clips.some((clip) => clip.type === candidate));
-  const showTypes = types.length > 1 || type !== "all";
-  const card = (clip: Clip) => (
-    <Card key={clip.id} clip={snapshot?.sharedTitles ? clip : legacyShareClip(clip)} topics={topics} areas={areas} open={open === clip.id} fresh={fresh.has(`link:${clip.id}`)}
-      onOpen={() => setOpen(open === clip.id ? null : clip.id)} onError={setError} />
-  );
+  const areaById = (id: string | undefined) => areas.find((area) => area.id === id);
+  const areaName = (key: string) => key === "area:" || key === "" ? t("links.tree.noArea") : areaById(key.replace(/^area:/, ""))?.name ?? "";
+  const kOfRoot = (root: string) => root === "area:" ? "gray" : areaById(root.slice(5))?.k ?? "gray";
+  const kOf = (topicId: string | undefined) => { const chain = topicChain(tree, topicId); return chain.length ? areaById(chain[0].area)?.k ?? "gray" : "gray"; };
+  const pathText = (topicId: string | undefined) => topicId && tree.byId.has(topicId) ? nodePath(tree, topicId, (id) => areaName(id)).join(" › ") : "";
+  const itemPath = (item: Item) => pathText(item.topicId);
+
+  const words = searchWords(query);
+  const searching = words.length > 0;
+  const scoped = searching && !scopeAll && node !== "all" && node !== "recent";
+  const matches = useMemo(() => searching ? searchItems(items, words, itemPath) : items, [items, query, tree]); // eslint-disable-line react-hooks/exhaustive-deps
+  const treeCounts = useMemo(() => counts(tree, matches), [tree, matches]);
+  treeCounts.set("all", matches.length);
+  treeCounts.set("recent", clips.filter((clip) => isRecent(clip)).length);
+  const countsAll = useMemo(() => counts(tree, items), [tree, items]);
+
+  const fileTo = (id: string, topicId: string) => {
+    const item = items.find((candidate) => candidate.id === id);
+    if (!item || (item.topicId ?? "") === topicId) return;
+    const before = item.topicId ?? "";
+    const send = (to: string) => item.kind === "clip" ? run("link.update", { id, patch: { topicId: to } }) : run("link.place", { id, topicId: to });
+    void send(topicId).then(() => setSaid({ text: t("links.tree.moved", { title: item.title, to: pathText(topicId) || t("links.tree.none") }), undo: () => void send(before) }));
+  };
+
+  const filtered = (list: Item[]) => list.filter((item) => (type === "all" || item.type === type) && (only === "all" || (item.kind === "clip" && item.clip.state === only)));
+  /** A run of items, as rows or as cards. `path`: each says where it is filed (search, and the newest). */
+  const draw = (list: Item[], options: { path?: boolean; as?: View } = {}) => {
+    if (!list.length) return null;
+    const sub = (item: Item) => options.path ? [itemPath(item) || t("links.tree.none"), sourceOf(item, platformName)].filter(Boolean).join(" · ") : undefined;
+    const common = (item: Item) => ({ item, k: kOf(item.topicId), fresh: fresh.has(`link:${item.id}`), platformName, onOpen: () => setOpened(item.id), sub: sub(item) });
+    if ((options.as ?? view) === "list") return <ul className="lr-rows">{list.map((item) => <Row key={item.id} {...common(item)} />)}</ul>;
+    // Cards with a cover go together first: next to them a card without one would stretch to their height.
+    const covered = list.filter((item) => item.kind === "clip" && !!item.clip.cover);
+    const plain = list.filter((item) => !(item.kind === "clip" && item.clip.cover));
+    return <>
+      {covered.length > 0 && <ul className="lg-tiles lg-covered">{covered.map((item) => <Tile key={item.id} {...common(item)} />)}</ul>}
+      {plain.length > 0 && <ul className="lg-tiles">{plain.map((item) => <Tile key={item.id} {...common(item)} />)}</ul>}
+    </>;
+  };
+  /** A category as a card: its name and count, what is under it, and a few of its sites' icons. */
+  const categoryCard = (key: string, name: string, k: string) => {
+    const inside = inNode(tree, key, items).sort(byNewest);
+    const icons: Item[] = [];
+    for (const item of inside) {
+      if (icons.length >= 5) break;
+      if (!icons.some((other) => sourceHost(other.url) === sourceHost(item.url))) icons.push(item);
+    }
+    const kids = key === "none" ? [] : (tree.children.get(key) ?? []).map((kid) => kid.name);
+    return (
+      <li key={key} className="lc-card" data-k={k}>
+        <button type="button" onClick={() => go(key)}>
+          <span className="lc-head"><span className="lc-name">{name}</span><span className="lc-n">{searching ? treeCounts.get(key) ?? 0 : inside.length}</span></span>
+          {kids.length > 0 && <span className="lc-sub">{kids.join(" · ")}</span>}
+          <span className="lc-icons">{icons.map((item) => <SiteIcon key={item.id} icon={item.kind === "place" ? item.place.icon : item.clip.icon} fallback={<Mark url={item.url} title={item.title} />} />)}</span>
+        </button>
+      </li>
+    );
+  };
+  const filters = (list: Item[]) => {
+    const kinds = (["site", ...TYPES] as ItemType[]).filter((candidate) => candidate === type || list.some((item) => item.type === candidate));
+    const states = (["unread", "todo"] as const).filter((state) => state === only || list.some((item) => item.kind === "clip" && item.clip.state === state));
+    if (list.length < 6 && type === "all" && only === "all") return null;
+    return (
+      <div className="lk-filters" role="group" aria-label={t("links.filter")}>
+        {kinds.length > 1 && kinds.map((candidate) => (
+          <button type="button" key={candidate} className="chip" aria-pressed={type === candidate} onClick={() => setType(type === candidate ? "all" : candidate)}>
+            {t(candidate === "site" ? "links.type.site" : `links.type.${candidate}` as Key)}<span className="count">{list.filter((item) => item.type === candidate).length}</span>
+          </button>
+        ))}
+        {kinds.length > 1 && states.length > 0 && <span className="lk-sep" />}
+        {states.map((state) => (
+          <button type="button" key={state} className="chip" aria-pressed={only === state} onClick={() => setOnly(only === state ? "all" : state)}>{t(`links.state.${state}` as Key)}</button>
+        ))}
+      </div>
+    );
+  };
+  /** An area's categories as cards, under a quiet label. */
+  const areaCards = (root: string) => {
+    const tops = (tree.children.get(root) ?? []).filter((topic) => countsAll.get(topic.id));
+    if (!tops.length) return null;
+    return (
+      <section key={root} className="lk-group" data-k={kOfRoot(root)}>
+        <h3 className="lk-label"><span className="mark" /><button type="button" onClick={() => go(root)}>{areaName(root)}</button><span className="count">{countsAll.get(root)}</span></h3>
+        <ul className="lc-grid">{tops.map((topic) => categoryCard(topic.id, topic.name, kOfRoot(root)))}</ul>
+      </section>
+    );
+  };
+
+  /** Everything at a glance: the newest, then every category as a card, area by area. */
+  const overview = () => {
+    if (!items.length) return <p className="quiet empty-list">{t("links.empty")}</p>;
+    const newest = itemsOf([], clips.filter((clip) => isRecent(clip)).slice(0, 5));
+    const { shelf } = clipSections(clips, "all", "all", Date.now());
+    const loose = countsAll.get("none") ?? 0;
+    return <>
+      {newest.length > 0 && <section className="lk-group"><h3 className="lk-label">{t("links.recent")}<span className="count">{newest.length}</span></h3>{draw(newest, { path: true })}</section>}
+      {view === "grid" && shelf.length > 1 && (
+        <section className="lk-group">
+          <h3 className="lk-label">{t("links.watchLater")}<span className="count">{shelf.length}</span>
+            {shelf.length > 4 && <button type="button" className="lk-see" aria-expanded={expandedShelf} onClick={() => setExpandedShelf(!expandedShelf)}>{t(expandedShelf ? "links.shelf.less" : "links.shelf.all")}</button>}
+          </h3>
+          {draw(itemsOf([], expandedShelf ? shelf : shelf.slice(0, 4)), { as: "grid" })}
+        </section>
+      )}
+      {tree.roots.map(areaCards)}
+      {loose > 0 && <section className="lk-group" data-k="gray"><ul className="lc-grid">{categoryCard("none", t("links.tree.none"), "gray")}</ul></section>}
+    </>;
+  };
+
+  /** One node: an area shows its categories as cards; a category shows what is in it, then each category under it. */
+  const nodeView = () => {
+    if (node === "recent" || node === "none") {
+      const list = filtered(inNode(tree, node, items).sort(byNewest));
+      return <>{filters(inNode(tree, node, items))}{draw(list, { path: node === "recent" }) ?? <p className="quiet empty-list">{t("links.emptyFilter")}</p>}</>;
+    }
+    if (node.startsWith("area:")) return areaCards(node) ?? <p className="quiet empty-list">{t("links.tree.emptyHint")}</p>;
+    const all = inNode(tree, node, items);
+    const direct = filtered(all.filter((item) => item.topicId === node).sort(byNewest));
+    const kids = tree.children.get(node) ?? [];
+    return <>
+      {filters(all)}
+      {narrow && kids.length > 0 && <ul className="lc-grid">{kids.map((kid) => categoryCard(kid.id, kid.name, kOf(kid.id)))}</ul>}
+      {direct.length > 0 && <section className="lk-group">{draw(direct)}</section>}
+      {!narrow && kids.map((kid) => {
+        const inside = filtered(inNode(tree, kid.id, items).sort(byNewest));
+        if (!inside.length && (type !== "all" || only !== "all")) return null;
+        return (
+          <section key={kid.id} className="lk-group lk-sub" data-k={kOf(kid.id)}>
+            <h3 className="lk-subhead"><button type="button" onClick={() => go(kid.id)}>{kid.name}</button><span className="count">{inside.length}</span></h3>
+            {draw(inside) ?? <p className="quiet lk-hollow">{t("links.tree.emptyHint")}</p>}
+          </section>
+        );
+      })}
+      {!all.length && !kids.length && <p className="quiet empty-list">{t("links.tree.emptyHint")}</p>}
+    </>;
+  };
+
+  const results = () => {
+    const within = scoped ? (node === "none" ? undefined : nodeTopics(tree, node)) : undefined;
+    const pool = scoped ? (node === "none" ? inNode(tree, "none", matches) : matches.filter((item) => !!item.topicId && within!.has(item.topicId))) : matches;
+    const cats = searchTopics(tree, words, (id) => pathText(id), scoped ? within : undefined).slice(0, 6);
+    return <>
+      {cats.length > 0 && <section className="lk-group"><h3 className="lk-label">{t("links.search.categories")}</h3>
+        <ul className="lc-grid">{cats.map((topic) => categoryCard(topic.id, pathText(topic.id), kOf(topic.id)))}</ul></section>}
+      <section className="lk-group"><h3 className="lk-label">{t("links.search.links")}<span className="count">{pool.length}</span></h3>
+        {draw(filtered(pool).slice(0, 200), { path: true }) ?? <p className="quiet empty-list">{scoped
+          ? <>{t("links.search.noneHere")} <button type="button" className="lk-see" onClick={() => setScopeAll(true)}>{t("links.search.everywhere")}</button></>
+          : t("links.search.none")}</p>}
+      </section>
+    </>;
+  };
+
+  const crumbs = node === "all" ? [t("links.tree.all")] : node === "recent" ? [t("links.recent")] : node === "none" ? [t("links.tree.none")] : nodePath(tree, node, (id) => areaName(id));
+  const crumbNodes = node.startsWith("area:") || !tree.byId.has(node) ? [node] : [`area:${topicChain(tree, node)[0]?.area ?? ""}`, ...topicChain(tree, node).map((topic) => topic.id)];
+  const back = node === "all" ? null : crumbNodes.length > 1 ? crumbNodes[crumbNodes.length - 2] : "all";
+  const openedItem = items.find((item) => item.id === opened);
+  const showTree = !narrow && !treeHidden;
 
   return (
-    <section className="links" aria-label={t("page.links")}>
-      {/* One scroll for the whole page: on a small screen nothing is pinned above the cards. */}
+    <section className="links" ref={page} aria-label={t("page.links")} data-narrow={narrow || undefined} data-tree={showTree || undefined}>
       <div className="lk-scroll">
-      <div className="lk-save">
-        <AddBar value={draft} onChange={setDraft} onSubmit={save} ready={!!found} busy={busy} maxLength={2400} spellCheck={false}
-          placeholder={t("links.paste")} label={t("links.paste")} submitLabel={t("links.save")} showSubmitLabel>
-          <TopicPill topics={topics} areas={areas} pick={pick} onPick={setPick} />
-        </AddBar>
-      </div>
-      {found && kind && (
-        <p className="lk-will">
-          <span className="tag" data-k="gray">{t(`links.type.${kind.type}` as Key)}</span>
-          <span>{platformName(kind.platform) ?? kind.host}</span>
-          {found.title && <span className="lk-share-title">{found.title}</span>}
-          {found.note && <span className="lk-note">{found.note}</span>}
-          {"topic" in pick && <span className="tag" data-k="alfred">{pick.topic} · {t("links.topic.isNew")}</span>}
-        </p>
-      )}
-      {draft.trim() && !found && <p className="lk-will quiet">{t("links.noUrl")}</p>}
-      {error && <p className="problem small" role="alert">{error}</p>}
-      <Places places={places} folders={folders} focus={focus} onFocused={onFocused} onError={setError} />
+        <div className="lk-save">
+          <form className="add-bar lk-field" role="search" onSubmit={(event) => { event.preventDefault(); save(); }}>
+            <Icon name={found ? "link" : "search"} />
+            {scoped && <span className="lk-scope">{t("links.search.in", { name: node === "none" ? t("links.tree.none") : crumbs[crumbs.length - 1] })}
+              <button type="button" aria-label={t("links.search.everywhere")} onClick={() => setScopeAll(true)}><Icon name="close" /></button></span>}
+            <input ref={field} className="add-text" value={draft} maxLength={2400} spellCheck={false} placeholder={t("links.field")} aria-label={t("links.field")}
+              onChange={(event) => { setDraft(event.target.value); if (!event.target.value) setScopeAll(false); }}
+              onKeyDown={(event) => { if (event.key === "Escape" && draft) { event.preventDefault(); setDraft(""); setScopeAll(false); } }} />
+            {found && <span className="add-pills"><TopicPill topics={topics} areas={areas} pick={"topic" in pick || pick.topicId || !tree.byId.has(node) ? pick : { topicId: node }} onPick={setPick} /></span>}
+            {found && <button type="submit" className="add-go" disabled={busy}>{t("links.save")}</button>}
+          </form>
+        </div>
+        {found && kind && (
+          <p className="lk-will">
+            <span className="tag" data-k="gray">{t(`links.type.${kind.type}` as Key)}</span>
+            <span>{platformName(kind.platform) ?? kind.host}</span>
+            {found.title && <span className="lk-share-title">{found.title}</span>}
+            {found.note && <span className="lk-note">{found.note}</span>}
+            {"topic" in pick && <span className="tag" data-k="alfred">{pick.topic} · {t("links.topic.isNew")}</span>}
+          </p>
+        )}
+        {error && <p className="problem small" role="alert">{error}</p>}
+        {!searching && <Places places={places.filter((place) => !place.unpinned)} folders={folders} focus={focus} onFocused={onFocused} onError={setError} />}
 
-        {clips.length > 0 && (showTypes || only !== "all" || clips.some((clip) => clip.state !== "unread")) && (
-          <div className="lk-filters" role="group" aria-label={t("links.filter")}>
-            {showTypes && (["all", ...types] as const).map((candidate) => (
-              <button type="button" key={candidate} className="chip" aria-pressed={type === candidate} onClick={() => setType(candidate)}>
-                {candidate === "all" ? t("common.all") : t(`links.type.${candidate}` as Key)}
-                <span className="count">{candidate === "all" ? clips.length : clips.filter((clip) => clip.type === candidate).length}</span>
-              </button>
-            ))}
-            {showTypes && <span className="lk-sep" />}
-            {(["unread", "todo"] as const).map((state) => (
-              <button type="button" key={state} className="chip" aria-pressed={only === state} onClick={() => setOnly(only === state ? "all" : state)}>{t(`links.state.${state}` as Key)}</button>
-            ))}
+        <div className="lk-body">
+          {showTree && <TreeNav tree={tree} areas={areas} counts={treeCounts} node={node} open={open} searching={searching}
+            onPick={go} onToggle={toggle} onDropLink={fileTo} onError={setError} onSaid={(text) => setSaid({ text })} />}
+          <div className="lk-col">
+            <div className="lk-head">
+              {narrow && back && !searching && <button type="button" className="lk-back" onClick={() => go(back)} aria-label={t("links.back")}><Icon name="back" /></button>}
+              <h2 className="lk-crumbs">
+                {searching ? <span>{t("links.search.title")}</span> : narrow ? <span>{crumbs[crumbs.length - 1]}</span> : crumbs.map((name, index) => index < crumbs.length - 1 && crumbNodes[index]
+                  ? <span key={index}><button type="button" onClick={() => go(crumbNodes[index])}>{name}</button><span className="sep">›</span></span>
+                  : <span key={index}>{name}</span>)}
+                {!searching && <span className="count">{node === "all" ? items.length : node === "recent" ? treeCounts.get("recent") : inNode(tree, node, items).length}</span>}
+              </h2>
+              <div className="lk-views" role="group" aria-label={t("links.view.label")}>
+                <button type="button" aria-pressed={view === "list"} aria-label={t("links.view.list")} title={t("links.view.list")} onClick={() => setView("list")}><Icon name="list" /></button>
+                <button type="button" aria-pressed={view === "grid"} aria-label={t("links.view.grid")} title={t("links.view.grid")} onClick={() => setView("grid")}><Icon name="grid" /></button>
+              </div>
+              <span className="lk-more-wrap">
+                <button type="button" className="lk-icon-btn" aria-label={t("links.more")} title={t("links.more")} aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="more" /></button>
+                {menu && <Menu onClose={() => setMenu(false)}>
+                  <button type="button" role="menuitem" onClick={() => { setMenu(false); setImporting(true); }}>{t("links.import.title")}…</button>
+                  {!narrow && <button type="button" role="menuitem" onClick={() => { setMenu(false); setTreeHidden(showTree); store("isocline.links.treeHidden", showTree); }}>{t(showTree ? "links.tree.hide" : "links.tree.show")}</button>}
+                </Menu>}
+              </span>
+            </div>
+            {searching ? results() : node === "all" ? overview() : nodeView()}
           </div>
-        )}
-        {recent.length > 0 && (
-          <section className="lk-band">
-            <h3>{t("links.recent")}<span className="count">{recent.length}</span></h3>
-            <ul className="lk-cards">{recent.map(card)}</ul>
-          </section>
-        )}
-        {shelf.length > 0 && (
-          <section className="lk-band">
-            <h3>{t("links.watchLater")}<span className="count">{shelf.length}</span>
-              {shelf.length > 3 && <button type="button" className="lk-edit lk-shelf-toggle" aria-expanded={expandedShelf}
-                onClick={() => setExpandedShelf(!expandedShelf)}>{t(expandedShelf ? "links.shelf.less" : "links.shelf.all")}<Icon name="down" /></button>}
-            </h3>
-            <ul className="lk-cards lk-shelf">{(expandedShelf ? shelf : shelf.slice(0, 3)).map(card)}</ul>
-          </section>
-        )}
-        {clips.length === 0 && <p className="quiet empty-list">{t("links.empty")}</p>}
-        {clips.length > 0 && filed.length === 0 && recent.length === 0 && shelf.length === 0 && <p className="quiet empty-list">{t("links.emptyFilter")}</p>}
-        {blocks.map(({ topic, items }) => {
-          const area = areas.find((candidate) => candidate.id === topic.area);
-          return (
-            <section className="lk-band lk-topic" key={topic.id} data-k={area?.k ?? "gray"}>
-              <h3><span className="mark" />{topic.name}{area && <span className="lk-area">{area.name}</span>}<span className="count">{items.length}</span></h3>
-              <ul className="lk-cards">{items.map(card)}</ul>
-            </section>
-          );
-        })}
-        {loose.length > 0 && (
-          <section className="lk-band lk-topic" data-k="gray">
-            {blocks.length > 0 && <h3><span className="mark" />{t("links.loose")}<span className="count">{loose.length}</span></h3>}
-            <ul className="lk-cards">{loose.map(card)}</ul>
-          </section>
-        )}
+        </div>
       </div>
+
+      {openedItem?.kind === "place" && <PlaceCard place={openedItem.place} tree={tree} areas={areas} pathText={pathText} onClose={() => setOpened(null)} onError={setError} />}
+      {openedItem?.kind === "clip" && (
+        <Pop onClose={() => setOpened(null)}>
+          <ul className="lk-cards lk-popcard" role="dialog" aria-label={openedItem.title}>
+            <Card clip={openedItem.clip} topics={topics} areas={areas} open fresh={false} onOpen={() => setOpened(null)} onError={setError} />
+          </ul>
+        </Pop>
+      )}
+      {importing && <ImportBookmarks topics={topics} areas={areas} onClose={() => setImporting(false)}
+        onDone={({ importId, added, filed }) => {
+          setImporting(false);
+          go("all");
+          setSaid({ text: t("links.import.done", { n: added, filed }), undo: () => void run("link.import_undo", { importId }, () => setSaid({ text: t("links.import.undone") })) });
+        }} />}
+      {said && <div className="lk-toast" role="status"><span>{said.text}</span>
+        {said.undo && <button type="button" onClick={() => { const undo = said.undo!; setSaid(null); undo(); }}>{t("links.undo")}</button>}</div>}
     </section>
   );
 }
+
+const sourceHost = (url: string) => { try { return new URL(url).hostname; } catch { return url; } };

@@ -1,0 +1,738 @@
+<!doctype html>
+<!--
+  Isocline: Links when there are many. A prototype for docs/design/links.md §4.10 (v0.5): no build step, sample data
+  (made up for the prototype, not anyone's real links).
+  The question it asks: once there are a hundred or more links, how are they kept in order and found again?
+    Tree     areas are the roots; under them at most two levels of categories. Every link, a site you only visit or a
+             thing you saved, hangs on one node. Counts include everything below. Drag a row onto a node to move it;
+             a node's ⋯ menu adds a sub-category, renames or removes it (its links move up one level).
+    List     the picked node on the right, one row per link, its sub-categories as sections (on a narrow page, as
+             rows you tap into). A row opens as a card over a blurred page.
+    All      an overview: just saved, then per area each category's first four rows and "see all".
+    Search   one field: categories (with their path) and links (with theirs) in two groups; the tree narrows to the
+             branches that match. With a node picked, the search stays inside it until you widen it.
+    Import   a bookmarks file goes in as a proposal first: Isocline merges folders that mean the same thing and hangs
+             each on an area; you look it over and import, and can undo.
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Isocline：链接（分类树）</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --ease: cubic-bezier(.23, 1, .32, 1);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
+h1, h2, h3, p, ul { margin: 0; padding: 0; }
+ul { list-style: none; }
+a { color: inherit; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+mark { background: none; color: var(--ink); font-weight: 650; }
+
+/* ── The prototype's own strip ── */
+.proto { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; }
+.proto b { flex: none; padding: 0 6px; }
+.proto .lab { flex: none; padding: 0 4px 0 10px; opacity: .6; }
+.proto button { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; }
+.proto button:hover { opacity: 1; }
+.proto button[aria-pressed="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+
+/* ── Frame: the page column, narrow on demand so the container rules can be seen ── */
+.stage { flex: 1; min-height: 0; display: flex; justify-content: center; background: var(--paper); }
+.page { position: relative; flex: 1; min-width: 0; max-width: 100%; display: flex; flex-direction: column; background: var(--bg); container: page / inline-size; }
+.stage[data-narrow] .page { max-width: 390px; box-shadow: 0 0 0 1px var(--line); }
+
+.head { flex: none; display: flex; align-items: center; gap: 12px; padding: 16px 24px 10px; }
+.head h1 { font-size: 1.375rem; line-height: 1.25; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; }
+.head .sum { color: var(--muted); font-size: .8125rem; white-space: nowrap; }
+.head .grow { flex: 1; }
+.search { position: relative; width: 300px; min-width: 0; height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 10px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
+.search:focus-within { box-shadow: inset 0 0 0 1.5px var(--alf); }
+.search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--ink); font-size: .875rem; }
+.search .scope { flex: none; display: inline-flex; align-items: center; gap: 4px; max-width: 130px; height: 22px; padding: 0 4px 0 8px; border-radius: 6px; background: var(--wash); color: var(--copy); font-size: .75rem; white-space: nowrap; overflow: hidden; }
+.search .scope span { overflow: hidden; text-overflow: ellipsis; }
+.search .scope button { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; }
+.search .scope button:hover { background: var(--line-soft); }
+.search kbd { flex: none; font: .6875rem/1 var(--mono); color: var(--muted); }
+.icon-btn { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; color: var(--copy); }
+.icon-btn:hover { background: var(--wash); color: var(--ink); }
+
+/* Places: pinned sites only. */
+.places { flex: none; display: flex; gap: 2px; overflow-x: auto; padding: 0 20px 10px; scrollbar-width: none; }
+.places::-webkit-scrollbar { display: none; }
+.place { flex: none; width: 64px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 2px; border-radius: 10px; text-decoration: none; }
+.place:hover { background: var(--wash); }
+.place span { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--copy); font-size: .6875rem; }
+.fav { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: oklch(.99 0 0); font: 650 .6875rem/1 var(--sans); }
+.place .fav { width: 36px; height: 36px; border-radius: 10px; font-size: .875rem; }
+.place.add .fav { background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); font-weight: 400; font-size: 1.125rem; }
+
+.body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--line-soft); }
+
+/* ── Tree ── */
+.tree { flex: none; width: 240px; overflow-y: auto; padding: 10px 8px 40px; border-right: 1px solid var(--line-soft); background: var(--bg); }
+.tree[data-folded] { display: none; }
+.node { position: relative; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px 0 calc(6px + var(--d, 0) * 16px); border-radius: 8px; color: var(--copy); font-size: .875rem; cursor: pointer; user-select: none; }
+.node:hover { background: var(--wash); color: var(--ink); }
+.node[aria-current="true"] { background: var(--wash); color: var(--ink); font-weight: 600; }
+.node.area { color: var(--ink); font-weight: 600; margin-top: 8px; }
+.node.drop { box-shadow: inset 0 0 0 1.5px var(--alf); background: var(--alf-soft); }
+.node .tw { flex: none; width: 14px; height: 14px; display: grid; place-items: center; color: var(--muted); transition: transform 160ms var(--ease); }
+.node .tw[data-open] { transform: rotate(90deg); }
+.node .tw.none { visibility: hidden; }
+.node .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--k-solid); }
+.node .nm { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.node .n { flex: none; color: var(--muted); font-size: .75rem; font-weight: 400; font-variant-numeric: tabular-nums; }
+.node .more { flex: none; width: 22px; height: 22px; display: none; place-items: center; border-radius: 6px; color: var(--muted); }
+.node:hover .more, .node .more[aria-expanded="true"] { display: grid; }
+.node:hover .n { display: none; }
+.node .more:hover { background: var(--line-soft); color: var(--ink); }
+.node input { flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 0; border-radius: 6px; outline: 0; background: var(--field); box-shadow: inset 0 0 0 1.5px var(--alf); font-size: .875rem; }
+.tree .sep { height: 1px; margin: 8px 6px; background: var(--line-soft); }
+.menu { position: absolute; z-index: 20; min-width: 160px; padding: 4px; border-radius: 10px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); font-size: .8125rem; }
+.menu button { width: 100%; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 6px; color: var(--copy); white-space: nowrap; }
+.menu button:hover { background: var(--wash); color: var(--ink); }
+.menu button.danger { color: var(--now); }
+.menu button:disabled { opacity: .4; cursor: default; background: none; }
+
+/* ── List ── */
+.main { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 24px 80px; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; font-size: 1.0625rem; font-weight: 650; }
+.crumbs button { color: var(--muted); font-weight: 500; }
+.crumbs button:hover { color: var(--ink); }
+.crumbs .sl { color: var(--line); font-weight: 400; }
+.crumbs .n { margin-left: 6px; color: var(--muted); font-size: .8125rem; font-weight: 400; }
+.cats-btn { display: none; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.chip { height: 26px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .75rem; white-space: nowrap; }
+.chip[aria-pressed="true"] { background: var(--pick); color: var(--on-pick); box-shadow: none; }
+.chip .n { opacity: .7; }
+.sec { margin-top: 18px; }
+.sec > h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; padding: 0 8px; color: var(--ink); font-size: .875rem; font-weight: 600; }
+.sec > h3 .n, .sec > h3 .area { color: var(--muted); font-size: .75rem; font-weight: 400; }
+.sec > h3 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--k-solid); }
+.sec > h2 { display: flex; align-items: center; gap: 8px; margin: 22px 0 4px; padding: 0 8px; font-size: 1rem; font-weight: 650; }
+.sec > h2 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--k-solid); }
+.rows { display: flex; flex-direction: column; }
+.row { position: relative; display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.row:hover { background: var(--wash); }
+.row[data-dragging] { opacity: .4; }
+.row .cov { flex: none; width: 40px; height: 24px; display: grid; place-items: center; border-radius: 5px; background: var(--k-fill); color: var(--k-text); }
+.row .cov svg { width: 12px; height: 12px; fill: currentColor; stroke: none; }
+.row .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.row .tt { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); font-size: .875rem; line-height: 1.4; }
+.row .src { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: .75rem; line-height: 1.4; }
+.row .st { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--alf); }
+.row .st[data-s="todo"] { background: var(--warm); }
+.row .ty { flex: none; width: 3.6em; text-align: right; color: var(--muted); font-size: .75rem; }
+.row .go { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); }
+.row .go:hover { background: var(--line-soft); color: var(--ink); }
+.row.folder .fav { background: var(--k-fill); color: var(--k-text); }
+.row.folder .chev { flex: none; color: var(--muted); }
+.see { display: inline-flex; margin: 2px 8px; color: var(--alf); font-size: .8125rem; }
+.see:hover { text-decoration: underline; }
+.empty { padding: 40px 8px; color: var(--muted); font-size: .875rem; }
+.grp { margin: 16px 0 4px; padding: 0 8px; color: var(--muted); font-size: .75rem; font-weight: 500; }
+.row.cat .fav { background: var(--k-fill); color: var(--k-text); }
+
+/* ── Card: over a blurred page ── */
+.veil { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: color-mix(in oklch, var(--bg) 40%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.card { width: min(520px, 100%); max-height: 100%; overflow-y: auto; padding: 18px; border-radius: 16px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); }
+.card .top { display: flex; gap: 12px; align-items: flex-start; }
+.card h3 { flex: 1; min-width: 0; font-size: 1.0625rem; line-height: 1.4; font-weight: 650; overflow-wrap: anywhere; }
+.card .meta { margin-top: 4px; color: var(--muted); font-size: .8125rem; overflow-wrap: anywhere; }
+.card .note { margin-top: 12px; color: var(--alf); font-size: .875rem; }
+.card .note::before { content: "“"; } .card .note::after { content: "”"; }
+.card .desc { margin-top: 10px; color: var(--copy); font-size: .875rem; }
+.card .lbl { margin: 16px 0 6px; color: var(--muted); font-size: .75rem; }
+.card .pick { max-height: 190px; overflow-y: auto; padding: 4px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line-soft); }
+.card .pick button { width: 100%; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px 0 calc(8px + var(--d, 0) * 14px); border-radius: 6px; color: var(--copy); font-size: .8125rem; }
+.card .pick button:hover { background: var(--wash); }
+.card .pick button[aria-checked="true"] { background: var(--alf-soft); color: var(--alf); font-weight: 600; }
+.card .pick .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--k-solid); }
+.acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.btn { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .8125rem; white-space: nowrap; text-decoration: none; }
+.btn:hover { color: var(--ink); }
+.btn.solid { background: var(--alf-solid); color: var(--on-alf); box-shadow: none; }
+.btn[aria-pressed="true"] { background: var(--wash); color: var(--ink); }
+.btn.danger { color: var(--now); }
+
+/* ── Import proposal ── */
+.sheet { width: min(860px, 100%); height: min(600px, 100%); display: flex; flex-direction: column; border-radius: 16px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); overflow: hidden; }
+.sheet header { flex: none; padding: 16px 18px 10px; }
+.sheet header h3 { font-size: 1.0625rem; font-weight: 650; }
+.sheet header p { margin-top: 2px; color: var(--muted); font-size: .8125rem; }
+.sheet .cols { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--line-soft); }
+.sheet .ptree { flex: none; width: 300px; overflow-y: auto; padding: 8px; border-right: 1px solid var(--line-soft); }
+.sheet .ptree .node { height: auto; min-height: 30px; padding-top: 4px; padding-bottom: 4px; align-items: flex-start; }
+.sheet .ptree .nm small { display: block; color: var(--muted); font-size: .6875rem; font-weight: 400; white-space: normal; }
+.sheet .ptree .node .dot { margin-top: 7px; }
+.sheet .ptree .node .n { margin-top: 2px; }
+.sheet .plist { flex: 1; min-width: 0; overflow-y: auto; padding: 8px 12px; }
+.sheet footer { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line-soft); }
+.sheet footer .grow { flex: 1; color: var(--muted); font-size: .75rem; }
+.new-tag { margin-left: 4px; padding: 0 5px; border-radius: 4px; background: var(--alf-soft); color: var(--alf); font-size: .625rem; font-weight: 500; }
+
+/* ── Toast ── */
+.toast { position: absolute; left: 50%; bottom: 20px; z-index: 40; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100% - 32px); padding: 8px 8px 8px 14px; border-radius: 12px; background: var(--ink); color: var(--bg); font-size: .8125rem; box-shadow: var(--shadow); }
+.toast span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.toast button { flex: none; height: 26px; padding: 0 10px; border-radius: 7px; background: color-mix(in oklch, var(--bg) 16%, transparent); }
+
+/* ── Narrow page: the tree folds into a drill-down ── */
+@container page (max-width: 720px) {
+  .head { padding: 12px 16px 8px; flex-wrap: wrap; }
+  .head .sum { display: none; }
+  .search { order: 5; width: 100%; }
+  .places { padding: 0 12px 8px; }
+  .tree, [data-act="fold-tree"] { display: none; }
+  .main { padding: 10px 16px 80px; }
+  .row .ty { display: none; }
+  .sheet .cols { flex-direction: column; }
+  .sheet .ptree { width: auto; max-height: 45%; border-right: 0; border-bottom: 1px solid var(--line-soft); }
+}
+</style>
+</head>
+<body>
+<div class="proto" id="proto"></div>
+<div class="stage" id="stage"><div class="page" id="page"></div></div>
+<script>
+const params = new URLSearchParams(location.search);
+const S = {
+  lang: params.get("lang") === "en" ? "en" : "zh",
+  dark: params.get("scheme") === "dark" || (!params.get("scheme") && matchMedia("(prefers-color-scheme: dark)").matches),
+  narrow: params.get("narrow") === "1",
+  node: "all", q: "", scopeAll: false, type: "", unread: false,
+  open: new Set(["area:learn", "t-ai", "area:work", "t-jobs"]),
+  card: null, menu: null, renaming: null, sheet: null, pick: "p-learn", toast: null, treeFolded: false,
+};
+const t = (zh, en) => (S.lang === "en" ? en : zh);
+const L = (v) => (Array.isArray(v) ? v[S.lang === "en" ? 1 : 0] : v);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+/* ── Sample data (made up) ── */
+const AREAS = [
+  { id: "learn", name: ["学习", "Learning"], k: "violet" },
+  { id: "work", name: ["工作", "Work"], k: "blue" },
+  { id: "life", name: ["生活", "Life"], k: "green" },
+  { id: "money", name: ["财务", "Money"], k: "yellow" },
+];
+let TOPICS = [
+  { id: "t-road", name: ["路线图", "Roadmaps"], area: "learn" },
+  { id: "t-leet", name: ["刷题", "Practice"], area: "learn" },
+  { id: "t-ai", name: ["AI 与机器学习", "AI & ML"], area: "learn" },
+  { id: "t-agent", name: ["Agent 技能", "Agent skills"], area: "learn", parent: "t-ai" },
+  { id: "t-papers", name: ["论文", "Papers"], area: "learn", parent: "t-ai" },
+  { id: "t-jobs", name: ["求职", "Job hunt"], area: "work" },
+  { id: "t-boards", name: ["求职平台", "Job boards"], area: "work", parent: "t-jobs" },
+  { id: "t-posts", name: ["岗位清单", "Openings"], area: "work", parent: "t-jobs" },
+  { id: "t-design", name: ["设计灵感", "Design ideas"], area: "work" },
+  { id: "t-daily", name: ["日常入口", "Everyday"], area: "life" },
+  { id: "t-food", name: ["吃的", "Food"], area: "life" },
+  { id: "t-bills", name: ["订阅与账单", "Subscriptions & bills"], area: "money" },
+];
+const HUES = {};
+const hueOf = (host) => HUES[host] ??= [...host].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+let ITEMS = [];
+let seq = 0;
+const add = (topic, kind, title, url, more = {}) => ITEMS.push({ id: "i" + ++seq, topic, kind, title, url, type: kind === "place" ? "site" : "article", saved: 400 - seq, state: kind === "clip" ? "seen" : undefined, ...more });
+// Pinned sites
+[["Google", "https://google.com"], ["Gmail", "https://mail.google.com"], ["YouTube", "https://youtube.com"], ["GitHub", "https://github.com"], ["Notion", "https://notion.so"], ["Calendar", "https://calendar.google.com"]]
+  .forEach(([n, u]) => add("t-daily", "place", n, u, { pinned: true }));
+["Maps", "Drive", "Translate", "Photos"].forEach((n) => add("t-daily", "place", "Google " + n, `https://${n.toLowerCase()}.google.com`));
+// Roadmaps
+["System Design", "AI Engineer", "DevOps", "Full Stack", "Kubernetes", "Frontend", "Backend", "Python", "TypeScript", "React", "Node.js", "SQL", "Docker", "Machine Learning", "Data Engineer", "Software Architect", "Product Manager", "Engineering Manager", "Computer Science", "Git and GitHub", "Prompt Engineering", "AI Agents"]
+  .forEach((n) => add("t-road", "place", `${n} Roadmap`, `https://roadmap.sh/${n.toLowerCase().replace(/[^a-z]+/g, "-")}`));
+add("t-road", "clip", ["怎么读 roadmap.sh 才不被吓到", "How to read roadmap.sh without panicking"], "https://youtube.com/watch?v=road1", { type: "video", site: "YouTube", dur: "14:20", state: "unread", saved: 999 });
+add("t-road", "clip", ["后端路线图里哪些可以跳过", "What you can skip on the backend roadmap"], "https://example.blog/skip-backend", { site: "example.blog" });
+// Practice
+["NeetCode 150", "LeetCode", "LeetCode Top Interview 150", "Blind 75", "Grind 75", "HackerRank", "Codeforces", "AtCoder", "Exercism", "Advent of Code", "Project Euler", "SQLBolt", "Regex Crossword", "Frontend Mentor", "Codewars"]
+  .forEach((n) => add("t-leet", "place", n, `https://${n.toLowerCase().replace(/[^a-z0-9]+/g, "")}.com`));
+add("t-leet", "clip", ["动态规划的五步套路", "Dynamic programming in five steps"], "https://youtube.com/watch?v=dp5", { type: "video", site: "YouTube", dur: "38:02", state: "todo", note: ["周末照着刷一遍", "Do these on the weekend"], saved: 997 });
+// AI
+add("t-ai", "place", "Hugging Face", "https://huggingface.co");
+add("t-ai", "place", "Papers with Code", "https://paperswithcode.com");
+add("t-ai", "place", "OpenRouter", "https://openrouter.ai");
+add("t-ai", "clip", ["从零讲清楚 RAG", "RAG from scratch"], "https://youtube.com/watch?v=rag", { type: "video", site: "YouTube", dur: "23:10", state: "unread", note: ["分块那段想再看", "Rewatch the chunking part"], saved: 1000 });
+add("t-ai", "clip", ["长上下文到底省不省钱", "Does long context save money?"], "https://example.blog/long-context", { site: "example.blog", state: "unread", saved: 998 });
+add("t-ai", "clip", ["本地跑 7B 模型的显存账", "The memory maths of a local 7B"], "https://example.dev/7b-vram", { site: "example.dev" });
+["anthropics/skills", "obra/superpowers", "mattpocock/skills", "addyosmani/agent-skills", "nextlevelbuilder/ui-ux-pro-max-skill", "Leonxlnx/taste-skill", "ayghri/i-have-adhd", "agentskills/spec", "skills-hub/awesome-skills", "vercel-labs/agent-skills"]
+  .forEach((r) => add("t-agent", "clip", r, `https://github.com/${r}`, { type: "repo", site: "GitHub" }));
+["Attention Is All You Need", "Retrieval-Augmented Generation for Knowledge-Intensive NLP", "ReAct: Synergizing Reasoning and Acting", "Toolformer", "Chain-of-Thought Prompting"]
+  .forEach((n, i) => add("t-papers", "clip", n, `https://arxiv.org/abs/23${i}0.0000${i}`, { type: "doc", site: "arXiv" }));
+// Jobs
+["LinkedIn Jobs", "Indeed", "Wellfound", "Glassdoor", "Levels.fyi", "Handshake", "Built In", "Otta", "Y Combinator Jobs", "Hacker News: Who is hiring"]
+  .forEach((n) => add("t-boards", "place", n, `https://${n.toLowerCase().replace(/[^a-z0-9]+/g, "")}.com`));
+["Frontend Engineer · Acme", "Product Engineer · Northwind", "AI Engineer (New Grad) · Contoso", "Software Engineer II · Fabrikam", "Design Engineer · Globex", "Full Stack Intern · Initech", "Developer Advocate · Umbrella", "ML Engineer · Stark Labs", "Backend Engineer · Wayne Tech"]
+  .forEach((n) => add("t-posts", "clip", n, `https://jobs.example.com/${n.toLowerCase().replace(/[^a-z]+/g, "-")}`, { type: "post", site: "jobs.example.com", state: "todo" }));
+add("t-jobs", "clip", ["简历里写项目的三个坑", "Three traps when writing projects on a CV"], "https://example.blog/cv-projects", { site: "example.blog", state: "unread", saved: 996 });
+// Design
+["Mobbin", "Dribbble", "Godly", "Land-book", "Refactoring UI"].forEach((n) => add("t-design", "place", n, `https://${n.toLowerCase().replace(/[^a-z]+/g, "")}.com`));
+add("t-design", "clip", ["一张卡片的十种排法", "Ten ways to lay out a card"], "https://xiaohongshu.com/explore/card10", { type: "post", site: ["小红书", "Xiaohongshu"] });
+// Life
+add("t-food", "clip", ["十分钟番茄炒蛋", "Ten-minute tomato and egg"], "https://bilibili.com/video/BV1egg", { type: "video", site: ["B 站", "Bilibili"], dur: "9:45", state: "todo", note: ["照着做一次", "Make it once"] });
+add("t-food", "clip", ["附近评分最高的面馆", "Best noodle places nearby"], "https://xiaohongshu.com/explore/noodles", { type: "post", site: ["小红书", "Xiaohongshu"] });
+// Money
+["Stripe Dashboard", "AWS Billing", "Vercel Usage", "OpenAI Usage", "Anthropic Console", "Cloudflare Billing", "GitHub Billing", "Apple Subscriptions", "Google One", "Netflix Account", "Spotify Account"]
+  .forEach((n) => add("t-bills", "place", n, `https://${n.toLowerCase().split(" ")[0]}.com/billing`));
+// Not filed
+add(null, "clip", ["一个讲睡眠的播客", "A podcast on sleep"], "https://podcasts.example.com/sleep", { type: "video", site: "Podcasts", dur: "52:00", state: "unread", saved: 995 });
+add(null, "place", "Can I use", "https://caniuse.com");
+add(null, "clip", ["不知道为什么存的一篇", "Not sure why I saved this"], "https://example.org/whatever", { site: "example.org" });
+
+/* The import demo: a messy bookmarks file. */
+const IMPORT_FOLDERS = [
+  { name: "学习", into: "p-learn", items: ["CS50", "MIT 6.006", "Khan Academy"] },
+  { name: "刷题与学习", into: "p-learn", items: ["LeetCode 75", "Top Interview 150"] },
+  { name: "Learning", into: "p-learn", items: ["Coursera", "fast.ai", "Full Stack Open"] },
+  { name: "Job hunt", into: "t-boards", items: ["Hired", "Dice", "We Work Remotely"] },
+  { name: "求职", into: "t-boards", items: ["拉勾", "BOSS 直聘"] },
+  { name: "灵感", into: "t-design", items: ["Awwwards", "Behance", "Pinterest"] },
+  { name: "Misc", into: "t-daily", items: ["Speedtest", "Time.is"] },
+  { name: "Reading", into: "p-read", items: ["Hacker News", "Lobsters", "The Pragmatic Engineer", "Stratechery"] },
+];
+const PROPOSAL = [
+  { id: "p-learn", area: "learn", name: ["课程", "Courses"], isNew: true },
+  { id: "t-boards", area: "work", existing: true },
+  { id: "t-design", area: "work", existing: true },
+  { id: "t-daily", area: "life", existing: true },
+  { id: "p-read", area: "learn", name: ["每天读", "Daily reading"], isNew: true },
+];
+
+/* ── Tree helpers ── */
+const area = (id) => AREAS.find((a) => a.id === id);
+const topic = (id) => TOPICS.find((x) => x.id === id);
+const kOf = (nodeId) => area(nodeId?.startsWith("area:") ? nodeId.slice(5) : topic(nodeId)?.area)?.k ?? "gray";
+const childrenOf = (nodeId) => nodeId.startsWith("area:")
+  ? TOPICS.filter((x) => x.area === nodeId.slice(5) && !x.parent)
+  : TOPICS.filter((x) => x.parent === nodeId);
+const depthOf = (id) => (topic(id)?.parent ? 2 : 1);
+const nameOf = (nodeId) => nodeId.startsWith("area:") ? L(area(nodeId.slice(5)).name) : L(topic(nodeId)?.name ?? "");
+function chain(nodeId) {
+  if (!nodeId) return [];
+  if (nodeId.startsWith("area:")) return [nodeId];
+  const x = topic(nodeId); if (!x) return [];
+  return [...(x.parent ? chain(x.parent) : ["area:" + x.area]), nodeId];
+}
+const pathText = (nodeId) => chain(nodeId).map(nameOf).join(" › ");
+function under(nodeId) {
+  const out = new Set([nodeId]);
+  const walk = (id) => childrenOf(id).forEach((c) => { out.add(c.id); walk(c.id); });
+  walk(nodeId); return out;
+}
+const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
+const siteOf = (it) => L(it.site) || host(it.url);
+
+function matches(it, words) {
+  if (!words.length) return true;
+  const hay = [L(it.title), siteOf(it), it.url, L(it.note), pathText(it.topic)].join(" ").toLowerCase();
+  return words.every((w) => hay.includes(w));
+}
+const words = () => S.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+const scoped = () => S.q && !S.scopeAll && S.node !== "all" && S.node !== "recent";
+function pool() {
+  // What the tree counts: everything, or what the search matches inside its scope.
+  const w = words();
+  let list = ITEMS.filter((it) => matches(it, w));
+  if (scoped()) { const set = S.node === "none" ? null : under(S.node); list = list.filter((it) => set ? set.has(it.topic) : !it.topic); }
+  return list;
+}
+function countIn(nodeId, list) { const set = under(nodeId); return list.filter((it) => set.has(it.topic)).length; }
+
+/* ── Icons ── */
+const IC = {
+  search: '<svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>',
+  chev: '<svg class="i" viewBox="0 0 24 24" style="width:12px;height:12px"><path d="m9 6 6 6-6 6"/></svg>',
+  more: '<svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>',
+  out: '<svg class="i" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5"/></svg>',
+  x: '<svg class="i" viewBox="0 0 24 24" style="width:12px;height:12px"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  side: '<svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M9.5 5v14"/></svg>',
+  imp: '<svg class="i" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 19h14"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+  folder: '<svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>',
+};
+const TYPE = { site: ["网站", "Site"], video: ["视频", "Video"], article: ["文章", "Article"], post: ["帖子", "Post"], repo: ["仓库", "Repo"], doc: ["文档", "Doc"] };
+
+function hl(text) {
+  const w = words(); if (!w.length) return esc(text);
+  let out = esc(text);
+  w.forEach((x) => { const re = new RegExp("(" + esc(x).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig"); out = out.replace(re, "<mark>$1</mark>"); });
+  return out;
+}
+function fav(it) {
+  const h = host(it.url);
+  return `<span class="fav" style="background:oklch(.6 .12 ${hueOf(h)})">${esc((h.match(/[\p{L}\p{N}]/u)?.[0] ?? "?").toUpperCase())}</span>`;
+}
+function row(it, { path } = {}) {
+  const lead = it.type === "video" ? `<span class="cov" data-k="${kOf(it.topic)}">${IC.play}</span>` : fav(it);
+  const src = [siteOf(it), it.dur].filter(Boolean).join(" · ");
+  const sub = path ? (it.topic ? hl(pathText(it.topic)) : t("没分类", "Not filed")) + " · " + esc(siteOf(it)) : hl(src);
+  const st = it.state === "unread" || it.state === "todo" ? `<span class="st" data-s="${it.state}" title="${it.state === "todo" ? t("想做", "To do") : t("没看", "Unread")}"></span>` : "";
+  return `<div class="row" draggable="true" data-item="${it.id}" role="button" tabindex="0">${lead}
+    <span class="tx"><span class="tt">${hl(L(it.title))}</span><span class="src">${sub}</span></span>${st}
+    <span class="ty">${L(TYPE[it.type])}</span>
+    <a class="go" href="${esc(it.url)}" target="_blank" rel="noopener" title="${t("打开网页", "Open page")}" data-stop>${IC.out}</a></div>`;
+}
+
+/* ── Render ── */
+function render() {
+  document.documentElement.lang = S.lang === "en" ? "en" : "zh-CN";
+  document.documentElement.dataset.scheme = S.dark ? "dark" : "light";
+  document.getElementById("stage").toggleAttribute("data-narrow", S.narrow);
+  renderProto();
+  const page = document.getElementById("page");
+  const focus = document.activeElement?.id;
+  const caret = focus === "q" ? document.activeElement.selectionStart : null;
+  const scrollMain = page.querySelector(".main")?.scrollTop ?? 0;
+  const scrollTree = page.querySelector(".tree")?.scrollTop ?? 0;
+  page.innerHTML = `
+    <div class="head">
+      <button class="icon-btn" data-act="fold-tree" title="${t("收起分类", "Hide categories")}">${IC.side}</button>
+      <h1>${t("链接", "Links")}</h1><span class="sum">${t(`${ITEMS.length} 条 · ${TOPICS.length} 个分类`, `${ITEMS.length} links · ${TOPICS.length} categories`)}</span>
+      <span class="grow"></span>
+      <label class="search">${IC.search}
+        ${scoped() ? `<span class="scope"><span>${t("在", "In ")}「${esc(S.node === "none" ? t("没分类", "Not filed") : nameOf(S.node))}」${t("里", "")}</span><button data-act="widen" title="${t("搜全部", "Search everything")}">${IC.x}</button></span>` : ""}
+        <input id="q" value="${esc(S.q)}" placeholder="${t("搜链接或分类…", "Search links or categories…")}" autocomplete="off" spellcheck="false">
+        ${S.q ? "" : "<kbd>⌘F</kbd>"}</label>
+      <button class="icon-btn" data-act="import" title="${t("导入书签", "Import bookmarks")}">${IC.imp}</button>
+    </div>
+    <div class="places">${ITEMS.filter((i) => i.pinned).map((i) => `<a class="place" href="${esc(i.url)}" target="_blank" rel="noopener">${fav(i)}<span>${esc(L(i.title))}</span></a>`).join("")}
+      <button class="place add"><span class="fav">+</span><span>${t("钉一个", "Pin")}</span></button></div>
+    <div class="body">
+      <nav class="tree" ${S.treeFolded ? "data-folded" : ""} aria-label="${t("分类", "Categories")}">${renderTree()}</nav>
+      <main class="main">${S.q ? renderSearch() : renderNode()}</main>
+    </div>
+    ${S.card ? renderCard() : ""}${S.sheet ? renderSheet() : ""}
+    ${S.toast ? `<div class="toast"><span>${esc(S.toast.text)}</span>${S.toast.undo ? `<button data-act="undo">${t("撤销", "Undo")}</button>` : ""}</div>` : ""}`;
+  if (S.menu) renderMenu();
+  page.querySelector(".main").scrollTop = scrollMain;
+  page.querySelector(".tree").scrollTop = scrollTree;
+  if (focus === "q") { const q = document.getElementById("q"); q.focus(); q.setSelectionRange(caret, caret); }
+  const ren = page.querySelector(".node input"); if (ren) { ren.focus(); ren.select(); }
+}
+
+function renderTree() {
+  const list = pool();
+  const all = S.q ? list.length : ITEMS.length;
+  const fixed = [
+    ["all", t("全部", "All"), all],
+    ...(S.q ? [] : [["recent", t("刚收的", "Just saved"), ITEMS.filter((i) => i.kind === "clip" && i.state === "unread").length]]),
+  ];
+  const none = list.filter((i) => !i.topic).length;
+  let html = fixed.map(([id, label, n]) => `<div class="node" data-node="${id}" ${S.node === id ? 'aria-current="true"' : ""}><span class="tw none"></span><span class="nm">${label}</span><span class="n">${n}</span></div>`).join("");
+  html += '<div class="sep"></div>';
+  const branch = (nodeId, d) => {
+    const n = countIn(nodeId, list);
+    if (S.q && !n) return "";
+    const kids = childrenOf(nodeId);
+    const isArea = nodeId.startsWith("area:");
+    const open = S.q || S.open.has(nodeId);
+    const name = S.renaming === nodeId ? `<input value="${esc(nameOf(nodeId))}" data-rename="${nodeId}">` : `<span class="nm">${hl(nameOf(nodeId))}</span>`;
+    let h = `<div class="node${isArea ? " area" : ""}" style="--d:${d}" data-node="${nodeId}" data-drop="${nodeId}" ${S.node === nodeId ? 'aria-current="true"' : ""} data-k="${kOf(nodeId)}">
+      <span class="tw${kids.length ? "" : " none"}" ${open ? "data-open" : ""} data-act="toggle">${IC.chev}</span>${isArea ? '<span class="dot"></span>' : ""}${name}
+      <span class="n">${n}</span><button class="more" data-act="menu" aria-expanded="${S.menu?.node === nodeId}" title="${t("更多", "More")}">${IC.more}</button></div>`;
+    if (open) h += kids.map((c) => branch(c.id, d + 1)).join("");
+    return h;
+  };
+  html += AREAS.map((a) => branch("area:" + a.id, 0)).join("");
+  if (none) html += `<div class="sep"></div><div class="node" data-node="none" data-drop="none" ${S.node === "none" ? 'aria-current="true"' : ""}><span class="tw none"></span><span class="nm">${t("没分类", "Not filed")}</span><span class="n">${none}</span></div>`;
+  return html;
+}
+
+function filterChips(list) {
+  const types = ["site", "video", "article", "post", "repo", "doc"].map((ty) => [ty, list.filter((i) => i.type === ty).length]).filter(([, n]) => n);
+  const unread = list.filter((i) => i.state === "unread" || i.state === "todo").length;
+  if (list.length < 8) return "";
+  return `<div class="filters">${types.map(([ty, n]) => `<button class="chip" data-type="${ty}" aria-pressed="${S.type === ty}">${L(TYPE[ty])}<span class="n">${n}</span></button>`).join("")}
+    ${unread ? `<button class="chip" data-act="unread" aria-pressed="${S.unread}">${t("没看 / 想做", "Unread / to do")}<span class="n">${unread}</span></button>` : ""}</div>`;
+}
+const applyChips = (list) => list.filter((i) => (!S.type || i.type === S.type) && (!S.unread || i.state === "unread" || i.state === "todo"));
+const byTime = (a, b) => b.saved - a.saved;
+const narrow = () => document.getElementById("page").getBoundingClientRect().width <= 720;
+const catsBtn = () => narrow() && S.node !== "all" ? `<button class="crumbs-back" data-node="${chain(S.node).length > 1 ? chain(S.node).at(-2) : "all"}" style="color:var(--alf);font-size:.8125rem;margin-bottom:4px">‹ ${t("上一层", "Back")}</button>` : "";
+
+function renderNode() {
+  if (S.node === "all") return renderAll();
+  if (S.node === "recent" || S.node === "none") {
+    const list = applyChips(ITEMS.filter((i) => S.node === "recent" ? i.kind === "clip" && i.state === "unread" : !i.topic).sort(byTime));
+    return `${catsBtn()}<div class="crumbs"><span>${S.node === "recent" ? t("刚收的", "Just saved") : t("没分类", "Not filed")}</span><span class="n">${list.length}</span></div>
+      ${S.node === "none" ? `<p style="color:var(--muted);font-size:.8125rem;margin-top:4px">${t("拖到左边的分类里就归好了。", "Drag onto a category on the left to file.")}</p>` : ""}
+      <div class="rows" style="margin-top:10px">${list.map((i) => row(i, { path: S.node === "recent" })).join("") || `<p class="empty">${t("没有了。", "None.")}</p>`}</div>`;
+  }
+  const c = chain(S.node);
+  const crumbs = c.map((id, i) => i === c.length - 1 ? `<span>${esc(nameOf(id))}</span>` : `<button data-node="${id}">${esc(nameOf(id))}</button><span class="sl">›</span>`).join("");
+  const set = under(S.node);
+  const all = ITEMS.filter((i) => set.has(i.topic));
+  const direct = applyChips(all.filter((i) => i.topic === S.node)).sort(byTime);
+  const kids = childrenOf(S.node);
+  let html = `${catsBtn()}<div class="crumbs">${crumbs}<span class="n">${all.length}</span></div>${filterChips(all)}`;
+  if (narrow()) {
+    // A narrow page drills down: sub-categories are rows you tap into.
+    html += `<div class="rows" style="margin-top:8px">${kids.map((k) => `<div class="row folder" data-node="${k.id}" data-k="${kOf(k.id)}"><span class="fav">${IC.folder}</span><span class="tx"><span class="tt">${esc(L(k.name))}</span></span><span class="src">${countIn(k.id, ITEMS)}</span><span class="chev">${IC.chev}</span></div>`).join("")}${direct.map((i) => row(i)).join("")}</div>`;
+    return html;
+  }
+  if (direct.length) html += `<div class="sec"><div class="rows">${direct.map((i) => row(i)).join("")}</div></div>`;
+  kids.forEach((k) => {
+    const items = applyChips(ITEMS.filter((i) => under(k.id).has(i.topic))).sort(byTime);
+    if (!items.length && (S.type || S.unread)) return;
+    html += `<section class="sec" data-k="${kOf(k.id)}"><h3><button data-node="${k.id}">${esc(L(k.name))}</button><span class="n">${items.length}</span></h3>
+      <div class="rows" data-drop-list="${k.id}">${items.map((i) => row(i)).join("") || `<p class="empty" style="padding:8px">${t("空的。拖一条进来。", "Empty. Drag one in.")}</p>`}</div></section>`;
+  });
+  if (!direct.length && !kids.length) html += `<p class="empty">${t("空的。拖一条进来。", "Empty. Drag one in.")}</p>`;
+  return html;
+}
+
+function renderAll() {
+  const fresh = ITEMS.filter((i) => i.kind === "clip" && i.state === "unread").sort(byTime).slice(0, 5);
+  let html = `<div class="crumbs"><span>${t("全部", "All")}</span><span class="n">${ITEMS.length}</span></div>`;
+  // A narrow page has no tree beside it: the areas come first, as rows you tap into.
+  if (narrow()) html += `<div class="rows" style="margin-top:8px">${AREAS.map((a) => `<div class="row folder" data-node="area:${a.id}" data-k="${a.k}"><span class="fav">${IC.folder}</span><span class="tx"><span class="tt">${esc(L(a.name))}</span></span><span class="src">${countIn("area:" + a.id, ITEMS)}</span><span class="chev">${IC.chev}</span></div>`).join("")}
+    ${ITEMS.some((i) => !i.topic) ? `<div class="row folder" data-node="none" data-k="gray"><span class="fav">${IC.folder}</span><span class="tx"><span class="tt">${t("没分类", "Not filed")}</span></span><span class="src">${ITEMS.filter((i) => !i.topic).length}</span><span class="chev">${IC.chev}</span></div>` : ""}</div>`;
+  if (fresh.length) html += `<section class="sec"><h3>${t("刚收的", "Just saved")}<span class="n">${fresh.length}</span></h3><div class="rows">${fresh.map((i) => row(i, { path: true })).join("")}</div></section>`;
+  AREAS.forEach((a) => {
+    const nodeId = "area:" + a.id;
+    const n = countIn(nodeId, ITEMS); if (!n) return;
+    html += `<section class="sec" data-k="${a.k}"><h2><span class="dot"></span><button data-node="${nodeId}">${esc(L(a.name))}</button><span style="color:var(--muted);font-size:.75rem;font-weight:400">${n}</span></h2>`;
+    childrenOf(nodeId).forEach((k) => {
+      const items = ITEMS.filter((i) => under(k.id).has(i.topic)).sort(byTime);
+      if (!items.length) return;
+      html += `<div class="sec" style="margin-top:8px"><h3><button data-node="${k.id}">${esc(L(k.name))}</button><span class="n">${items.length}</span></h3>
+        <div class="rows">${items.slice(0, 4).map((i) => row(i)).join("")}</div>
+        ${items.length > 4 ? `<button class="see" data-node="${k.id}">${t(`查看全部 ${items.length} 条 →`, `See all ${items.length} →`)}</button>` : ""}</div>`;
+    });
+    html += "</section>";
+  });
+  return html;
+}
+
+function renderSearch() {
+  const w = words();
+  const scope = scoped() ? (S.node === "none" ? null : under(S.node)) : undefined;
+  const cats = TOPICS.filter((x) => (scope === undefined || scope?.has(x.id)) && w.every((y) => pathText(x.id).toLowerCase().includes(y))).slice(0, 5);
+  const list = pool().sort((a, b) => (w.every((y) => L(b.title).toLowerCase().includes(y)) - w.every((y) => L(a.title).toLowerCase().includes(y))) || byTime(a, b));
+  let html = "";
+  if (cats.length) html += `<p class="grp">${t("分类", "Categories")}</p><div class="rows">${cats.map((x) => `<div class="row cat" data-node="${x.id}" data-k="${kOf(x.id)}" data-clear><span class="fav">${IC.folder}</span><span class="tx"><span class="tt">${hl(pathText(x.id))}</span></span><span class="src">${countIn(x.id, ITEMS)}</span><span class="chev" style="color:var(--muted)">${IC.chev}</span></div>`).join("")}</div>`;
+  html += `<p class="grp">${t("链接", "Links")} · ${list.length}</p>`;
+  html += list.length ? `<div class="rows">${list.slice(0, 60).map((i) => row(i, { path: true })).join("")}</div>` : `<p class="empty">${scoped() ? `${t("这一格里没有。", "Nothing in here.")} <button class="see" data-act="widen">${t("搜全部", "Search everything")}</button>` : t("没找到。", "Nothing found.")}</p>`;
+  return html;
+}
+
+function pickList(current, onAttr) {
+  let h = "";
+  const walk = (nodeId, d) => {
+    const isArea = nodeId.startsWith("area:");
+    h += `<button role="menuitemradio" style="--d:${d}" ${onAttr}="${nodeId}" aria-checked="${current === nodeId}" data-k="${kOf(nodeId)}">${isArea ? '<span class="dot"></span>' : ""}${esc(nameOf(nodeId))}</button>`;
+    childrenOf(nodeId).forEach((c) => walk(c.id, d + 1));
+  };
+  AREAS.forEach((a) => walk("area:" + a.id, 0));
+  return h;
+}
+function renderCard() {
+  const it = ITEMS.find((i) => i.id === S.card); if (!it) return "";
+  return `<div class="veil" data-act="close"><div class="card" role="dialog" aria-modal="true" data-stop>
+    <div class="top">${it.type === "video" ? `<span class="cov" data-k="${kOf(it.topic)}" style="width:56px;height:36px;display:grid;place-items:center;border-radius:6px;background:var(--k-fill);color:var(--k-text)">${IC.play}</span>` : fav(it)}
+      <div style="flex:1;min-width:0"><h3>${esc(L(it.title))}</h3><p class="meta">${esc([siteOf(it), it.dur, L(TYPE[it.type])].filter(Boolean).join(" · "))}</p></div>
+      <button class="icon-btn" data-act="close" title="${t("关上", "Close")}">${IC.x}</button></div>
+    ${it.note ? `<p class="note">${esc(L(it.note))}</p>` : ""}
+    <p class="desc">${it.kind === "place" ? t("一个你会去的网站，不读、不总结。", "A site you visit. Not read, not summarised.") : t("（总结在 L2 读过以后出现）", "(The summary comes once L2 has read it.)")}</p>
+    <p class="lbl">${t("分类", "Category")} · ${esc(it.topic ? pathText(it.topic) : t("没分类", "Not filed"))}</p>
+    <div class="pick" role="menu">${pickList(it.topic, "data-move")}</div>
+    <div class="acts"><a class="btn solid" href="${esc(it.url)}" target="_blank" rel="noopener">${IC.out}${t("打开", "Open")}</a>
+      ${it.kind === "place" ? `<button class="btn" data-act="pin" aria-pressed="${!!it.pinned}">${it.pinned ? t("已钉在常去", "Pinned") : t("钉到常去", "Pin to top")}</button>` : `<button class="btn" data-act="todo" aria-pressed="${it.state === "todo"}">${t("想做", "To do")}</button>`}
+      <span style="flex:1"></span><button class="btn danger" data-act="remove">${t("删掉", "Remove")}</button></div>
+  </div></div>`;
+}
+
+function renderSheet() {
+  const total = IMPORT_FOLDERS.reduce((n, f) => n + f.items.length, 0);
+  const byArea = AREAS.map((a) => [a, PROPOSAL.filter((p) => p.area === a.id)]).filter(([, ps]) => ps.length);
+  const pname = (p) => p.existing ? pathText(p.id) : `${L(area(p.area).name)} › ${L(p.name)}`;
+  const tree = byArea.map(([a, ps]) => `<div class="node area" data-k="${a.k}"><span class="dot"></span><span class="nm">${esc(L(a.name))}</span></div>` +
+    ps.map((p) => {
+      const from = IMPORT_FOLDERS.filter((f) => f.into === p.id);
+      const n = from.reduce((s, f) => s + f.items.length, 0);
+      const label = p.existing ? nameOf(p.id) : L(p.name);
+      return `<div class="node" style="--d:1" data-ppick="${p.id}" ${S.pick === p.id ? 'aria-current="true"' : ""}><span class="nm">${esc(label)}${p.isNew ? `<span class="new-tag">${t("新", "new")}</span>` : ""}<small>${t("来自", "From")}：${from.map((f) => esc(f.name)).join("、")}</small></span><span class="n">${n}</span></div>`;
+    }).join("")).join("");
+  const cur = PROPOSAL.find((p) => p.id === S.pick);
+  const rows = IMPORT_FOLDERS.filter((f) => f.into === S.pick).flatMap((f) => f.items.map((name) => `<div class="row" style="cursor:default">${fav({ url: "https://" + name.toLowerCase().replace(/[^a-z0-9]+/g, "") + ".com" })}<span class="tx"><span class="tt">${esc(name)}</span><span class="src">${t("原文件夹", "Folder")}：${esc(f.name)}</span></span><span class="ty">${t("网站", "Site")}</span></div>`)).join("");
+  return `<div class="veil"><div class="sheet" role="dialog" aria-modal="true" data-stop>
+    <header><h3>${t(`导入书签 · ${total} 条`, `Import bookmarks · ${total}`)}</h3>
+      <p>${t(`${IMPORT_FOLDERS.length} 个文件夹，我排成了 ${PROPOSAL.length} 格：意思一样的合在一起，每格挂到一个领域下。可以先改再导。`, `${IMPORT_FOLDERS.length} folders, sorted into ${PROPOSAL.length}: the ones that mean the same thing merged, each under an area. Change anything first.`)}</p></header>
+    <div class="cols"><div class="ptree">${tree}</div>
+      <div class="plist"><p class="grp" style="margin-top:4px">${esc(cur ? pname(cur) : "")}</p><div class="rows">${rows}</div></div></div>
+    <footer><span class="grow">${t("已经有的网址不会重复。导入后可以撤销。", "Addresses you already have are not added twice. You can undo.")}</span>
+      <button class="btn" data-act="sheet-close">${t("取消", "Cancel")}</button><button class="btn solid" data-act="do-import">${t(`导入 ${total} 条`, `Import ${total}`)}</button></footer>
+  </div></div>`;
+}
+
+function renderMenu() {
+  const nodeEl = document.querySelector(`.tree .node[data-node="${S.menu.node}"]`); if (!nodeEl) return;
+  const isArea = S.menu.node.startsWith("area:");
+  const canChild = isArea || depthOf(S.menu.node) < 2;
+  const m = document.createElement("div");
+  m.className = "menu"; m.setAttribute("role", "menu"); m.dataset.stop = "";
+  m.innerHTML = `<button data-act="new-child" ${canChild ? "" : "disabled"}>${isArea ? t("新建分类", "New category") : t("新建子分类", "New sub-category")}</button>
+    ${isArea ? "" : `<button data-act="rename">${t("改名", "Rename")}</button><button data-act="merge">${t("合并到…", "Merge into…")}</button><button class="danger" data-act="delete">${t("删掉这一格", "Remove category")}</button>`}`;
+  const r = nodeEl.getBoundingClientRect(), pr = document.getElementById("page").getBoundingClientRect();
+  m.style.left = Math.min(r.right - pr.left - 20, pr.width - 180) + "px";
+  m.style.top = r.bottom - pr.top + 2 + "px";
+  document.getElementById("page").appendChild(m);
+}
+
+function renderProto() {
+  const p = document.getElementById("proto");
+  const b = (key, val, label) => `<button data-proto="${key}" data-val="${val}" aria-pressed="${String(S[key]) === String(val)}">${label}</button>`;
+  p.innerHTML = `<b>${t("链接 · 分类树", "Links · tree")}</b>
+    <span class="lab">${t("语言", "Language")}</span>${b("lang", "zh", "中文")}${b("lang", "en", "EN")}
+    <span class="lab">${t("外观", "Look")}</span>${b("dark", false, t("浅", "Light"))}${b("dark", true, t("深", "Dark"))}
+    <span class="lab">${t("页宽", "Width")}</span>${b("narrow", false, t("宽", "Wide"))}${b("narrow", true, t("窄（手机）", "Narrow (phone)"))}
+    <span class="lab">${t("试试", "Try")}</span><button data-try="search">${t("搜「agent」", "Search “agent”")}</button><button data-try="import">${t("导入书签", "Import bookmarks")}</button>`;
+}
+
+/* ── Actions ── */
+let undoFn = null, toastTimer = null;
+function toast(text, undo) {
+  S.toast = { text, undo: !!undo }; undoFn = undo ?? null;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { S.toast = null; undoFn = null; render(); }, 5000);
+}
+function moveItem(id, to) {
+  const it = ITEMS.find((i) => i.id === id); if (!it) return;
+  const from = it.topic; if (from === to) return;
+  it.topic = to === "none" ? null : to;
+  toast(t(`移到 ${to === "none" ? "没分类" : pathText(to)}`, `Moved to ${to === "none" ? "Not filed" : pathText(to)}`), () => { it.topic = from; });
+}
+function go(nodeId, clear) {
+  S.node = nodeId; S.type = ""; S.unread = false;
+  if (clear) { S.q = ""; S.scopeAll = false; }
+  chain(nodeId).forEach((id) => S.open.add(id));
+  render();
+}
+
+document.addEventListener("click", (e) => {
+  const el = e.target;
+  const proto = el.closest("[data-proto]");
+  if (proto) { const k = proto.dataset.proto, v = proto.dataset.val; S[k] = v === "true" ? true : v === "false" ? false : v; render(); requestAnimationFrame(render); return; }
+  const tr = el.closest("[data-try]");
+  if (tr) { if (tr.dataset.try === "search") { S.q = "agent"; S.node = "all"; S.scopeAll = false; } else S.sheet = true; render(); return; }
+  const act = el.closest("[data-act]")?.dataset.act;
+  if (S.menu && !el.closest(".menu") && act !== "menu") { S.menu = null; render(); if (!act && !el.closest("[data-node]")) return; }
+  if (act === "toggle") { const n = el.closest("[data-node]").dataset.node; S.open.has(n) ? S.open.delete(n) : S.open.add(n); render(); return; }
+  if (act === "menu") { e.stopPropagation(); const n = el.closest("[data-node]").dataset.node; S.menu = S.menu?.node === n ? null : { node: n }; render(); return; }
+  if (act === "new-child") {
+    const parent = S.menu.node, isArea = parent.startsWith("area:");
+    const id = "t-" + Date.now();
+    TOPICS.push({ id, name: [t("新分类", "New category"), "New category"], area: isArea ? parent.slice(5) : topic(parent).area, ...(isArea ? {} : { parent }) });
+    S.open.add(parent); S.menu = null; S.renaming = id; render(); return;
+  }
+  if (act === "rename") { S.renaming = S.menu.node; S.menu = null; render(); return; }
+  if (act === "merge") { const n = S.menu.node; S.menu = null; toast(t(`在原型里：把「${nameOf(n)}」拖到另一格上就是合并`, `In the prototype: drag “${nameOf(n)}” onto another to merge`)); render(); return; }
+  if (act === "delete") {
+    const n = S.menu.node, x = topic(n), up = x.parent ?? "area:" + x.area;
+    const moved = ITEMS.filter((i) => i.topic === n), kids = TOPICS.filter((k) => k.parent === n);
+    moved.forEach((i) => (i.topic = up)); kids.forEach((k) => (x.parent ? (k.parent = x.parent) : delete k.parent));
+    TOPICS = TOPICS.filter((k) => k !== x);
+    if (S.node === n) S.node = up;
+    S.menu = null;
+    toast(t(`删了「${L(x.name)}」，${moved.length} 条移到上一层`, `Removed “${L(x.name)}”; ${moved.length} moved up`), () => { TOPICS.push(x); moved.forEach((i) => (i.topic = n)); kids.forEach((k) => (k.parent = n)); });
+    render(); return;
+  }
+  if (act === "widen") { S.scopeAll = true; render(); return; }
+  if (act === "fold-tree") { S.treeFolded = !S.treeFolded; render(); return; }
+  if (act === "import") { S.sheet = true; render(); return; }
+  if (act === "sheet-close") { S.sheet = null; render(); return; }
+  if (act === "do-import") {
+    const added = [], made = [];
+    PROPOSAL.filter((p) => p.isNew).forEach((p) => { if (!topic(p.id)) { TOPICS.push({ id: p.id, name: p.name, area: p.area }); made.push(p.id); } });
+    IMPORT_FOLDERS.forEach((f) => f.items.forEach((name) => { add(f.into, "place", name, "https://" + name.toLowerCase().replace(/[^a-z0-9]+/g, "") + ".com", { saved: 0 }); added.push(ITEMS.at(-1).id); }));
+    S.sheet = null;
+    toast(t(`导入了 ${added.length} 条`, `Imported ${added.length}`), () => { ITEMS = ITEMS.filter((i) => !added.includes(i.id)); TOPICS = TOPICS.filter((x) => !made.includes(x.id)); });
+    render(); return;
+  }
+  if (act === "undo") { undoFn?.(); S.toast = null; undoFn = null; render(); return; }
+  if (act === "close" && (el.closest("[data-stop]") === null || el.closest(".icon-btn"))) { S.card = null; render(); return; }
+  if (act === "pin") { const it = ITEMS.find((i) => i.id === S.card); it.pinned = !it.pinned; render(); return; }
+  if (act === "todo") { const it = ITEMS.find((i) => i.id === S.card); it.state = it.state === "todo" ? "seen" : "todo"; render(); return; }
+  if (act === "remove") { const it = ITEMS.find((i) => i.id === S.card), at = ITEMS.indexOf(it); ITEMS.splice(at, 1); S.card = null; toast(t("删掉了", "Removed"), () => ITEMS.splice(at, 0, it)); render(); return; }
+  if (act === "unread") { S.unread = !S.unread; render(); return; }
+  const mv = el.closest("[data-move]"); if (mv) { moveItem(S.card, mv.dataset.move); render(); return; }
+  const pp = el.closest("[data-ppick]"); if (pp) { S.pick = pp.dataset.ppick; render(); return; }
+  const ty = el.closest("[data-type]"); if (ty) { S.type = S.type === ty.dataset.type ? "" : ty.dataset.type; render(); return; }
+  if (el.closest("[data-stop] a, a.go, a.place")) return;
+  const nd = el.closest("[data-node]");
+  if (nd && !el.closest("input")) { go(nd.dataset.node, nd.hasAttribute("data-clear")); return; }
+  const r = el.closest("[data-item]"); if (r) { S.card = r.dataset.item; render(); }
+});
+document.addEventListener("input", (e) => { if (e.target.id === "q") { S.q = e.target.value; if (!S.q) S.scopeAll = false; render(); } });
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") { e.preventDefault(); document.getElementById("q")?.focus(); return; }
+  const ren = e.target.closest?.("[data-rename]");
+  if (ren && (e.key === "Enter" || e.key === "Escape")) {
+    const x = topic(ren.dataset.rename);
+    if (e.key === "Enter" && ren.value.trim()) x.name = [ren.value.trim(), ren.value.trim()];
+    S.renaming = null; render(); return;
+  }
+  if (e.key === "Escape") {
+    if (S.menu) S.menu = null; else if (S.card) S.card = null; else if (S.sheet) S.sheet = null; else if (S.q) { S.q = ""; S.scopeAll = false; } else return;
+    render(); return;
+  }
+  if (e.key === "Enter" && e.target.closest?.("[data-item]")) { S.card = e.target.closest("[data-item]").dataset.item; render(); }
+});
+document.addEventListener("focusout", (e) => { const ren = e.target.closest?.("[data-rename]"); if (ren && S.renaming) { const x = topic(ren.dataset.rename); if (x && ren.value.trim()) x.name = [ren.value.trim(), ren.value.trim()]; S.renaming = null; setTimeout(render); } });
+
+/* Drag a row onto a node to file it; drag a node onto another to put it under (or, holding ⌥, to merge). */
+let drag = null;
+document.addEventListener("dragstart", (e) => {
+  const r = e.target.closest?.("[data-item]"), n = e.target.closest?.(".tree .node[data-drop]");
+  if (r) { drag = { item: r.dataset.item }; r.setAttribute("data-dragging", ""); }
+  else if (n && !n.dataset.node.startsWith("area:") && n.dataset.node !== "none") drag = { node: n.dataset.node };
+  else return;
+  e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "x");
+});
+document.addEventListener("dragover", (e) => {
+  const d = e.target.closest?.("[data-drop]"); if (!d || !drag) return;
+  if (drag.node && (d.dataset.drop === "none" || under(drag.node).has(d.dataset.drop))) return;
+  e.preventDefault(); document.querySelectorAll(".node.drop").forEach((x) => x !== d && x.classList.remove("drop")); d.classList.add("drop");
+});
+document.addEventListener("dragleave", (e) => { const d = e.target.closest?.("[data-drop]"); if (d && !d.contains(e.relatedTarget)) d.classList.remove("drop"); });
+document.addEventListener("drop", (e) => {
+  const d = e.target.closest?.("[data-drop]"); if (!d || !drag) return;
+  e.preventDefault();
+  const to = d.dataset.drop;
+  if (drag.item) moveItem(drag.item, to);
+  else if (drag.node) {
+    const x = topic(drag.node), old = { parent: x.parent, area: x.area };
+    if (e.altKey && !to.startsWith("area:")) {
+      const moved = ITEMS.filter((i) => under(x.id).has(i.topic)); moved.forEach((i) => (i.topic = to));
+      TOPICS = TOPICS.filter((k) => !under(x.id).has(k.id) || k.id === to);
+      toast(t(`「${L(x.name)}」合并进了「${nameOf(to)}」`, `Merged “${L(x.name)}” into “${nameOf(to)}”`));
+    } else {
+      const deep = TOPICS.some((k) => k.parent === x.id);
+      if (!to.startsWith("area:") && (depthOf(to) >= 2 || deep)) { toast(t("最多两层分类", "At most two levels of categories")); }
+      else {
+        if (to.startsWith("area:")) { delete x.parent; x.area = to.slice(5); } else { x.parent = to; x.area = topic(to).area; }
+        TOPICS.filter((k) => k.parent === x.id).forEach((k) => (k.area = x.area));
+        S.open.add(to);
+        toast(t(`「${L(x.name)}」放到了「${nameOf(to)}」下面`, `Put “${L(x.name)}” under “${nameOf(to)}”`), () => { x.area = old.area; old.parent ? (x.parent = old.parent) : delete x.parent; });
+      }
+    }
+  }
+  drag = null; render();
+});
+document.addEventListener("dragend", () => { drag = null; document.querySelectorAll("[data-dragging],.drop").forEach((x) => { x.removeAttribute("data-dragging"); x.classList.remove("drop"); }); });
+document.addEventListener("mousedown", (e) => { const n = e.target.closest?.(".tree .node[data-drop]"); if (n && !n.dataset.node.startsWith("area:")) n.setAttribute("draggable", "true"); });
+new ResizeObserver(() => render()).observe(document.getElementById("stage"));
+render();
+</script>
+</body>
+</html>

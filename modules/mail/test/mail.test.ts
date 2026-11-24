@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CORE_MIGRATIONS, listEvents, openWorld, type World } from "@isocline/core";
-import { invokeOp, runQuery, ServiceError, type GoogleService } from "@isocline/module-kit";
+import { CORE_MIGRATIONS, listEvents, listNotices, listOutbound, openWorld, type World } from "@isocline/core";
+import { deliverQueued, invokeOp, runQuery, ServiceError, type GoogleService, type GoogleSession } from "@isocline/module-kit";
 import { extractBody, listMail, mailModule, mapMessage, parseAddress, syncMail, type MailDetail, type MailSnapshot } from "../src/index.ts";
 
 const world = (): World => openWorld(":memory:", [...CORE_MIGRATIONS, ...mailModule.migrations]);
@@ -37,17 +37,22 @@ test("Gmail's messages become ours: sender, labels, the plain text, attachments 
   assert.equal(extractBody({ mimeType: "multipart/encrypted", parts: [] }).incomplete, true);
 });
 
-function fakeGmail(state: { inbox: string[]; unread: string[]; messages: Record<string, unknown> }, options: { fail?: ServiceError; mailAccounts?: string[]; pageSize?: number } = {}): GoogleService & { fetched: string[]; minimal: string[] } {
+function fakeGmail(state: { inbox: string[]; unread: string[]; messages: Record<string, unknown> }, options: {
+  fail?: ServiceError; mailAccounts?: string[]; pageSize?: number;
+  modifyAccounts?: string[]; sendFor?: (email: string) => GoogleSession["send"];
+} = {}): GoogleService & { fetched: string[]; minimal: string[] } {
   const fetched: string[] = [], minimal: string[] = [];
   const mailAccounts = options.mailAccounts ?? ["me@example.com"];
   return {
     fetched, minimal,
-    accounts: () => [...mailAccounts.map((email) => ({ email, capabilities: ["calRead", "mailRead"] })), { email: "cal-only@example.com", capabilities: ["calRead"] }],
+    accounts: () => [...mailAccounts.map((email) => ({
+      email, capabilities: options.modifyAccounts?.includes(email) ? ["calRead", "mailRead", "mailModify"] : ["calRead", "mailRead"],
+    })), { email: "cal-only@example.com", capabilities: ["calRead"] }],
     async session(email) {
       if (options.fail) throw options.fail;
       assert.ok(mailAccounts.includes(email), "an account without mail access is never asked");
       return {
-        async send(): Promise<{ status: number; body: Record<string, unknown> }> { throw new Error("no writes in this test"); },
+        send: options.sendFor?.(email) ?? (async () => { throw new Error("no writes in this test"); }),
         async get(url) {
           const parsed = new URL(url);
           if (parsed.pathname.endsWith("/messages")) {
@@ -239,6 +244,128 @@ test("bounded label-only verification rotates through all displaced messages wit
   await syncMail(w, { google });
   assert.equal(google.minimal.length, 40);
   assert.deepEqual(listMail(w, { saved: true }).map((m) => m.id), ["49"]);
+});
+
+test("archiving one message removes only its inbox label for that account, and repeated clicks share a delivery", async () => {
+  const w = world();
+  const account = "me@example.com", other = "work@example.com", id = "m1";
+  const row = message(id, { labels: ["UNREAD", "STARRED", "IMPORTANT", "Label_1"] });
+  const state = { inbox: [id], unread: [id], messages: { [id]: row } };
+  const writes: Array<{ email: string; method: string; url: string; body: unknown }> = [];
+  const google = fakeGmail(state, {
+    mailAccounts: [account, other], modifyAccounts: [account],
+    sendFor: (email) => async (method, url, body) => {
+      writes.push({ email, method, url, body });
+      return { status: 200, body: { id, labelIds: row.labelIds.filter((label) => label !== "INBOX") } };
+    },
+  });
+  await syncMail(w, { google });
+  const archive = (requestId: string) => invokeOp(w, [mailModule], { op: "mail.archive", requestId, input: { account, id } });
+  const detail = () => runQuery([mailModule], w, "mail.message", { account, id }) as MailDetail;
+  const inboxAccounts = () => listMail(w).map((item) => item.account).sort();
+  const queued = archive("archive-once").result as { queued: string };
+  assert.ok(queued.queued);
+  assert.equal(archive("archive-once").replayed, true);
+  assert.deepEqual(archive("archive-again").result, queued);
+  assert.deepEqual(inboxAccounts(), [other]);
+  await syncMail(w, { google });
+  assert.deepEqual(inboxAccounts(), [other], "a Gmail sync while delivery waits cannot put it back");
+  assert.equal(detail().inInbox, false);
+  assert.equal((mailModule.snapshot!(w) as MailSnapshot).messages.find((item) => item.account === account)?.inInbox, false);
+  assert.equal(await deliverQueued(w, mailModule, { google }), 1);
+  assert.deepEqual(writes, [{ email: account, method: "POST", url: "https://gmail.googleapis.com/gmail/v1/users/me/messages/m1/modify", body: { removeLabelIds: ["INBOX"] } }]);
+  assert.equal(listOutbound(w)[0].state, "done");
+  assert.deepEqual(archive("already-archived").result, { queued: null });
+  assert.equal(await deliverQueued(w, mailModule, { google }), 0);
+  assert.deepEqual(inboxAccounts(), [other]);
+  assert.deepEqual([detail().inInbox, detail().starred, detail().important, detail().unread], [false, true, true, true]);
+  assert.ok(listMail(w, { saved: true }).some((item) => item.account === account && item.id === id));
+});
+
+test("archiving checks account permissions at the click and before delivery, and a failed archive restores the inbox", async () => {
+  const w = world();
+  const account = "me@example.com", id = "m1";
+  const state = { inbox: [id], unread: [], messages: { [id]: message(id) } };
+  const modifyAccounts: string[] = [];
+  const writes: string[] = [];
+  let status = 503;
+  const google = fakeGmail(state, { modifyAccounts, sendFor: (email) => async () => {
+    writes.push(email);
+    return { status, body: {} };
+  } });
+  const archive = (requestId: string, target = id) => invokeOp(w, [mailModule], { op: "mail.archive", requestId, input: { account, id: target } });
+  await syncMail(w, { google });
+  assert.throws(() => archive("read-only"), { code: "permission" });
+  assert.deepEqual(listOutbound(w), []);
+  assert.deepEqual(listMail(w).map((item) => item.id), [id]);
+
+  modifyAccounts.push(account);
+  await syncMail(w, { google });
+  assert.throws(() => archive("missing", "absent"), { code: "missing" });
+  assert.deepEqual(listOutbound(w), []);
+  archive("permitted");
+  modifyAccounts.pop();
+  await deliverQueued(w, mailModule, { google });
+  assert.deepEqual(writes, [], "revoking permission blocks Gmail writes before the next mail sync");
+  assert.deepEqual(listMail(w).map((item) => item.id), [id]);
+  assert.equal(listOutbound(w)[0].state, "failed");
+  assert.ok(listNotices(w).some((notice) => notice.payload.outboundId === listOutbound(w)[0].id));
+
+  modifyAccounts.push(account);
+  archive("retry-after-failure");
+  await deliverQueued(w, mailModule, { google });
+  assert.deepEqual(writes, [account]);
+  assert.equal(listOutbound(w).at(-1)?.state, "queued", "a temporary Gmail failure can be retried safely");
+  assert.deepEqual(listMail(w), []);
+  status = 200;
+  await deliverQueued(w, mailModule, { google });
+  assert.equal(listOutbound(w).at(-1)?.state, "queued", "a response without a Gmail message is not an archive receipt");
+  status = 403;
+  await deliverQueued(w, mailModule, { google });
+  assert.deepEqual(writes, [account, account, account]);
+  assert.deepEqual(listOutbound(w).map((item) => item.state), ["failed", "failed"]);
+  assert.deepEqual(listMail(w).map((item) => item.id), [id], "a permanent Gmail rejection restores the message");
+});
+
+test("a sync already in flight cannot undo a confirmed archive, but a later move back in Gmail is honored", async () => {
+  const w = world();
+  const account = "me@example.com", id = "m1";
+  const row = message(id, { labels: ["STARRED"] });
+  const state = { inbox: [id], unread: [], messages: { [id]: row } };
+  const google = fakeGmail(state, { modifyAccounts: [account], sendFor: () => async () => {
+    state.inbox = [];
+    row.labelIds = ["STARRED"];
+    return { status: 200, body: { id, labelIds: row.labelIds } };
+  } });
+  await syncMail(w, { google });
+  const started = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const slowRead: GoogleService = { ...google, async session(email) {
+    const session = await google.session(email);
+    return { ...session, async get(url, signal) {
+      const result = await session.get(url, signal);
+      started.resolve();
+      await release.promise;
+      return result;
+    } };
+  } };
+  const oldSync = syncMail(w, { google: slowRead });
+  await started.promise;
+  try {
+    invokeOp(w, [mailModule], { op: "mail.archive", requestId: "archive-during-sync", input: { account, id } });
+    await deliverQueued(w, mailModule, { google });
+    assert.equal(listOutbound(w)[0].state, "done");
+  } finally {
+    release.resolve();
+    await oldSync;
+  }
+  assert.deepEqual(listMail(w), []);
+  await syncMail(w, { google });
+  assert.deepEqual(listMail(w), []);
+  assert.equal(listMail(w, { saved: true })[0].inInbox, false);
+  row.labelIds.push("INBOX");
+  state.inbox.push(id);
+  await syncMail(w, { google });
+  assert.deepEqual(listMail(w).map((item) => item.id), [id]);
 });
 
 test("temporary read failures preserve retained mail until the account is explicitly disconnected", async () => {

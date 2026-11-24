@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api.ts";
 import { t } from "../i18n/dict.ts";
 import { concat, downsample, encodeWav } from "./wav.ts";
-import { stopSpeaking } from "../speech/voice.ts";
+import { audioSession, stopSpeaking } from "../speech/voice.ts";
 
 export type DictationState = "idle" | "starting" | "recording" | "transcribing";
 
@@ -45,6 +45,7 @@ function release(session: Session) {
   session.node.disconnect();
   session.node.port.onmessage = null;
   for (const track of session.stream.getTracks()) track.stop();
+  audioSession("auto");
 }
 
 export const dictationSupported = () =>
@@ -128,10 +129,11 @@ export function useDictation(onText: (text: string) => void): Dictation {
     void api.voiceWarm().catch(() => {});
     try {
       const ctx = await audioContext();
+      audioSession("play-and-record");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      if (starting !== attempt) { for (const track of stream.getTracks()) track.stop(); return; } // cancelled meanwhile
+      if (starting !== attempt) { for (const track of stream.getTracks()) track.stop(); audioSession("auto"); return; } // cancelled meanwhile
       starting = null;
       const source = ctx.createMediaStreamSource(stream);
       const node = new AudioWorkletNode(ctx, "isocline-capture");
@@ -145,6 +147,7 @@ export function useDictation(onText: (text: string) => void): Dictation {
       setState("recording");
     } catch (failure) {
       if (starting === attempt) starting = null;
+      audioSession("auto");
       setError(describe(failure));
       setState("idle");
     }

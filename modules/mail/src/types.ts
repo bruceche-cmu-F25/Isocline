@@ -43,7 +43,7 @@ export interface MailSource {
   canRead?: boolean;
   /** The user let Isocline send from this account (Settings: Gmail：替你发). */
   canSend: boolean;
-  /** This account allows Isocline to change Gmail stars. */
+  /** This account allows Isocline to change Gmail stars and archive messages. */
   canModify?: boolean;
 }
 
@@ -84,5 +84,5 @@ export interface MailSnapshot {
 
 /** The operations a device may ask of this module (POST /api/ops/<name>), as the module defines them. A test on the
  * home node checks this list against the module's own, so a device cannot name one that is not there. */
-export const MAIL_OPS = ["mail.send", "mail.mark_read", "mail.favorite"] as const;
+export const MAIL_OPS = ["mail.send", "mail.mark_read", "mail.favorite", "mail.archive"] as const;
 export type MailOp = (typeof MAIL_OPS)[number];

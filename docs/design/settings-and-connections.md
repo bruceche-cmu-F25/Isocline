@@ -73,10 +73,10 @@
 | 日历：读 | `calendar.readonly` | 敏感 |
 | 日历：替你加和改日程 | `calendar.events` | 敏感 |
 | Gmail：读 | `gmail.readonly` | 受限 |
-| Gmail 星标同步 | `gmail.modify` | 受限 |
+| 同步 Gmail 星标和归档 | `gmail.modify` | 受限 |
 | Gmail：替你发 | `gmail.send`（草稿先存在 Alfred 里，你点头才发） | 敏感 |
 
-用户可以只在 Alfred 收藏。启用 Gmail 星标同步后，在 Alfred 加星或取消星标会更新 Gmail 的 `STARRED` 标签。Google 为修改邮件标签提供的 `gmail.modify` 授权范围较广，Alfred 的星标操作只写这个标签。发信继续由单独的「替你发」开关控制。
+用户可以只在 Isocline 收藏。启用「同步 Gmail 星标和归档」后，收藏会同步到 Gmail 的 `STARRED` 标签。点「归档」会移除所选邮件的 `INBOX` 标签，邮件仍保留在 Gmail 中。发信继续由单独的「替你发」开关控制。
 
 可以连多个 Google 账号（Robin 的「外联邮箱」就是第二个账号加「替你发」）。
 
@@ -160,7 +160,7 @@ POST /api/connections/:id/disconnect        { requestId }：撤销加删除
 | 系统 | 设备 | 新（架构草案 5.7 节） |
 | | 隐私与数据 | Robin「隐私」：哪些数据出本机、数据目录、导出 |
 
-**现在的样子【已实现，2026-11-19】**：设置页顶上一排标签，一类一个：通用、模型、账户、技能、连接器、设备（`packages/ui/src/Settings.tsx`，做法参考 pi-web 的设置面板）。打开过的标签在页面开着时一直留着，所以等浏览器回来的登录不会因为看了别的标签而丢；上次看的标签记在这台设备上。已配对的设备上有「通用」「模型」和「设备」。「模型」显示订阅用量，登录订阅和管理密钥在主节点 Mac 上进行。
+**现在的样子【已实现，2026-11-19】**：设置页顶上一排标签，一类一个，按用得多少排（Bruce 2026-11-23）：通用、模型、技能、连接器、语音、账户、设备（`packages/ui/src/Settings.tsx`，做法参考 pi-web 的设置面板）。语音、账户、设备多半只设一次，放在后面。打开过的标签在页面开着时一直留着，所以等浏览器回来的登录不会因为看了别的标签而丢；上次看的标签记在这台设备上。已配对的设备上有「通用」「模型」和「设备」。「模型」显示订阅用量，登录订阅和管理密钥在主节点 Mac 上进行。
 
 - **通用**：语言（主节点的，各设备跟着）；外观、文字大小、发送键（Enter 或 ⌘Enter）只管这台设备，存在 localStorage（`prefs.ts`、`scheme.ts`）。手机的「底栏快捷入口」默认放待办，可以换成其他页面，也可以留空。这个选择只保存在当前设备。
 - **技能**（参考 pi-web 的 Settings › Skills）：`<数据目录>/skills/` 里的技能，一行一个的平列表：名字、一句用途、开关；点名字在卡片里看全文，移除也在卡片里。下面一个输入框管添加：打字筛这台 Mac 上已有的，按搜索去问 skills.sh。关掉是技能格式自己的 `disable-model-invocation: true`，文件还在，Alfred 看不到。加技能两条路：从 skills.sh 搜了下载（走它的 `/api/download`，不跑 `npx skills`，来源和版本记在 `skill-sources.json`，可以检查更新）；或者把这台 Mac 上别的助手装过的复制一份（`~/.agents/skills`、`~/.claude/skills`、`~/.pi/agent/skills`、`~/.codex/skills`）。主节点：`packages/engine-pi/src/skills.ts`，路由 `/api/skills/*`（只许本机）。有改动就动 `skills.rev`，开着的会话下一轮重开。

@@ -63,6 +63,8 @@ export const ACCESS: readonly Rule[] = [
   rule("*", "/api/models", "device"),
   rule("*", "/api/outlets", "device"),
   rule("*", "/api/presence", "device"),
+  // A speech service's key is a credential: only this machine.
+  rule("*", "/api/voice/services/*", "local"),
   rule("*", "/api/voice/*", "device"),
   rule("*", "/api/files/*", "device"),
   rule("*", "/api/runs/*", "device"),

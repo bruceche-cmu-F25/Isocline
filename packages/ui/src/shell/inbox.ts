@@ -10,6 +10,7 @@ import { getLocale, t, type Key } from "../i18n/dict.ts";
 import { plainText } from "../markdown.ts";
 import { automationTitle, editionTitle } from "../automationText.ts";
 import { awayUpdate } from "../welcome.ts";
+import { outboundWhat } from "../noticeText.ts";
 
 export type InboxKind = "decide" | "result" | "away" | "remind";
 export const KINDS: Array<[InboxKind, Key, string]> = [["decide", "inbox.k.decide", "warm"], ["result", "inbox.k.result", "alfred"], ["away", "inbox.k.away", "gray"], ["remind", "inbox.k.remind", "teal"]];
@@ -78,7 +79,9 @@ function editionFor(result: AwayResult, state: StateResponse, notice?: Notice): 
 export function inboxItems(state: StateResponse): InboxItem[] {
   const items: InboxItem[] = [];
   for (const proposal of state.proposals ?? []) {
-    items.push({ id: `p:${proposal.id}`, kind: "decide", title: proposal.title, summary: proposal.summary, at: proposal.createdAt,
+    // Being revised: it stays where it was, saying so, until the new version takes its place.
+    const summary = proposal.revising ? t("inbox.revisingShort") : proposal.summary;
+    items.push({ id: `p:${proposal.id}`, kind: "decide", title: proposal.title, summary, at: proposal.createdAt,
       conversationId: proposal.conversationId, runId: proposal.runId, proposal });
   }
   for (const run of state.runs) {
@@ -114,9 +117,12 @@ export function inboxItems(state: StateResponse): InboxItem[] {
       const status = notice.payload.state, module = notice.payload.module;
       const summary = status === "unknown"
         ? t(module === "mail" ? "inbox.mail.unknown" : module === "calendar" ? "inbox.calendar.unknown" : "inbox.sent.unknown")
+        // Several a proposal made, told together: where they came from.
+        : status === "done" && typeof notice.payload.count === "number" && notice.payload.count > 1
+          ? (typeof notice.payload.title === "string" ? t("inbox.sent.from", { title: notice.payload.title }) : t("inbox.sent.done"))
         : status === "done" ? t(module === "mail" ? "inbox.mail.sent" : "inbox.sent.done")
         : t("inbox.sent.failed", { error: String(notice.payload.error ?? "") });
-      items.push({ id: `n:${notice.id}`, kind: needsReview(notice) ? "decide" : "result", title: String(notice.payload.preview ?? ""),
+      items.push({ id: `n:${notice.id}`, kind: needsReview(notice) ? "decide" : "result", title: outboundWhat(notice.payload, t),
         summary, at: notice.createdAt, conversationId: null, runId: null, notice });
     } else if (notice.kind === "welcome") {
       const digest = notice.payload as unknown as AwayDigest;

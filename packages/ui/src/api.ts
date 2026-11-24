@@ -238,6 +238,9 @@ export const api = {
     return response.blob();
   },
   speakWarm: () => post<Record<string, never>>("/api/voice/speak/warm", {}),
+  /** A speech service's key, kept on the home node once the service has taken it (only from that machine). */
+  voiceServiceKey: (service: string, key: string) => call<VoiceStatus["speak"]>(`/api/voice/services/${service}/key`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) }),
+  voiceServiceForget: (service: string) => call<VoiceStatus["speak"]>(`/api/voice/services/${service}/key`, { method: "DELETE" }),
   /** Download and load the local voice model. */
   voiceModel: () => post<VoiceStatus["speak"]>("/api/voice/model", {}),
 };

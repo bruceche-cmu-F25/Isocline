@@ -383,13 +383,17 @@ export interface VoiceSettings {
 export interface SettingsRequest { requestId: string; patch: Omit<Partial<UserSettings>, "voice"> & { voice?: Partial<VoiceSettings> } }
 
 /** A voice Isocline can speak in (`GET /api/voice`). */
-export interface VoiceInfo { id: string; name: string; engine: "system" | "model"; lang: "zh" | "en" }
+export type SpeechService = "elevenlabs" | "inworld" | "boson";
+export interface VoiceInfo { id: string; name: string; engine: "system" | "model" | SpeechService; lang: "zh" | "en" | "any" }
+/** A speech service the user can bring a key for. `key`: saved on the home node, from its environment, or none. */
+export interface SpeechServiceStatus { id: SpeechService; name: string; keyUrl: string; key: "saved" | "env" | null; error: string | null }
 export interface VoiceStatus {
   /** Speech to text. */
   available: boolean; reason: string | null; loaded: boolean;
   speak: {
     available: boolean; reason: string | null; voices: VoiceInfo[];
     model: "absent" | "loading" | "ready" | "loaded" | null; modelBytes: number;
+    providers: SpeechServiceStatus[];
     /** The voice that will be used now. */
     current: string | null;
   };
@@ -423,6 +427,8 @@ export interface Proposal {
   outcome: { error?: string; receipts?: string[]; deliveryQueued?: boolean } | null;
   /** Open ones: something it touches changed since; accepting would run nothing. */
   stale?: boolean;
+  /** Open ones: the user asked for a change and this run is writing the new version, which will take its place. */
+  revising?: { runId: string; request: string };
 }
 export interface ProposalRequest { requestId: string }
 /** `context`: the page the change was asked from and what was picked there, as with a run. */

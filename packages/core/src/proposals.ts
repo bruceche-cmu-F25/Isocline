@@ -1,7 +1,9 @@
 /** Proposals: changes Isocline has prepared that wait for the user's yes.
  *
  * A run proposes and may then finish; the proposal waits (up to a week) in the user's inbox. The user accepts,
- * declines, or asks for a change (which opens a new run and supersedes this one). The user may also change a step
+ * declines, or asks for a change: a new run revises it, and this one stays in the inbox, marked as being revised, until
+ * that run proposes the new version (which supersedes it). A revising run that ends without proposing leaves it as it
+ * was, to decide. The user may also change a step
  * by their own hand before deciding (amendProposal: a proposed event dragged to another hour); what the step then
  * previews is what will run. Accepting runs exactly the steps that were previewed, once, in one transaction. If anything they touch has changed since the proposal was made
  * (read from the event log), it is stale and runs nothing. Only the user decides: the decision is a device command,
@@ -49,6 +51,8 @@ export interface Proposal {
   outcome: { error?: string; receipts?: string[]; deliveryQueued?: boolean } | null;
   /** Derived, for open proposals: something it touches has changed since. */
   stale?: boolean;
+  /** Derived, for open proposals: the user asked for a change and this run is writing the new version. */
+  revising?: { runId: string; request: string };
 }
 
 export class ProposalStateError extends Error {
@@ -70,6 +74,16 @@ function load(db: DatabaseSync, id: string): Proposal {
     createdAt: row.created_at as string, updatedAt: row.updated_at as string, expiresAt: row.expires_at as string,
     decidedAt: row.decided_at as string | null, outcome: row.outcome ? JSON.parse(row.outcome as string) : null,
   };
+}
+
+const ENDED_RUN = ["completed", "failed", "cancelled", "interrupted"];
+
+/** The run writing a new version of this open proposal, while it is still going. */
+function revisingOf(db: DatabaseSync, id: string): Proposal["revising"] {
+  const row = db.prepare(`SELECT p.revising_run_id AS runId, p.revising_request AS request, r.state AS runState FROM core_proposals p
+    JOIN core_runs r ON r.id = p.revising_run_id WHERE p.id = ? AND p.state = 'open'`).get(id);
+  if (!row || ENDED_RUN.includes(row.runState as string)) return undefined;
+  return { runId: row.runId as string, request: (row.request as string | null) ?? "" };
 }
 
 /** Has anything these subjects name changed since `seq`? */
@@ -130,16 +144,18 @@ export function openProposal(world: World, input: {
   const id = newId(), runId = coreContext()?.run?.id ?? null;
   return world.tx((db) => {
     const replaced: string[] = [];
-    if (input.replaces && input.conversationId) {
-      const earlier = db.prepare(`SELECT id FROM core_proposals WHERE state = 'open' AND expires_at > ? AND conversation_id = ?
-        AND (run_id IS NULL OR run_id IS NOT ?) ORDER BY created_at, rowid`).all(iso(now), input.conversationId, runId);
-      for (const row of earlier) {
-        const old = load(db, row.id as string);
-        setState(db, old.id, "superseded", now, { decided: true });
-        event(world, old, "proposal.decided", { decision: "revise", request: "", replacedBy: id }, now);
-        closeNotices(db, old.id, now);
-        replaced.push(old.id);
-      }
+    // What earlier runs here left open, when this corrects it; and always the one this run was asked to revise.
+    const replaceEarlier = !!(input.replaces && input.conversationId);
+    const earlier = db.prepare(`SELECT id, revising_request FROM core_proposals WHERE state = 'open' AND expires_at > ? AND (
+        (? AND conversation_id = ? AND (run_id IS NULL OR run_id IS NOT ?))
+        OR (? IS NOT NULL AND revising_run_id = ?)
+      ) ORDER BY created_at, rowid`).all(iso(now), replaceEarlier ? 1 : 0, input.conversationId ?? null, runId, runId, runId);
+    for (const row of earlier) {
+      const old = load(db, row.id as string);
+      setState(db, old.id, "superseded", now, { decided: true });
+      event(world, old, "proposal.decided", { decision: "revise", request: ((row.revising_request as string | null) ?? "").slice(0, 500), replacedBy: id }, now);
+      closeNotices(db, old.id, now);
+      replaced.push(old.id);
     }
     const opened = recordDomainEvent(world, {
       kind: "proposal.opened", subject: `proposal:${id}`, now,
@@ -164,7 +180,8 @@ export function listOpenProposals(world: World, now: number = Date.now()): Propo
   const rows = world.db.prepare("SELECT id FROM core_proposals WHERE state = 'open' AND expires_at > ? ORDER BY created_at, rowid").all(iso(now));
   return rows.map((row) => {
     const proposal = load(world.db, row.id as string);
-    return { ...proposal, stale: changedSince(world.db, proposal.subjects, proposal.openedSeq) };
+    const revising = revisingOf(world.db, proposal.id);
+    return { ...proposal, stale: changedSince(world.db, proposal.subjects, proposal.openedSeq), ...(revising ? { revising } : {}) };
   });
 }
 
@@ -242,7 +259,21 @@ export function amendProposal(world: World, id: string, index: number, step: Pro
   });
 }
 
-/** The user wants it changed: this one is superseded; the caller opens the run that revises it. */
+/** The user wants it changed, and `runId` is the run the caller opened to write the new version. This one stays open,
+ * marked as being revised, so it does not vanish from the inbox while the new version is written; that run's proposal
+ * supersedes it (openProposal). */
+export function markRevising(world: World, id: string, request: string, runId: string, now: number = Date.now()): Proposal {
+  return world.tx((db) => {
+    const proposal = load(db, id);
+    if (proposal.state !== "open") throw new ProposalStateError(proposal.state);
+    db.prepare("UPDATE core_proposals SET revising_run_id = ?, revising_request = ?, updated_at = ? WHERE id = ?").run(runId, request.slice(0, 500), iso(now), id);
+    event(world, proposal, "proposal.revising", { request: request.slice(0, 500), runId }, now);
+    const revising = revisingOf(db, id);
+    return { ...load(db, id), ...(revising ? { revising } : {}) };
+  });
+}
+
+/** The user wants it changed and nothing will write the new version: this one is superseded now. */
 export function supersedeProposal(world: World, id: string, request: string, now: number = Date.now()): Proposal {
   return world.tx((db) => {
     const proposal = load(db, id);

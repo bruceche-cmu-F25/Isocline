@@ -146,7 +146,7 @@ const REFUSALS: Record<string, Refusal> = {
   ProcessError: { by: { missing: 404, too_many: 409 }, otherwise: 400, code: "process_" },
   TerminalError: { by: { missing: 404, unavailable: 503, too_many: 409 }, otherwise: 400, code: "terminal_" },
   VoiceError: { by: { unavailable: 503, busy: 429 }, otherwise: 502, code: "voice_" },
-  MailFavoriteError: { by: { missing: 404, permission: 403, reconnect: 409 }, otherwise: 502, code: "mail_" },
+  MailLabelError: { by: { missing: 404, permission: 403, reconnect: 409 }, otherwise: 502, code: "mail_" },
   ServiceError: { by: { reconnect: 409 }, otherwise: 502, code: "google_" },
   GoogleError: { by: { unknown_account: 404, no_client: 409, busy: 429 }, otherwise: 502, code: "" },
   // The engine's (skills, model sign-in, connectors).

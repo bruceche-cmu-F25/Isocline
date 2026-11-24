@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import webpush from "web-push";
 import { isSession, listDevices, userLocale, type DeviceScope, type Outlet, type World } from "@isocline/core";
 import { getAssistant, translate, type Key } from "@isocline/ui/i18n";
-import { inboxTarget, inboxUrl } from "@isocline/ui/notice";
+import { inboxTarget, inboxUrl, outboundWhat } from "@isocline/ui/notice";
 import { plainText } from "@isocline/ui/markdown";
 import type { Reach } from "./attention.ts";
 import type { SecretStore } from "./secrets.ts";
@@ -113,7 +113,7 @@ export function noticeMessage(notice: { id: string; kind: string; payload: Recor
     const error = notice.payload.error ? cut(String(notice.payload.error), 100) : "";
     if (notice.payload.state === "failed") return { ...base, title: say("mac.outbound.failed"), body: error ? say("mac.outbound.failedBody", { preview, error }) : preview, url: inbox, ack: false };
     if (notice.payload.state === "unknown") return { ...base, title: say("mac.outbound.unknown"), body: say("mac.outbound.unknownBody", { preview }), url: inbox, ack: false };
-    return { ...base, title: say("mac.outbound.done"), body: preview, url: inbox, ack: false };
+    return { ...base, title: say("mac.outbound.done"), body: cut(outboundWhat(notice.payload, say), 120), url: inbox, ack: false };
   }
   const target = inboxTarget(notice);
   const destination = target ? { url: inbox, ack: false } : { url: at, ack: true };
@@ -199,7 +199,12 @@ export class PushService {
         result.accepted++;
       } catch (error) {
         const status = (error as { statusCode?: number }).statusCode;
-        if (status === 404 || status === 410) { this.unsubscribe(id); result.expired++; }
+        if (status === 404 || status === 410) {
+          // The device makes a new one when it next opens (ui push.ts resumePush); until then it gets nothing.
+          this.unsubscribe(id);
+          result.expired++;
+          this.#options.log?.(`push to ${id}: the push service says the subscription is gone (${status}); dropped until the device opens again`);
+        }
         else { result.failed++; this.#options.log?.(`push to ${id} failed: ${status ?? ""} ${(error as Error).message}`); }
       }
     }
@@ -217,6 +222,8 @@ export class PushService {
         const conversation = notice.payload.conversationId;
         const dev = typeof conversation === "string" && isSession(world, conversation);
         const result = await this.sendTo(noticeMessage(notice, userLocale(world)), undefined, dev ? "dev" : undefined);
+        // One line per notice, so "nothing arrived" can be told apart from "nothing was sent".
+        this.#options.log?.(`push: notice ${notice.id} (${notice.kind}) to ${result.accepted} device(s)${result.failed ? `, ${result.failed} failed` : ""}${result.expired ? `, ${result.expired} gone` : ""}`);
         return result.accepted > 0;
       },
     }];

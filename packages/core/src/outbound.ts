@@ -7,7 +7,9 @@
  * Nothing goes out twice. A delivery that was cut off while `sending` (the home node stopped) becomes `unknown`, and is
  * retried only when its module said the action is idempotent (an event created under its own id, say); an email is
  * never resent, and the user is asked to check. Every ending is a notice, so the user hears how it went; except that
- * a change they made with their own hands (`quiet`) is only told when it did not go through.
+ * a change they made with their own hands (`quiet`) is only told when it did not go through, and the changes one
+ * proposal made are told together: what went through is one notice once the last of them has ended (a plan of eleven
+ * events is one "done", not eleven), while each that failed or may not have happened is told on its own.
  */
 import type { DatabaseSync } from "node:sqlite";
 import { coreContext } from "./context.ts";
@@ -112,18 +114,50 @@ function end(world: World, db: DatabaseSync, outbound: Outbound, state: "done" |
     payload: { outboundId: outbound.id, module: outbound.module, action: outbound.action, preview: outbound.preview, ...(extra.error ? { error: extra.error.slice(0, 300) } : {}) },
   });
   if (outbound.quiet && state === "done") return load(db, outbound.id);
-  // The account a person needs when checking a Gmail send or Calendar change. Other payloads stay private.
+  if (outbound.proposalId) {
+    if (state !== "done") tell(db, event.seq, outbound, state, extra.error, now);
+    tellProposalDone(db, event.seq, outbound.proposalId, now);
+  } else tell(db, event.seq, outbound, state, extra.error, now);
+  return load(db, outbound.id);
+}
+
+/** The account a person needs when checking a Gmail send or Calendar change. Other payloads stay private. */
+function accountOf(outbound: Outbound): string | null {
   const googleAction = (outbound.module === "mail" && outbound.action === "send") || outbound.module === "calendar";
   const input = outbound.payload;
-  const account = googleAction && input && typeof input === "object" && "account" in input && typeof input.account === "string" ? input.account : null;
+  return googleAction && input && typeof input === "object" && "account" in input && typeof input.account === "string" ? input.account : null;
+}
+
+function tell(db: DatabaseSync, eventSeq: number, outbound: Outbound, state: OutboundState, error: string | undefined, now: number): void {
+  const account = accountOf(outbound);
   createNotice(db, {
-    eventSeq: event.seq, kind: "outbound", now,
+    eventSeq, kind: "outbound", now,
     payload: {
       outboundId: outbound.id, module: outbound.module, action: outbound.action, state, preview: outbound.preview,
-      ...(account ? { account } : {}), ...(outbound.proposalId ? { proposalId: outbound.proposalId } : {}), ...(extra.error ? { error: extra.error.slice(0, 300) } : {}),
+      ...(account ? { account } : {}), ...(outbound.proposalId ? { proposalId: outbound.proposalId } : {}), ...(error ? { error: error.slice(0, 300) } : {}),
     },
   });
-  return load(db, outbound.id);
+}
+
+/** Once nothing one proposal queued is still waiting or being sent, what went through is told in one notice. One
+ * change is told as itself; several carry each one's preview (`previews`) and how many (`count`). */
+function tellProposalDone(db: DatabaseSync, eventSeq: number, proposalId: string, now: number): void {
+  const all = db.prepare("SELECT * FROM core_outbound WHERE proposal_id = ? ORDER BY created_at, rowid").all(proposalId).map(toOutbound);
+  if (all.some((each) => each.state === "queued" || each.state === "sending")) return;
+  const done = all.filter((each) => each.state === "done" && !each.quiet);
+  if (!done.length) return;
+  if (done.length === 1) { tell(db, eventSeq, done[0], "done", undefined, now); return; }
+  const modules = [...new Set(done.map((each) => each.module))], actions = [...new Set(done.map((each) => each.action))];
+  const accounts = [...new Set(done.map(accountOf))];
+  const title = db.prepare("SELECT title FROM core_proposals WHERE id = ?").get(proposalId)?.title as string | undefined;
+  createNotice(db, {
+    eventSeq, kind: "outbound", now,
+    payload: {
+      outboundIds: done.map((each) => each.id), module: modules.length === 1 ? modules[0] : "mixed", action: actions.length === 1 ? actions[0] : "mixed",
+      state: "done", count: done.length, preview: done[0].preview, previews: done.slice(0, 30).map((each) => each.preview),
+      proposalId, ...(title ? { title } : {}), ...(accounts.length === 1 && accounts[0] ? { account: accounts[0] } : {}),
+    },
+  });
 }
 
 /** How a delivery ended: done (with what the service answered), failed (refused, or given up), or unknown (it may or

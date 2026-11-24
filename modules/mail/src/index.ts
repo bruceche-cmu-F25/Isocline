@@ -1,5 +1,6 @@
 /** Gmail's recent inbox and previously seen saved or important messages, mirrored for reading on the home node. */
 import { listOutbound, recordDomainEvent, withDefaultActor, type World, defineModule, defineOp, defineQuery, defineTool, ServiceError, Type, type ModuleServices } from "@isocline/module-kit";
+import { archiveOp, deliverArchive, VISIBLE_MAIL } from "./archive.ts";
 import { deliverStar, favoriteOp, starsOnTheirWay } from "./favorites.ts";
 import { INBOX_MAX, readInbox, unescapeHtml } from "./google.ts";
 import { deliverMail, mailOps, mailWriteTools } from "./write.ts";
@@ -96,6 +97,7 @@ export async function syncMail(world: World, services: ModuleServices, signal?: 
       const cached = world.db.prepare(`SELECT id, in_inbox, labels_checked_at FROM mail_messages
         WHERE account = ? ORDER BY labels_checked_at, id`).all(account);
       const known = new Set(cached.map((row) => row.id as string));
+      const previouslyInInbox = new Set(cached.filter((row) => row.in_inbox === 1).map((row) => row.id as string));
       const due = cached.filter((row) => row.in_inbox === 1 || !row.labels_checked_at || Number(row.labels_checked_at) <= now - VERIFY_RETAINED_AFTER_MS)
         .map((row) => row.id as string);
       let result: Awaited<ReturnType<typeof readInbox>>;
@@ -133,12 +135,15 @@ export async function syncMail(world: World, services: ModuleServices, signal?: 
         // A star the user changed that is still on its way to Gmail: Gmail's answer, read before it arrived, is not
         // news about it. Read inside this transaction, so a click that came during the read counts.
         const onTheirWay = starsOnTheirWay(world, account);
-        const labels = db.prepare(`UPDATE mail_messages SET in_inbox = :recent, starred = CASE WHEN :keep = 1 THEN starred ELSE :starred END,
+        const labels = db.prepare(`UPDATE mail_messages SET in_inbox = COALESCE(:recent, in_inbox), starred = CASE WHEN :keep = 1 THEN starred ELSE :starred END,
           important = :important, unread = :unread, read_in_alfred = CASE WHEN :unread = 0 THEN 0 ELSE read_in_alfred END
           WHERE account = :account AND id = :id AND (in_inbox <> :recent OR (:keep = 0 AND starred <> :starred) OR important <> :important OR unread <> :unread)`);
         let changed = Number(markedOutside) + added.length;
         for (const id of inbox) {
-          changed += Number(labels.run({ account, id, recent: 1, keep: Number(onTheirWay.has(id)), starred: Number(starred.has(id)), important: Number(important.has(id)), unread: Number(unread.has(id)) }).changes);
+          // If both the old mirror and Gmail's read had it in the inbox, preserve any archive
+          // confirmed after the read began. A later read can still observe a move back to the inbox.
+          const recent = previouslyInInbox.has(id) ? null : 1;
+          changed += Number(labels.run({ account, id, recent, keep: Number(onTheirWay.has(id)), starred: Number(starred.has(id)), important: Number(important.has(id)), unread: Number(unread.has(id)) }).changes);
         }
         const prune = db.prepare("DELETE FROM mail_messages WHERE account = ? AND id = ? AND (? = 1 OR local_saved = 0)");
         const verified = db.prepare("UPDATE mail_messages SET labels_checked_at = ? WHERE account = ? AND id = ?");
@@ -175,7 +180,7 @@ function toMessage(row: Record<string, unknown>): MailMessage {
     // Gmail's snippet comes HTML-escaped ("didn&#39;t") and is kept as it came.
     snippet: unescapeHtml(row.snippet as string),
     receivedAt: new Date(row.received_at as number).toISOString(), unread: row.unread === 1 && row.read_in_alfred === 0, important: row.important === 1, starred: row.starred === 1,
-    inInbox: row.in_inbox === 1, localSaved: row.local_saved === 1,
+    inInbox: row.visible_inbox === 1, localSaved: row.local_saved === 1,
     category: row.category as MailCategory, link: gmailLink(row.account as string, row.thread_id as string),
   };
 }
@@ -187,7 +192,7 @@ export function mailSources(world: World): MailSource[] {
   }));
 }
 
-const MESSAGE_SUMMARY = "id, account, thread_id, from_name, from_email, subject, snippet, received_at, unread, read_in_alfred, important, starred, category, in_inbox, local_saved";
+const MESSAGE_SUMMARY = "id, account, thread_id, from_name, from_email, subject, snippet, received_at, unread, read_in_alfred, important, starred, category, visible_inbox, local_saved";
 
 export interface MailFilter { unread?: boolean; from?: string; search?: string; everything?: boolean; saved?: boolean; important?: boolean; limit?: number }
 
@@ -196,18 +201,18 @@ export function listMail(world: World, filter: MailFilter = {}): MailMessage[] {
   const where: string[] = [];
   if (filter.saved) where.push("(starred = 1 OR local_saved = 1)");
   if (filter.important) where.push("important = 1");
-  if (!filter.saved && !filter.important) where.push("in_inbox = 1");
+  if (!filter.saved && !filter.important) where.push("visible_inbox = 1");
   const values: Array<string | number> = [];
   if (!filter.everything && !filter.saved && !filter.important) where.push("category = 'primary'");
   if (filter.unread) where.push("unread = 1 AND read_in_alfred = 0");
   if (filter.from) { where.push("(from_name LIKE ? OR from_email LIKE ?)"); values.push(`%${filter.from}%`, `%${filter.from}%`); }
   if (filter.search) { where.push("(subject LIKE ? OR snippet LIKE ? OR body LIKE ?)"); values.push(...Array(3).fill(`%${filter.search}%`)); }
   values.push(Math.max(1, Math.min(filter.limit ?? 200, INBOX_MAX)));
-  return world.db.prepare(`SELECT ${MESSAGE_SUMMARY} FROM mail_messages WHERE ${where.join(" AND ")} ORDER BY received_at DESC LIMIT ?`).all(...values).map(toMessage);
+  return world.db.prepare(`SELECT ${MESSAGE_SUMMARY} FROM ${VISIBLE_MAIL} WHERE ${where.join(" AND ")} ORDER BY received_at DESC LIMIT ?`).all(...values).map(toMessage);
 }
 
 export function getMail(world: World, id: string, account?: string): MailDetail | null {
-  const row = world.db.prepare(`SELECT * FROM mail_messages WHERE id = ?${account ? " AND account = ?" : ""} LIMIT 1`).get(...(account ? [id, account] : [id]));
+  const row = world.db.prepare(`SELECT * FROM ${VISIBLE_MAIL} WHERE id = ?${account ? " AND account = ?" : ""} LIMIT 1`).get(...(account ? [id, account] : [id]));
   if (!row) return null;
   return {
     ...toMessage(row), to: row.to_line as string, body: row.body as string,
@@ -243,6 +248,7 @@ export const mailModule = defineModule({
   ops: [
     ...mailOps,
     favoriteOp,
+    archiveOp,
     defineOp({
       name: "mail.mark_read",
       input: Type.Object({ account: Type.String({ minLength: 1, maxLength: 320 }), id: Type.String({ minLength: 1, maxLength: 64 }) }),
@@ -318,11 +324,17 @@ export const mailModule = defineModule({
     "Asked from the Mail page to draft or reply (the selected item is the message's id): read it with mail_read, write the whole email yourself and propose it at once, one mail_send with reply_to. The user's few words are what it should say, not its text; with no words, write the reply that fits. Do not ask first unless a wrong guess would matter: they read and edit the draft before it goes. Answer in the language of the email you reply to, short and plain, in the user's voice, and after proposing say one short line.",
   ].join(" "),
   snapshot(world): MailSnapshot {
-    const messages = world.db.prepare(`SELECT ${MESSAGE_SUMMARY} FROM mail_messages
-      WHERE in_inbox = 1 OR starred = 1 OR important = 1 OR local_saved = 1 ORDER BY received_at DESC`).all().map(toMessage);
+    const messages = world.db.prepare(`SELECT ${MESSAGE_SUMMARY} FROM ${VISIBLE_MAIL}
+      WHERE visible_inbox = 1 OR starred = 1 OR important = 1 OR local_saved = 1 ORDER BY received_at DESC`).all().map(toMessage);
     return { messages, sources: mailSources(world), sent: listSent(world) };
   },
   sync: { everyMs: 30 * 60_000, onEvents: ["connection.connected", "connection.updated", "connection.disconnected"], run: syncMail },
-  // A star is the user's own click; anything else is an email they accepted.
-  deliver: (world, outbound, services, signal) => outbound.action === "star" ? deliverStar(world, outbound, services, signal) : deliverMail(world, outbound, services, signal),
+  deliver(world, outbound, services, signal) {
+    switch (outbound.action) {
+      case "star": return deliverStar(world, outbound, services, signal);
+      case "archive": return deliverArchive(world, outbound, services, signal);
+      case "send": return deliverMail(world, outbound, services, signal);
+      default: throw new Error(`Unknown mail action: ${outbound.action}`);
+    }
+  },
 });

@@ -4,9 +4,9 @@ import "./links.css";
 
 /** A link that leads outside Isocline, drawn so it reads as one. It opens in a new tab; in the Mac app, in the
  * user's browser. A click on it is not also a click on the row or card it stands in. */
-export function OutLink({ href, children, className }: { href: string; children: ReactNode; className?: string }) {
+export function OutLink({ href, children, className, label }: { href: string; children: ReactNode; className?: string; label?: string }) {
   return (
-    <a className={className ? `${className} text-link` : "text-link"} href={href} target="_blank" rel="noreferrer noopener" onClick={(event) => event.stopPropagation()}>
+    <a className={className ? `${className} text-link` : "text-link"} aria-label={label} title={label} href={href} target="_blank" rel="noreferrer noopener" onClick={(event) => event.stopPropagation()}>
       {children}
     </a>
   );

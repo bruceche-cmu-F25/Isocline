@@ -56,6 +56,20 @@
 | **系统声音**（macOS `say`，默认婷婷） | 系统自带，零下载 | 一句约 0.6 秒；回听错误率 5.4%，中英混说念得清楚；声音偏机器 | **默认** |
 | **本机模型**（Qwen3-TTS 0.6B，MLX 8-bit） | 你点了才下载，约 2GB | 一句约 3 秒出声，算 1 秒音频要 0.6 秒；峰值内存约 5GB；回听错误率 5.4%；更像真人 | 设置里选它才用 |
 | ~~Kokoro 82M~~ | | 快（15 倍实时），但中文模式把句中英文念坏（Stripe → Steve，整句英文被听成韩文） | 不用 |
+| **语音服务**：ElevenLabs、Inworld、Boson AI（2026-11-23 加，Bruce：「念的话直接 API」） | 你在设置里填自己的 key（存钥匙串 `voice:<服务>`，也认 `ELEVENLABS_API_KEY` / `INWORLD_API_KEY` / `BOSON_API_KEY`） | 没用真 key 试过 | 选了它的声音就用它；它出错（没额度、没网）时这一句改用系统声音念，回复不会没声 |
+
+**三家怎么接**（`packages/server/src/speak-cloud.ts`，按各家文档 2026-11-23 版）：
+
+| | 合成 | 声音列表 | 中文 | 语速 |
+| --- | --- | --- | --- | --- |
+| ElevenLabs | `POST /v1/text-to-speech/{voice_id}?output_format=wav_24000`，`xi-api-key`，模型 `eleven_flash_v2_5`（低延迟，读中文） | `GET /v2/voices`（你库里的声音） | 支持 | `voice_settings.speed`，0.7–1.2 |
+| Inworld | `POST /tts/v1/voice`，`Authorization: Basic <key>`（后台给的 key 本身就是 Base64），模型 `inworld-tts-2`，`LINEAR16` 24kHz，回来的是 Base64 的 WAV | `GET /voices/v1/voices`，只取中文和英文 | `zh-CN` | `speakingRate`，0.5–1.5 |
+| Boson AI | `POST /v1/audio/speech`，Bearer，模型 `higgs-tts-3`，`response_format: "wav"` | 六个预设（chloe、eleanor、nora、jake、marcus、oliver，文档里列的，API 不列）+ 你自己做的声音 `GET /v1/audio/voices` | 模型读得了中文，但预设都是美式英语声音 | 没有字段：开头加 `<|prosody:speed_slow|>` 之类，同 Robin |
+
+- key 是凭据，只能在运行 Isocline 的那台 Mac 上填（`/api/voice/services/*` 只许本机）；保存前先用它列一次声音，服务不收就不存。手机上只看得到连没连。
+- 声音列表里服务的声音排最前，标着服务名。
+- 隐私：选了服务的声音，要念的文字会发给那家（ARCHITECTURE 第 5.4 节要如实说明），设置页那一节写着。
+- Boson 的开源权重是非商用许可；它的托管 API 用你自己的 key，条款以 Boson 为准，没细读。
 
 - 按句念：设备把一段话切成句子，一句一句要音频，念第一句时去要第二句。这样本机模型也能在两三秒内出声。
 - 跟识别一样：按需加载，闲置 10 分钟卸载；同一时刻一个工作进程。

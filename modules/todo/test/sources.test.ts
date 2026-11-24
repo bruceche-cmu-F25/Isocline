@@ -94,8 +94,8 @@ test("a run suggests through todo_suggest, unattended too, and sees suggestions 
   const tools = runTools(w, [todoModule], { askFor: [] });
   const suggest = tools.find((tool) => tool.name === "todo_suggest")!;
   assert.equal(suggest.permission, undefined, "a suggestion is easy to undo: it never asks");
-  const said = withCoreContext({ actor: "alfred" }, () => suggest.execute({ title: "Submit the form", due: "2026-11-25", mailId: "18c2f", subject: "Form due Nov 25" }, new AbortController().signal));
-  assert.match(String(said), /^Suggested \[ \] \S+ {2}Submit the form \(due 2026-11-25\) \(your suggestion; the user has not kept it yet\)$/);
+  const said = withCoreContext({ actor: "alfred" }, () => suggest.execute({ title: "Submit the form", due: "2099-11-25", mailId: "18c2f", subject: "Form due Nov 25" }, new AbortController().signal));
+  assert.match(String(said), /^Suggested \[ \] \S+ {2}Submit the form \(due 2099-11-25\) \(your suggestion; the user has not kept it yet\)$/);
   assert.match(String(suggest.execute({ title: "Submit the form", mailId: "18c2f", subject: "Form due Nov 25" }, new AbortController().signal)), /already suggested/);
   assert.throws(() => suggest.execute({ title: "x", mailId: "../etc", subject: "s" }, new AbortController().signal), /Invalid parameters/);
 

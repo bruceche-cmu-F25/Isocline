@@ -45,6 +45,28 @@ export interface NavProps {
   onLanguage(): void;
 }
 
+const UNFOLDED_KEY = "isocline.unfoldedProjects";
+
+/** The projects unfolded on this device; every other one starts folded. */
+function readUnfolded(): Set<string> {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(UNFOLDED_KEY) ?? "[]");
+    return new Set(Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : []);
+  } catch { return new Set(); }
+}
+function writeUnfolded(ids: Set<string>): void {
+  try { localStorage.setItem(UNFOLDED_KEY, JSON.stringify([...ids])); } catch { /* private mode: lasts until the page closes */ }
+}
+
+/** A folded project still shows the most pressing state among its sessions: a reply unread, a question, or work running. */
+function FoldedStatus({ sessions }: { sessions: Conversation[] }) {
+  const unread = sessions.find((conversation) => conversation.unreadReplyId);
+  const attention = sessions.reduce((sum, conversation) => sum + conversation.attention, 0);
+  const busy = sessions.reduce((sum, conversation) => sum + conversation.busy, 0);
+  if (!unread && !attention && !busy) return null;
+  return <ConversationStatus conversation={{ unreadReplyId: unread?.unreadReplyId ?? null, attention, busy }} />;
+}
+
 /** The sidebar: the workspace's pages, then the conversations, like a session list; in Code, the projects' sessions. */
 /** Light or dark, and 中文 / English: in the top bar, or at the foot of the phone's sidebar. */
 export function ViewButtons({ onLanguage }: { onLanguage(): void }) {
@@ -122,6 +144,16 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, on
   ];
   const projects = (state.projects ?? []).filter((project) => project.trustedAt);
   const sessionsIn = (projectId: string) => state.conversations.filter((conversation) => conversation.projectId === projectId).slice(0, 4);
+  // Projects start folded; the one holding the open session stays unfolded.
+  const [unfolded, setUnfolded] = useState(readUnfolded);
+  const openSession = session ? state.conversations.find((conversation) => conversation.id === session) : undefined;
+  const isOpen = (projectId: string) => unfolded.has(projectId) || openSession?.projectId === projectId;
+  const fold = (projectId: string, open: boolean) => setUnfolded((current) => {
+    const next = new Set(current);
+    if (open) next.add(projectId); else next.delete(projectId);
+    writeUnfolded(next);
+    return next;
+  });
 
   return (
     <nav className="nav" aria-label={t("nav.label")}>
@@ -160,13 +192,19 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, on
           {items.some((item) => item.group === "dev") && projects.map((project) => (
             <div className="nav-project" key={project.id}>
               <div className="nav-project-head">
-                <p className="nav-project-name" title={project.path}>{project.name}</p>
+                <button type="button" className="nav-project-toggle" aria-expanded={isOpen(project.id)} aria-controls={`nav-project-${project.id}`}
+                  title={project.path} onClick={() => fold(project.id, !isOpen(project.id))}>
+                  <Icon name="down" />
+                  <Icon name="folder" />
+                  <span className="nav-project-name">{project.name}</span>
+                  {!isOpen(project.id) && <FoldedStatus sessions={sessionsIn(project.id)} />}
+                </button>
                 <button type="button" className="icon-btn" aria-label={t("nav.newProjectConversation", { name: project.name })}
-                  title={t("nav.newProjectConversation", { name: project.name })} onClick={() => onNewProjectSession(project.id)}>
+                  title={t("nav.newProjectConversation", { name: project.name })} onClick={() => { fold(project.id, true); onNewProjectSession(project.id); }}>
                   <Icon name="plus" />
                 </button>
               </div>
-              <ul className="conv-list">
+              <ul className="conv-list" id={`nav-project-${project.id}`} hidden={!isOpen(project.id)}>
                 {sessionsIn(project.id).map((conversation) => (
                   <li key={conversation.id}>
                     <button type="button" className="conv" aria-current={session === conversation.id ? "true" : undefined}

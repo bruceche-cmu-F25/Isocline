@@ -44,6 +44,7 @@ import { LEGACY_WEB_SESSION_COOKIE, WEB_SESSION_COOKIE, type WebLock } from "./w
 import type { PushService } from "./push.ts";
 import { MAX_VOICE_BYTES, type Transcriber } from "./voice.ts";
 import type { Speaker } from "./speak.ts";
+import { isCloudProvider } from "./speak-cloud.ts";
 import { MAX_FILE_BYTES } from "./files.ts";
 import { encodingFor, HttpError, overTheWire, pack, parseObject, readBytes, readJson, send, statusOf, type Encoding } from "./wire.ts";
 import { checkAccess, NEEDS_DEV } from "./access.ts";
@@ -784,6 +785,20 @@ async function voiceRoute(home: Home, voice: Transcriber | undefined, speaker: S
     await readJson(req);
     speaker.install();
     return send(res, 202, await speaker.status());
+  }
+  // A speech service's key (only on this machine, access.ts): saved once the service has taken it; or forgotten.
+  const service = /^\/api\/voice\/services\/([a-z]+)\/key$/.exec(path);
+  if (speaker && service && isCloudProvider(service[1]!)) {
+    if (req.method === "PUT") {
+      const body = await readJson<{ key?: unknown }>(req);
+      if (typeof body.key !== "string") throw new HttpError(400, "key is required");
+      await speaker.setKey(service[1], body.key);
+      return send(res, 200, await speaker.status());
+    }
+    if (req.method === "DELETE") {
+      await speaker.removeKey(service[1]);
+      return send(res, 200, await speaker.status());
+    }
   }
   throw new HttpError(404, "Not found");
 }

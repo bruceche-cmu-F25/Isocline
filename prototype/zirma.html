@@ -1,0 +1,266 @@
+<!doctype html>
+<!--
+  Zirma: what the product would look like under that name. A prototype: no build step.
+  Zirma is a city in Italo Calvino's "Invisible Cities" (1972) that repeats itself so that something stays in the
+  mind; the name is only borrowed, no text is quoted. Lowercase "zirma" has one i, so the one figure can be its dot.
+
+  The dot is drawn by us, not the font, the same way as prototype/isocline.html: the i is set as a dotless ı (U+0131)
+  and the mark is placed where Geist Serif's own dot sits (0.147em from the glyph's left, 0.193em down, line-height 1).
+
+  Font: Geist Serif 1.9.2 by Vercel with Andrés Briganti and Mark Davis, https://github.com/vercel/geist-font,
+  SIL Open Font License 1.1 (fonts/GeistSerif-OFL.txt). The tesseract is figure.js (packages/ui/src/entity).
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zirma 设计</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+@font-face {
+  font-family: "Geist Serif";
+  src: url("fonts/GeistSerifVF.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: block;
+}
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  --geist: "Geist Serif", Georgia, serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { min-height: 100vh; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+h1, h2, p { margin: 0; }
+
+.bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 12px 24px;
+  background: color-mix(in oklch, var(--bg) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line-soft, var(--line)); }
+.bar b { font-weight: 600; }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); }
+.seg button { padding: 3px 12px; border-radius: 999px; font-size: 13px; color: var(--copy, var(--ink)); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+main { max-width: 1080px; margin: 0 auto; padding: 32px 24px 96px; display: grid; gap: 14px; container-type: inline-size; }
+.intro { color: var(--copy, var(--ink)); max-width: 68ch; margin-bottom: 18px; }
+.intro h1 { font-size: 22px; font-weight: 650; margin-bottom: 8px; color: var(--ink); }
+
+/* The hero: a first screen of the homepage under the new name. */
+.hero { display: grid; justify-items: center; text-align: center; gap: 14px; padding: 56px 24px 48px; border-radius: 20px;
+  background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft, var(--line)); margin-bottom: 18px; }
+.hero svg.live { width: 132px; height: 132px; }
+.hero .wm { font-size: clamp(56px, 14cqi, 112px); }
+.hero .say { font-size: 13px; color: var(--muted); letter-spacing: .02em; }
+.hero .line { font-family: var(--geist); font-size: clamp(20px, 4cqi, 28px); color: var(--ink); max-width: 24ch; line-height: 1.3; }
+.hero .sub { color: var(--copy); max-width: 46ch; font-size: 15px; }
+
+.row { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: center; padding: 22px 24px; border-radius: 16px;
+  background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft, var(--line)); }
+.row h2 { font-size: 15px; font-weight: 650; }
+.row p { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+.sizes { display: flex; flex-wrap: wrap; align-items: baseline; gap: 18px 40px; min-width: 0; }
+@container (max-width: 680px) { .row { grid-template-columns: minmax(0, 1fr); gap: 14px; } }
+
+/* The wordmark. The i is a dotless ı with our dot over it. */
+.wm { font-family: var(--geist); font-weight: 400; line-height: 1; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; position: relative; display: inline-block; }
+.wm.xl { font-size: clamp(56px, 11cqi, 96px); } .wm.md { font-size: 30px; } .wm.sm { font-size: 17px; }
+.wm.caps { letter-spacing: .14em; }
+.i { position: relative; display: inline-block; }
+.dot { position: absolute; left: 0.147em; top: 0.193em; width: 0.112em; height: 0.112em; transform: translate(-50%, -50%); }
+.dot.round { border-radius: 50%; background: currentColor; }
+.dot.alf { border-radius: 50%; background: var(--alf); }
+.dot.ring { border-radius: 50%; box-shadow: inset 0 0 0 0.024em currentColor; width: 0.14em; height: 0.14em; }
+.dot.mark { width: 0.3em; height: 0.3em; top: 0.17em; }
+.dot.mark svg { width: 100%; height: 100%; display: block; overflow: visible; }
+/* Little cubes. The square is the dot's own size; the drawn cubes are a touch bigger so their corners read. */
+.dot.square { background: currentColor; width: 0.13em; height: 0.13em; }
+.dot.square.alf { background: var(--alf); border-radius: 0; }
+.dot.square.tilt { transform: translate(-50%, -50%) rotate(var(--turn, 45deg)); }
+.dot.square.t25 { --turn: 25deg; }
+.dot.cube { width: 0.2em; height: 0.2em; top: 0.175em; }
+.dot.cube svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.dot.cube .wire { fill: none; stroke: currentColor; stroke-width: 8; stroke-linejoin: round; stroke-linecap: round; }
+.dot.cube .wire.back { opacity: .45; }
+.dot.cube.blue .wire { stroke: var(--alf); }
+.dot.cube .top { fill: color-mix(in srgb, var(--face) 45%, white); }
+.dot.cube .left { fill: var(--face); }
+.dot.cube .right { fill: color-mix(in srgb, var(--face) 62%, black); }
+.dot.cube.ink { --face: var(--ink); } .dot.cube.blue { --face: var(--alf); }
+
+/* Echo: the word said again, fainter, a little higher each time (the city that repeats itself). */
+.echo { position: relative; display: inline-block; font-size: clamp(56px, 11cqi, 96px); line-height: 1; padding-top: 1.1em; }
+.echo .wm.ghost { position: absolute; left: 0; color: var(--ink); pointer-events: none; }
+.echo .g1 { bottom: 0.55em; opacity: .14; } .echo .g2 { bottom: 1.1em; opacity: .05; }
+
+/* In place. */
+.place { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; }
+.side { width: 240px; max-width: 100%; padding: 14px 16px; border-radius: 12px; background: var(--side, var(--bg)); box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; gap: 10px; }
+.side svg { width: 22px; height: 22px; flex: none; }
+.side .wm { font-size: 24px; }
+.tile { width: 96px; height: 96px; border-radius: 22px; display: grid; place-items: center; flex: none;
+  background: var(--paper, var(--bg)); box-shadow: inset 0 0 0 1px var(--line), 0 6px 18px oklch(0 0 0 / .08); }
+.tile svg { width: 64px; height: 64px; }
+.tile .z { font-family: var(--geist); font-size: 64px; line-height: 1; margin-top: -8px; color: var(--ink); }
+.tile.ink { background: var(--ink); } .tile.ink .z { color: var(--bg); }
+.tile.small { width: 40px; height: 40px; border-radius: 10px; } .tile.small svg { width: 28px; height: 28px; } .tile.small .z { font-size: 26px; margin-top: -3px; }
+.caption { font-size: 12px; color: var(--muted); text-align: center; margin-top: 6px; }
+.menubar { display: flex; align-items: center; gap: 14px; height: 28px; padding: 0 12px; border-radius: 8px; font-size: 13px;
+  background: color-mix(in oklch, var(--ink) 6%, var(--bg)); box-shadow: inset 0 0 0 1px var(--line-soft, var(--line)); }
+.menubar svg { width: 16px; height: 16px; }
+
+/* Names: how it is said and written. */
+.names { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.name { padding: 14px 16px; border-radius: 12px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-soft, var(--line)); }
+.name b { display: block; font-family: var(--geist); font-weight: 400; font-size: 22px; }
+.name span { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="bar">
+  <b data-t="title"></b>
+  <div class="seg" id="scheme"><button data-v="light" aria-pressed="true" data-t="light"></button><button data-v="dark" aria-pressed="false" data-t="dark"></button></div>
+  <div class="seg" id="lang"><button data-v="zh" aria-pressed="true">中文</button><button data-v="en" aria-pressed="false">English</button></div>
+</div>
+<main>
+  <section class="hero">
+    <svg class="live" viewBox="0 0 120 120" id="live"></svg>
+    <span id="hero-wm"></span>
+    <span class="say">ZEER-ma · /ˈzɪər.mə/ · <span data-t="sayZh"></span></span>
+    <p class="line" data-t="line"></p>
+    <p class="sub" data-t="sub"></p>
+  </section>
+  <div class="intro">
+    <h1 data-t="h1"></h1>
+    <p data-t="intro"></p>
+  </div>
+  <div id="rows"></div>
+</main>
+
+<script type="module">
+import { drawMark, createFigure } from "./figure.js";
+
+const T = {
+  zh: {
+    title: "Zirma 设计", light: "浅色", dark: "深色", sayZh: "兹尔玛",
+    line: "你的事，它替你记着。",
+    sub: "一个属于你自己的助理：管日程、邮件、待办和笔记，替你记着，到时候提醒你。",
+    h1: "字标可以怎么做",
+    intro: "字体沿用 Geist Serif，一个字重、不用斜体。小写 zirma 只有一个 i，正好让形象当这个点。名字取自卡尔维诺《看不见的城市》：Zirma 是一座不断重复、好让人记住东西的城市。每行一个想法，依次是大、中、小三种尺寸。",
+    rows: [
+      ["原样", "Geist Serif 自己的圆点。对照用。"],
+      ["形象当点", "i 的点换成超立方体：一个名字，一个形象。大尺寸最好看，小字时退回圆点。"],
+      ["品牌色的点", "圆点换成应用的蓝色。比形象安静，任何尺寸都清楚。"],
+      ["小方块", "点换成一个实心小方块，和圆点一样大：一看就和别的字不一样，又不吵。黑色和蓝色各一组。"],
+      ["斜着的小方块", "小方块转 45°，像一颗菱形；最后一个只转 25°，像正在转动。比圆点多一点性格，小字也清楚。黑色一组，后两个是蓝色。"],
+      ["线框小立方体", "一个最简单的立方体线框：前面一个正方形，后面一个淡一点。比超立方体简单，中号字还认得出；小字退回小方块。"],
+      ["实心小立方体", "三个面深浅不同的小立方体，像一块积木。小到 17px 还看得出是个方块。蓝色一组，最后一个和字同色。"],
+      ["回声", "同一个词在上方再出现两次，越来越淡：这座城市靠重复让人记住。适合首页和启动画面，不适合小字。"],
+      ["空心点", "点画成一个小圈，像记忆里留下的一个位置。"],
+      ["大写", "ZIRMA 拉开字距，用在图标下面、名片、页脚这些地方。大写 I 没有点，形象只能单独放。"],
+    ],
+    placeT: "放在界面里", placeN: "侧栏顶上、菜单栏、Dock 图标。形象图标沿用现在的；z 字图标是另一个选择。",
+    iconMark: "形象图标", iconZ: "z 字图标", iconZInk: "z 字（深底）",
+    namesT: "怎么叫", namesN: "官方读法定为 ZEER-ma，避免被读成 Zima。",
+    names: [["Zirma", "产品名，句首大写"], ["zirma", "字标，只在标志里小写"], ["兹尔玛", "中文读音，不另起中文名"], ["Ana · Kata", "两个声音，不变"]],
+  },
+  en: {
+    title: "Zirma design", light: "Light", dark: "Dark", sayZh: "兹尔玛 in Chinese",
+    line: "It remembers, so you don't have to.",
+    sub: "An assistant of your own: your calendar, mail, todos and notes, kept in mind and brought up when they matter.",
+    h1: "Ways to draw the wordmark",
+    intro: "Still Geist Serif, one weight, no italic. Lowercase zirma has a single i, so the figure can be its dot. The name is a city in Calvino's Invisible Cities that repeats itself so that something stays in the mind. Each row is one idea, at large, medium and small sizes.",
+    rows: [
+      ["As set", "Geist Serif's own round dot, for comparison."],
+      ["Figure as the dot", "The tesseract sits on the i: one name, one figure. Best large; small sizes fall back to a round dot."],
+      ["Brand-colour dot", "A round dot in the app's blue. Quieter than the figure, clear at any size."],
+      ["Little square", "A solid square the size of the round dot: different from every other letter, but quiet. In ink and in blue."],
+      ["Tilted square", "The square turned 45°, a small diamond; the last one turned only 25°, as if mid-turn. A little more character than a round dot, still clear when small. In ink, then two in blue."],
+      ["Wire cube", "The simplest cube outline: a front square, a fainter one behind. Simpler than the tesseract, still legible at medium size; small sizes fall back to the square."],
+      ["Solid cube", "A little block with three shaded faces. Still reads as a cube at 17px. In blue; the last one in the text's colour."],
+      ["Echo", "The word appears twice more above itself, fading: the city repeats itself so you remember. For the homepage and launch screen, not for small text."],
+      ["Ring", "The dot drawn as a small circle, like a place kept in memory."],
+      ["Capitals", "ZIRMA, tracked out, for under the icon, cards and footers. A capital I has no dot, so the figure stands apart."],
+    ],
+    placeT: "In place", placeN: "Sidebar head, menu bar, Dock icon. The figure icon is today's; the z icon is an alternative.",
+    iconMark: "Figure icon", iconZ: "z icon", iconZInk: "z, dark tile",
+    namesT: "How to say it", namesN: "The official reading is ZEER-ma, so it is not heard as Zima.",
+    names: [["Zirma", "Product name, capitalised in sentences"], ["zirma", "Wordmark, lowercase only in the logo"], ["兹尔玛", "Chinese reading, not a separate name"], ["Ana · Kata", "The two voices, unchanged"]],
+  },
+};
+
+const word = (size, dot = null, extra = "") => {
+  const html = [..."zirma"].map((ch) => (ch === "i" && dot !== null ? `<span class="i">ı${dot}</span>` : ch)).join("");
+  return `<span class="wm ${size} ${extra}">${html}</span>`;
+};
+const wireCube = (cls = "") => `<span class="dot cube ${cls}"><svg viewBox="0 0 100 100"><path class="wire back" d="M34 8H92V66M34 8V66H92"/><path class="wire" d="M8 34H66V92H8Z M8 34L34 8M66 34L92 8M66 92L92 66"/></svg></span>`;
+const solidCube = (cls) => `<span class="dot cube ${cls}"><svg viewBox="0 0 100 100"><path class="top" d="M50 6L92 28L50 50L8 28Z"/><path class="left" d="M8 28L50 50V96L8 74Z"/><path class="right" d="M92 28L50 50V96L92 74Z"/></svg></span>`;
+// The chosen dot (Bruce, 2026-11-24): a blue square turned 25°, as if mid-turn.
+const PICK = `<span class="dot square alf tilt t25"></span>`;
+const markDot = `<span class="dot mark"><svg viewBox="0 0 120 120" data-mark></svg></span>`;
+const echo = (size) => `<span class="echo">${word(size + " ghost g2")}${word(size + " ghost g1")}${word(size)}</span>`;
+const ROWS = [
+  () => ["xl", "md", "sm"].map((s) => word(s)).join(""),
+  () => word("xl", markDot) + word("md", `<span class="dot round"></span>`) + word("sm", `<span class="dot round"></span>`),
+  () => ["xl", "md", "sm"].map((s) => word(s, `<span class="dot alf"></span>`)).join(""),
+  () => ["xl", "md", "sm"].map((s) => word(s, `<span class="dot square"></span>`)).join("") + ["xl", "md"].map((s) => word(s, `<span class="dot square alf"></span>`)).join(""),
+  () => ["xl", "md", "sm"].map((s) => word(s, `<span class="dot square tilt"></span>`)).join("") + word("xl", `<span class="dot square alf tilt"></span>`) + word("xl", `<span class="dot square alf tilt t25"></span>`),
+  () => word("xl", wireCube()) + word("md", wireCube()) + word("sm", `<span class="dot square"></span>`) + word("xl", wireCube("blue")),
+  () => ["xl", "md", "sm"].map((s) => word(s, solidCube("blue"))).join("") + word("xl", solidCube("ink")),
+  () => echo("xl") + word("md") + word("sm"),
+  () => ["xl", "md", "sm"].map((s) => word(s, `<span class="dot ring"></span>`)).join(""),
+  () => `<span class="wm xl caps">ZIRMA</span><span class="wm md caps">ZIRMA</span><span class="wm sm caps">ZIRMA</span>`,
+];
+
+let lang = "zh";
+let figure = null;
+const dark = () => document.documentElement.dataset.scheme === "dark";
+
+function render() {
+  const t = T[lang];
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  document.title = t.title;
+  for (const el of document.querySelectorAll("[data-t]")) el.textContent = t[el.dataset.t];
+  document.getElementById("hero-wm").innerHTML = word("xl", PICK);
+  document.getElementById("rows").innerHTML = ROWS.map((row, i) => `<section class="row">
+      <div><h2>${t.rows[i][0]}</h2><p>${t.rows[i][1]}</p></div>
+      <div class="sizes">${row()}</div>
+    </section>`).join("") + `<section class="row">
+      <div><h2>${t.placeT}</h2><p>${t.placeN}</p></div>
+      <div class="place">
+        <div class="side"><svg viewBox="0 0 120 120" data-mark></svg>${word("md", PICK)}</div>
+        <div class="menubar"><svg viewBox="0 0 120 120" data-mark></svg><b>Zirma</b><span>${lang === "zh" ? "文件" : "File"}</span><span>${lang === "zh" ? "编辑" : "Edit"}</span></div>
+        <div><div class="tile"><svg viewBox="0 0 120 120" data-mark></svg></div><div class="caption">${t.iconMark}</div></div>
+        <div><div class="tile"><span class="z">z</span></div><div class="caption">${t.iconZ}</div></div>
+        <div><div class="tile ink"><span class="z">z</span></div><div class="caption">${t.iconZInk}</div></div>
+        <div class="tile small"><svg viewBox="0 0 120 120" data-mark></svg></div>
+        <div class="tile small"><span class="z">z</span></div>
+      </div>
+    </section>
+    <section class="row">
+      <div><h2>${t.namesT}</h2><p>${t.namesN}</p></div>
+      <div class="names">${t.names.map(([a, b]) => `<div class="name"><b>${a}</b><span>${b}</span></div>`).join("")}</div>
+    </section>`;
+  paint();
+}
+
+function paint() {
+  for (const svg of document.querySelectorAll("svg[data-mark]")) drawMark(svg, { width: svg.closest(".dot") ? 9 : 6, dark: dark() });
+  const live = document.getElementById("live");
+  figure?.destroy?.();
+  live.innerHTML = "";
+  figure = createFigure(live, { state: "rest", width: 3, centered: true, dark: dark(), ambient: true });
+}
+
+const toggle = (id, apply) => {
+  const buttons = [...document.querySelectorAll(`#${id} button`)];
+  for (const button of buttons) button.addEventListener("click", () => {
+    for (const other of buttons) other.setAttribute("aria-pressed", String(other === button));
+    apply(button.dataset.v);
+    render();
+  });
+};
+toggle("scheme", (v) => { if (v === "dark") document.documentElement.dataset.scheme = "dark"; else delete document.documentElement.dataset.scheme; });
+toggle("lang", (v) => { lang = v; });
+render();
+</script>
+</body>
+</html>

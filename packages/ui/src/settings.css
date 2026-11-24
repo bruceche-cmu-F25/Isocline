@@ -1,16 +1,22 @@
 /* Settings (Settings.tsx). Colours from tokens.css; layout after prototype/workspace.html?page=settings. */
-.settings { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.settings {
+  --set-gutter: clamp(18px, 5cqw, 44px);
+  --set-inset: max(var(--set-gutter), calc((100% - 48rem) / 2));
+  --set-focus: color-mix(in oklab, var(--alf) 72%, var(--muted));
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
 /* One tab per kind of setting (Settings.tsx). The row stays; the pane under it scrolls. In a narrow column the row
    scrolls sideways instead of wrapping or squeezing a name. */
-.set-tabs { flex: none; display: flex; gap: 2px; margin: 0 40px; border-bottom: 1px solid var(--line-soft); overflow-x: auto; scrollbar-width: none; }
+.set-tabs { flex: none; display: flex; gap: 4px; margin-inline: var(--set-inset); padding-top: 8px; border-bottom: 1px solid var(--line-soft); overflow-x: auto; scrollbar-width: none; }
 .set-tabs::-webkit-scrollbar { display: none; }
-.set-tab { flex: none; display: inline-flex; align-items: center; gap: 7px; height: 40px; margin-bottom: -1px; padding: 0 12px 0 10px; border-bottom: 2px solid transparent; color: var(--muted); font-size: .875rem; white-space: nowrap; }
-.set-tab:first-child { margin-left: -10px; }
+.set-tab { position: relative; flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding-inline: 9px; color: var(--muted); font-size: .875rem; white-space: nowrap; }
 .set-tab svg { width: 16px; height: 16px; }
 .set-tab:hover { color: var(--ink); }
-.set-tab[aria-selected="true"] { border-bottom-color: var(--ink); color: var(--ink); font-weight: 500; }
-.set-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
-.set-pane { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 40px 80px; }
+.set-tab[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.set-tab[aria-selected="true"]::after { content: ""; position: absolute; inset: auto 8px 0; height: 2px; border-radius: 2px; background: var(--alf); }
+.set-tab:focus-visible { outline: 2px solid var(--set-focus); outline-offset: -3px; border-radius: 8px; }
+.set-pane { flex: 1; min-height: 0; overflow-y: auto; padding: 26px var(--set-inset) 64px; }
+.set-pane > .set-section { max-width: none; }
 .set-pane[hidden] { display: none; }
 /* The tab already says what the pane is. */
 .set-pane > .set-section:first-child > h2:first-child { display: none; }
@@ -20,7 +26,7 @@
 .set-rows { border-top: 1px solid var(--line-soft); }
 .set-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; align-items: center; padding: 13px 2px; border-bottom: 1px solid var(--line-soft); }
 .set-row .set-name { grid-column: 1; grid-row: 1; color: var(--ink); font-weight: 500; overflow-wrap: anywhere; }
-.set-row .set-note { grid-column: 1; grid-row: 2; color: var(--muted); font-size: .8125rem; }
+.set-row .set-note { grid-column: 1; grid-row: 2; color: var(--muted); font-size: .8125rem; overflow-wrap: anywhere; }
 .set-row .set-end { grid-column: 2; grid-row: 1 / 3; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .set-row.has-logo { grid-template-columns: auto minmax(0, 1fr) auto; }
 .set-row.has-logo .set-name, .set-row.has-logo .set-note { grid-column: 2; }
@@ -48,7 +54,34 @@
 .set-hero { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; padding: 20px 22px; border-radius: 16px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); }
 .set-hero-head { display: flex; align-items: center; gap: 14px; }
 .set-hero-head b { color: var(--ink); font-size: 1rem; font-weight: 600; }
-.set-chips { padding: 0; }
+.chips.set-chips { padding: 0; }
+/* Mutually exclusive settings share a single track. Multiple-choice services keep their individual chips. */
+.settings .set-chips[role="radiogroup"] {
+  display: inline-flex; width: fit-content; max-width: 100%; align-self: flex-start;
+  flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 9px; background: var(--paper); overflow: visible;
+}
+.settings .set-chips [role="radio"] {
+  justify-content: center; min-height: 29px; height: auto; padding: 3px 11px; border-radius: 6px;
+  box-shadow: none; color: var(--muted); line-height: 1.4; text-align: center;
+}
+.settings .set-chips [role="radio"]:hover { color: var(--ink); }
+.settings .set-chips [role="radio"][aria-checked="true"] {
+  background: var(--field); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line);
+}
+.settings .set-chips [role="radio"]:focus-visible { outline: 2px solid var(--set-focus); outline-offset: -2px; }
+.set-general [data-character]::before { content: ""; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--ana); }
+.set-general [data-character="kata"]::before { background: var(--kata); }
+.set-section.set-general { gap: 28px; }
+.set-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 12px; margin-bottom: 10px; }
+.set-group-head h3 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; color: var(--ink); }
+.set-group-head p { font-size: .8125rem; color: var(--muted); }
+.set-general .set-row { min-height: 54px; padding: 10px 0; gap: 2px 20px; }
+.set-general .set-name { font-size: .9375rem; }
+.set-general .set-row:not(:has(.set-note)) .set-name { grid-row: 1 / 3; }
+.set-general .set-note { line-height: 1.45; }
+.set-general .set-end { min-width: 0; }
+.set-general .set-button { justify-content: center; min-height: 34px; border-radius: 8px; }
+.set-preferred-name .set-button:disabled { opacity: 1; background: var(--paper); color: var(--muted); }
 .set-switch { position: relative; flex: none; width: 38px; height: 22px; border-radius: 11px; background: var(--line); }
 .set-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px #0003; transition: transform 200ms ease; }
 .set-switch[aria-checked="true"] { background: var(--ok); }
@@ -76,8 +109,8 @@
   font-family: var(--mono, ui-monospace, monospace); font-size: 1.0625rem; letter-spacing: .08em; text-align: center; text-transform: uppercase; }
 .pair .set-button { min-height: 40px; }
 @container page (max-width: 600px) {
-  .set-tabs { margin: 0; padding: 0 16px; }
-  .set-pane { padding: 18px 16px 32px; }
+  .set-tabs { margin: 0; padding: 0 var(--set-gutter); }
+  .set-pane { padding-block: 20px 32px; }
   .dev-pair { flex-direction: column; align-items: center; }
   .set-row.device-access .set-end { grid-column: 1 / -1; grid-row: 3; justify-content: flex-start; margin-top: 8px; }
   .set-row.sub:not(.has-logo) { padding-left: 0; }
@@ -110,11 +143,33 @@ html[data-web-covered] dialog[open] { display: none !important; }
 .model-device { display: flex; flex-direction: column; gap: 8px; }
 .model-code { font-family: var(--mono, ui-monospace, monospace); font-size: 1.5rem; letter-spacing: .12em; color: var(--ink); }
 .model-answer { display: flex; flex-direction: column; gap: 8px; }
-.model-input { flex: 1; min-width: 200px; min-height: 34px; padding: 0 12px; border-radius: 10px; background: var(--paper); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font-size: .875rem; }
-.model-input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
-.set-preferred-name .model-input { width: 12em; min-width: 0; }
-@container page (max-width: 520px) {
-  .set-preferred-name .set-end { grid-column: 1 / -1; grid-row: 3; margin-top: 8px; }
+.model-input { flex: 1; min-width: 200px; min-height: 34px; padding: 0 12px; appearance: none; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font-size: .875rem; }
+.model-input:focus { outline: 2px solid var(--set-focus, var(--alf)); outline-offset: -2px; }
+.settings .model-input:focus {
+  outline: 2px solid transparent; outline-offset: -2px; caret-color: var(--alf);
+  border-bottom-color: var(--set-focus); box-shadow: inset 0 -1px var(--set-focus);
+}
+.set-preferred-name .model-input { width: 13em; min-width: 0; }
+@container page (max-width: 32rem) {
+  .set-group-head { flex-direction: column; }
+  .set-general .set-row { column-gap: 10px; }
+  .set-general .set-row:is(.set-preferred-name, :has([data-character], .set-note)) {
+    grid-template-columns: minmax(0, 1fr);
+    & > .set-end { grid-column: 1; grid-row: 3; justify-content: flex-start; margin-top: 4px; }
+  }
+  .set-preferred-name .model-input { width: auto; font-size: 1rem; }
+  .set-general .set-chips [role="radio"] { min-height: 34px; padding-inline: 9px; }
+}
+@container page (max-width: 23rem) {
+  .set-general .set-row:has([role="radiogroup"]) {
+    grid-template-columns: minmax(0, 1fr);
+    & > .set-end { grid-column: 1; grid-row: 3; justify-content: flex-start; margin-top: 4px; }
+  }
+}
+@media (forced-colors: active) {
+  .model-input:focus, .settings .model-input:focus, .settings .set-chips [role="radio"]:focus-visible { outline-color: Highlight; }
+  .settings .set-chips [role="radio"][aria-checked="true"] { border: 1px solid ButtonText; }
+  .set-tab[aria-selected="true"]::after { background: Highlight; forced-color-adjust: none; }
 }
 
 /* A subscription's usage under its row: one line per limit window (ModelSettings.tsx). Lines up with the name, past
@@ -158,7 +213,7 @@ button.skill-words:hover b, a.skill-words:hover b { text-decoration: underline; 
 .skill-group { margin: 6px 0 -6px; color: var(--muted); font-size: .75rem; font-weight: 500; }
 .skill-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0; }
 /* A search box brings its own border and look; this is the same box as the other settings fields. */
-.skill-search .model-input { flex: 1; min-width: 0; border: 0; appearance: none; -webkit-appearance: none; }
+.skill-search .model-input { flex: 1; min-width: 0; }
 .skill-search .model-input::-webkit-search-cancel-button { display: none; }
 /* In a narrow column a skill is two short lines: its name over what it is for. */
 @container page (max-width: 560px) {
@@ -247,4 +302,27 @@ button.area-dot:hover, button.area-dot:focus-visible, button.area-dot[aria-check
 @container page (max-width: 560px) {
   .set-row.set-words .set-end { align-items: flex-start; }
   .voice-words { justify-content: flex-start; }
+}
+/* Settings → Voice: the speech services, one row each under a heading row. */
+.set-row.voice-services-head { border-bottom: 0; padding-bottom: 0; }
+.voice-service .set-note[data-problem] { color: var(--bad); }
+.voice-service .set-note a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.voice-service .model-input { width: 220px; }
+/* Narrow: the key field and its button go on a line of their own under the name. */
+@container page (max-width: 600px) {
+  .set-row.has-logo.voice-service .set-end { grid-column: 2 / 4; grid-row: 3; justify-content: flex-start; flex-wrap: nowrap; margin-top: 8px; }
+  .voice-service .model-input { flex: 1; width: auto; min-width: 0; }
+}
+
+/* Give long model and voice controls their own line when the page column is narrow. */
+@container page (max-width: 32rem) {
+  :is(#set-pane-models, #set-pane-voice) .set-row:has(.model-select) .set-end,
+  #set-pane-models .set-row:has(.set-status) .set-end,
+  .set-row.set-words .set-end {
+    grid-column: 1 / -1; grid-row: 3; min-width: 0; justify-content: flex-start; margin-top: 8px;
+  }
+  #set-pane-models .set-row.has-logo:has(.set-status) .set-end { grid-column: 2 / -1; }
+  .model-select { max-width: min(100%, 280px); }
+  .voice-word-add { max-width: 100%; }
+  .voice-word-add .model-input { min-width: 0; }
 }

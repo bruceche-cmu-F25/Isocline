@@ -7,8 +7,10 @@
  */
 import { changedFields, isArea, newId, unknownArea, recordDomainEvent, type Migration, type World } from "@isocline/module-kit";
 import { CLIP_STATES, type Clip, type ClipState, type Place, type PlaceFolder, type Topic } from "./types.ts";
-import { classify, isShortener, nameFromUrl, normalizeUrl, parseShareText } from "./url.ts";
+import { classify, isShortener, nameFromUrl, normalizeUrl, parseShareText, tidyTitle } from "./url.ts";
 import { COVER_MIGRATION } from "./covers.ts";
+import { MAX_TOPIC_DEPTH, topicDepth, topicPath, topicTree, under } from "./tree.ts";
+import { IMPORT_CHUNK, MAX_IMPORT, type ImportEntry } from "./bookmarks.ts";
 
 export type LinkResult<T> = T | { error: string };
 const failed = (result: object): result is { error: string } => "error" in result;
@@ -104,6 +106,42 @@ UPDATE link_covers SET checked_at = 0 WHERE bytes IS NULL AND clip_id IN
   id: "link:6",
   sql: `UPDATE link_items SET fetch = 'pending', fetch_tries = 0, fetch_error = NULL
   WHERE kind = 'clip' AND platform = 'xiaohongshu' AND fetch != 'pending';`,
+}, {
+  // Categories become a tree (links.md §4.10): a topic may sit under another, and names are unique among siblings
+  // only. A site no longer has to be pinned: it can live in the tree alone. An import is kept so it can be undone.
+  id: "link:7",
+  sql: `
+ALTER TABLE link_topics ADD COLUMN parent_id TEXT REFERENCES link_topics(id);
+DROP INDEX link_topics_name;
+CREATE UNIQUE INDEX link_topics_name ON link_topics(coalesce(parent_id, 'area:' || coalesce(area, '')), lower(name));
+CREATE INDEX link_topics_parent ON link_topics(parent_id);
+ALTER TABLE link_items ADD COLUMN pinned INTEGER NOT NULL DEFAULT 1 CHECK (pinned IN (0, 1));
+CREATE INDEX link_items_topic ON link_items(topic_id);
+DROP VIEW link_place_tiles;
+CREATE VIEW link_place_tiles AS
+  SELECT id, title, position, folder_id, 0 AS is_folder FROM link_items WHERE kind = 'place' AND pinned = 1
+  UNION ALL
+  SELECT id, title, position, NULL, 1 FROM link_folders;
+CREATE TABLE link_imports (
+  id TEXT PRIMARY KEY NOT NULL CHECK (length(id) BETWEEN 1 AND 64),
+  at TEXT NOT NULL,
+  item_ids TEXT NOT NULL DEFAULT '[]',
+  topic_ids TEXT NOT NULL DEFAULT '[]'
+) STRICT;
+`,
+}, {
+  // Titles lose what only repeats where they are ("GitHub - owner/repo: …", "… - YouTube"): every title a page gave,
+  // and sites' (none of which a page named, but bookmarks bring the page's title in). A title the user gave a clip stays.
+  id: "link:8",
+  sql: "",
+  apply(db) {
+    const rows = db.prepare("SELECT id, url, title, description FROM link_items WHERE title_source = 'page' OR kind = 'place'").all();
+    const write = db.prepare("UPDATE link_items SET title = ?, description = COALESCE(description, ?) WHERE id = ?");
+    for (const row of rows) {
+      const tidy = tidyTitle(row.title as string, row.url as string);
+      if (tidy.title !== row.title) write.run(tidy.title.slice(0, 300), tidy.description?.slice(0, 600) ?? null, row.id as string);
+    }
+  },
 }];
 
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "");
@@ -115,6 +153,8 @@ function toPlace(row: Record<string, unknown>): Place {
   return {
     id: row.id as string, title: row.title as string, url: row.url as string, position: row.position as number,
     ...(row.folder_id ? { folderId: row.folder_id as string } : {}),
+    ...(row.topic_id ? { topicId: row.topic_id as string } : {}),
+    ...(row.pinned === 0 ? { unpinned: true as const } : {}),
     ...(row.has_icon ? { icon: hostOf(row.url as string) } : {}),
   };
 }
@@ -158,11 +198,13 @@ function toFolder(row: Record<string, unknown>): PlaceFolder {
 /** Newest first. */
 export function listClips(world: World, options: { limit?: number } = {}): Clip[] {
   return withIcons(world, world.db.prepare(`SELECT i.*, c.bytes IS NOT NULL AS has_cover, c.duration_seconds
-    FROM link_items i LEFT JOIN link_covers c ON c.clip_id = i.id WHERE kind = 'clip' ORDER BY saved_at DESC, i.rowid DESC LIMIT ?`).all(Math.min(options.limit ?? 500, 2000))).map(toClip);
+    FROM link_items i LEFT JOIN link_covers c ON c.clip_id = i.id WHERE kind = 'clip' ORDER BY saved_at DESC, i.rowid DESC LIMIT ?`).all(Math.min(options.limit ?? 2000, 5000))).map(toClip);
 }
 export function listTopics(world: World): Topic[] {
-  return world.db.prepare("SELECT * FROM link_topics ORDER BY created_at, rowid").all()
-    .map((row) => ({ id: row.id as string, name: row.name as string, ...(row.area ? { area: row.area as string } : {}) }));
+  return world.db.prepare("SELECT * FROM link_topics ORDER BY created_at, rowid").all().map(toTopic);
+}
+function toTopic(row: Record<string, unknown>): Topic {
+  return { id: row.id as string, name: row.name as string, ...(row.area ? { area: row.area as string } : {}), ...(row.parent_id ? { parentId: row.parent_id as string } : {}) };
 }
 
 function row(world: World, id: string, kind: "place" | "clip"): Record<string, unknown> | undefined {
@@ -170,50 +212,124 @@ function row(world: World, id: string, kind: "place" | "clip"): Record<string, u
 }
 const said = (kind: string, id: string, payload: Record<string, unknown>) => ({ kind: `link.${kind}`, subject: `link:${id}`, payload });
 
-// ---- topics ------------------------------------------------------------------------------------------------
+// ---- topics: a tree under the areas (links.md §4.10.1) ------------------------------------------------------
 
-/** The topic of that name (however it is cased), made if there is none. An area is only set on a new topic. */
-export function ensureTopic(world: World, input: { name: string; area?: string }): LinkResult<Topic> {
+const DEPTH_ERROR = `Categories go at most ${MAX_TOPIC_DEPTH} levels deep under an area.`;
+
+function topicRow(world: World, id: string): Record<string, unknown> | undefined {
+  return world.db.prepare("SELECT * FROM link_topics WHERE id = ?").get(id);
+}
+/** The topic of that name among one node's children: a topic's, or an area's top level. */
+function sibling(world: World, name: string, parentId: string | null, area: string | null): Record<string, unknown> | undefined {
+  return world.db.prepare("SELECT * FROM link_topics WHERE coalesce(parent_id, 'area:' || coalesce(area, '')) = ? AND lower(name) = lower(?)")
+    .get(parentId ?? `area:${area ?? ""}`, name);
+}
+const currentTree = (world: World) => topicTree(listTopics(world));
+
+/** The topic of that name, made if there is none. With `parentId` it is looked for (and made) under that topic;
+ * with `area`, at the top of that area; with neither, anywhere (an older device names a topic by name alone). */
+export function ensureTopic(world: World, input: { name: string; area?: string; parentId?: string }): LinkResult<Topic> {
   const name = text(input.name, 60);
   if (!name) return { error: "A topic needs a name." };
-  if (input.area && !isArea(world, input.area)) return { error: unknownArea(world) };
   return world.tx((db) => {
-    const found = db.prepare("SELECT * FROM link_topics WHERE lower(name) = lower(?)").get(name);
-    if (found) return { id: found.id as string, name: found.name as string, ...(found.area ? { area: found.area as string } : {}) };
+    let area = input.area?.trim() || null;
+    const parentId = input.parentId?.trim() || null;
+    if (parentId) {
+      const parent = topicRow(world, parentId);
+      if (!parent) return { error: "No such topic to put it under." };
+      const found = sibling(world, name, parentId, null);
+      if (found) return toTopic(found);
+      if (topicDepth(currentTree(world), parentId) >= MAX_TOPIC_DEPTH) return { error: DEPTH_ERROR };
+      area = parent.area as string | null;
+    } else {
+      if (area && !isArea(world, area)) return { error: unknownArea(world) };
+      // With no area named, a topic of that name anywhere will do; with one, only its top level.
+      const found = sibling(world, name, null, area)
+        ?? (area ? undefined : db.prepare("SELECT * FROM link_topics WHERE lower(name) = lower(?) ORDER BY parent_id IS NOT NULL, created_at LIMIT 1").get(name));
+      if (found) return toTopic(found);
+    }
     const id = newId();
-    db.prepare("INSERT INTO link_topics (id, name, area, created_at) VALUES (?, ?, ?, ?)").run(id, name, input.area ?? null, new Date().toISOString());
-    recordDomainEvent(world, { kind: "link.topic_added", subject: `link-topic:${id}`, payload: { name, ...(input.area ? { area: input.area } : {}) } });
-    return { id, name, ...(input.area ? { area: input.area } : {}) };
+    db.prepare("INSERT INTO link_topics (id, name, area, parent_id, created_at) VALUES (?, ?, ?, ?, ?)").run(id, name, area, parentId, new Date().toISOString());
+    recordDomainEvent(world, { kind: "link.topic_added", subject: `link-topic:${id}`, payload: { name, ...(area ? { area } : {}), ...(parentId ? { parentId } : {}) } });
+    return toTopic(topicRow(world, id)!);
   });
 }
 
-export function updateTopic(world: World, id: string, patch: { name?: string; area?: string }): LinkResult<Topic> {
+/** Renames a topic, moves it to another area, or puts it under another topic (`parentId`; empty puts it back at the
+ * top of its area). What is under it moves with it. */
+export function updateTopic(world: World, id: string, patch: { name?: string; area?: string; parentId?: string }): LinkResult<Topic> {
   return world.tx((db) => {
-    const found = db.prepare("SELECT * FROM link_topics WHERE id = ?").get(id);
+    const found = topicRow(world, id);
     if (!found) return { error: "No such topic." };
     const name = patch.name === undefined ? found.name as string : text(patch.name, 60);
     if (!name) return { error: "A topic needs a name." };
-    const area = patch.area === undefined ? (found.area as string | null) : patch.area.trim() || null;
-    if (area && area !== found.area && !isArea(world, area)) return { error: unknownArea(world) };
-    const taken = db.prepare("SELECT id FROM link_topics WHERE lower(name) = lower(?) AND id != ?").get(name, id);
-    if (taken) return { error: `There is already a topic named "${name}".` };
-    if (name !== found.name || area !== found.area) {
-      db.prepare("UPDATE link_topics SET name = ?, area = ? WHERE id = ?").run(name, area, id);
-      recordDomainEvent(world, { kind: "link.topic_changed", subject: `link-topic:${id}`, payload: { name, area, was: found.name as string } });
+    let parentId = found.parent_id as string | null;
+    let area = found.area as string | null;
+    const tree = currentTree(world);
+    if (patch.parentId !== undefined) parentId = patch.parentId.trim() || null;
+    if (parentId) {
+      const parent = topicRow(world, parentId);
+      if (!parent) return { error: "No such topic to put it under." };
+      if (under(tree, id).has(parentId)) return { error: "A topic cannot go under itself." };
+      const height = (tree.children.get(id)?.length ? 1 : 0) + 1;
+      if (topicDepth(tree, parentId) + height > MAX_TOPIC_DEPTH) return { error: DEPTH_ERROR };
+      area = parent.area as string | null;
+    } else if (patch.area !== undefined) {
+      area = patch.area.trim() || null;
+      if (area && area !== found.area && !isArea(world, area)) return { error: unknownArea(world) };
     }
-    return { id, name, ...(area ? { area } : {}) };
+    const taken = sibling(world, name, parentId, area);
+    if (taken && taken.id !== id) return { error: `There is already a category named "${name}" there.` };
+    if (name !== found.name || area !== found.area || parentId !== found.parent_id) {
+      db.prepare("UPDATE link_topics SET name = ?, area = ?, parent_id = ? WHERE id = ?").run(name, area, parentId, id);
+      if (area !== found.area) {
+        const below = [...under(tree, id)].filter((topic) => topic !== id);
+        const move = db.prepare("UPDATE link_topics SET area = ? WHERE id = ?");
+        for (const topic of below) move.run(area, topic);
+      }
+      recordDomainEvent(world, { kind: "link.topic_changed", subject: `link-topic:${id}`, payload: { name, area, parentId, was: found.name as string } });
+    }
+    return toTopic(topicRow(world, id)!);
   });
 }
 
-/** Removes a topic; what was filed under it is simply unfiled. */
-export function removeTopic(world: World, id: string): LinkResult<{ name: string }> {
+/** Removes a topic and nothing else: what was filed under it, and the topics under it, move up one level (a link
+ * at the top of an area is unfiled). A topic that meets one of the same name up there joins it. */
+export function removeTopic(world: World, id: string): LinkResult<{ name: string; moved: number }> {
   return world.tx((db) => {
-    const found = db.prepare("SELECT name FROM link_topics WHERE id = ?").get(id);
+    const found = topicRow(world, id);
     if (!found) return { error: "No such topic." };
-    db.prepare("UPDATE link_items SET topic_id = NULL WHERE topic_id = ?").run(id);
+    const up = found.parent_id as string | null;
+    const moved = Number(db.prepare("UPDATE link_items SET topic_id = ? WHERE topic_id = ?").run(up, id).changes);
+    for (const child of db.prepare("SELECT * FROM link_topics WHERE parent_id = ?").all(id)) {
+      const meets = sibling(world, child.name as string, up, found.area as string | null);
+      if (meets && meets.id !== child.id) {
+        db.prepare("UPDATE link_items SET topic_id = ? WHERE topic_id = ?").run(meets.id as string, child.id as string);
+        db.prepare("UPDATE link_topics SET parent_id = ? WHERE parent_id = ?").run(meets.id as string, child.id as string);
+        db.prepare("DELETE FROM link_topics WHERE id = ?").run(child.id as string);
+      } else db.prepare("UPDATE link_topics SET parent_id = ? WHERE id = ?").run(up, child.id as string);
+    }
     db.prepare("DELETE FROM link_topics WHERE id = ?").run(id);
-    recordDomainEvent(world, { kind: "link.topic_removed", subject: `link-topic:${id}`, payload: { name: found.name as string } });
-    return { name: found.name as string };
+    recordDomainEvent(world, { kind: "link.topic_removed", subject: `link-topic:${id}`, payload: { name: found.name as string, moved } });
+    return { name: found.name as string, moved };
+  });
+}
+
+/** Two topics become one: everything filed under `id`, and under the topics below it, goes to `into`, and `id` and
+ * the topics below it are gone. */
+export function mergeTopic(world: World, id: string, into: string): LinkResult<{ name: string; into: string; moved: number }> {
+  return world.tx((db) => {
+    const from = topicRow(world, id), target = topicRow(world, into);
+    if (!from || !target) return { error: "No such topic." };
+    const gone = under(currentTree(world), id);
+    if (gone.has(into)) return { error: "A topic cannot be merged into one under it." };
+    const move = db.prepare("UPDATE link_items SET topic_id = ? WHERE topic_id = ?");
+    let moved = 0;
+    for (const topic of gone) moved += Number(move.run(into, topic).changes);
+    const drop = db.prepare("DELETE FROM link_topics WHERE id = ?");
+    for (const topic of [...gone].reverse()) drop.run(topic);
+    recordDomainEvent(world, { kind: "link.topic_merged", subject: `link-topic:${id}`, payload: { name: from.name as string, into: target.name as string, intoId: into, moved } });
+    return { name: from.name as string, into: target.name as string, moved };
   });
 }
 
@@ -225,13 +341,50 @@ export function pinPlace(world: World, input: { url: string; title?: string }): 
   try { url = normalizeUrl(input.url); } catch (error) { return { error: (error as Error).message }; }
   return world.tx((db) => {
     const found = db.prepare("SELECT * FROM link_items WHERE kind = 'place' AND url = ?").get(url);
+    if (found && found.pinned === 0) {
+      const id = found.id as string;
+      db.prepare("UPDATE link_items SET pinned = 1, position = ? WHERE id = ?").run(nextTile(world), id);
+      recordDomainEvent(world, said("pinned", id, { title: found.title as string, url }));
+      return { place: toPlace(row(world, id, "place")!), existing: false };
+    }
     if (found) return { place: toPlace(found), existing: true };
     const id = newId();
     const title = text(input.title, 60) || siteName(url);
-    const position = db.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS next FROM link_place_tiles WHERE folder_id IS NULL").get()!.next as number;
-    db.prepare("INSERT INTO link_items (id, kind, url, title, title_source, position, saved_at) VALUES (?, 'place', ?, ?, 'given', ?, ?)").run(id, url, title, position, new Date().toISOString());
+    db.prepare("INSERT INTO link_items (id, kind, url, title, title_source, position, saved_at) VALUES (?, 'place', ?, ?, 'given', ?, ?)").run(id, url, title, nextTile(world), new Date().toISOString());
     recordDomainEvent(world, said("pinned", id, { title, url }));
     return { place: toPlace(row(world, id, "place")!), existing: false };
+  });
+}
+
+/** The position after the last tile in the top row. */
+function nextTile(world: World): number {
+  return world.db.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS next FROM link_place_tiles WHERE folder_id IS NULL").get()!.next as number;
+}
+
+/** Files a site under a topic (empty: unfiled), or pins it to the top row or takes it off (it stays in the tree). */
+export function updatePlace(world: World, id: string, patch: { topicId?: string; pinned?: boolean }): LinkResult<Place> {
+  return world.tx((db) => {
+    const found = row(world, id, "place");
+    if (!found) return { error: "No such place." };
+    let topicId = found.topic_id as string | null;
+    if (patch.topicId !== undefined) {
+      if (patch.topicId && !topicRow(world, patch.topicId)) return { error: "No such topic." };
+      topicId = patch.topicId || null;
+    }
+    if (topicId !== found.topic_id) {
+      db.prepare("UPDATE link_items SET topic_id = ? WHERE id = ?").run(topicId, id);
+      recordDomainEvent(world, said("changed", id, { title: found.title as string, changes: ["topicId"] }));
+    }
+    if (patch.pinned !== undefined && patch.pinned !== (found.pinned === 1)) {
+      if (patch.pinned) db.prepare("UPDATE link_items SET pinned = 1, position = ? WHERE id = ?").run(nextTile(world), id);
+      else {
+        db.prepare("UPDATE link_items SET pinned = 0, folder_id = NULL WHERE id = ?").run(id);
+        if (found.folder_id) removeEmptyFolder(world, found.folder_id as string);
+        writeOrder(world, siblings(world));
+      }
+      recordDomainEvent(world, said(patch.pinned ? "pinned" : "unpinned", id, { title: found.title as string }));
+    }
+    return toPlace(withIcons(world, [row(world, id, "place")!])[0]);
   });
 }
 
@@ -376,6 +529,8 @@ export interface SaveInput {
   topic?: string;
   /** For a new topic: the area it sits in. */
   area?: string;
+  /** For a new topic: the topic it goes under. */
+  parentId?: string;
 }
 
 /** Saves an address as a clip. The same address again is the same clip: nothing is added, but a note or a topic
@@ -389,7 +544,7 @@ export function saveClip(world: World, input: SaveInput): LinkResult<{ clip: Cli
       if (!db.prepare("SELECT 1 FROM link_topics WHERE id = ?").get(input.topicId)) return { error: "No such topic." };
       topicId = input.topicId;
     } else if (input.topic?.trim()) {
-      const topic = ensureTopic(world, { name: input.topic, area: input.area });
+      const topic = ensureTopic(world, { name: input.topic, area: input.area, parentId: input.parentId });
       if (failed(topic)) return topic;
       topicId = topic.id;
     }
@@ -431,6 +586,7 @@ export interface ClipPatch {
   /** A topic's name, made if new (with `area`). */
   topic?: string;
   area?: string;
+  parentId?: string;
   state?: ClipState;
 }
 
@@ -447,7 +603,7 @@ export function updateClip(world: World, id: string, patch: ClipPatch): LinkResu
     } else if (patch.topic !== undefined) {
       if (!patch.topic.trim()) topicId = null;
       else {
-        const topic = ensureTopic(world, { name: patch.topic, area: patch.area });
+        const topic = ensureTopic(world, { name: patch.topic, area: patch.area, parentId: patch.parentId });
         if (failed(topic)) return topic;
         topicId = topic.id;
       }
@@ -496,7 +652,8 @@ export function pendingClips(world: World, limit = 10): Clip[] {
 
 /** What the page said about itself. A title the user or Isocline gave stays; an address that only stood for another
  * (a share link) becomes the page it led to, unless that page is already saved. */
-export function recordPage(world: World, id: string, page: { url?: string; title?: string; site?: string; author?: string; description?: string; video?: boolean }): void {
+export function recordPage(world: World, id: string, given: { url?: string; title?: string; site?: string; author?: string; description?: string; video?: boolean }): void {
+  let page = given;
   world.tx((db) => {
     const found = row(world, id, "clip");
     if (!found) return;
@@ -513,7 +670,9 @@ export function recordPage(world: World, id: string, page: { url?: string; title
     // A Xiaohongshu note is a video or pictures, and only its page tells which.
     if (platform === "xiaohongshu") type = page.video ? "video" : "post";
     const takeTitle = found.title_source !== "given" && !!page.title;
-    const title = takeTitle ? page.title! : found.title_source === "url" ? nameFromUrl(url) : found.title as string;
+    const tidy = page.title ? tidyTitle(page.title, url) : undefined;
+    const title = takeTitle ? tidy!.title : found.title_source === "url" ? nameFromUrl(url) : found.title as string;
+    page = { ...page, description: page.description || tidy?.description };
     db.prepare(`UPDATE link_items SET url = ?, platform = ?, type = ?, site = ?, title = ?, title_source = ?, author = ?, description = ?,
       fetch = 'done', fetch_error = NULL WHERE id = ?`)
       .run(url, platform, type, text(page.site, 80) || site, title.slice(0, 300), takeTitle ? "page" : found.title_source as string,
@@ -571,14 +730,100 @@ export function getIcon(world: World, host: string): { type: string; bytes: Uint
 
 /** One line per clip, as a model reads it. */
 export function formatClip(clip: Clip, topics: readonly Topic[]): string {
-  const topic = topics.find((candidate) => candidate.id === clip.topicId);
+  const path = topicPath(topicTree(topics), clip.topicId, undefined, "/");
   return [
     `${clip.id}  ${clip.title}`, `${clip.type} on ${clip.platform === "web" ? clip.site : clip.platform}`,
-    ...(topic ? [`topic: ${topic.name}`] : ["no topic"]), clip.state, ...(clip.note ? [`note: ${clip.note}`] : []), clip.url,
+    ...(path ? [`topic: ${path}`] : ["no topic"]), clip.state, ...(clip.note ? [`note: ${clip.note}`] : []), clip.url,
   ].join(" | ");
 }
 
 /** The user removed an area: its topics move to `moveTo`, or to no area. */
 export function moveTopicsOutOfArea(world: World, id: string, moveTo: string | null): number {
   return Number(world.db.prepare("UPDATE link_topics SET area = ? WHERE area = ?").run(moveTo, id).changes);
+}
+
+// ---- bringing bookmarks in (links.md §4.10.4) ---------------------------------------------------------------
+
+/** Writes one part of an import the user confirmed. Each request names its import, so the parts add up to one thing
+ * that can be undone. An address already kept is not added again; if it had no category, it takes this one. Sites
+ * go into the tree without being pinned; saved things come in as seen, with the title the browser kept. */
+export function importLinks(world: World, input: { importId: string; entries: readonly ImportEntry[] }): LinkResult<{ added: number; filed: number; skipped: number }> {
+  if (!/^[\w-]{1,64}$/.test(input.importId)) return { error: "An import needs an id." };
+  if (input.entries.length > IMPORT_CHUNK * 2) return { error: `Send at most ${IMPORT_CHUNK * 2} bookmarks at a time.` };
+  return world.tx((db) => {
+    const now = new Date().toISOString();
+    const kept = db.prepare("SELECT * FROM link_imports WHERE id = ?").get(input.importId);
+    const itemIds: string[] = kept ? JSON.parse(kept.item_ids as string) : [];
+    const topicIds: string[] = kept ? JSON.parse(kept.topic_ids as string) : [];
+    if (itemIds.length + input.entries.length > MAX_IMPORT) return { error: `One import takes at most ${MAX_IMPORT} bookmarks.` };
+    const topics = new Map<string, string | null>();
+    const topicFor = (entry: ImportEntry): string | null => {
+      const path = (entry.path ?? []).map((name) => text(name, 60)).filter(Boolean).slice(0, MAX_TOPIC_DEPTH);
+      if (!path.length) return null;
+      const area = entry.area && isArea(world, entry.area) ? entry.area : null;
+      const cacheKey = JSON.stringify([area, path.map((name) => name.toLowerCase())]);
+      if (topics.has(cacheKey)) return topics.get(cacheKey)!;
+      let parentId: string | null = null;
+      for (const name of path) {
+        const found = sibling(world, name, parentId, parentId ? null : area);
+        if (found) { parentId = found.id as string; continue; }
+        const id = newId();
+        db.prepare("INSERT INTO link_topics (id, name, area, parent_id, created_at) VALUES (?, ?, ?, ?, ?)").run(id, name, area, parentId, now);
+        topicIds.push(id);
+        parentId = id;
+      }
+      topics.set(cacheKey, parentId);
+      return parentId;
+    };
+    let added = 0, filed = 0, skipped = 0;
+    for (const entry of input.entries) {
+      let url: string;
+      try { url = normalizeUrl(entry.url); } catch { skipped++; continue; }
+      const topicId = topicFor(entry);
+      const found = db.prepare("SELECT id, topic_id FROM link_items WHERE url = ? ORDER BY kind = 'place' DESC LIMIT 1").get(url);
+      if (found) {
+        if (topicId && !found.topic_id) { db.prepare("UPDATE link_items SET topic_id = ? WHERE id = ?").run(topicId, found.id as string); filed++; } else skipped++;
+        continue;
+      }
+      const id = newId();
+      const tidy = tidyTitle(entry.title, url);
+      const title = text(tidy.title, 300);
+      if (entry.kind === "place") {
+        db.prepare("INSERT INTO link_items (id, kind, url, title, title_source, topic_id, pinned, position, saved_at) VALUES (?, 'place', ?, ?, 'given', ?, 0, 0, ?)")
+          .run(id, url, title || siteName(url), topicId, now);
+      } else {
+        const { platform, type, host } = classify(url);
+        db.prepare(`INSERT INTO link_items (id, kind, url, title, title_source, platform, type, site, description, topic_id, state, saved_at, fetch)
+          VALUES (?, 'clip', ?, ?, ?, ?, ?, ?, ?, ?, 'seen', ?, ?)`)
+          .run(id, url, title || nameFromUrl(url), title ? "page" : "url", platform, type, host, text(tidy.description, 600) || null, topicId, now, title ? "done" : "pending");
+      }
+      itemIds.push(id);
+      added++;
+    }
+    db.prepare(`INSERT INTO link_imports (id, at, item_ids, topic_ids) VALUES (?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET item_ids = excluded.item_ids, topic_ids = excluded.topic_ids`).run(input.importId, now, JSON.stringify(itemIds), JSON.stringify(topicIds));
+    // Only the last five imports can be undone.
+    db.prepare("DELETE FROM link_imports WHERE id NOT IN (SELECT id FROM link_imports ORDER BY at DESC, rowid DESC LIMIT 5)").run();
+    recordDomainEvent(world, { kind: "link.imported", subject: `link-import:${input.importId}`, payload: { added, filed, skipped } });
+    return { added, filed, skipped };
+  });
+}
+
+/** Takes an import back: what it added is removed, and the categories it made, once they are empty. What it filed
+ * that was already there stays where it is now. */
+export function undoImport(world: World, importId: string): LinkResult<{ removed: number }> {
+  return world.tx((db) => {
+    const kept = db.prepare("SELECT * FROM link_imports WHERE id = ?").get(importId);
+    if (!kept) return { error: "That import can no longer be undone." };
+    const drop = db.prepare("DELETE FROM link_items WHERE id = ?");
+    let removed = 0;
+    for (const id of JSON.parse(kept.item_ids as string) as string[]) removed += Number(drop.run(id).changes);
+    const made = JSON.parse(kept.topic_ids as string) as string[];
+    const empty = db.prepare(`DELETE FROM link_topics WHERE id = ? AND NOT EXISTS (SELECT 1 FROM link_items WHERE topic_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM link_topics WHERE parent_id = ?)`);
+    for (const id of [...made].reverse()) empty.run(id, id, id);
+    db.prepare("DELETE FROM link_imports WHERE id = ?").run(importId);
+    recordDomainEvent(world, { kind: "link.import_undone", subject: `link-import:${importId}`, payload: { removed } });
+    return { removed };
+  });
 }

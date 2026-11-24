@@ -30,6 +30,14 @@ export function inboxUrl(item: string | null): string {
   return `/#${params}`;
 }
 
+/** What an outbound notice says it did: the change itself, or, for the several one proposal made (told together by
+ * the core's outbound.ts), how many went through. Shared with the home node's push text. */
+export function outboundWhat(payload: Record<string, unknown>, say: (key: "mac.outbound.many" | "mac.outbound.many.calendar" | "mac.outbound.many.mail", vars: Record<string, string>) => string): string {
+  const count = typeof payload.count === "number" ? payload.count : 1;
+  if (count < 2) return String(payload.preview ?? "");
+  return say(payload.module === "calendar" ? "mac.outbound.many.calendar" : payload.module === "mail" ? "mac.outbound.many.mail" : "mac.outbound.many", { n: String(count) });
+}
+
 /** In `locale` (default: the current one). Shared by the figure and the Mac app's fallback notifications. */
 export function noticeLines(notice: Notice, locale: Locale = getLocale()): NoticeLines {
   const say = (key: Parameters<typeof translate>[1], vars?: Record<string, string | number>) => translate(locale, key, vars);
@@ -50,7 +58,7 @@ export function noticeLines(notice: Notice, locale: Locale = getLocale()): Notic
   }
   if (notice.kind === "outbound") {
     // An accepted change sent to Google (calendar, mail): whether it got there.
-    const preview = String(notice.payload.preview ?? "");
+    const preview = outboundWhat(notice.payload, say);
     const state = notice.payload.state;
     if (state === "done") return { title: say("mac.outbound.done"), body: preview, mood: "done", closesOnOpen: false, action: look };
     if (state === "failed") {

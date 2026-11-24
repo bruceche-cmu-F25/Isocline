@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   acceptProposal, CORE_MIGRATIONS, declineProposal, expireProposals, getProposal, listEvents, listNotices, listOpenProposals, openProposal, openWorld,
   ProposalStateError, PROPOSAL_TTL_MS, recordDomainEvent, runCommand, supersedeProposal, withCoreContext, type ProposalStep, type World,
+  claimNextRun, finishRun, markRevising, submitRun,
   getSettings, SettingsError, updateSettings, userLocale,
 } from "../src/index.ts";
 
@@ -84,6 +85,40 @@ test("declined, superseded and expired proposals leave the inbox", () => {
   assert.equal(acceptProposal(w, c.id, removeToy(w), later).state, "expired");
   assert.deepEqual(toys(w), ["ball"]);
   assert.equal(getProposal(w, b.id).decidedAt !== null, true);
+});
+
+test("asked for a change, a proposal stays in the inbox, marked, until the revising run's proposal takes its place", () => {
+  const w = world();
+  addToy(w, "ball"); addToy(w, "kite");
+  const old = propose(w, ["ball"]);
+  const { run } = submitRun(w, { requestId: "rev-1", goal: "only the kite", profile: "assistant" });
+  markRevising(w, old.id, "only the kite", run.id);
+  const [waiting] = listOpenProposals(w);
+  assert.deepEqual([waiting.id, waiting.revising], [old.id, { runId: run.id, request: "only the kite" }], "still there, said to be changing");
+  assert.ok(listNotices(w).some((notice) => notice.kind === "proposal" && notice.payload.proposalId === old.id), "its notice stays too");
+
+  const claimed = claimNextRun(w, "home")!;
+  // Without replaces: the run was asked to revise this one, so its proposal replaces it all the same.
+  const next = withCoreContext({ actor: "alfred", run: { id: claimed.id, owner: "home" } }, () => openProposal(w, {
+    title: "Remove kite?", summary: "", steps: [{ op: "toy.remove", input: { name: "kite" }, preview: "Remove kite" }], subjects: ["toy:kite"],
+  }));
+  assert.deepEqual(next.replaced, [old.id]);
+  assert.equal(getProposal(w, old.id).state, "superseded");
+  assert.deepEqual(listOpenProposals(w).map((proposal) => proposal.id), [next.id]);
+});
+
+test("a revising run that ends without proposing leaves the proposal as it was", () => {
+  const w = world();
+  addToy(w, "ball");
+  const old = propose(w, ["ball"]);
+  const { run } = submitRun(w, { requestId: "rev-2", goal: "hmm", profile: "assistant" });
+  markRevising(w, old.id, "hmm", run.id);
+  claimNextRun(w, "home");
+  finishRun(w, run.id, "home", { status: "completed", reply: "Which one did you mean?" });
+  const [still] = listOpenProposals(w);
+  assert.deepEqual([still.id, still.state, still.revising], [old.id, "open", undefined]);
+  assert.equal(acceptProposal(w, old.id, removeToy(w)).state, "executed");
+  assert.throws(() => markRevising(w, old.id, "late", run.id), ProposalStateError);
 });
 
 test("a corrected proposal replaces what earlier runs in the same conversation left open, and nothing else", () => {

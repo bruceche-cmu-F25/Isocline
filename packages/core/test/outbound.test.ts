@@ -24,6 +24,24 @@ test("a change accepted in a proposal is recorded with it, then claimed, deliver
   assert.throws(() => finishOutbound(w, claimed.id, { state: "done" }), /done, not being sent/);
 });
 
+test("what one proposal changed is told together once the last has ended; a failure on its own", () => {
+  const w = world();
+  const previews = ["Add “Lab” to Me", "Add “Review” to Me", "Add “Final” to Me"];
+  const proposal = openProposal(w, { title: "Plan the week?", summary: "", steps: previews.map((preview) => ({ op: "calendar.add", input: {}, preview })) });
+  acceptProposal(w, proposal.id, (step) => { enqueueOutbound(w, { module: "calendar", action: "add", payload: { account: "me@example.com" }, preview: step.preview, idempotent: true }); });
+  const deliver = (state: "done" | "failed") => {
+    const claimed = claimOutbound(w, "calendar")!;
+    finishOutbound(w, claimed.id, state === "done" ? { state } : { state, error: "Forbidden" });
+  };
+  deliver("done");
+  deliver("failed");
+  assert.deepEqual(outboundNotices(w).map((payload) => [payload.state, payload.preview]), [["failed", previews[1]]], "nothing done is told while others wait");
+  deliver("done");
+  const done = outboundNotices(w).filter((payload) => payload.state === "done");
+  assert.equal(done.length, 1);
+  assert.deepEqual([done[0].count, done[0].previews, done[0].title, done[0].account, done[0].module], [2, [previews[0], previews[2]], "Plan the week?", "me@example.com", "calendar"]);
+});
+
 test("a declined or failed proposal leaves nothing to deliver", () => {
   const w = world();
   const proposal = openProposal(w, { title: "Send?", summary: "", steps: [{ op: "mail.send", input: {}, preview: "Email Leo" }] });

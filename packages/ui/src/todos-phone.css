@@ -1,0 +1,61 @@
+/* The todo page on a phone (Todos.tsx, `phone`: the same width as layout.ts PHONE). The page is for looking at today
+   and the days after it with one thumb: the controls take one short row, adding takes one line until it is used,
+   each todo is its title and one line of facts, and the board is one lane at a time. */
+@media (max-width: 700px) {
+  /* One row: the view, the areas (scrolling sideways, fading at the end), and where todos come from, as an icon. */
+  .todos .todo-bar { flex-wrap: nowrap; gap: 8px; padding: 0 10px 10px; }
+  .todos .todo-bar .chips { flex: 1; min-width: 0; padding-right: 14px; overflow-x: auto; scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent); }
+  .todos .todo-bar .chips::-webkit-scrollbar { display: none; }
+  .todos .todo-views button { height: 28px; padding: 0 11px; }
+  .todo-sources-word { display: none; }
+  .todo-sources > .chip { width: 32px; padding: 0; justify-content: center; }
+  .todo-sources-pop { width: min(300px, calc(100vw - 20px)); }
+
+  /* Adding: one line, the words and the button. The day, the hour and the area show under them once the line is
+     in use (focused, written in, something set, or a picker open), and stay while anything is set. */
+  .todos .add-bar { margin: 0 10px 6px; min-height: 46px; padding: 4px 4px 4px 14px; border-radius: 14px; flex-wrap: wrap; row-gap: 2px; }
+  .todos .add-text { flex: 1 1 0; height: 38px; }
+  .todos .add-pills { order: 2; flex: 1 0 100%; flex-wrap: wrap; gap: 2px; margin-left: -8px; padding-bottom: 2px; }
+  .todos .add-bar:not(:focus-within, :has(.add-text:not(:placeholder-shown), .add-pill[data-set], [aria-expanded="true"])) .add-pills { display: none; }
+  .todos .add-go { width: 38px; height: 38px; }
+
+  /* The two weeks' strip: this week, small. */
+  .todos .todo-strip { gap: 2px; padding: 0; }
+  .todos .todo-cell { gap: 1px; padding: 4px 1px 5px; border-radius: 9px; }
+  .todos .todo-cell .d { font-size: .875rem; }
+
+  /* A todo: the check, the title, and one line of facts (the hour first, how long is left among them); nothing
+     under the title when there is nothing to say. No column of hours: it cost every title a sixth of its width. */
+  .todos .todo-split { padding: 0 4px; }
+  .todos .todo-day { padding-top: 12px; }
+  .todos .todo-byday .todo { grid-template-columns: 22px minmax(0, 1fr); column-gap: 12px; row-gap: 0; min-height: 48px; padding: 10px 8px; }
+  .todos .todo-byday .todo-meta:empty { display: none; }
+  .todos .todo-meta { gap: 2px 8px; }
+  .todos .todo-meta .hour { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .todos .todo-meta .left { height: 20px; padding: 0 7px; }
+  .todos .todo-day-empty { padding-left: 42px; }
+  /* The ring is small to look at but a thumb's size to hit. */
+  .todos .check { position: relative; width: 22px; height: 22px; margin-top: 1px; }
+  .todos .check::after { content: ""; position: absolute; inset: -11px; }
+  .todos .todo:active, .todos .todo-tile:active { background: var(--wash); }
+
+  /* The board: a row naming the lanes, then one lane across the width with the next peeking in at the edge. */
+  .lane-tabs { flex: none; display: flex; gap: 6px; overflow-x: auto; padding: 0 10px 10px; scrollbar-width: none; }
+  .lane-tabs::-webkit-scrollbar { display: none; }
+  .lane-tabs button { flex: none; height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; color: var(--copy); font-size: .8125rem; box-shadow: inset 0 0 0 1px var(--line); }
+  .lane-tabs button[data-today] { color: var(--accent); }
+  .lane-tabs button[aria-pressed="true"] { background: var(--wash); color: var(--ink); font-weight: 500; }
+  .lane-tabs button[aria-pressed="true"][data-today] { color: var(--accent); }
+  .lane-tabs .count { color: inherit; opacity: .6; }
+  .todos .todo-board { grid-auto-columns: calc(100% - 28px); gap: 8px; padding: 0 10px 12px; scroll-snap-type: x mandatory; scroll-padding-inline: 10px; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .todos .todo-board::-webkit-scrollbar { display: none; }
+  .todos .todo-lane { scroll-snap-align: start; min-height: 220px; padding: 10px 8px; }
+  .todos .todo-tile { cursor: default; padding: 10px 10px 10px 14px; }
+}
+@media (max-width: 700px) {
+  /* The area is a word among the facts, not a chip: no room kept around it. */
+  .todos .todo-meta .tag { height: auto; padding: 0; }
+  .todos .todo-tile { gap: 4px; }
+  .todos .todo-tile .todo-meta:empty { display: none; }
+}

@@ -43,7 +43,7 @@ export {
   type EngineModel, type EnginePort, type EngineRequest, type ExecuteOptions, type ExternalHooks, type RunDrain, type TurnUsage, type LiveUpdate, type RunProfile, type RunTool, type RunToolContext, type Workspace, type FileChange, type Attachment,
 } from "./executor.ts";
 export {
-  openProposal, getProposal, listOpenProposals, acceptProposal, declineProposal, supersedeProposal, amendProposal, expireProposals, ProposalStateError, PROPOSAL_TTL_MS,
+  openProposal, getProposal, listOpenProposals, acceptProposal, declineProposal, supersedeProposal, markRevising, amendProposal, expireProposals, ProposalStateError, PROPOSAL_TTL_MS,
   type Proposal, type ProposalState, type ProposalStep,
 } from "./proposals.ts";
 export { getSettings, updateSettings, userLocale, localeOf, LOCALES, LOCALE_TAGS, localeTag, acceptLanguage, SettingsError, MAX_VOICE_WORDS, CHARACTERS, CHARACTER_NAMES, assistantNameOf, type Character, type Locale, type PageLayout, type UserSettings, type VoiceSettings } from "./settings.ts";

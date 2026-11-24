@@ -140,3 +140,27 @@ export function nameFromUrl(href: string): string {
   words = words.replace(/\.(html?|php|aspx?)$/i, "").replace(/[-_+]+/g, " ").trim();
   return words && words.length <= 80 && !/^[\w-]{16,}$/.test(last) ? `${host} · ${words}` : host;
 }
+
+/** Platforms whose name a page puts after its own title ("… - YouTube", "… | 知乎"): the platform is shown anyway. */
+const SITE_SUFFIX = /\s*[|\-–—·•]\s*(?:GitHub|YouTube|Medium|Reddit|X|Twitter|Hacker News|Substack|LinkedIn|Notion|知乎|哔哩哔哩[^|·]*|bilibili|小红书[^|·]*|微信公众平台)\s*$/i;
+
+/** A page's title without what only repeats where it is: an unread-count prefix "(3) ", the site's own name at the end,
+ * and for a GitHub repository "GitHub - owner/repo: what it is · GitHub" becomes the repository's name, with what it
+ * is as its description. Applied to titles pages give (and bookmarks keep), never to one the user gave. */
+export function tidyTitle(title: string, url: string): { title: string; description?: string } {
+  let text = title.replace(/\s+/g, " ").replace(/^\(\d+\+?\)\s+/, "").trim();
+  let host = "";
+  try { host = new URL(url).hostname.replace(/^www\./, "").toLowerCase(); } catch { /* keep the title as it is */ }
+  const repo = /^GitHub\s*-\s*([\w.-]+\/[\w.-]+)(?::\s*(.+?))?(?:\s*·\s*GitHub)?$/i.exec(text);
+  if (repo && host === "github.com") return { title: repo[1], ...(repo[2]?.trim() ? { description: repo[2].trim() } : {}) };
+  text = text.replace(SITE_SUFFIX, "");
+  // A last part that is the site's own name ("… | roadmap.sh", "… - Coursera").
+  const name = host.split(".").slice(-2)[0] ?? "";
+  const last = /\s+[|\-–—·•]\s+([^|\-–—·•]{1,40})$/.exec(text);
+  if (last && name.length >= 3) {
+    const tail = last[1].toLowerCase().replace(/[\s.]/g, "");
+    if (tail === host.replace(/\./g, "") || tail === name || tail.startsWith(name)) text = text.slice(0, last.index);
+  }
+  text = text.trim();
+  return { title: text || title.trim() };
+}

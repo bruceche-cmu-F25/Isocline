@@ -14,7 +14,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
   acceptProposal, addProject, listRunReceipts, listRuns, commandReplay, CONVERSATION_MODEL, coreContext, createAutomation, declineProposal, deleteAutomation, getConversation, getProject,
-  ProjectError, recordCommit, recordPublished, removeProject, requestCancel, resumeRun, revokeCommand, runAutomationNow, sessionRoot, startSession, submitRun, supersedeProposal, trustProject,
+  ProjectError, recordCommit, recordPublished, removeProject, requestCancel, resumeRun, revokeCommand, runAutomationNow, sessionRoot, startSession, submitRun, getProposal, markRevising, ProposalStateError, trustProject,
   addArea, addPreference, removePreference, updatePreference, moveArea, updateArea, updateAutomation, updateConversation, updateSettings, userLocale, withCoreContext, type Locale, type SessionMode, type Speed, type ThinkingLevel, type World,
 } from "@isocline/core";
 import { syncAssistantName } from "./assistant-name.ts";
@@ -150,22 +150,24 @@ const OPS: readonly HarnessOp[] = [
     // `context`: the page it was changed from and what was picked there (a mail), so that page can show the new version
     // being written where the old one was.
     name: "proposal.revise", input: Type.Object({ id: Id, text: Said, context: Type.Optional(Type.Unknown()) }),
-    // The proposal is superseded, and a run in its conversation is asked to propose again with the change.
+    // A run in its conversation is asked to propose again with the change. Until it does, this one stays in the inbox,
+    // marked as being revised, and the new version takes its place.
     run(home, input, { requestId }) {
-      const superseded = supersedeProposal(home.world, input.id, input.text);
+      const proposal = getProposal(home.world, input.id);
+      if (proposal.state !== "open") throw new ProposalStateError(proposal.state);
       // The whole of each step (an email's text), so the new version starts from what the user saw.
-      const steps = superseded.steps.map((step) => (step.detail ? `${step.preview}\n${step.detail}` : step.preview));
+      const steps = proposal.steps.map((step) => (step.detail ? `${step.preview}\n${step.detail}` : step.preview));
       const revise: Record<Locale, () => string> = {
-        zh: () => `修改你之前的提议「${superseded.title}」：${input.text.trim()}\n原来的提议：${superseded.summary}\n步骤：${steps.join("；")}\n请按修改意见重新提议（用 propose），不要直接改。`,
-        en: () => `Change your earlier proposal "${superseded.title}": ${input.text.trim()}\nThe proposal was: ${superseded.summary}\nSteps: ${steps.join("; ")}\nPropose again with the change (use propose); do not make the changes directly.`,
+        zh: () => `修改你之前的提议「${proposal.title}」：${input.text.trim()}\n原来的提议：${proposal.summary}\n步骤：${steps.join("；")}\n请按修改意见重新提议（用 propose），不要直接改。`,
+        en: () => `Change your earlier proposal "${proposal.title}": ${input.text.trim()}\nThe proposal was: ${proposal.summary}\nSteps: ${steps.join("; ")}\nPropose again with the change (use propose); do not make the changes directly.`,
       };
       const goal = revise[userLocale(home.world)]();
-      const profile = profileFor(home.world, superseded.conversationId);
+      const profile = profileFor(home.world, proposal.conversationId);
       const { run } = submitRun(home.world, {
-        requestId: `${requestId}.revise`, goal, profile, conversationId: superseded.conversationId ?? undefined,
+        requestId: `${requestId}.revise`, goal, profile, conversationId: proposal.conversationId ?? undefined,
         ...(input.context !== undefined && profile === ASSISTANT_PROFILE ? { context: input.context } : {}),
       });
-      return { proposal: superseded, run };
+      return { proposal: markRevising(home.world, input.id, input.text.trim(), run.id), run };
     },
   }),
 

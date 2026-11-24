@@ -77,9 +77,28 @@ function FavoriteButton({ message, canModify, pending, onChange, compact = false
     : active ? t(message.starred ? "mail.favorite.removeGmail" : "mail.favorite.removeLocal")
     : t(canModify ? "mail.favorite.addGmail" : "mail.favorite.addLocal");
   const title = compact ? `${label} · ${message.subject}` : label;
-  return <button type="button" className={`mail-favorite-button${compact ? " compact" : ""}`} aria-pressed={active}
+  return <button type="button" className={`mail-message-action${compact ? " compact" : ""}`} aria-pressed={active}
     disabled={pending || locked} title={title} aria-label={title} onClick={() => onChange(message, !active)}>
     <Icon name="star" />{!compact && label}
+  </button>;
+}
+
+interface ArchiveProps {
+  message: MailMessage;
+  canModify: boolean;
+  pending: boolean;
+  onArchive(message: MailMessage): void;
+}
+
+function ArchiveButton({ message, canModify, pending, onArchive, compact = false }: ArchiveProps & { compact?: boolean }) {
+  if (message.inInbox === false) return null;
+  const label = t("mail.archive");
+  const hint = canModify ? label : t("mail.favorite.enable");
+  const title = compact ? `${hint} · ${message.subject}` : hint;
+  return <button type="button" className={`mail-message-action${compact ? " compact" : ""}`}
+    disabled={!canModify || pending} title={title} aria-label={compact ? `${label} · ${message.subject}` : label}
+    onClick={() => onArchive(message)}>
+    <Icon name="archive" />{!compact && label}
   </button>;
 }
 
@@ -258,6 +277,7 @@ interface ReaderProps {
   sent: MailSent[];
   canSend: boolean;
   favorite: FavoriteProps;
+  archive: ArchiveProps;
   line: PageLine;
   acts: Acts;
   /** The draft has just come from Isocline, and has not been written out yet. */
@@ -278,7 +298,7 @@ function MailBack({ onBack }: { onBack: () => void }) {
   );
 }
 
-function Reader({ message, draft, writing, sent, canSend, favorite, line, acts, written, onWritten, onDraft, onOwn, onBack }: ReaderProps) {
+function Reader({ message, draft, writing, sent, canSend, favorite, archive, line, acts, written, onWritten, onDraft, onOwn, onBack }: ReaderProps) {
   const [detail, setDetail] = useState<MailDetail | "loading" | "gone">("loading");
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -316,8 +336,9 @@ function Reader({ message, draft, writing, sent, canSend, favorite, line, acts, 
         {new Date(message.receivedAt).toLocaleString(intlLocale(), { dateStyle: "medium", timeStyle: "short" })}
         {typeof detail === "object" && detail.to && ` · ${t("mail.to")} ${detail.to}`}
       </p>
-      <div className="mail-favorite-actions">
+      <div className="mail-message-actions">
         <FavoriteButton {...favorite} />
+        <ArchiveButton {...archive} />
         {message.localSaved && !message.starred && favorite.canModify &&
           <button type="button" className="ghost small" disabled={favorite.pending} onClick={() => favorite.onChange(message, true)}>{t("mail.favorite.sync")}</button>}
         {!favorite.canModify && <a className="small" href="#p=core.settings">{t("mail.favorite.enable")}</a>}
@@ -365,7 +386,8 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
   const [picked, setPicked] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const [savingFavorites, setSavingFavorites] = useState<string[]>([]);
-  const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState<string[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
   /** Runs asked from here, by what they are about (a message's key, or COMPOSE), until the state has caught up. */
   const [follow, setFollow] = useState<Record<string, { run: string; at: number }>>({});
   const { own, put, drop } = useOwnDrafts();
@@ -392,7 +414,8 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
 
   const runs = state.runs;
   const drafts = useMemo<Draft[]>(() => [
-    ...(state.proposals ?? []).flatMap((proposal) => proposal.steps.flatMap((step, index): Draft[] => (step.op === "mail.send"
+    // One being rewritten is not offered: the page shows the new version being written in its place.
+    ...(state.proposals ?? []).filter((proposal) => !proposal.revising).flatMap((proposal) => proposal.steps.flatMap((step, index): Draft[] => (step.op === "mail.send"
       ? [{ kind: "alfred", key: `${proposal.id}:${index}`, input: step.input as SendInput, at: proposal.createdAt, proposal, index }] : []))),
     ...own.map((draft): Draft => ({ kind: "own", ...draft })),
   ], [state.proposals, own]);
@@ -433,6 +456,14 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
   const shown = messages.filter((message) => matchesFilter(message, filter, category));
   const count = (which: Filter) => which === "drafts" ? drafts.length : messages.filter((message) => matchesFilter(message, which, category)).length;
   const open = messages.find((message) => messageKey(message) === picked);
+  // Keep a retained favorite open in Favorites. A refreshed inbox should close a message
+  // that has left it, even if another device archived it while this reader was open.
+  useEffect(() => {
+    if (!snapshot || !picked || picked.startsWith("d:")) return;
+    if (!open || (open.inInbox === false && (filter === "inbox" || filter === "unread"))) {
+      setPicked((current) => current === picked ? null : current);
+    }
+  }, [snapshot, picked, open, filter]);
   const openDraft = picked?.startsWith("d:") ? drafts.find((draft) => `d:${draft.key}` === picked) : undefined;
   const ownCompose = openDraft?.kind === "own" && openDraft.key.startsWith("compose:");
   const composing = isWriting(COMPOSE, COMPOSE);
@@ -457,7 +488,7 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
     const key = messageKey(message);
     if (savingFavorites.includes(key)) return;
     setSavingFavorites((keys) => [...keys, key]);
-    setFavoriteError(null);
+    setActionError(null);
     setSaid(null);
     try {
       // Gmail's half goes out after this answers; if Gmail refuses it, Isocline says so in a notice.
@@ -467,14 +498,36 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
         ? t(saved.starred ? "mail.favorite.gmailOn" : "mail.favorite.gmailOff")
         : t(saved.starred ? "mail.favorite.localOn" : "mail.favorite.localOff"));
     } catch (reason) {
-      setFavoriteError(t("mail.favorite.failed", { subject: message.subject, error: (reason as Error).message }));
+      setActionError(t("mail.favorite.failed", { subject: message.subject, error: (reason as Error).message }));
     } finally {
       setSavingFavorites((keys) => keys.filter((saving) => saving !== key));
     }
   };
+  const canModify = (message: MailMessage) => sources.some((source) => source.account === message.account && source.canModify);
   const favoriteProps = (message: MailMessage): FavoriteProps => ({
-    message, canModify: sources.some((source) => source.account === message.account && source.canModify),
+    message, canModify: canModify(message),
     pending: savingFavorites.includes(messageKey(message)), onChange: changeFavorite,
+  });
+
+  const archive = async (message: MailMessage) => {
+    const key = messageKey(message);
+    if (archiving.includes(key)) return;
+    setArchiving((keys) => [...keys, key]);
+    setActionError(null);
+    setSaid(null);
+    try {
+      const { result } = await api.op("mail.archive", { account: message.account, id: message.id });
+      const { queued } = result as { queued: string | null };
+      setSaid(t(queued ? "mail.archive.queued" : "mail.archive.already", { subject: message.subject }));
+    } catch (reason) {
+      setActionError(t("mail.archive.failed", { subject: message.subject, error: (reason as Error).message }));
+    } finally {
+      refresh();
+      setArchiving((keys) => keys.filter((saving) => saving !== key));
+    }
+  };
+  const archiveProps = (message: MailMessage): ArchiveProps => ({
+    message, canModify: canModify(message), pending: archiving.includes(messageKey(message)), onArchive: archive,
   });
 
   const thingOf = (draft: Draft) => answers(draft) ?? COMPOSE;
@@ -578,7 +631,7 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
   const replied = new Set(sentMail.filter((sent) => sent.replyTo && sent.state === "done").map((sent) => `${sent.account}|${sent.replyTo}`));
   const pane = open ? (
     <Reader key={picked} message={open} draft={draftFor(messageKey(open))} writing={isWriting(messageKey(open), open.id)}
-      favorite={favoriteProps(open)}
+      favorite={favoriteProps(open)} archive={archiveProps(open)}
       sent={sentMail.filter((sent) => sent.replyTo === open.id && sent.account === open.account)}
       canSend={sources.find((source) => source.account === open.account)?.canSend ?? false}
       line={line} acts={acts} {...shownWritten(draftFor(messageKey(open)))} onDraft={draftReply(open)} onOwn={ownReply(open)} onBack={() => setPicked(null)} />
@@ -655,7 +708,7 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
             )}
           </div>}
           {said && <p className="inbox-said" role="status">{said}</p>}
-          {favoriteError && <p className="problem small" role="alert">{favoriteError}</p>}
+          {actionError && <p className="problem small" role="alert">{actionError}</p>}
           <div className="mail-split" data-reading={open || openDraft || (picked?.startsWith("d:") && composing) ? true : undefined}>
             <ul className="mail-list">
               {filter === "drafts" ? (
@@ -698,6 +751,7 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
                           <span className="mail-snippet">{message.snippet}</span>
                         </button>
                         <FavoriteButton {...favoriteProps(message)} compact />
+                        <ArchiveButton {...archiveProps(message)} compact />
                       </li>
                     );
                   })}
