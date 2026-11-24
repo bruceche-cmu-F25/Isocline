@@ -1,6 +1,6 @@
 # 从 Isocline 改名为 Zirma
 
-v0.2，2026-11-24。代码已改完，在分支 `chore/rename-zirma` 上（§6）。Bruce 已定：产品名 Zirma，存下来的数据也一起改名并迁移，等同一个 checkout 里的其他会话停下、提交后再改代码。名字的来由、商标和域名检查见 [rename-isocline.md](rename-isocline.md) §6。
+v0.3，2026-11-24。已完成：代码已合进 `zirma`，生产已迁移（§6）。Bruce 已定：产品名 Zirma，存下来的数据也一起改名并迁移，等同一个 checkout 里的其他会话停下、提交后再改代码。名字的来由、商标和域名检查见 [rename-isocline.md](rename-isocline.md) §6。
 
 ## 1. 已经定了的
 
@@ -72,5 +72,12 @@ v0.2，2026-11-24。代码已改完，在分支 `chore/rename-zirma` 上（§6�
 - 迁移按 §3.2 做了，旧名字按 Isocline、Alfred 的顺序认：数据目录、日志、钥匙串、launchd 代理、cookie、浏览器本地设置、环境变量。开发版的 `Isocline Dev` 也会搬到 `Zirma Dev`。`install:mac` 会先备份旧目录里的数据库，再退出旧的 Isocline.app 并把它移到废纸篓。
 - 和计划不同的一处：日历日程 id 的前缀**仍然是 `isocline`**。Google 的日程 id 只能用 0–9 和 a–v，"zirma" 里的 z 不合法。
 - 验证：`npm run typecheck` 通过，`npm test` 476 个全部通过（新增 Isocline→Zirma、Alfred→Zirma、开发版搬迁、旧名字防护的测试）；在一个临时节点上用无头 Chrome 看了中英文、桌面和手机宽度、浅色和深色下的字标和页面。
-- 还没验证：真实钥匙串的复制（测试里用的是内存里的假钥匙串）、真机上的 launchd 交接、手机 cookie 的换发。这些要等 Bruce 用 `npm run install:mac` 装到生产时（§4 第 7 步）才能看到。
+- 合并：PR #4，`zirma` 上的 `f332df9`；打了第一个版本 tag `v0.1.0`。GitHub 仓库同时改名为 `bruceche-cmu-F25/Zirma`（旧地址跳转）。
+- **生产已迁移（2026-11-24，`npm run install:mac -- v0.1.0`）**：
+  - 安装前把数据库备份到 `Isocline/backups/world-20261124-232615-e8e1899.sqlite`（随目录一起搬到了 `Zirma/backups/`）。
+  - Isocline.app 退出并移到废纸篓，`Zirma.app` 装上（bundle id `io.github.bruceche-cmu-f25.zirma`）。
+  - `Application Support/Isocline` 整个搬到 `Zirma`，日志目录也搬到了 `Logs/Zirma`。
+  - `isocline.home-node` 已停掉并删除，`zirma.home-node` 在跑 `f332df9`，端口不变（7480 / 7490）。
+  - 钥匙串：Google 和模型的登录在第一次读取时已复制到 `Zirma` 名下（模型登录是分片存的，复制时整份重写成新的一组分片）。`push:vapid` 和 `voice:elevenlabs` 还在 `Isocline` 名下，第一次发推送、第一次用 ElevenLabs 读的时候才会复制。旧条目都保留。
+- 还没验证：手机 cookie 的换发（下次用手机打开时发生）；开发版的交接。开发版的 `isocline.home-node.dev` 还在跑，`Isocline Dev` 还没搬：要等开发版 App 下次从 `~/Alfred` 打开，或者开发版主节点重启，才会搬到 `Zirma Dev` 并换成 `zirma.home-node.dev`。
 
