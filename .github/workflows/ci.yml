@@ -1,11 +1,11 @@
-# Typecheck and tests for every pull request into alfred-harness and every push to it (docs/WORKFLOW.md §6).
+# Typecheck and tests for every pull request into zirma and every push to it (docs/WORKFLOW.md §6).
 name: CI
 
 on:
   pull_request:
-    branches: [alfred-harness]
+    branches: [zirma]
   push:
-    branches: [alfred-harness]
+    branches: [zirma]
 
 concurrency:
   group: ci-${{ github.ref }}
