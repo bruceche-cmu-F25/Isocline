@@ -75,7 +75,7 @@ v0.2，2026-11-24。写给每一个改这个仓库的人和编码代理，不管
 
 `.github/workflows/ci.yml`：每个目标是 `alfred-harness` 的 PR、每次推到 `alfred-harness`，都会在 macOS 上跑 `npm ci`、`npm run typecheck`、`npm test`。
 
-GitHub 上 `alfred-harness` 应该这样设：
+GitHub 上只有 `main` 受保护。`alfred-harness` 暂时不开保护，「只经 PR 合并」靠每个人自己遵守。以后开发主线会换成一条用 Zirma 命名的新分支（名字到时候定），到那时再给新分支开下面这些保护：
 - 必须经 PR 合并，必须 CI 通过，管理员也一样。
 - 不要求别人批准（一个人开发时没人能批）。
 - 只允许 squash merge；合并后自动删掉分支；禁止强推，禁止删除这个分支。
@@ -87,4 +87,5 @@ GitHub 上 `alfred-harness` 应该这样设：
 1. 这份文档和 CI 作为直接推到 `alfred-harness` 的最后一批提交。
 2. 推上去以后确认 CI 能跑通。
 3. 在那条提交上打 `v0.1.0`（`package.json` 已经是 `0.1.0`），用它重装一次生产，确认 §5 走得通。
-4. 按 §6 调好 GitHub 上的保护规则。从这一步起，不再直接推 `alfred-harness`。
+4. 从这一步起，不再直接推 `alfred-harness`，所有改动都走 §2（GitHub 不会拦，靠自觉）。
+5. 以后主线换成 Zirma 命名的分支时，把这份文档、`AGENTS.md` 和 CI 里的 `alfred-harness` 一起改成新名字，再按 §6 给新分支开保护。
