@@ -34,6 +34,8 @@ try {
 
   step("Installing its dependencies");
   run("npm", ["ci", "--prefer-offline", "--no-audit", "--no-fund"], build);
+  // Electron fetches its own binary on first use, not at install (from its cache when it has it); the app is built from it.
+  run("node", [join("node_modules", "electron", "install.js")], build);
 
   step("Checking it: typecheck and tests");
   run("npm", ["run", "typecheck"], build);
