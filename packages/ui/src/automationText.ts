@@ -1,6 +1,6 @@
 /** How automations are worded, in the current language: their names, schedules and times. Pure, so the inbox's read
  * model and the pages share it. */
-import type { Automation, Schedule } from "@isocline/protocol";
+import type { Automation, Schedule } from "@zirma/protocol";
 import { intlLocale, t, type Key } from "./i18n/index.ts";
 
 export const pad = (n: number) => String(n).padStart(2, "0");

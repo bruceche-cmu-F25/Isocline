@@ -1,4 +1,4 @@
-/* Links that lead outside Isocline. The page's plain `a` takes the colour of the text around it, with an underline
+/* Links that lead outside Zirma. The page's plain `a` takes the colour of the text around it, with an underline
    that barely shows; these have to read as links wherever they stand: in a todo, an event, an email, a reply. */
 a.text-link {
   color: var(--accent);

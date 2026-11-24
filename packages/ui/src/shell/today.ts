@@ -1,5 +1,5 @@
 /** 今天 (the Today page): what deserves the user's attention now, read from the home node's state. It stores nothing
- * and asks no model: these are the facts (docs/design/today-and-inbox.md, 3.2). Isocline's judgement (which letter may
+ * and asks no model: these are the facts (docs/design/today-and-inbox.md, 3.2). Zirma's judgement (which letter may
  * need a reply, what to start with, a time for a todo without one) is a later layer on top.
  *   next     the event going on, or the next one today, with the way in (its call, its place)
  *   turned   in the evening, once nothing with an hour is left today, the page is about tomorrow (`ahead`)
@@ -7,15 +7,15 @@
  *   rows     today on one line of time: events, and todos due at an hour
  *   loose    todos for today with no hour
  *   mail     how many letters came today, and the unread ones a person wrote (codes and sign-in notices are counted apart)
- *   doing    what Isocline is running now, and the automation that fires next
+ *   doing    what Zirma is running now, and the automation that fires next
  *   done     what finished and has not been looked at
  * `todayLine` lays these out as the page draws them: one line of rows in order of time.
  */
-import type { CalendarEvent } from "@isocline/module-calendar/types";
-import type { Clip } from "@isocline/module-links/types";
-import type { MailMessage } from "@isocline/module-mail/types";
-import type { Todo } from "@isocline/module-todo/types";
-import type { Run, StateResponse } from "@isocline/protocol";
+import type { CalendarEvent } from "@zirma/module-calendar/types";
+import type { Clip } from "@zirma/module-links/types";
+import type { MailMessage } from "@zirma/module-mail/types";
+import type { Todo } from "@zirma/module-todo/types";
+import type { Run, StateResponse } from "@zirma/protocol";
 import { automationTitle, hhmm, whenText } from "../automationText.ts";
 import { t } from "../i18n/dict.ts";
 import { inboxItems, type InboxItem } from "./inbox.ts";
@@ -128,7 +128,7 @@ export function todayModel(state: StateResponse, now: number = Date.now()): Toda
   // The calendar: an invitation turned down is not on the day.
   const mine = (calendar?.events ?? []).filter((event) => event.response !== "declined");
   const hasHour = (event: CalendarEvent, day: string) => !event.allDay && !!event.start && event.startDate === day;
-  // Todos: Isocline's suggestions are not the user's yet, and one mirrored from the calendar is already there as its event.
+  // Todos: Zirma's suggestions are not the user's yet, and one mirrored from the calendar is already there as its event.
   const open = (todos?.todos ?? []).filter((todo) => !todo.done && !todo.suggested && !todo.archivedAt && todo.source?.kind !== "calendar");
   const isFor = (todo: Todo, day: string) => todo.due === day || todo.plannedOn === day || (!!todo.startDate && !!todo.due && todo.startDate <= day && todo.due >= day);
   const here = localDate(now);
@@ -352,7 +352,7 @@ export function untilText(ms: number): string {
 }
 
 /** The page's one line, in the top bar: the day by its counts. The page's own first sentence says what is next, so
- * this does not say it again. Also what Isocline hears with a question asked from here. */
+ * this does not say it again. Also what Zirma hears with a question asked from here. */
 export function todaySummary(state: StateResponse, now: number = Date.now()): string {
   const model = todayModel(state, now);
   const parts = [

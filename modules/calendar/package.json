@@ -1,5 +1,5 @@
 {
-  "name": "@isocline/module-calendar",
+  "name": "@zirma/module-calendar",
   "version": "0.0.0",
   "private": true,
   "description": "Calendar module: the user's Google Calendar, mirrored for reading.",
@@ -10,7 +10,7 @@
     "./types": "./src/types.ts"
   },
   "dependencies": {
-    "@isocline/core": "*",
-    "@isocline/module-kit": "*"
+    "@zirma/core": "*",
+    "@zirma/module-kit": "*"
   }
 }

@@ -1,11 +1,11 @@
-/** Where you talk to Isocline while its panel is closed, and where you search: one line under the page, with Isocline's
- * figure in it. The page's own controls are at its top; Isocline is at its foot, as it is on a phone and in the panel.
+/** Where you talk to Zirma while its panel is closed, and where you search: one line under the page, with Zirma's
+ * figure in it. The page's own controls are at its top; Zirma is at its foot, as it is on a phone and in the panel.
  * What it answers comes out of the bar as a card about the newest turn only, and what it changed shows on the page
  * itself. A conversation that grows is opened in the panel from the card. On a phone the bar takes the place of the
  * dock's tabs, and the dock's figure stays where it is.
  *
  * Words that name a page, a command or a conversation list those above the bar, and Enter goes to the page or
- * command they name; anything else Enter says to Isocline. Searching everything (todos, events, mail too) is ⌘K's
+ * command they name; anything else Enter says to Zirma. Searching everything (todos, events, mail too) is ⌘K's
  * panel (shell/Palette.tsx); ⌘J and `/` come here.
  *
  * And it is where words about one thing on the page are written (shell/about.ts): a mail to answer, a draft to
@@ -15,13 +15,13 @@
  * And a line that plainly says something to put down, with its day or its hour ("周五前交报告", "明天下午3点开会"),
  * is read as it is typed (shell/read.ts): what it will become shows above the bar, and Enter puts it on the todo
  * list or in the calendar at once, with a way to take it back. Nothing is asked and nothing answers. The row under
- * it still sends the same words to Isocline.
+ * it still sends the same words to Zirma.
  *
  * The bar is a row of the page, not something floating over it, so nothing on the page is ever under it. Only the
  * card, the suggestions and what was found sit over the page, and only for a while.
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import type { CoreEvent, Proposal, Run, StateResponse } from "@isocline/protocol";
+import type { CoreEvent, Proposal, Run, StateResponse } from "@zirma/protocol";
 import { api, newRequestId } from "../api.ts";
 import { Request } from "../Conversation.tsx";
 import type { FigureState } from "../entity/tesseract.js";
@@ -99,7 +99,7 @@ interface CardProps {
   onHover(hovered: boolean): void;
 }
 
-/** The newest turn: what was asked, in one quiet line, and Isocline's side of it. */
+/** The newest turn: what was asked, in one quiet line, and Zirma's side of it. */
 function AskCard({ run, unread, live, doing, receipts, proposal, decided, onOpen, onProposal, onDecided, onClose, onHover }: CardProps) {
   const body = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
@@ -154,7 +154,7 @@ export interface AskBarProps {
   /** Sends the words: to the open conversation while it is recent, else as a new one. */
   /** `attachments`: ids of files uploaded for this message. */
   onAsk(text: string, attachments?: string[]): Promise<void>;
-  /** Opens the conversation in Isocline's panel. */
+  /** Opens the conversation in Zirma's panel. */
   onOpen(): void;
   onProposal(id: string): void;
   onEvent(listener: (event: CoreEvent) => void): () => void;
@@ -246,7 +246,7 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  // On a phone the bar appears because Isocline was tapped: the cursor goes straight in.
+  // On a phone the bar appears because Zirma was tapped: the cursor goes straight in.
   useEffect(() => { if (dock) field.current?.focus(); }, [dock]);
 
   // What the line says to put down, and what each will be: a reading can be turned from a todo into an event and
@@ -356,10 +356,10 @@ export function AskBar({ state, selected, figure, suggestions, dock, find, page,
       .catch((reason: Error) => setError(reason.message))
       .finally(() => setSending(false));
   };
-  // What the words name, listed above the bar with "ask Isocline" last, next to the field. Enter takes the row that is
+  // What the words name, listed above the bar with "ask Zirma" last, next to the field. Enter takes the row that is
   // lit: a page or a command the words name, else asking.
   const found = focused && draft.trim() && textOnly ? findItems(draft, find).slice(0, FOUND) : [];
-  // What was read is the first row and the one Enter takes; the last row says the same words to Isocline instead.
+  // What was read is the first row and the one Enter takes; the last row says the same words to Zirma instead.
   const take = focused && reads.length > 0 ? 1 : 0;
   const asking = take + found.length;
   const lit = take || found.length ? picked ?? (take ? 0 : defaultPick(found) < 0 ? asking : defaultPick(found)) : asking;

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ConversationError, ProjectError, ProposalStateError, RunError } from "@isocline/core";
-import { McpConnectorError, ModelSignInError, SkillError } from "@isocline/engine-pi";
-import { OpInputError, UnknownOpError } from "@isocline/module-kit";
+import { ConversationError, ProjectError, ProposalStateError, RunError } from "@zirma/core";
+import { McpConnectorError, ModelSignInError, SkillError } from "@zirma/engine-pi";
+import { OpInputError, UnknownOpError } from "@zirma/module-kit";
 import { TerminalError, VoiceError } from "../src/index.ts";
 import { Fault, HttpError, parseObject, statusOf } from "../src/wire.ts";
 

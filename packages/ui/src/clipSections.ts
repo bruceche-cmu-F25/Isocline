@@ -1,4 +1,4 @@
-import type { Clip, ClipState, LinkType } from "@isocline/module-links/types";
+import type { Clip, ClipState, LinkType } from "@zirma/module-links/types";
 
 /** Each matching clip appears once. Two or more unwatched videos become a shelf; one stays with other clips. */
 export function clipSections(clips: Clip[], type: LinkType | "all", state: ClipState | "all", now: number) {

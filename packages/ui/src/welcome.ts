@@ -1,4 +1,4 @@
-import type { AwayDigest } from "@isocline/protocol";
+import type { AwayDigest } from "@zirma/protocol";
 import { getLocale, translate, type Locale } from "./i18n/dict.ts";
 
 function duration(ms: number, locale: Locale): string {

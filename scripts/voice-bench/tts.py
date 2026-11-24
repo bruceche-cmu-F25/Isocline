@@ -1,4 +1,4 @@
-"""Isocline's text-to-speech bake-off: what each local engine sounds like and how fast it is on this Mac.
+"""Zirma's text-to-speech bake-off: what each local engine sounds like and how fast it is on this Mac.
 
     uv run --no-project --python 3.12 --with mlx-audio==0.6.7 --with "misaki[zh]" --with soundfile python -I tts.py ENGINE OUT_DIR
 

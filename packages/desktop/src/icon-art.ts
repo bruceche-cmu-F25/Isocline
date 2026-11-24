@@ -1,8 +1,8 @@
-/** Isocline's app icon as pixels: the resting tesseract, its far edges paler (as everywhere else), on a paper
+/** Zirma's app icon as pixels: the resting tesseract, its far edges paler (as everywhere else), on a paper
  * rounded square drawn to the macOS icon grid (the square fills 824 of 1024, corners as a superellipse, so
  * macOS does not put it in a grey frame). No Electron here, so it can be rendered and checked in plain Node.
  */
-import { markSegments, PALETTES } from "@isocline/ui/figure";
+import { markSegments, PALETTES } from "@zirma/ui/figure";
 
 const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const mix = (a: number[], b: number[], u: number) => a.map((x, i) => x + (b[i] - x) * u);

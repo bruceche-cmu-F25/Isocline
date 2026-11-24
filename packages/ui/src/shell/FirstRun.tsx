@@ -1,12 +1,12 @@
-/** The first run (docs/design/today-and-inbox.md, 6): full screen, the first time Isocline is opened. Name, a model,
+/** The first run (docs/design/today-and-inbox.md, 6): full screen, the first time Zirma is opened. Name, a model,
  * Google, when to write each morning, then the figure walks round the real workspace and says one line at each
  * place. Every step can be skipped and done later in Settings; a step that is already set is not shown, so someone
- * who was using Isocline before this existed sees only what is new to them. Finished or skipped, the home node
+ * who was using Zirma before this existed sees only what is new to them. Finished or skipped, the home node
  * remembers (`firstRunAt`), so it is shown once, on whichever device opens first.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import type { ConnectionsResponse, ModelAccountsResponse, StateResponse } from "@isocline/protocol";
+import type { ConnectionsResponse, ModelAccountsResponse, StateResponse } from "@zirma/protocol";
 import { Accounts } from "../Accounts.tsx";
 import { ModelSettings } from "../ModelSettings.tsx";
 import { api, request as call } from "../api.ts";
@@ -116,7 +116,7 @@ export function FirstRun({ state, name, saveName, place, onDone }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
-  // The automations Isocline ships with, still off when this opened: each can be switched on here, at a time of its own.
+  // The automations Zirma ships with, still off when this opened: each can be switched on here, at a time of its own.
   const [samples] = useState(() => (state.automations ?? []).filter((automation) => automation.template && !automation.enabled));
   const [picked, setPicked] = useState<Record<string, { on: boolean; at: string }>>(() =>
     Object.fromEntries(samples.map((sample) => [sample.id, { on: true, at: sample.schedule.at }])));

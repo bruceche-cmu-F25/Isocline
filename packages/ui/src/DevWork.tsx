@@ -1,11 +1,11 @@
 /** What a development session's panel does with its work (docs/design/dev-mode.md D5): commit the changes, push them
- * with a pull request, and the background processes (dev servers) Isocline or the user started in it.
+ * with a pull request, and the background processes (dev servers) Zirma or the user started in it.
  *
  * Committing is local and uses the files and diff selected in the commit card. Pushing and opening a pull request leave the computer and
  * cannot be taken back, so the card says exactly what will be sent where, every time, before it is sent.
  */
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import type { SessionBranch, SessionChanges, SessionProcess, SessionPullRequest } from "@isocline/protocol";
+import type { SessionBranch, SessionChanges, SessionProcess, SessionPullRequest } from "@zirma/protocol";
 import { ApiError, api } from "./api.ts";
 import { t } from "./i18n/index.ts";
 import { Icon } from "./shell/icons.tsx";
@@ -169,7 +169,7 @@ export function useProcesses(id: string): { list: SessionProcess[]; reload(): vo
 }
 
 /** The panel's section: each process with its state, its address (opened in the browser pane when there is one), its
- * output, and a stop; under them, a command to start one (the user's own, on the Mac Isocline runs on). */
+ * output, and a stop; under them, a command to start one (the user's own, on the Mac Zirma runs on). */
 export function Processes({ id, mode, processes, onOpen, onLogs }: {
   id: string; mode: string; processes: { list: SessionProcess[]; reload(): void }; onOpen(url: string): void; onLogs(process: SessionProcess): void;
 }) {
@@ -193,7 +193,7 @@ export function Processes({ id, mode, processes, onOpen, onLogs }: {
               <span className="st" aria-hidden="true">{process.exit === null ? <span className="pulse" /> : <span className="mark" data-k={process.exit === 0 ? undefined : "warm"} />}</span>
               <button type="button" className="dev-proc-name" onClick={() => onLogs(process)} title={`$ ${process.command}`}>
                 <b>{process.name}</b>
-                <span>{process.exit === null ? t(process.by === "alfred" ? "proc.byIsocline" : "proc.byYou") : t("proc.exited", { code: process.exit })}</span>
+                <span>{process.exit === null ? t(process.by === "alfred" ? "proc.byZirma" : "proc.byYou") : t("proc.exited", { code: process.exit })}</span>
               </button>
               {process.url && process.exit === null && <button type="button" className="dev-proc-url" onClick={() => onOpen(process.url!)} title={process.url}>{process.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}</button>}
               <button type="button" className="icon-btn" onClick={() => stop(process)} aria-label={t(process.exit === null ? "proc.stop" : "proc.forget", { name: process.name })} title={t(process.exit === null ? "proc.stop" : "proc.forget", { name: process.name })}>

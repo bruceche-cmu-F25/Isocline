@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { SecretStore } from "@isocline/core";
+import type { SecretStore } from "@zirma/core";
 import { boson, elevenlabs, inworld } from "../src/speak-cloud.ts";
 import { Speaker } from "../src/speak.ts";
 

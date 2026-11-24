@@ -3,7 +3,7 @@
  * has just answered with) put events here.
  */
 import type { DatabaseSync } from "node:sqlite";
-import type { World } from "@isocline/module-kit";
+import type { World } from "@zirma/module-kit";
 import type { EventRow } from "./google.ts";
 import type { CalendarSource } from "./types.ts";
 

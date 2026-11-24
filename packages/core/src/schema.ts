@@ -101,7 +101,7 @@ ALTER TABLE core_conversations ADD COLUMN model TEXT CHECK (model IS NULL OR (le
 ALTER TABLE core_conversations ADD COLUMN thinking TEXT CHECK (thinking IS NULL OR thinking IN ('off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'));
 `,
 }, {
-  // Changes Isocline prepares that wait for the user's yes (proposals.ts).
+  // Changes Zirma prepares that wait for the user's yes (proposals.ts).
   id: "core:4",
   sql: `
 CREATE TABLE core_proposals (
@@ -174,7 +174,7 @@ CREATE TABLE core_automations (
 ALTER TABLE core_runs ADD COLUMN automation_id TEXT CHECK (automation_id IS NULL OR length(automation_id) BETWEEN 1 AND 64);
 `,
 }, {
-  // Projects (projects.ts): folders Isocline may work in. A conversation in one is a development session, fixed at creation.
+  // Projects (projects.ts): folders Zirma may work in. A conversation in one is a development session, fixed at creation.
   id: "core:9",
   sql: `
 CREATE TABLE core_projects (
@@ -245,7 +245,7 @@ ALTER TABLE core_conversations ADD COLUMN commands TEXT NOT NULL DEFAULT '[]' CH
 ALTER TABLE core_devices ADD COLUMN scopes TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(scopes) AND json_type(scopes) = 'array');
 `,
 }, {
-  // A second automation Isocline ships with (automation-templates.ts): picking todos out of mail. The templates a row
+  // A second automation Zirma ships with (automation-templates.ts): picking todos out of mail. The templates a row
   // may name are in the table's own check, which SQLite cannot change in place, so the table is made again.
   id: "core:14",
   sql: `

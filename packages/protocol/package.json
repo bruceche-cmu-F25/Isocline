@@ -1,5 +1,5 @@
 {
-  "name": "@isocline/protocol",
+  "name": "@zirma/protocol",
   "version": "0.0.0",
   "private": true,
   "description": "The public client protocol: what any device sends to and receives from the home node.",

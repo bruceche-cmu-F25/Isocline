@@ -2,7 +2,7 @@
  * event stream says something changed. What runs are writing right now is kept beside it (live.ts).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CoreEvent, StateResponse } from "@isocline/protocol";
+import type { CoreEvent, StateResponse } from "@zirma/protocol";
 import { api, isUnpaired, subscribe, type Connection } from "./api.ts";
 import { liveReplies } from "./live.ts";
 import { heldRevisions, mergeState } from "./stateMerge.ts";
@@ -12,20 +12,20 @@ import { heldRevisions, mergeState } from "./stateMerge.ts";
 const NOT_STATE = new Set(["run.step", "run.usage"]);
 const RUN_ENDED = new Set(["run.completed", "run.failed", "run.cancelled", "run.interrupted"]);
 
-export interface Isocline {
+export interface Zirma {
   state: StateResponse | null;
   connection: Connection;
   error: string | null;
   /** This device came in from another machine and is not paired (or was revoked): show pairing instead. */
   unpaired: boolean;
-  /** Subjects (like `todo:abc`) that Isocline changed in the last few seconds. */
+  /** Subjects (like `todo:abc`) that Zirma changed in the last few seconds. */
   fresh: ReadonlySet<string>;
   /** Listen to every recorded event as it arrives. */
   onEvent(listener: (event: CoreEvent) => void): () => void;
   refresh(): void;
 }
 
-export function useIsocline(): Isocline {
+export function useZirma(): Zirma {
   const [state, setState] = useState<StateResponse | null>(null);
   const [connection, setConnection] = useState<Connection>("connecting");
   const [error, setError] = useState<string | null>(null);

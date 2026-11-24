@@ -1,9 +1,9 @@
-/** `/api/skills/*`: Isocline's skills (see @isocline/protocol). The host and origin checks of http.ts have already run,
+/** `/api/skills/*`: Zirma's skills (see @zirma/protocol). The host and origin checks of http.ts have already run,
  * and only this machine reaches these routes. Errors are thrown; the listener says a SkillError as its status (wire.ts).
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Skills } from "@isocline/engine-pi";
-import type { SkillSearchResponse } from "@isocline/protocol";
+import type { Skills } from "@zirma/engine-pi";
+import type { SkillSearchResponse } from "@zirma/protocol";
 import { HttpError, readJson, send } from "./wire.ts";
 
 /** What was sent does not say which skill, or what to look for. */

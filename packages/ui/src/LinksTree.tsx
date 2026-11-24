@@ -2,8 +2,8 @@
  * deep, a count on each. Pick a node to see what is in it; drag a link onto one to file it there, or a category onto
  * another to put it under (holding ⌥, to merge them). A category's ⋯ adds one under it, renames, merges or removes it. */
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
-import type { Area } from "@isocline/protocol";
-import { MAX_TOPIC_DEPTH, topicDepth } from "@isocline/module-links/tree";
+import type { Area } from "@zirma/protocol";
+import { MAX_TOPIC_DEPTH, topicDepth } from "@zirma/module-links/tree";
 import type { Tree } from "./linkTree.ts";
 import { useOp } from "./linkControls.tsx";
 import { Pop } from "./shell/Pop.tsx";
@@ -11,8 +11,8 @@ import { Icon } from "./shell/icons.tsx";
 import { Select } from "./shell/Select.tsx";
 import { t } from "./i18n/index.ts";
 
-export const DRAG_LINK = "application/x-isocline-link";
-const DRAG_TOPIC = "application/x-isocline-topic";
+export const DRAG_LINK = "application/x-zirma-link";
+const DRAG_TOPIC = "application/x-zirma-topic";
 
 export function TreeNav({ tree, areas, counts, node, open, searching, onPick, onToggle, onDropLink, onError, onSaid }: {
   tree: Tree; areas: Area[]; counts: Map<string, number>; node: string; open: ReadonlySet<string>; searching: boolean;

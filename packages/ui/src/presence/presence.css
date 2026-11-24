@@ -45,7 +45,7 @@ button { font: inherit; color: inherit; border: 0; background: none; padding: 0;
 .figure[data-speaking="speak"], .figure[data-speaking="hop"] { box-shadow: 0 14px 34px #00000047; }
 .presence[data-v="top"] .figure { --up: 1; transform-origin: 50% 0; }
 
-/* Hidden by the user: Isocline rises from beyond the screen's edge to say it, and goes back after. */
+/* Hidden by the user: Zirma rises from beyond the screen's edge to say it, and goes back after. */
 .visiting .figure[data-speaking="hop"] { animation: rise 640ms var(--out) both; }
 .visiting .figure[data-speaking="sink"] { animation: sink 520ms cubic-bezier(.55, 0, .75, .2) both; }
 @keyframes rise {
@@ -67,7 +67,7 @@ html[data-demo] body { background: linear-gradient(160deg, oklch(.72 .06 240), o
   .hold, .figure { animation: none !important; transition: none !important; }
 }
 
-/* Quick talk: one short line where the card goes, while Isocline listens or works on what was said. The dot swells
+/* Quick talk: one short line where the card goes, while Zirma listens or works on what was said. The dot swells
    with the voice. */
 .quick-hint {
   align-self: flex-end; margin: 0 0 30px; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--line);

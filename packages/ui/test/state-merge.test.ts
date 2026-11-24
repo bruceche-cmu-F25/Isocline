@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { LiveUpdate, StateResponse } from "@isocline/protocol";
+import type { LiveUpdate, StateResponse } from "@zirma/protocol";
 import { createLiveReplies } from "../src/live.ts";
 import { shared } from "../src/share.ts";
 import { heldRevisions, mergeState } from "../src/stateMerge.ts";

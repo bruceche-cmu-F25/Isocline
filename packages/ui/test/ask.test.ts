@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Run } from "@isocline/protocol";
+import type { Run } from "@zirma/protocol";
 import { CONTINUE_MS, continues, newestRun, standing } from "../src/shell/ask.ts";
 
 const now = Date.parse("2026-11-19T15:00:00Z");

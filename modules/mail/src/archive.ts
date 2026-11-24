@@ -1,4 +1,4 @@
-import { defineOp, enqueueOutbound, localeOf, recordDomainEvent, Type, userLocale, type Delivered, type ModuleServices, type Outbound, type World } from "@isocline/module-kit";
+import { defineOp, enqueueOutbound, localeOf, recordDomainEvent, Type, userLocale, type Delivered, type ModuleServices, type Outbound, type World } from "@zirma/module-kit";
 import { changeGmailLabel, MailLabelError } from "./labels.ts";
 
 interface ArchiveInput { account: string; id: string }
@@ -21,7 +21,7 @@ export const archiveOp = defineOp({
     return world.tx((db) => {
       const row = db.prepare(`SELECT m.in_inbox, m.subject, s.can_read, s.can_modify FROM mail_messages AS m
         LEFT JOIN mail_sources AS s ON s.account = m.account WHERE m.account = ? AND m.id = ?`).get(account, id);
-      if (!row) throw new MailLabelError("missing", "This message is no longer in Isocline Mail");
+      if (!row) throw new MailLabelError("missing", "This message is no longer in Zirma Mail");
       if (!row.can_read || !row.can_modify) throw new MailLabelError("permission", "Enable Gmail star and archive sync for this account in Settings");
       const pending = db.prepare(`SELECT outbound_id FROM (${PENDING}) WHERE account = ? AND message_id = ?`).get(account, id);
       if (pending) return { queued: pending.outbound_id };

@@ -5,7 +5,7 @@
  * the keychain. This page only starts the sign-in and watches it finish. Only on the Mac that holds the credentials.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ConnectFlow, ConnectStart, ConnectionsResponse, GoogleAccount, GoogleCapability, GoogleCheck as Check } from "@isocline/protocol";
+import type { ConnectFlow, ConnectStart, ConnectionsResponse, GoogleAccount, GoogleCapability, GoogleCheck as Check } from "@zirma/protocol";
 import { request as call } from "./api.ts";
 import { Logo } from "./brand/Logo.tsx";
 import { GoogleClientSetup } from "./GoogleClientSetup.tsx";

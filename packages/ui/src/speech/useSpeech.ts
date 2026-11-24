@@ -1,4 +1,4 @@
-/** Isocline telling the user things, one at a time: the figure hops, the card reveals its text,
+/** Zirma telling the user things, one at a time: the figure hops, the card reveals its text,
  * then folds back in. Shared by the Mac app's figure window and the app's own pages.
  *
  *   idle → hop → speak ⇄ fold → next → (speak | idle | sink → idle)
@@ -18,7 +18,7 @@ export type Phase = "idle" | "hop" | "speak" | "fold" | "next" | "sink";
 /** How a card left: clicked through, closed, or it timed out unanswered. */
 export type Outcome = "open" | "dismiss" | "timeout";
 
-/** What Isocline says about one thing. */
+/** What Zirma says about one thing. */
 export interface Said { title: string; body: string; mood: FigureState; action: string }
 
 export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -55,7 +55,7 @@ export interface SpeechOptions<T> {
   done(item: T, outcome: Outcome): void;
   /** Once it has folded: take the item out of `items`. */
   remove(item: T): void;
-  /** No room for the whole card now (the user is in a conversation with Isocline): only its title shows, and it waits.
+  /** No room for the whole card now (the user is in a conversation with Zirma): only its title shows, and it waits.
    * Nothing is typed out and nothing times out until there is room; then it is said in full. */
   brief?: boolean;
   /** Nothing left to say: whether the figure goes away (sinks) rather than staying. */

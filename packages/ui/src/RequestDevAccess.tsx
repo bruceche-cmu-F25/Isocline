@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { RemoteResponse } from "@isocline/protocol";
+import type { RemoteResponse } from "@zirma/protocol";
 import { api } from "./api.ts";
 import { t } from "./i18n/index.ts";
 

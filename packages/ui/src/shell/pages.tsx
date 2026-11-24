@@ -3,10 +3,10 @@
  * Core pages (`core.*`: the inbox, later automations) belong to the shell and read the core's state.
  */
 import type { ReactNode } from "react";
-import type { Area, StateResponse, ViewContext } from "@isocline/protocol";
-import type { CalendarSnapshot } from "@isocline/module-calendar/types";
-import type { MailSnapshot } from "@isocline/module-mail/types";
-import type { TodoSnapshot } from "@isocline/module-todo/types";
+import type { Area, StateResponse, ViewContext } from "@zirma/protocol";
+import type { CalendarSnapshot } from "@zirma/module-calendar/types";
+import type { MailSnapshot } from "@zirma/module-mail/types";
+import type { TodoSnapshot } from "@zirma/module-todo/types";
 import { Automations } from "../Automations.tsx";
 import { Calendar } from "../Calendar.tsx";
 import { Mail } from "../Mail.tsx";
@@ -35,7 +35,7 @@ export interface PageProps<S = unknown> extends NamePreference {
   snapshot: S;
   /** Reload the current snapshot after a user action. */
   refresh(): void;
-  /** Subjects (like `todo:abc`) Isocline changed in the last few seconds. */
+  /** Subjects (like `todo:abc`) Zirma changed in the last few seconds. */
   fresh: ReadonlySet<string>;
   /** The shared areas of life (core's kernel), for pages that sort by them. */
   areas: Area[];
@@ -64,16 +64,16 @@ export interface PageDef<S = unknown> {
   k: string;
   /** Sidebar group. Today ("alfred") has its own row at the top of daily navigation. */
   group: "alfred" | "work" | "modules" | "dev" | "system";
-  /** The page draws its own top (no title and summary above it), and Isocline's panel steps aside for it. */
+  /** The page draws its own top (no title and summary above it), and Zirma's panel steps aside for it. */
   bare?: boolean;
   /** A number for the sidebar, or nothing. */
   badge?(snapshot: S, state: StateResponse): number | undefined;
-  /** One plain line under the page title: the facts. It also tells Isocline what you were looking at when you ask. */
+  /** One plain line under the page title: the facts. It also tells Zirma what you were looking at when you ask. */
   summary?(snapshot: S, state: StateResponse): string;
   /** What the quiet line beside the page's name says when it is not the summary: 今天 shows the date, since its
    * facts are the page itself. */
   topline?(state: StateResponse): string;
-  /** Isocline's line about the page, shown under its name while nothing is going on. A few words: how many things,
+  /** Zirma's line about the page, shown under its name while nothing is going on. A few words: how many things,
    * not a sentence about them. */
   headline?(snapshot: S, state: StateResponse): string;
   /** Questions worth asking from this page, most useful first; the chips above the composer. */
@@ -115,7 +115,7 @@ function soonest(state: StateResponse) {
 /** Counts the todo page and its lines share. A range running today counts as due today. */
 function todoCounts(snapshot: TodoSnapshot | undefined) {
   const { todos = [], today = "" } = snapshot ?? {};
-  // Isocline's suggestions are not todos until the user keeps them.
+  // Zirma's suggestions are not todos until the user keeps them.
   const open = todos.filter((todo) => !todo.done && !todo.suggested);
   const runsToday = (todo: (typeof open)[number]) => !!todo.due && (todo.due === today || (!!todo.startDate && todo.startDate <= today && todo.due >= today));
   return {
@@ -269,7 +269,7 @@ export function availablePages(state: StateResponse): PageDef[] {
   return PAGES.filter((page) => page.key.startsWith("core.") || offered.has(page.key)).sort((a, b) => rank(a) - rank(b));
 }
 
-/** Which pages the user may take out of the sidebar: everything in the daily workspace but the Inbox (where Isocline's
+/** Which pages the user may take out of the sidebar: everything in the daily workspace but the Inbox (where Zirma's
  * questions wait). The Today page, coding and Settings stay. */
 export const canHide = (page: PageDef): boolean => (page.group === "work" || page.group === "modules") && page.key !== "core.inbox";
 
@@ -288,7 +288,7 @@ export function dockPages(pages: PageDef[]) {
 
 export const moduleOf = (page: PageDef) => page.key.split(".")[0];
 
-/** The page as Isocline hears about it with a question: which page, its title and its facts. Context, not a request. */
+/** The page as Zirma hears about it with a question: which page, its title and its facts. Context, not a request. */
 export interface PageView {
   context: ViewContext;
   title: string;

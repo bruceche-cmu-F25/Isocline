@@ -2,7 +2,7 @@
    and where it starts: --wave-x, --wave-y, and --wave-reach, the distance to the farthest corner).
 
    A view transition: the old page stays still underneath, the new one is revealed through a growing circle, and a
-   ring of colour rides its edge. The ring is Isocline's indigo leading, then violet, pink and a warm tail (the same
+   ring of colour rides its edge. The ring is Zirma's indigo leading, then violet, pink and a warm tail (the same
    hues as tokens.css). On light it tints the page faintly; on dark it is screened on, so it adds light and glows.
    One number, --wave-p (0 → 1), drives both, so the ring and the edge cannot drift apart. */
 @property --wave-p { syntax: "<number>"; inherits: false; initial-value: 0; }

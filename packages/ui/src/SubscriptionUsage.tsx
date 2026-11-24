@@ -1,6 +1,6 @@
 /** Subscription quota windows, shared by the home node's model settings and the paired-device view. */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { ModelUsage, ModelUsageResponse, ModelUsageWindow } from "@isocline/protocol";
+import type { ModelUsage, ModelUsageResponse, ModelUsageWindow } from "@zirma/protocol";
 import { request } from "./api.ts";
 import { Logo, providerMark } from "./brand/Logo.tsx";
 import { t } from "./i18n/index.ts";

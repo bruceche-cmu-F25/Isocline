@@ -5,9 +5,9 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { getFile, type EnginePort, type EngineRequest } from "@isocline/core";
-import { todoModule } from "@isocline/module-todo";
-import type { ConversationDetail, FileInfo, SubmitRunResponse } from "@isocline/protocol";
+import { getFile, type EnginePort, type EngineRequest } from "@zirma/core";
+import { todoModule } from "@zirma/module-todo";
+import type { ConversationDetail, FileInfo, SubmitRunResponse } from "@zirma/protocol";
 import { createHttpServer, openHome, sniff, type Home } from "../src/index.ts";
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
@@ -21,7 +21,7 @@ async function start(home: Home): Promise<{ server: Server; base: string }> {
 const upload = (base: string, name: string, bytes: Uint8Array | string, type = "application/octet-stream") =>
   fetch(`${base}/api/files?name=${encodeURIComponent(name)}`, { method: "POST", headers: { "Content-Type": type }, body: bytes });
 
-test("what a file is, is made out from its bytes: an image, a PDF, text, or nothing Isocline takes", () => {
+test("what a file is, is made out from its bytes: an image, a PDF, text, or nothing Zirma takes", () => {
   assert.deepEqual(sniff(PNG), { kind: "image", type: "image/png" });
   assert.deepEqual(sniff(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0])), { kind: "image", type: "image/jpeg" });
   assert.deepEqual(sniff(PDF), { kind: "pdf", type: "application/pdf" });

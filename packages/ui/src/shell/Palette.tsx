@@ -12,7 +12,7 @@ export interface PaletteProps {
   find: FindSources;
   /** The things on the pages: todos, events, letters. */
   content: ContentSources;
-  /** Ask Isocline in words: the text becomes a message in the open conversation (or a new one). */
+  /** Ask Zirma in words: the text becomes a message in the open conversation (or a new one). */
   onAsk(text: string): void;
   onClose(): void;
 }
@@ -29,8 +29,8 @@ const SECTIONS: ReadonlyArray<{ kinds: readonly Kind[]; title: Key }> = [
 ];
 
 /** ⌘K, anywhere, like Spotlight: one field in the middle of the window that finds a page, a command, a todo, an
- * event, a letter, a site or a conversation, and opens it; or, at the foot, says the words to Isocline. What is listed
- * is grouped by kind, with the best match on top. The ask bar under the page is for talking to Isocline (`/`). */
+ * event, a letter, a site or a conversation, and opens it; or, at the foot, says the words to Zirma. What is listed
+ * is grouped by kind, with the best match on top. The ask bar under the page is for talking to Zirma (`/`). */
 export function Palette({ find, content, onAsk, onClose }: PaletteProps) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -48,7 +48,7 @@ export function Palette({ find, content, onAsk, onClose }: PaletteProps) {
     const groups = SECTIONS.map(({ kinds, title }) => ({ title, items: ordered.filter((item) => kinds.includes(item.kind) && item !== best) }))
       .filter((group) => group.items.length);
     const ask: Item | undefined = q ? { kind: "ask", id: "ask", label: t("pal.ask", { text: q }), icon: "chat", run: () => onAsk(q) } : undefined;
-    // Nothing found: the words go to Isocline, the only row.
+    // Nothing found: the words go to Zirma, the only row.
     const items: Item[] = [...(best ? [best] : []), ...groups.flatMap((group) => group.items), ...(ask ? [ask] : [])];
     return { top: best, groups, items };
   }, [query, find, content, onAsk]);

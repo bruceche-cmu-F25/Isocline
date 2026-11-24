@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fileStore } from "@isocline/core";
+import { fileStore } from "@zirma/core";
 import { createCredentialStore, ModelAccounts } from "../src/index.ts";
 
 function setup() {
@@ -47,7 +47,7 @@ function readSecrets(dataDir: string): string {
   return readFileSync(join(dataDir, "secrets.json"), "utf8");
 }
 
-test("signing in with an API key: Pi asks for the key, the device answers, the key lands in Isocline's store", async () => {
+test("signing in with an API key: Pi asks for the key, the device answers, the key lands in Zirma's store", async () => {
   const t = setup();
   const changes: string[] = [];
   const accounts = new ModelAccounts({ store: t.store, dataDir: t.dataDir, piAgentDir: t.piAgentDir, onChange: (kind, provider) => changes.push(`${kind}:${provider}`) });

@@ -4,17 +4,17 @@ Rules for anyone changing this repository, person or coding agent. Read them bef
 
 ## Run it
 - Node 24+ runs the `.ts` files directly (erasable syntax only). `npm install` once.
-- From source you are always on the development stage (`packages/core/src/stage.ts`): world `~/Library/Application Support/Isocline Dev`, port 7491, keychain `Isocline Dev`. A dev run pointed at production's world or keychain refuses to start.
-- For a trial, use a throwaway world with secrets in a file, not the dev world or any keychain: `npm run trial` (a fresh temporary world on port 7520; another port with `ISOCLINE_PORT=…`).
+- From source you are always on the development stage (`packages/core/src/stage.ts`): world `~/Library/Application Support/Zirma Dev`, port 7491, keychain `Zirma Dev`. A dev run pointed at production's world or keychain refuses to start.
+- For a trial, use a throwaway world with secrets in a file, not the dev world or any keychain: `npm run trial` (a fresh temporary world on port 7520; another port with `ZIRMA_PORT=…`).
 - Interface with hot reload: `npm run dev:ui`, then http://127.0.0.1:5173 (it proxies `/api` to the trial node on 7520).
 - Clickable prototypes: `npm run prototype`, then http://127.0.0.1:4173.
 - Tools that launch servers for you (an editor, an agent's preview) should call these three scripts, not copies of their commands. Their own config files stay out of the repository.
 
 ## Never touch
-- The real home node: port 7480 and its ingress 7490, the world `~/Library/Application Support/Isocline`, the keychain service `Isocline`. Never open 127.0.0.1:7480 in a browser: a window there counts as the user looking and is handed their real notices.
-- `ISOCLINE_ENV=production`: only the installed Isocline.app sets it.
+- The real home node: port 7480 and its ingress 7490, the world `~/Library/Application Support/Zirma`, the keychain service `Zirma`. Never open 127.0.0.1:7480 in a browser: a window there counts as the user looking and is handed their real notices.
+- `ZIRMA_ENV=production`: only the installed Zirma.app sets it.
 - Real data: no tokens, `.env` files, databases or chat logs in the repo, a test or a fixture.
-- `packages/ui/dist` while a real node is served from this checkout: build a trial with `npx vite build --outDir <tmp>` (in `packages/ui`) and set `ISOCLINE_UI_DIR=<tmp>`.
+- `packages/ui/dist` while a real node is served from this checkout: build a trial with `npx vite build --outDir <tmp>` (in `packages/ui`) and set `ZIRMA_UI_DIR=<tmp>`.
 - Changes you did not make: other sessions may be editing this checkout. Don't revert, stash or tidy them.
 
 ## Verify

@@ -22,9 +22,9 @@ export function acceptLanguage(locale: Locale): string {
 }
 
 export interface UserSettings {
-  /** The language Isocline speaks on every device. Null until a device sets it from its system language. */
+  /** The language Zirma speaks on every device. Null until a device sets it from its system language. */
   locale: Locale | null;
-  /** How the user wants Isocline to address them. Null until they have chosen a name. */
+  /** How the user wants Zirma to address them. Null until they have chosen a name. */
   preferredName: string | null;
   /** The model a conversation uses unless it chose its own (`provider/model`); null: the engine's default. */
   model: string | null;
@@ -55,7 +55,7 @@ export interface VoiceSettings {
   /** The Mac's figure reads out what it says (the welcome, a result, a question). Replies to quick talk are always
    * read out, unless muted. */
   speakFigure: boolean;
-  /** For now: Isocline says nothing out loud anywhere, only shows. */
+  /** For now: Zirma says nothing out loud anywhere, only shows. */
   muted: boolean;
   /** `system:<name>`, `model:<name>` or `elevenlabs|inworld|boson:<voice id>`; null: the default for the language. */
   voice: string | null;

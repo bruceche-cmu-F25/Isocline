@@ -3,7 +3,7 @@
  * group, and a switch to keep it in the sidebar. The Today page, the Inbox, coding and Settings always stay.
  */
 import { Fragment, useState } from "react";
-import type { StateResponse } from "@isocline/protocol";
+import type { StateResponse } from "@zirma/protocol";
 import { api } from "./api.ts";
 import { t } from "./i18n/index.ts";
 import { Icon } from "./shell/icons.tsx";

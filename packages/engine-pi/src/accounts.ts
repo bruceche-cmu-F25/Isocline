@@ -1,11 +1,11 @@
-/** Model accounts on the home node: which providers Isocline can think with, and signing in to them
+/** Model accounts on the home node: which providers Zirma can think with, and signing in to them
  * (docs/design/settings-and-connections.md §3.2).
  *
  * Pi does the signing in (`ModelRuntime.login`): browser OAuth with a loopback callback, device codes, API keys.
  * Its questions and links arrive through an AuthInteraction; here they become a sign-in record that a device
- * polls and answers. Credentials go to Isocline's own store (credentials.ts), never to Pi's auth.json.
+ * polls and answers. Credentials go to Zirma's own store (credentials.ts), never to Pi's auth.json.
  *
- * Pi's own setup can seed Isocline: API keys are copied on request. Subscriptions are not: some providers rotate
+ * Pi's own setup can seed Zirma: API keys are copied on request. Subscriptions are not: some providers rotate
  * the refresh token on every refresh, so two programs sharing one would keep signing each other out. They are
  * listed so the user can sign in again here.
  */
@@ -14,7 +14,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { ModelAccountsResponse, ModelAuthMethod, ModelProvider, ModelSignIn, ModelSignInPrompt, ModelUsage, ModelUsageResponse } from "@isocline/protocol";
+import type { ModelAccountsResponse, ModelAuthMethod, ModelProvider, ModelSignIn, ModelSignInPrompt, ModelUsage, ModelUsageResponse } from "@zirma/protocol";
 import type { Credential, CredentialStore } from "./credentials.ts";
 import { hasUsage, readUsage, type UsageProvider } from "./usage.ts";
 
@@ -170,7 +170,7 @@ export class ModelAccounts {
       }),
     };
 
-    runtime.login(providerId, method, interaction, { agentName: "Isocline", getDeviceId: () => this.deviceId() }).then(
+    runtime.login(providerId, method, interaction, { agentName: "Zirma", getDeviceId: () => this.deviceId() }).then(
       () => {
         this.finish(flowId, { status: "done" });
         this.options.onChange?.("signed_in", providerId, { method });
@@ -221,7 +221,7 @@ export class ModelAccounts {
     return flow.state;
   }
 
-  /** Forgets Isocline's credential for a provider. (A key in the environment still counts; it is not Isocline's to remove.) */
+  /** Forgets Zirma's credential for a provider. (A key in the environment still counts; it is not Zirma's to remove.) */
   async logout(providerId: string): Promise<ModelAccountsResponse> {
     const runtime = await this.runtime();
     await runtime.logout(providerId);
@@ -243,7 +243,7 @@ export class ModelAccounts {
   }
 
   /** How much of each signed-in subscription's plan is used. Each provider is asked at most once a minute unless
-   * `fresh`; Pi refreshes an expiring token on the way (into Isocline's store, like a worker would). */
+   * `fresh`; Pi refreshes an expiring token on the way (into Zirma's store, like a worker would). */
   async usage(fresh = false): Promise<ModelUsageResponse> {
     const signedIn = (await this.options.store.list()).filter((info) => info.type === "oauth" && hasUsage(info.providerId)).map((info) => info.providerId as UsageProvider);
     for (const providerId of this.usageCache.keys()) if (!signedIn.includes(providerId as UsageProvider)) this.usageCache.delete(providerId);

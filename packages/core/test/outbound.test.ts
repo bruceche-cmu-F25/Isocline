@@ -81,7 +81,7 @@ test("a home node that stopped mid-delivery: idempotent changes go back in the q
   claimOutbound(w, "mail");
   assert.equal(interruptOutbound(w), 2);
   assert.deepEqual(listOutbound(w).map((outbound) => [outbound.module, outbound.state]), [["calendar", "queued"], ["mail", "unknown"]]);
-  assert.deepEqual(outboundNotices(w), [{ outboundId: listOutbound(w)[1].id, module: "mail", action: "send", state: "unknown", preview: "Email Leo", error: "Isocline stopped while sending this" }]);
+  assert.deepEqual(outboundNotices(w), [{ outboundId: listOutbound(w)[1].id, module: "mail", action: "send", state: "unknown", preview: "Email Leo", error: "Zirma stopped while sending this" }]);
   assert.equal(interruptOutbound(w), 0);
 });
 

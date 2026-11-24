@@ -1,14 +1,14 @@
-/** Builds Isocline.app (and a disk image to hand out) from this checkout, without a packaging dependency: it takes
- * the Electron.app that `npm install` already put in node_modules, renames it Isocline, and puts the app's sources and
+/** Builds Zirma.app (and a disk image to hand out) from this checkout, without a packaging dependency: it takes
+ * the Electron.app that `npm install` already put in node_modules, renames it Zirma, and puts the app's sources and
  * only its production dependencies inside, as plain files (no asar: the home node is started from these files by
  * launchd, and node-pty and sharp load native code from them).
  *
- *   npm run package:mac            → dist/mac/Isocline.app and dist/mac/Isocline-<version>-<arch>.dmg
+ *   npm run package:mac            → dist/mac/Zirma.app and dist/mac/Zirma-<version>-<arch>.dmg
  *   npm run package:mac -- --no-dmg
  *   npm run package:mac -- --allow-uncommitted   (a trial build; never the one to use every day)
  *
  * The app is production (core stage.ts), so it is built only from committed code: the commit goes into its
- * Info.plist (IsoclineCommit), and uncommitted changes to what goes inside stop the build.
+ * Info.plist (ZirmaCommit), and uncommitted changes to what goes inside stop the build.
  *
  * The app is signed ad hoc, not with a Developer ID, and not notarized: on another Mac, the first open is
  * right-click → Open (or System Settings → Privacy & Security → Open Anyway).
@@ -23,10 +23,10 @@ import { appIconPixels } from "../packages/desktop/src/icon-art.ts";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version?: string; homepage?: string; description?: string; license?: string };
 const version = pkg.version ?? "0.0.0";
-const name = "Isocline";
-// A bundle id from who publishes it, so a fork gets its own: github.com/<owner>/… → io.github.<owner>.isocline.
+const name = "Zirma";
+// A bundle id from who publishes it, so a fork gets its own: github.com/<owner>/… → io.github.<owner>.zirma.
 const where = /github\.com\/([^/]+)\//.exec(pkg.homepage ?? "");
-const bundleId = (where ? `io.github.${where[1]}.isocline` : "org.isocline.desktop").toLowerCase().replace(/[^a-z0-9.-]/g, "-");
+const bundleId = (where ? `io.github.${where[1]}.zirma` : "org.zirma.desktop").toLowerCase().replace(/[^a-z0-9.-]/g, "-");
 const arch = process.arch;
 const out = join(root, "dist", "mac");
 const appPath = join(out, `${name}.app`);
@@ -42,7 +42,7 @@ const put = (file: string, key: string, value: string) => {
 };
 const step = (text: string) => console.log(`▸ ${text}`);
 
-if (process.platform !== "darwin") throw new Error("Isocline.app is built on a Mac.");
+if (process.platform !== "darwin") throw new Error("Zirma.app is built on a Mac.");
 
 // Production runs what was committed, not whatever the working tree holds today.
 const SHIPPED = ["packages", "modules", "package.json", "package-lock.json", "LICENSE", "THIRD-PARTY-NOTICES.md"];
@@ -64,7 +64,7 @@ run("/usr/bin/ditto", [join(root, "node_modules", "electron", "dist", "Electron.
 rmSync(join(contents, "Resources", "default_app.asar"), { force: true });
 rmSync(join(contents, "Resources", "electron.icns"), { force: true });
 
-step("Renaming it Isocline");
+step("Renaming it Zirma");
 // Electron finds its helpers by the main executable's name ("<name> Helper (Renderer).app"), so all are renamed together.
 run("/bin/mv", [join(contents, "MacOS", "Electron"), join(contents, "MacOS", name)]);
 const frameworks = join(contents, "Frameworks");
@@ -82,10 +82,10 @@ for (const helper of readdirSync(frameworks).filter((entry) => /^Electron Helper
 const info = join(contents, "Info.plist");
 for (const [key, value] of Object.entries({
   CFBundleExecutable: name, CFBundleName: name, CFBundleDisplayName: name, CFBundleIdentifier: bundleId,
-  CFBundleShortVersionString: version, CFBundleVersion: version, CFBundleIconFile: `${name}.icns`, IsoclineCommit: commit,
+  CFBundleShortVersionString: version, CFBundleVersion: version, CFBundleIconFile: `${name}.icns`, ZirmaCommit: commit,
   LSApplicationCategoryType: "public.app-category.productivity",
-  // What macOS shows when Isocline first asks: the microphone is for dictation, and nothing else is used.
-  NSMicrophoneUsageDescription: "Isocline listens only while you hold its figure, press the talk shortcut or use a microphone button, to turn what you say into text.",
+  // What macOS shows when Zirma first asks: the microphone is for dictation, and nothing else is used.
+  NSMicrophoneUsageDescription: "Zirma listens only while you hold its figure, press the talk shortcut or use a microphone button, to turn what you say into text.",
 })) put(info, key, value);
 for (const key of ["ElectronAsarIntegrity", "NSCameraUsageDescription", "NSBluetoothPeripheralUsageDescription", "NSBluetoothAlwaysUsageDescription", "NSAudioCaptureUsageDescription"]) {
   try { plist(info, `Delete :${key}`); } catch { /* already gone */ }
@@ -105,10 +105,10 @@ for (const size of [16, 32, 128, 256, 512]) {
 run("/usr/bin/iconutil", ["-c", "icns", iconset, "-o", join(contents, "Resources", `${name}.icns`)]);
 rmSync(iconset, { recursive: true, force: true });
 
-step("Copying Isocline's sources");
+step("Copying Zirma's sources");
 mkdirSync(appDir, { recursive: true });
 writeFileSync(join(appDir, "package.json"), JSON.stringify({
-  name: "isocline", productName: name, version, description: pkg.description, license: pkg.license, homepage: pkg.homepage,
+  name: "zirma", productName: name, version, description: pkg.description, license: pkg.license, homepage: pkg.homepage,
   type: "module", main: "packages/desktop/src/main.ts", commit,
 }, null, 2) + "\n");
 for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.md"]) cpSync(join(root, file), join(appDir, file));

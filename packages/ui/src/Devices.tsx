@@ -1,9 +1,9 @@
-/** Settings → Devices (docs/research/remote-access.md). On the Mac: one switch that has Tailscale Serve reach Isocline,
+/** Settings → Devices (docs/research/remote-access.md). On the Mac: one switch that has Tailscale Serve reach Zirma,
  * the address, pairing with a QR code, and the device list. On another device: just itself, and a way to disconnect.
  */
 import { Fragment, useEffect, useState } from "react";
 import { encode } from "uqr";
-import type { DeviceInfo, PairingCode, RemoteResponse } from "@isocline/protocol";
+import type { DeviceInfo, PairingCode, RemoteResponse } from "@zirma/protocol";
 import { WebLockSetting } from "./WebLockSetting.tsx";
 import { api } from "./api.ts";
 import { DevAccessApproval } from "./DevAccessApproval.tsx";

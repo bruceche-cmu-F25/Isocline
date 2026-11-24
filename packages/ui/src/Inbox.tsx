@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { Proposal, StateResponse } from "@isocline/protocol";
-import type { MailSnapshot } from "@isocline/module-mail/types";
+import type { Proposal, StateResponse } from "@zirma/protocol";
+import type { MailSnapshot } from "@zirma/module-mail/types";
 import { api } from "./api.ts";
 import { Linked, OutLink } from "./Linked.tsx";
 import { RunResult } from "./RunResult.tsx";
@@ -185,7 +185,7 @@ export function Detail({ item, onDone, onOpenConversation, conversationTitle, li
   );
 }
 
-const LIST_WIDTH_KEY = "isocline.inbox.listWidth";
+const LIST_WIDTH_KEY = "zirma.inbox.listWidth";
 const MIN_LIST_WIDTH = 160;
 const MIN_DETAIL_WIDTH = 320;
 
@@ -196,7 +196,7 @@ function savedListWidth(): number | null {
   } catch { return null; }
 }
 
-/** 通知: what needs you, and what Isocline wants you to know. A list on the left, the chosen item on the right. */
+/** 通知: what needs you, and what Zirma wants you to know. A list on the left, the chosen item on the right. */
 export function Inbox({ state, focus, onFocused, onOpenConversation, line }: InboxProps) {
   const inbox = useRef<HTMLElement>(null);
   const returnTo = useRef<HTMLButtonElement | null>(null);

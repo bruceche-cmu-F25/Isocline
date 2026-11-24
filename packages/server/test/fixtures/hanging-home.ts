@@ -1,7 +1,7 @@
 /** A home node whose engine adds one todo and then never finishes, so a test
  * can kill it mid-run. Prints its port when ready.
  */
-import { todoModule } from "@isocline/module-todo";
+import { todoModule } from "@zirma/module-todo";
 import { createHttpServer, openHome } from "../../src/index.ts";
 
 const home = openHome({

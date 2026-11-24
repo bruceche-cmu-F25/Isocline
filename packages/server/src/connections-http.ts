@@ -1,11 +1,11 @@
-/** `/api/connections/*`: connected accounts and model sign-in (see @isocline/protocol). The host and
+/** `/api/connections/*`: connected accounts and model sign-in (see @zirma/protocol). The host and
  * origin checks of http.ts have already run. Paired devices can read subscription usage. Nothing here
  * returns a secret. Errors are thrown; the listener says a GoogleError, ModelSignInError or McpConnectorError as its
  * status (wire.ts).
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { McpConnectors, ModelAccounts } from "@isocline/engine-pi";
-import type { ConnectionsResponse, GoogleConnectRequest, NewMcpConnector } from "@isocline/protocol";
+import type { McpConnectors, ModelAccounts } from "@zirma/engine-pi";
+import type { ConnectionsResponse, GoogleConnectRequest, NewMcpConnector } from "@zirma/protocol";
 import { isGoogleCapability, type GoogleConnections } from "./google.ts";
 import { Fault, HttpError, readJson, send } from "./wire.ts";
 

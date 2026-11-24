@@ -1,4 +1,4 @@
-/** The automations Isocline ships with, in each language. Apart from automations.ts so that runs.ts can name an
+/** The automations Zirma ships with, in each language. Apart from automations.ts so that runs.ts can name an
  * automation's run without importing the aggregate (which imports runs). */
 import type { Locale } from "./settings.ts";
 

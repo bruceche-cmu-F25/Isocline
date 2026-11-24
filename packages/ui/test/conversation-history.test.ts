@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ConversationDetail } from "@isocline/protocol";
+import type { ConversationDetail } from "@zirma/protocol";
 import { mergeHistory } from "../src/conversationHistory.ts";
 
 test("an arriving reply and an overlapping older page keep one chronological transcript and its older cursor", () => {

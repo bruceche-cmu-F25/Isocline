@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { WebLockStatus } from "@isocline/protocol";
+import type { WebLockStatus } from "@zirma/protocol";
 import { api, ApiError, isUnpaired } from "./api.ts";
 import { desktop } from "./desktop.ts";
 import { t, useLocale } from "./i18n/index.ts";
@@ -61,7 +61,7 @@ function BrowserGate({ children }: { children: ReactNode }) {
     let sequence = 0;
     let lastInput = -Infinity;
     let checking = false;
-    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("isocline.web-lock") : null;
+    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("zirma.web-lock") : null;
     const cover = (hide: boolean) => document.documentElement.toggleAttribute("data-web-covered", hide);
     function close(next: Screen) {
       ++sequence;
@@ -132,7 +132,7 @@ function BrowserGate({ children }: { children: ReactNode }) {
     unlocked.current = () => { channel?.postMessage("unlocked"); verify(); };
     if (channel) channel.onmessage = () => { if (!document.hidden) verify(); };
     verify();
-    window.addEventListener("isocline:web-locked", locked);
+    window.addEventListener("zirma:web-locked", locked);
     window.addEventListener("pagehide", conceal);
     window.addEventListener("pageshow", restored);
     window.addEventListener("focus", focus);
@@ -145,7 +145,7 @@ function BrowserGate({ children }: { children: ReactNode }) {
       channel?.close();
       window.clearTimeout(timer);
       cover(false);
-      window.removeEventListener("isocline:web-locked", locked);
+      window.removeEventListener("zirma:web-locked", locked);
       window.removeEventListener("pagehide", conceal);
       window.removeEventListener("pageshow", restored);
       window.removeEventListener("focus", focus);

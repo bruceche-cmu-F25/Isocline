@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Clip, Place, Topic } from "@isocline/module-links/types";
-import { parseBookmarks, proposeImport } from "@isocline/module-links/bookmarks";
+import type { Clip, Place, Topic } from "@zirma/module-links/types";
+import { parseBookmarks, proposeImport } from "@zirma/module-links/bookmarks";
 import { counts, inNode, itemsOf, linkTree, mergeProposed, nodePath, searchItems, searchTopics, searchWords, setProposedArea } from "../src/linkTree.ts";
 
 const topics: Topic[] = [

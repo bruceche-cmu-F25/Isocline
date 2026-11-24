@@ -8,10 +8,10 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { EnginePort } from "@isocline/core";
-import { todoModule } from "@isocline/module-todo";
+import type { EnginePort } from "@zirma/core";
+import { todoModule } from "@zirma/module-todo";
 import { command } from "../src/commands.ts";
-import type { Conversation, ConversationDetail, ProjectBranches, SessionBranch, SessionChanges, SessionProcess, SessionProcesses, SubmitRunResponse } from "@isocline/protocol";
+import type { Conversation, ConversationDetail, ProjectBranches, SessionBranch, SessionChanges, SessionProcess, SessionProcesses, SubmitRunResponse } from "@zirma/protocol";
 import { ASSISTANT_PROFILE, createHttpServer, DEVELOPER_PROFILE, openHome, profiles, type Home } from "../src/index.ts";
 
 async function start(home: Home): Promise<{ server: Server; base: string }> {
@@ -70,7 +70,7 @@ test("a session in a worktree: its own folder and branch, committed, archived an
     const created = await post(base, "/api/conversations", { requestId: "w-1", projectId: project.id, title: "Add a new file", mode: "edits", worktree: true });
     assert.equal(created.status, 201);
     const session = await created.json() as { id: string; worktree: string; branch: string; base: string };
-    assert.equal(session.branch, "isocline/add-a-new-file");
+    assert.equal(session.branch, "zirma/add-a-new-file");
     assert.ok(session.worktree.startsWith(join(dataDir, "worktrees", project.id)) || session.worktree.includes("/worktrees/"), session.worktree);
     assert.equal(readFileSync(join(session.worktree, "a.txt"), "utf8"), "one\n", "the worktree is what was committed");
     assert.equal(session.base, sh("rev-parse", "HEAD").trim());
@@ -82,7 +82,7 @@ test("a session in a worktree: its own folder and branch, committed, archived an
     assert.ok(!existsSync(join(folder, "new.txt")), "not in the project's folder");
 
     let changes = await get<SessionChanges>(base, `/api/conversations/${session.id}/changes`);
-    assert.equal(changes.branch, "isocline/add-a-new-file");
+    assert.equal(changes.branch, "zirma/add-a-new-file");
     assert.deepEqual(changes.files.map((file) => file.path), ["new.txt"]);
 
     // Committed from the panel: only the session's files, and the panel starts again from there.
@@ -94,7 +94,7 @@ test("a session in a worktree: its own folder and branch, committed, archived an
     changes = await get<SessionChanges>(base, `/api/conversations/${session.id}/changes`);
     assert.deepEqual(changes.files, []);
     const branch = await get<SessionBranch>(base, `/api/conversations/${session.id}/branch`);
-    assert.deepEqual({ ...branch }, { branch: "isocline/add-a-new-file", main: "main", ahead: 1, upstream: false, remote: false });
+    assert.deepEqual({ ...branch }, { branch: "zirma/add-a-new-file", main: "main", ahead: 1, upstream: false, remote: false });
     assert.equal((await post(base, `/api/conversations/${session.id}/commit`, { requestId: "w-c2", message: "Again" })).status, 400, "nothing left to commit");
 
     // No remote: nothing is pushed.
@@ -109,7 +109,7 @@ test("a session in a worktree: its own folder and branch, committed, archived an
     assert.deepEqual(await refused.json(), { error: "1 file(s) in the worktree are not committed", code: "git_dirty", count: 1 });
     assert.equal((await post(base, `/api/conversations/${session.id}`, { archived: true, worktree: "discard" })).status, 200);
     assert.ok(!existsSync(session.worktree), "the worktree is gone");
-    assert.match(sh("branch", "--list", "isocline/*"), /isocline\/add-a-new-file/, "its branch, with the commit, stays");
+    assert.match(sh("branch", "--list", "zirma/*"), /zirma\/add-a-new-file/, "its branch, with the commit, stays");
     assert.equal((await get<SessionChanges>(base, `/api/conversations/${session.id}/changes`)).gone, true);
 
     // Restored: the worktree comes back on its branch.
@@ -191,14 +191,14 @@ test("a worktree needs a git repository; a second session on the same title gets
     await post(base, `/api/projects/${two.id}/trust`, {});
     const first = await (await post(base, "/api/conversations", { projectId: two.id, title: "修复登录", worktree: true })).json() as { branch: string };
     const second = await (await post(base, "/api/conversations", { projectId: two.id, title: "修复登录", worktree: true })).json() as { branch: string };
-    assert.deepEqual([first.branch, second.branch], ["isocline/session", "isocline/session-2"]);
+    assert.deepEqual([first.branch, second.branch], ["zirma/session", "zirma/session-2"]);
   } finally {
     server.close();
     home.close();
   }
 });
 
-test("background processes: started by the user or by Isocline (asked like a command), read, and stopped", async () => {
+test("background processes: started by the user or by Zirma (asked like a command), read, and stopped", async () => {
   const { folder } = repo();
   const engine: EnginePort = {
     async submit(request) {
@@ -214,7 +214,7 @@ test("background processes: started by the user or by Isocline (asked like a com
     await post(base, `/api/projects/${project.id}/trust`, {});
     const session = await (await post(base, "/api/conversations", { projectId: project.id, title: "Run it", mode: "ask" })).json() as { id: string };
 
-    // Isocline's: the user sees the command whole and allows it.
+    // Zirma's: the user sees the command whole and allows it.
     const { run } = await (await post(base, "/api/runs", { requestId: "p-r1", goal: "start the dev server", conversationId: session.id })).json() as SubmitRunResponse;
     assert.match(String(await answer(base, session.id, run.id, "allow")), /sleep 30/);
     await home.idle();
@@ -247,7 +247,7 @@ test("background processes: started by the user or by Isocline (asked like a com
   }
 });
 
-test("in plan mode Isocline cannot start a process", async () => {
+test("in plan mode Zirma cannot start a process", async () => {
   const { folder } = repo();
   const engine: EnginePort = {
     async submit(request) {
@@ -304,7 +304,7 @@ test("a conversation's speed is kept and reaches the engine; an unknown one is r
   }
 });
 
-test("checkout failures release only Isocline's allocations and simultaneous retries share one session", async () => {
+test("checkout failures release only Zirma's allocations and simultaneous retries share one session", async () => {
   const { folder, sh } = repo();
   const home = openHome({ dataDir: mkdtempSync(join(tmpdir(), "alfred-")), modules: [], engine: { submit: async () => ({ reply: "ok" }) } });
   try {

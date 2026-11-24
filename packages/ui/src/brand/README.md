@@ -1,8 +1,8 @@
 # Other companies' marks
 
-The files in `svg/` are the logos of services Isocline connects to. They are shown only next to that service's
+The files in `svg/` are the logos of services Zirma connects to. They are shown only next to that service's
 name, to say which service a row, a page's data or a model belongs to. Each mark is a trademark of its owner;
-Isocline is not affiliated with or endorsed by any of them. The licence texts are in the repository's
+Zirma is not affiliated with or endorsed by any of them. The licence texts are in the repository's
 `THIRD-PARTY-NOTICES.md`.
 
 ## Where they came from

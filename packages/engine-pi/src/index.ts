@@ -1,5 +1,5 @@
 /** The Pi engine adapter. Pi runs in worker processes (see pool.ts); each
- * conversation keeps a persistent Pi session (see worker.ts). Isocline's tools
+ * conversation keeps a persistent Pi session (see worker.ts). Zirma's tools
  * still run in the home node, under the run's lease.
  */
 import { join } from "node:path";
@@ -8,7 +8,7 @@ import { createWorkerEngine, type WorkerEngine } from "./pool.ts";
 
 export { createWorkerEngine, EngineCrashedError, type WorkerEngine, type WorkerEngineOptions } from "./pool.ts";
 export { composeHistory, composePrompt, type ExternalStep, type RunJob, type ToolSpec, type ToParent, type ToWorker } from "./protocol.ts";
-export { loadIsoclineMcpConfig, readMcpFile, type LoadedMcpConfig } from "./mcp-config.ts";
+export { loadZirmaMcpConfig, readMcpFile, type LoadedMcpConfig } from "./mcp-config.ts";
 export { McpConnectors, McpConnectorError, type McpConnectorsOptions } from "./connectors.ts";
 export { MCP_CATALOG, type McpCatalogEntry } from "./mcp-catalog.ts";
 export { createMcpVault, type McpVault } from "./mcp-store.ts";
@@ -19,7 +19,7 @@ export interface PiEngineOptions {
   cwd: string;
   /** Where conversations' sessions live; defaults to `<cwd>/sessions`. */
   sessions?: string;
-  /** Where Isocline's `mcp.json` and `skills/` live (the data directory); defaults to `cwd`. */
+  /** Where Zirma's `mcp.json` and `skills/` live (the data directory); defaults to `cwd`. */
   config?: string;
   /** Pi's agent directory; defaults to Pi's own (~/.pi/agent). */
   agentDir?: string;

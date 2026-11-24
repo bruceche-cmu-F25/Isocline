@@ -1,10 +1,10 @@
 /** Messages between the home node and an engine worker process.
  *
- * The model runs in the worker; Isocline's tools run in the home node, because
+ * The model runs in the worker; Zirma's tools run in the home node, because
  * they write the world under the run's lease. So a tool call travels to the
  * home node and its result comes back. One worker handles one run at a time.
  */
-import type { Attachment, EngineRequest, FileChange, Workspace } from "@isocline/core";
+import type { Attachment, EngineRequest, FileChange, Workspace } from "@zirma/core";
 
 /** A tool as the worker sees it: its description only. */
 export interface ToolSpec {
@@ -37,7 +37,7 @@ export interface RunJob {
   attachments?: Attachment[];
 }
 
-export type ModelInfo = import("@isocline/core").EngineModel;
+export type ModelInfo = import("@zirma/core").EngineModel;
 export interface UsageInfo {
   model?: string; thinking?: string; tokens?: number; contextWindow?: number; percent?: number;
   /** This turn alone: tokens in and out, cache reads and writes, cost in dollars, and how long it took. */
@@ -126,6 +126,6 @@ export function composeHistory(request: Pick<EngineRequest, "history">): string 
   if (!request.history.length) return null;
   return [
     "Earlier in this conversation (context only; do not act on it again):",
-    ...request.history.map((turn) => `${turn.role === "user" ? "User" : "Isocline"}: ${turn.text}`),
+    ...request.history.map((turn) => `${turn.role === "user" ? "User" : "Zirma"}: ${turn.text}`),
   ].join("\n");
 }

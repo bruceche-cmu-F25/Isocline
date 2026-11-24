@@ -1,10 +1,10 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { AwayDigest, Conversation, Notice, StateResponse } from "@isocline/protocol";
+import type { AwayDigest, Conversation, Notice, StateResponse } from "@zirma/protocol";
 import { ApiError, api, deviceId } from "./api.ts";
 import { desktop } from "./desktop.ts";
 import { resumePush } from "./push.ts";
 import { useRoute } from "./shell/useRoute.ts";
-import { IsoclinePanel, figureState } from "./shell/IsoclinePanel.tsx";
+import { ZirmaPanel, figureState } from "./shell/ZirmaPanel.tsx";
 import { Welcome } from "./shell/Welcome.tsx";
 import { FirstRun, type TourStop } from "./shell/FirstRun.tsx";
 import { SHOW_FIRST_RUN } from "./firstRunEvent.ts";
@@ -30,7 +30,7 @@ import { Palette } from "./shell/Palette.tsx";
 import { Pair } from "./Pair.tsx";
 import { assistantNameFor, detectLocale, getLocale, nextLocale, setAssistant, setLocale, t, useLocale, type Locale } from "./i18n/index.ts";
 import { getScheme, setAppearance } from "./scheme.ts";
-import { useIsocline, type Isocline } from "./useIsocline.ts";
+import { useZirma, type Zirma } from "./useZirma.ts";
 import { handed } from "./handed.ts";
 import { WindowAttention } from "./ConversationReply.tsx";
 import { useOutlet } from "./outlet.ts";
@@ -86,7 +86,7 @@ function noticeItemVisible(item: string): boolean {
 
 /** A notice is shown in one place only, and the home node says where (docs/design/attention.md): this window shows
  * what was handed to it, while the user is looking at it. What happens in the open conversation is already on
- * screen, so seeing it counts as being told; a result or a question elsewhere is said by Isocline (shell/Says.tsx),
+ * screen, so seeing it counts as being told; a result or a question elsewhere is said by Zirma (shell/Says.tsx),
  * leading there.
  */
 function useNotices(notices: Notice[], onPresented: (notice: Notice) => void, ready: boolean): { shown: Notice[]; remove(notice: Notice): void; acknowledge(notice: Notice): void } {
@@ -128,10 +128,10 @@ function useNotices(notices: Notice[], onPresented: (notice: Notice) => void, re
   return { shown, remove, acknowledge };
 }
 
-/** How long Isocline's card about a notice stays once said (never while the pointer is on it); it stays in 通知 after. */
+/** How long Zirma's card about a notice stays once said (never while the pointer is on it); it stays in 通知 after. */
 const STAY_MS: Record<string, number> = { welcome: 15_000, run_result: 12_000, run_interrupted: 20_000 };
 
-/** What Isocline says in the app about a notice; the button is what can be done here. */
+/** What Zirma says in the app about a notice; the button is what can be done here. */
 function noticeSaid(notice: Notice, name: string | null, inInbox: boolean): Said {
   if (notice.kind === "welcome") {
     const { greeting, summary } = welcomeLines(notice.payload as unknown as AwayDigest, name);
@@ -158,7 +158,7 @@ const editable = (target: EventTarget | null) => target instanceof HTMLElement &
 
 export function App() {
   const attending = useAttention();
-  const alfred = useIsocline();
+  const alfred = useZirma();
   const { state, error, unpaired } = alfred;
   useLocale(); // re-render in the new language when it changes
   useKeepVoiceSettings(state?.settings?.voice);
@@ -190,8 +190,8 @@ export function App() {
   return <WindowAttention.Provider value={attending}><Workspace state={state} alfred={alfred} /></WindowAttention.Provider>;
 }
 
-/** The workspace: sidebar, one page at a time, and Isocline beside it. */
-function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }) {
+/** The workspace: sidebar, one page at a time, and Zirma beside it. */
+function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
   const { connection, fresh, onEvent } = alfred;
   const writing = useWriting();
   const [layout, setLayout] = useLayout();
@@ -281,11 +281,11 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
     if (runId) highlight(runId);
   }, [highlight]);
   const { shown, remove: unshow, acknowledge } = useNotices(state.notices, onPresented, !firstRun && !greet);
-  /** Isocline's look while it is telling the user something. */
+  /** Zirma's look while it is telling the user something. */
   const [speaking, setSpeaking] = useState<FigureState | null>(null);
 
-  /** Bring Isocline's panel up: beside the page on a desktop, as a sheet on a phone. */
-  const showIsocline = useCallback(() => {
+  /** Bring Zirma's panel up: beside the page on a desktop, as a sheet on a phone. */
+  const showZirma = useCallback(() => {
     if (phone) setSheet("alfred");
     else if (layout.alfred === "closed") setLayout({ alfred: "open" });
   }, [phone, layout.alfred, setLayout]);
@@ -298,14 +298,14 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
   }, [route]);
 
   const select = useCallback((id: string | null) => {
-    // A development session opens on the Code page, not in Isocline's panel.
+    // A development session opens on the Code page, not in Zirma's panel.
     if (id && state?.conversations.find((conversation) => conversation.id === id)?.projectId) { openSession(id); return; }
     route.go({ selected: id });
-    showIsocline();
-  }, [route, showIsocline, state?.conversations, openSession]);
+    showZirma();
+  }, [route, showZirma, state?.conversations, openSession]);
 
-  /** A conversation picked from the sidebar's list: going to it. With Isocline out of sight it opens across the whole
-   * page; with the panel already beside a page it only changes conversation there, so what Isocline is looking at stays.
+  /** A conversation picked from the sidebar's list: going to it. With Zirma out of sight it opens across the whole
+   * page; with the panel already beside a page it only changes conversation there, so what Zirma is looking at stays.
    * Elsewhere (the inbox, an automation, the ask bar) a conversation opens beside the page it was opened from. */
   const selectFromList = useCallback((id: string | null) => {
     select(id);
@@ -362,20 +362,20 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
   const onView = useCallback((module: string, view: string) => goPage(`${module}.${view}`), [goPage]);
   const onStarted = useCallback((id: string) => route.go({ selected: id }), [route]);
 
-  const toggleIsocline = useCallback(() => {
+  const toggleZirma = useCallback(() => {
     if (phone) setSheet((current) => current === "alfred" ? null : "alfred");
     else setLayout({ alfred: layout.alfred === "closed" ? "open" : "closed" });
   }, [phone, layout.alfred, setLayout]);
 
-  // A bare page (Code) takes the room Isocline's panel would; on a phone the panel is a sheet anyway.
+  // A bare page (Code) takes the room Zirma's panel would; on a phone the panel is a sheet anyway.
   const bare = !!current?.bare;
   const alfredMode = phone ? (sheet === "alfred" ? "open" : "closed") : bare ? "closed" : layout.alfred;
   const size = widths(layout, viewport, alfredMode === "open");
-  /** The sidebar as drawn: folded away when the window has no room for it beside Isocline. */
+  /** The sidebar as drawn: folded away when the window has no room for it beside Zirma. */
   const navMode = size.navMode;
   const navVisible = phone ? sheet === "nav" : navMode === "full";
   const toggleNav = useCallback(() => {
-    // Folded for want of room: showing it puts Isocline away, which is what makes the room.
+    // Folded for want of room: showing it puts Zirma away, which is what makes the room.
     if (layout.nav === "full" && navMode === "hidden") setLayout({ alfred: "closed" });
     else setLayout({ nav: layout.nav === "full" ? "hidden" : "full" });
   }, [layout.nav, navMode, setLayout]);
@@ -392,12 +392,12 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
     const key = lastPage.current[next] || first?.key;
     if (key) goPage(key);
   };
-  // The page a question is asked from, unless Isocline spans the window and the page is out of sight.
+  // The page a question is asked from, unless Zirma spans the window and the page is out of sight.
   const view = phone || layout.alfred !== "wide" ? pageView(current, state) : undefined;
   const pageTitle = (key: string) => pages.find((page) => page.key === key)?.title;
   const automationOf = (id: string) => { const found = state?.automations?.find((automation) => automation.id === id); return found ? automationTitle(found) : undefined; };
 
-  /** Says something to Isocline from outside its panel (the ask bar, the palette). It joins the open conversation
+  /** Says something to Zirma from outside its panel (the ask bar, the palette). It joins the open conversation
    * while that is recent, going straight into a turn that is still running; otherwise it starts a new one. */
   const conversations = state?.conversations, runs = state?.runs, go = route.go;
   const ask = useCallback(async (text: string, attachments?: string[]) => {
@@ -423,7 +423,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
   const attach = useCallback((next: About | null) => {
     setAbout(next);
     if (!next) return;
-    // The bar is where the words are written: it comes up if Isocline's panel or the phone's tabs are in its place.
+    // The bar is where the words are written: it comes up if Zirma's panel or the phone's tabs are in its place.
     if (phone) { setSheet(null); setAsking(true); }
     else if (layout.alfred !== "closed") setLayout({ alfred: "closed" });
   }, [phone, layout.alfred, setLayout]);
@@ -444,18 +444,18 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
     return run?.id ?? null;
   }, [selected, go, context]);
   const line = useMemo(() => ({ about: about?.key ?? null, attach, ask: askPicked, revise: revisePicked }), [about?.key, attach, askPicked, revisePicked]);
-  /** The ask bar is where Isocline is talked to: its panel is closed and the page leaves it room. */
+  /** The ask bar is where Zirma is talked to: its panel is closed and the page leaves it room. */
   const barHere = !phone && !bare && alfredMode === "closed";
   /** From the palette: the answer comes out of the ask bar when it is there, else in the panel. */
   const askAnywhere = useCallback((text: string) => {
     if (phone && !bare) setAsking(true);
-    else if (!barHere) showIsocline();
+    else if (!barHere) showZirma();
     ask(text).catch(() => {});
-  }, [ask, phone, bare, barHere, showIsocline]);
+  }, [ask, phone, bare, barHere, showZirma]);
 
   // The Mac app: a notification was clicked, or the hotkey brought the window up.
   useEffect(() => desktop?.onFocusRun((runId) => openRun(runId)), [openRun]);
-  /** Where you talk to Isocline, with the cursor in it: the ask bar when it is there (talking does not need the panel),
+  /** Where you talk to Zirma, with the cursor in it: the ask bar when it is there (talking does not need the panel),
    * else the panel's composer. ⌘J, and the Mac app's hotkey. */
   const focusTalk = useCallback((toggle = false) => {
     const bar = document.querySelector<HTMLInputElement>(".ask-form input");
@@ -464,9 +464,9 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
       else bar.focus();
       return;
     }
-    showIsocline();
+    showZirma();
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
-  }, [showIsocline]);
+  }, [showZirma]);
   useEffect(() => desktop?.onFocusComposer(() => focusTalk()), [focusTalk]);
 
   // The walk round at the end of the first run: bring each place onto the screen before the figure points at it. The
@@ -489,7 +489,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
 
   const settledFigure = useSettled(state ? figureState(state, selected, writing, greeting) : "rest", 250);
 
-  // Quick talk on a phone (docs/design/voice.md §1.1): hold the Isocline bubble, say it, let go. It joins the open
+  // Quick talk on a phone (docs/design/voice.md §1.1): hold the Zirma bubble, say it, let go. It joins the open
   // conversation while that is recent; the reply is said out loud and shows in the ask bar.
   const quick = useQuickTalk({
     conversation: () => continues(conversations?.find((conversation) => conversation.id === selected), Date.now()) ?? undefined,
@@ -507,7 +507,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
     : quick.state === "transcribing" || quick.state === "sending" || quick.state === "waiting" ? "think" : null;
   const figure = speaking ?? quickFigure ?? settledFigure;
 
-  // Keyboard: ⌘K search (Spotlight-like), anywhere; ⌘J talk to Isocline; ⌘. Isocline; ⌘\ the sidebar; ⌘, Settings; ⌥1–9 the pages (not while typing).
+  // Keyboard: ⌘K search (Spotlight-like), anywhere; ⌘J talk to Zirma; ⌘. Zirma; ⌘\ the sidebar; ⌘, Settings; ⌥1–9 the pages (not while typing).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (firstRun) return;
@@ -519,7 +519,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
         return;
       }
       if (mod && event.key.toLowerCase() === "j") { event.preventDefault(); setPalette(false); focusTalk(true); return; }
-      if (mod && event.key === ".") { event.preventDefault(); toggleIsocline(); return; }
+      if (mod && event.key === ".") { event.preventDefault(); toggleZirma(); return; }
       if (mod && event.key === "\\") { event.preventDefault(); toggleNav(); return; }
       if (mod && event.key === ",") { event.preventDefault(); goPage("core.settings"); return; }
       if (event.altKey && !mod && /^Digit[1-9]$/.test(event.code) && !editable(event.target)) {
@@ -529,7 +529,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleIsocline, toggleNav, goPage, pages, firstRun, focusTalk]);
+  }, [toggleZirma, toggleNav, goPage, pages, firstRun, focusTalk]);
 
   // Sidebar divider: drag to resize; drag past the fold point to fold it to icons (keeping the width it had).
   const navDrag = dragHandle(size.nav, "right", (width) => {
@@ -541,7 +541,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
   /** What searching can run besides going to a page or a conversation: in the ask bar, and in ⌘K's palette. */
   const commands: FindCommand[] = [
     { id: "new", label: t("cmd.new"), icon: "plus", run: () => select(null) },
-    { id: "alfred", label: t(alfredMode === "closed" ? "cmd.openIsocline" : "cmd.closeIsocline"), icon: "panel", hint: `${MOD}.`, run: toggleIsocline },
+    { id: "alfred", label: t(alfredMode === "closed" ? "cmd.openZirma" : "cmd.closeZirma"), icon: "panel", hint: `${MOD}.`, run: toggleZirma },
     ...(phone ? [] : [{ id: "nav", label: t(navMode === "full" ? "cmd.foldNav" : "cmd.unfoldNav"), icon: "rail" as const, hint: `${MOD}\\`, run: toggleNav }]),
     { id: "language", label: t("cmd.language"), icon: "chat", run: () => switchLanguage() },
     getScheme() === "dark"
@@ -565,7 +565,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
   );
 
   const panel = (
-    <IsoclinePanel selected={selected} figure={figure} wide={alfredMode === "wide"} phone={phone}
+    <ZirmaPanel selected={selected} figure={figure} wide={alfredMode === "wide"} phone={phone}
       highlighted={highlighted} view={view} pageTitle={pageTitle} automationTitle={automationOf} onEvent={onEvent} onView={onView} onStarted={onStarted}
       onWide={() => setLayout({ alfred: layout.alfred === "wide" ? "open" : "wide" })}
       onClose={() => (phone ? setSheet(null) : setLayout({ alfred: "closed" }))} />
@@ -616,10 +616,10 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
               go: goTo, item: route.item, onItem: clearItem,
               dev: { session: route.session, newSession, onSession: openSession, refresh: alfred.refresh, highlighted, onEvent, pageTitle, automationTitle: automationOf },
             })}</div>
-            {/* Under the page: the page's own controls are at its top, Isocline and search at its foot. */}
+            {/* Under the page: the page's own controls are at its top, Zirma and search at its foot. */}
             {barHere && (
               <AskBar state={state} selected={selected} figure={figure} suggestions={view?.suggestions ?? []} find={find} page={current.key} about={about} onAbout={setAbout}
-                onAsk={ask} onOpen={showIsocline} onProposal={showProposal} onEvent={onEvent} />
+                onAsk={ask} onOpen={showZirma} onProposal={showProposal} onEvent={onEvent} />
             )}
           </>
         ) : (
@@ -646,7 +646,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Isocline }
 
       {phone && sheet !== "alfred" && (
         <Dock state={state} pages={listed} page={navigationPage} figure={figure} onPage={goPage} talk={quick}
-          onIsocline={() => (asking || bare ? setSheet("alfred") : setAsking(true))} onMenu={() => setSheet("nav")}
+          onZirma={() => (asking || bare ? setSheet("alfred") : setAsking(true))} onMenu={() => setSheet("nav")}
           ask={asking && !bare ? (
             <AskBar dock state={state} selected={selected} figure={figure} suggestions={view?.suggestions ?? []} find={find} page={current?.key} about={about} onAbout={setAbout}
               onAsk={ask} onOpen={() => setSheet("alfred")} onProposal={showProposal} onEvent={onEvent} onBack={() => { setAsking(false); setAbout(null); }} />

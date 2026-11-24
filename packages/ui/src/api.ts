@@ -1,11 +1,11 @@
-/** The client side of @isocline/protocol. Every write carries a request id, so a
+/** The client side of @zirma/protocol. Every write carries a request id, so a
  * retry after a dropped connection can never do the same thing twice.
  */
 import type { Area, Preference,
   ArchivedConversation, Automation, AutomationHistory, RunSources, Schedule,
   Conversation, ConversationDetail, CoreEvent, DeviceInfo, FileInfo, DeviceKind, DeviceScopeRequest, LiveUpdate, ModelsResponse, Notice, OpResponse, PairingCode, ProposalResponse,
   Project, ProjectBranches, StartSessionRequest, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, SettingsRequest, ViewContext, VoiceStatus, WebLockStatus,
-} from "@isocline/protocol";
+} from "@zirma/protocol";
 import "./desktop.ts";
 import type { OpName } from "./modules.ts";
 import { t } from "./i18n/dict.ts";
@@ -13,7 +13,7 @@ import { t } from "./i18n/dict.ts";
 /** The options every automation has (core automations.ts). */
 export type AutomationOptions = Pick<Automation, "layout" | "keep" | "notify" | "k">;
 
-const DEVICE_KEY = "isocline.device";
+const DEVICE_KEY = "zirma.device";
 
 function random(): string {
   return crypto.randomUUID().replaceAll("-", "").slice(0, 12);
@@ -53,7 +53,7 @@ async function answer<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const { error, code, count } = body as { error?: string; code?: string; count?: number };
-    if (response.status === 423 && code === "web_locked") window.dispatchEvent(new Event("isocline:web-locked"));
+    if (response.status === 423 && code === "web_locked") window.dispatchEvent(new Event("zirma:web-locked"));
     throw new ApiError(response.status, error ?? t("api.failed", { status: response.status }), code, typeof count === "number" ? count : undefined);
   }
   return body as T;

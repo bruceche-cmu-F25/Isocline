@@ -1,11 +1,11 @@
-/** Isocline's voice on this device (docs/design/voice.md §2): the home node makes the sound, this plays it.
+/** Zirma's voice on this device (docs/design/voice.md §2): the home node makes the sound, this plays it.
  *
  * One voice at a time in a window. Saying something new stops what was being said; so does the user starting to
  * talk (useDictation calls `stopSpeaking`), and closing the card it belongs to. Text is said sentence by sentence:
  * the next one is asked for while the first plays, so even the slower local model starts within a few seconds.
  */
 import { useEffect, useSyncExternalStore } from "react";
-import type { VoiceSettings } from "@isocline/protocol";
+import type { VoiceSettings } from "@zirma/protocol";
 import { api } from "../api.ts";
 
 // ── The user's voice settings, as this window last heard them from the home node ──
@@ -50,7 +50,7 @@ function audio(): AudioContext {
 }
 
 /** What the sound on this device is for (Safari 17+, `navigator.audioSession`; elsewhere nothing happens).
- * - `playback`: Isocline speaking. Left as it is, an iPhone treats page sound as `ambient`: the silent switch mutes
+ * - `playback`: Zirma speaking. Left as it is, an iPhone treats page sound as `ambient`: the silent switch mutes
  *   it, and after the microphone was used it can stay in the quiet earpiece. Playback is heard either way, from the
  *   loudspeaker, like a podcast.
  * - `play-and-record`: the microphone is about to be used.

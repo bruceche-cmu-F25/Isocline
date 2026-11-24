@@ -1,5 +1,5 @@
 {
-  "name": "@isocline/module-links",
+  "name": "@zirma/module-links",
   "version": "0.0.0",
   "private": true,
   "description": "Links module: the places you keep going to, and what you saved from the internet (docs/design/links.md).",
@@ -13,8 +13,8 @@
     "./bookmarks": "./src/bookmarks.ts"
   },
   "dependencies": {
-    "@isocline/core": "*",
-    "@isocline/module-kit": "*",
+    "@zirma/core": "*",
+    "@zirma/module-kit": "*",
     "sharp": "^0.35.5"
   }
 }

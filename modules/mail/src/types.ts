@@ -16,9 +16,9 @@ export interface MailMessage {
   important: boolean;
   /** The latest star reported by Gmail. */
   starred: boolean;
-  /** Saved only in Isocline when Gmail star sync is off. */
+  /** Saved only in Zirma when Gmail star sync is off. */
   localSaved?: boolean;
-  /** Within Isocline's current inbox window. Older snapshots contained only inbox mail. */
+  /** Within Zirma's current inbox window. Older snapshots contained only inbox mail. */
   inInbox?: boolean;
   category: MailCategory;
   /** The message in Gmail. */
@@ -41,9 +41,9 @@ export interface MailSource {
   reconnect: boolean;
   /** Older snapshots include only accounts with inbox access. */
   canRead?: boolean;
-  /** The user let Isocline send from this account (Settings: Gmail：替你发). */
+  /** The user let Zirma send from this account (Settings: Gmail：替你发). */
   canSend: boolean;
-  /** This account allows Isocline to change Gmail stars and archive messages. */
+  /** This account allows Zirma to change Gmail stars and archive messages. */
   canModify?: boolean;
 }
 
@@ -58,7 +58,7 @@ export interface SendInput {
   replyTo?: { id: string; threadId: string };
 }
 
-/** An email the user sent from Isocline (their own, or Isocline's draft they accepted), and how sending it went. */
+/** An email the user sent from Zirma (their own, or Zirma's draft they accepted), and how sending it went. */
 export interface MailSent {
   id: string;
   account: string;

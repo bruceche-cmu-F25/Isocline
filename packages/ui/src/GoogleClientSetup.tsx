@@ -1,9 +1,9 @@
-/** Before Google can be connected, this Isocline needs an OAuth client of the user's own: Isocline is open source, and
+/** Before Google can be connected, this Zirma needs an OAuth client of the user's own: Zirma is open source, and
  * each copy signs in through a Google Cloud project its owner made. Four steps in Google Cloud, then the downloaded
  * file is picked here and the home node keeps it (POST /api/connections/google/client). Nobody has to find a folder.
  */
 import { useRef, useState } from "react";
-import type { ConnectionsResponse } from "@isocline/protocol";
+import type { ConnectionsResponse } from "@zirma/protocol";
 import { request as call } from "./api.ts";
 import { t, type Key } from "./i18n/index.ts";
 

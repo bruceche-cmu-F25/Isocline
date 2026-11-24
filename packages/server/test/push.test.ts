@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { ATTENTION, addProject, claimNotice, CORE_MIGRATIONS, createNotice, listNotices, openWorld, pairDevice, recordDomainEvent, revokeDevice, setDeviceScope, startSession, trustProject, type World } from "@isocline/core";
+import { ATTENTION, addProject, claimNotice, CORE_MIGRATIONS, createNotice, listNotices, openWorld, pairDevice, recordDomainEvent, revokeDevice, setDeviceScope, startSession, trustProject, type World } from "@zirma/core";
 import { checkSubscription, noticeMessage, PushService, watchAttention, type PushSender } from "../src/index.ts";
 import type { SecretStore } from "../src/secrets.ts";
 
@@ -127,7 +127,7 @@ test("a revoked device gets nothing", async () => {
   try {
     push.subscribe(phone.id, APPLE);
     revokeDevice(world, phone.id);
-    const result = await push.sendTo({ title: "Isocline", body: "hi", url: "/", tag: "t" });
+    const result = await push.sendTo({ title: "Zirma", body: "hi", url: "/", tag: "t" });
     assert.deepEqual(result, { accepted: 0, failed: 0, expired: 0 });
     assert.deepEqual(sent, []);
   } finally { close(); world.close(); }

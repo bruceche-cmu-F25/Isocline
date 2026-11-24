@@ -168,7 +168,7 @@ test("settings: the language is set once, audited, and checked", () => {
   assert.throws(() => updateSettings(w, { theme: "dark" }), /Unknown setting/);
 });
 
-test("settings: Isocline remembers the user's chosen name across reads", () => {
+test("settings: Zirma remembers the user's chosen name across reads", () => {
   const w = world();
   assert.equal(updateSettings(w, { preferredName: "  小 林  " }).preferredName, "小 林");
   updateSettings(w, { preferredName: "小 林" });

@@ -48,7 +48,7 @@
   .first, .first-in > :not(.figure) { animation: none; }
   .first-spot, .first-say { transition: none; }
 }
-/* The samples step: each automation Isocline ships with, on or off, at its own time. */
+/* The samples step: each automation Zirma ships with, on or off, at its own time. */
 .first-samples { list-style: none; margin: 4px 0 18px; padding: 0; width: min(100%, 26rem); display: flex; flex-direction: column; gap: 6px; text-align: start; }
 .first-samples li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--wash); }
 .first-samples b { display: block; color: var(--ink); font-weight: 600; }

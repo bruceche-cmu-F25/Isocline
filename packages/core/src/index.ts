@@ -1,4 +1,4 @@
-/** Isocline core: the world's event log, recoverable runs, notices and commands.
+/** Zirma core: the world's event log, recoverable runs, notices and commands.
  * Moved out of Robin's extension/robin/alfred-core; it knows nothing about
  * HTTP, pages, engines or any particular module.
  */
@@ -59,7 +59,7 @@ export {
 } from "./files.ts";
 export { simpleCommand, commandAllowed, normalizeCommand, listCommandGrants, grantCommand, revokeCommand, type CommandGrant } from "./shell.ts";
 export { defaultSecretStore, fileStore, keychainStore, type SecretStore } from "./secrets.ts";
-export { adoptLegacyEnv, carryingOver, LEGACY_KEYCHAIN_SERVICE } from "./legacy.ts";
+export { adoptLegacyEnv, carryingOver, LEGACY_NAMES, legacyKeychainServices } from "./legacy.ts";
 export { currentStage, stageDataDir, dataDirFor, portFor, keychainServiceFor, agentLabelFor, checkStage, type Stage } from "./stage.ts";
 export { tidyWorld, OUTPUT_DAYS, COMMAND_DAYS, type Upkeep } from "./upkeep.ts";
 export {

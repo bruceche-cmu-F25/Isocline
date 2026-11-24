@@ -1,5 +1,5 @@
 /** Asking the Mac app for something only it can do (docs/design/dev-terminal-browser.md): today, what is on the page
- * in its browser pane. Isocline's tools run here, in the home node; the pane lives in the app. The app is a client like
+ * in its browser pane. Zirma's tools run here, in the home node; the pane lives in the app. The app is a client like
  * any other, so it is the app that comes asking: it waits on `next` for a request, does it, and hands the answer back.
  *
  * Nothing is kept. A request nobody takes within its time fails, and with no app waiting it fails at once, so a tool

@@ -1,5 +1,5 @@
 /** Keeps the home node running as a launchd user agent, independent of this
- * app: closing windows or quitting the app never stops Isocline's work, and the
+ * app: closing windows or quitting the app never stops Zirma's work, and the
  * node starts again at login. The app's own runtime runs it (Electron as
  * Node), so nothing else needs to be installed.
  */
@@ -8,12 +8,12 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { agentLabelFor, portFor } from "@isocline/core/stage";
+import { agentLabelFor, portFor } from "@zirma/core/stage";
 
 export interface HomeNodeConfig {
   label: string;
-  /** The agent this world ran under before the rename (Alfred → Isocline): retired before this one starts. */
-  legacyLabel: string;
+  /** The agents this world ran under before the renames (Isocline, Alfred): retired before this one starts. */
+  legacyLabels: string[];
   port: number;
   /** Absent: the stage's own directory (core stage.ts). */
   dataDir?: string;
@@ -22,27 +22,27 @@ export interface HomeNodeConfig {
   /** packages/server/src/cli.ts */
   cli: string;
   logFile: string;
-  /** Passed through to the node, e.g. ISOCLINE_AWAY_MINUTES. */
+  /** Passed through to the node, e.g. ZIRMA_AWAY_MINUTES. */
   env: Record<string, string>;
 }
 
 export function homeNodeConfig(options: { runtime: string; cli: string; env: NodeJS.ProcessEnv }): HomeNodeConfig {
-  const dataDir = options.env.ISOCLINE_DATA_DIR || undefined;
+  const dataDir = options.env.ZIRMA_DATA_DIR || undefined;
   // Production and development each have their own agent (core stage.ts); a world elsewhere gets one of its own too.
-  const label = dataDir ? `isocline.home-node.${createHash("sha256").update(dataDir).digest("hex").slice(0, 8)}` : agentLabelFor(options.env);
+  const label = dataDir ? `zirma.home-node.${createHash("sha256").update(dataDir).digest("hex").slice(0, 8)}` : agentLabelFor(options.env);
   // The node decides its stage from this, as the app did: the agent must not fall back to another one.
-  const env: Record<string, string> = { ISOCLINE_ENV: options.env.ISOCLINE_ENV === "production" ? "production" : "development" };
-  if (options.env.ISOCLINE_AWAY_MINUTES) env.ISOCLINE_AWAY_MINUTES = options.env.ISOCLINE_AWAY_MINUTES;
-  if (options.env.ISOCLINE_KEYCHAIN_SERVICE) env.ISOCLINE_KEYCHAIN_SERVICE = options.env.ISOCLINE_KEYCHAIN_SERVICE;
-  if (options.env.ISOCLINE_BUILD) env.ISOCLINE_BUILD = options.env.ISOCLINE_BUILD;
+  const env: Record<string, string> = { ZIRMA_ENV: options.env.ZIRMA_ENV === "production" ? "production" : "development" };
+  if (options.env.ZIRMA_AWAY_MINUTES) env.ZIRMA_AWAY_MINUTES = options.env.ZIRMA_AWAY_MINUTES;
+  if (options.env.ZIRMA_KEYCHAIN_SERVICE) env.ZIRMA_KEYCHAIN_SERVICE = options.env.ZIRMA_KEYCHAIN_SERVICE;
+  if (options.env.ZIRMA_BUILD) env.ZIRMA_BUILD = options.env.ZIRMA_BUILD;
   return {
     label,
-    legacyLabel: label.replace(/^isocline\./, "alfred."),
+    legacyLabels: ["isocline.", "alfred."].map((name) => label.replace(/^zirma\./, name)),
     port: portFor(options.env),
     dataDir,
     runtime: options.runtime,
     cli: options.cli,
-    logFile: join(homedir(), "Library", "Logs", "Isocline", `${label}.log`),
+    logFile: join(homedir(), "Library", "Logs", "Zirma", `${label}.log`),
     env,
   };
 }
@@ -80,22 +80,26 @@ ${Object.entries(env).map(([key, value]) => `    <key>${xml(key)}</key><string>$
 `;
 }
 
-/** Stops and removes the agent this world ran under before the rename (`alfred.home-node`), so the new one is the
- * only home node on it. Synchronous: the Mac app calls it before it moves the old folders (rename.ts) and before
- * anything opens a file in them. Waits briefly for the old node to let go; its lock file would stop the new one
- * anyway if it had not. Returns whether there was one. */
+/** Stops and removes the agents this world ran under before the renames (`isocline.home-node`, `alfred.home-node`,
+ * and their development and elsewhere variants), so the new one is the only home node on it. Synchronous: the Mac app
+ * calls it before it moves the old folders (rename.ts) and before anything opens a file in them. Waits briefly for an
+ * old node to let go; its lock file would stop the new one anyway if it had not. Returns whether there was one. */
 export function retireLegacyAgent(config: HomeNodeConfig): boolean {
-  const path = plistPath(config.legacyLabel);
-  const loaded = launchctl("print", `${domain()}/${config.legacyLabel}`).ok;
-  if (!loaded && !existsSync(path)) return false;
-  if (loaded) launchctl("bootout", `${domain()}/${config.legacyLabel}`);
-  rmSync(path, { force: true });
-  const pause = new Int32Array(new SharedArrayBuffer(4));
-  for (let waited = 0; waited < 10_000 && launchctl("print", `${domain()}/${config.legacyLabel}`).ok; waited += 200) Atomics.wait(pause, 0, 0, 200);
-  return true;
+  let retired = false;
+  for (const label of config.legacyLabels) {
+    const path = plistPath(label);
+    const loaded = launchctl("print", `${domain()}/${label}`).ok;
+    if (!loaded && !existsSync(path)) continue;
+    if (loaded) launchctl("bootout", `${domain()}/${label}`);
+    rmSync(path, { force: true });
+    const pause = new Int32Array(new SharedArrayBuffer(4));
+    for (let waited = 0; waited < 10_000 && launchctl("print", `${domain()}/${label}`).ok; waited += 200) Atomics.wait(pause, 0, 0, 200);
+    retired = true;
+  }
+  return retired;
 }
 
-/** Whether an Isocline home node answers on the port. */
+/** Whether an Zirma home node answers on the port. */
 export async function healthy(port: number): Promise<boolean> {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/state?modules=0`, { signal: AbortSignal.timeout(1500) });
@@ -141,7 +145,7 @@ export async function ensureHomeNode(config: HomeNodeConfig): Promise<HomeNodeMo
     // survive a restart (leases), so nothing is lost.
   }
   mkdirSync(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
-  mkdirSync(join(homedir(), "Library", "Logs", "Isocline"), { recursive: true });
+  mkdirSync(join(homedir(), "Library", "Logs", "Zirma"), { recursive: true });
   writeFileSync(path, plist, { mode: 0o644 });
   if (isLoaded(config)) {
     launchctl("bootout", `${domain()}/${config.label}`);

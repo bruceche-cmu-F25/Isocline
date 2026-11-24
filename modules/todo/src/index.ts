@@ -1,4 +1,4 @@
-import { areaName, describeAreas, lastChangesOf, localDate, userLocale, type World, defineModule, defineOp, defineTool, Type } from "@isocline/module-kit";
+import { areaName, describeAreas, lastChangesOf, localDate, userLocale, type World, defineModule, defineOp, defineTool, Type } from "@zirma/module-kit";
 import {
   acceptTodo, addTodo, sameTodo, todosForProposedEvents, completeTodo, deleteTodo, formatTodo, getTodoSettings, listTodos, MIGRATIONS, moveTodosOutOfArea, resolveTodo, setTodoSettings, suggestTodo, todoRevision,
   updateTodo, type Todo,
@@ -55,7 +55,7 @@ const AreaField = Type.Optional(Type.String({
 }));
 
 function snapshot(world: World): TodoSnapshot {
-  // Provenance from the log: Isocline's own latest change to a todo is shown as such.
+  // Provenance from the log: Zirma's own latest change to a todo is shown as such.
   const todos = listTodos(world, { includeDone: true });
   const changes = lastChangesOf(world, todos.map((todo) => `todo:${todo.id}`));
   return {
@@ -136,7 +136,7 @@ export const todoModule = defineModule({
       run: (world, input) => completeTodo(world, input),
     }),
     defineOp({
-      // The user keeps one of Isocline's suggestions.
+      // The user keeps one of Zirma's suggestions.
       name: "todo.accept",
       input: Type.Object({ id: Type.String(), revision: Type.Optional(Type.String()) }),
       run: (world, input) => acceptTodo(world, input),

@@ -8,9 +8,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
-import type { EnginePort } from "@isocline/core";
-import { todoModule } from "@isocline/module-todo";
-import type { LiveUpdate, StateResponse, SubmitRunResponse } from "@isocline/protocol";
+import type { EnginePort } from "@zirma/core";
+import { todoModule } from "@zirma/module-todo";
+import type { LiveUpdate, StateResponse, SubmitRunResponse } from "@zirma/protocol";
 import { createHttpServer, openHome, type Home } from "../src/index.ts";
 import { overTheWire, send } from "../src/wire.ts";
 

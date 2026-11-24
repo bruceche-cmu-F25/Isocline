@@ -1,4 +1,4 @@
 # Words every scene's word list gets (one per line). Add names and terms you use a lot.
-Isocline
+Zirma
 Bruce
 tesseract

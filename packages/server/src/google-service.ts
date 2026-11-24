@@ -2,7 +2,7 @@
  * connection (google.ts), which owns the tokens; modules never see a token, only `get` and `send`. Errors become ServiceError:
  * `reconnect` when Google no longer honours the grant (Settings shows Reconnect), else `unavailable`.
  */
-import { ServiceError, type GoogleService } from "@isocline/module-kit";
+import { ServiceError, type GoogleService } from "@zirma/module-kit";
 import type { GoogleConnections } from "./google.ts";
 
 /** undici says only "fetch failed"; the reason (no DNS, connection reset, a certificate) is in its cause. */

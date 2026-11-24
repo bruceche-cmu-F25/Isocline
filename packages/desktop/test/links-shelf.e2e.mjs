@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
-import { updateSettings } from "@isocline/core";
-import { createLinksModule, saveClip } from "@isocline/module-links";
-import { createHttpServer, openHome } from "@isocline/server";
+import { updateSettings } from "@zirma/core";
+import { createLinksModule, saveClip } from "@zirma/module-links";
+import { createHttpServer, openHome } from "@zirma/server";
 
 test("video covers fill their 16:9 frame and filters can be cleared after their last match changes", async (t) => {
   const browser = await chromium.launch({ channel: "chrome" });

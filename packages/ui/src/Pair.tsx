@@ -3,7 +3,7 @@
  * The home node answers with the device token in an HttpOnly cookie, so this page never sees it.
  */
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { DeviceKind } from "@isocline/protocol";
+import type { DeviceKind } from "@zirma/protocol";
 import { api } from "./api.ts";
 import { Figure } from "./shell/Figure.tsx";
 import { t } from "./i18n/index.ts";

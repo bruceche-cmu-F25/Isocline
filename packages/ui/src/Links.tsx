@@ -5,10 +5,10 @@
  * L1: a saved page is looked up for its title; it is not read or summarised yet, and the card does not pretend so.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Area } from "@isocline/protocol";
-import type { Clip, ClipState, LinksSnapshot, LinkType, Topic } from "@isocline/module-links/types";
-import { classify, parseLinkPaste } from "@isocline/module-links/url";
-import { topicChain, topicTree } from "@isocline/module-links/tree";
+import type { Area } from "@zirma/protocol";
+import type { Clip, ClipState, LinksSnapshot, LinkType, Topic } from "@zirma/module-links/types";
+import { classify, parseLinkPaste } from "@zirma/module-links/url";
+import { topicChain, topicTree } from "@zirma/module-links/tree";
 import { byNewest, counts, inNode, isRecent, itemsOf, linkTree, nodePath, nodeTopics, readViews, searchItems, searchTopics, searchWords, writeViews, type Item, type ItemType, type View } from "./linkTree.ts";
 import { Menu, TreeNav } from "./LinksTree.tsx";
 import { Mark, PlaceCard, Row, Tile, sourceOf } from "./LinkRows.tsx";
@@ -173,7 +173,7 @@ function Card({ clip, topics, areas, open, fresh, onOpen, onError }: {
             {topic && <span className="tag">{topic.name}</span>}
             <span className="lk-state" data-s={clip.state}><i />{stateName(clip.state)}</span>
             {looking && <span className="lk-looking"><span className="pulse" />{t("links.looking")}</span>}
-            {clip.byIsocline && <span className="by">{t("links.byIsocline")}</span>}
+            {clip.byZirma && <span className="by">{t("links.byZirma")}</span>}
           </span>
         </span>
       </button>
@@ -217,8 +217,8 @@ function Card({ clip, topics, areas, open, fresh, onOpen, onError }: {
   );
 }
 
-const NODE_KEY = "isocline.links.node";
-const OPEN_KEY = "isocline.links.open";
+const NODE_KEY = "zirma.links.node";
+const OPEN_KEY = "zirma.links.open";
 const stored = <T,>(key: string, fallback: T): T => { try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; } };
 const store = (key: string, value: unknown) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* not remembered */ } };
 /** Below this width the tree folds into the page: areas first, then category after category, tapped into. */
@@ -246,7 +246,7 @@ export function Links({ snapshot, fresh, areas, focus, onFocused }: { snapshot: 
   const [expandedShelf, setExpandedShelf] = useState(false);
   const [importing, setImporting] = useState(false);
   const [menu, setMenu] = useState(false);
-  const [treeHidden, setTreeHidden] = useState(() => stored("isocline.links.treeHidden", false));
+  const [treeHidden, setTreeHidden] = useState(() => stored("zirma.links.treeHidden", false));
   const [said, setSaid] = useState<{ text: string; undo?: () => void } | null>(null);
   const [narrow, setNarrow] = useState(false);
   const page = useRef<HTMLElement>(null);
@@ -504,7 +504,7 @@ export function Links({ snapshot, fresh, areas, focus, onFocused }: { snapshot: 
                 <button type="button" className="lk-icon-btn" aria-label={t("links.more")} title={t("links.more")} aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="more" /></button>
                 {menu && <Menu onClose={() => setMenu(false)}>
                   <button type="button" role="menuitem" onClick={() => { setMenu(false); setImporting(true); }}>{t("links.import.title")}…</button>
-                  {!narrow && <button type="button" role="menuitem" onClick={() => { setMenu(false); setTreeHidden(showTree); store("isocline.links.treeHidden", showTree); }}>{t(showTree ? "links.tree.hide" : "links.tree.show")}</button>}
+                  {!narrow && <button type="button" role="menuitem" onClick={() => { setMenu(false); setTreeHidden(showTree); store("zirma.links.treeHidden", showTree); }}>{t(showTree ? "links.tree.hide" : "links.tree.show")}</button>}
                 </Menu>}
               </span>
             </div>

@@ -30,7 +30,7 @@ button:disabled { cursor: default; opacity: .5; }
 p, h2, h3, ul, ol { margin: 0; padding: 0; }
 ul, ol { list-style: none; }
 svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-/* Isocline's mark has 32 edges where another icon has a handful: drawn finer, wherever it is, so its inner cube stays open. */
+/* Zirma's mark has 32 edges where another icon has a handful: drawn finer, wherever it is, so its inner cube stays open. */
 svg[data-icon="alfred"]:not(.figure) { stroke-width: 1.15; }
 /* Other companies' marks (brand/Logo.tsx): filled drawings, not line icons. One-colour marks take the text colour. */
 .logo { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; }
@@ -43,18 +43,18 @@ a:hover { text-decoration-color: var(--accent); }
 .problem { color: var(--bad); }
 .count { font: .75rem var(--mono); color: var(--muted); }
 .wordmark { font: 1.375rem/1 var(--wordmark); letter-spacing: .01em; }
-/* The two voices' colours: Ana warm, Kata the app's own blue (Wordmark.tsx). */
+/* The two voices' colours: Ana warm, Kata the app's own blue (settings, the character picker). */
 :root { --ana: oklch(.62 .13 40); --kata: var(--alf); }
+/* The wordmark's i: a blue square turned 25° where the font's dot would be (Wordmark.tsx). */
 .wm-i { position: relative; display: inline-block; }
-.wm-dot { position: absolute; left: .147em; top: .193em; width: .112em; height: .112em; border-radius: 50%; transform: translate(-50%, -50%); background: var(--ana); }
-.wm-dot[data-voice="kata"] { background: var(--kata); }
+.wm-dot { position: absolute; left: .147em; top: .193em; width: .13em; height: .13em; transform: translate(-50%, -50%) rotate(25deg); background: var(--alf); }
 
 .boot { min-height: 100dvh; display: grid; place-content: center; gap: 12px; text-align: center; }
 
-/* ── Workspace: the top bar, then sidebar | page | Isocline. The dividers set --nav-px and --alf-px. ── */
+/* ── Workspace: the top bar, then sidebar | page | Zirma. The dividers set --nav-px and --alf-px. ── */
 .workspace {
   position: relative; height: var(--vvh, 100dvh); display: grid;
-  /* Column widths. Not --alf: that is Isocline's colour (tokens.css). */
+  /* Column widths. Not --alf: that is Zirma's colour (tokens.css). */
   --top-h: 52px; --nav-col: var(--nav-px, 208px); --page-col: minmax(0, 1fr); --alf-col: var(--alf-px, 400px);
   grid-template-columns: var(--nav-col) var(--page-col) var(--alf-col); grid-template-rows: var(--top-h) minmax(0, 1fr);
   grid-template-areas: "top top top" "nav page alf";
@@ -166,7 +166,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 
 
 /* The page: one module's view at a time. Its contents lay themselves out by the width of this column (@container page),
-   not the window's: with Isocline's panel open the column is narrow in a wide window. */
+   not the window's: with Zirma's panel open the column is narrow in a wide window. */
 .page { grid-area: page; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); container: page / inline-size; overflow: hidden; }
 /* A phone has no top bar, so there the page says its own name and facts: one compact row, as the bar does; the
    facts go under the name when they do not fit beside it. */
@@ -186,10 +186,10 @@ body.resizing { cursor: col-resize; user-select: none; }
   .page .todos { padding: 0 6px; }
 }
 
-/* Isocline: the figure, a line on what it is doing, and the conversation. */
+/* Zirma: the figure, a line on what it is doing, and the conversation. */
 .alfred { grid-area: alf; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--raise); border-left: 1px solid var(--line-soft); }
 .workspace[data-alfred="wide"] .alfred { grid-column: page / alf; border-left: 0; }
-/* A faint grid under Isocline's panel and conversation, the paper its wireframe figure is drawn on: it marks Isocline's
+/* A faint grid under Zirma's panel and conversation, the paper its wireframe figure is drawn on: it marks Zirma's
    place apart from the pages, whose ground is flat. It fades out where the words are, the middle and the composer,
    and shows at the edges. Layers, top first: the middle's fade, the bottom's fade, the lines, the ground. */
 .alfred {
@@ -215,7 +215,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .alfred .turns { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px); mask-image: linear-gradient(to bottom, transparent 0, #000 18px); }
 .alfred .composer, .alfred .suggestions { width: calc(100% - 32px); }
 /* Beside a daily page the conversation is the words and what was done (Conversation's `slim`): your side a quiet
-   bubble, Isocline's side plain text, nothing about the model. While it works, the line says what it is doing; the
+   bubble, Zirma's side plain text, nothing about the model. While it works, the line says what it is doing; the
    list of steps and the cost of the turn are for the Code page. */
 .conversation[data-slim] .said { padding: 6px 12px; border-radius: 14px; background: var(--wash); box-shadow: none; color: var(--copy); }
 .conversation[data-slim] :is(.turn-dot, .run-meta, .steps) { display: none; }
@@ -280,7 +280,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .turns { flex: 1; overflow-y: auto; padding: 28px max(16px, 6vw) 12px; display: flex; flex-direction: column; gap: 22px; }
 .turn { display: flex; flex-direction: column; gap: 8px; max-width: var(--read-w); width: 100%; margin: 0 auto; border-radius: 14px; transition: background-color 600ms var(--ease); }
 .turn[data-highlighted] { background: var(--accent-soft); }
-/* Two voices, told apart at a glance: yours an indigo-tinted bubble on the right, Isocline's a card on the left beside its figure. */
+/* Two voices, told apart at a glance: yours an indigo-tinted bubble on the right, Zirma's a card on the left beside its figure. */
 .said { --copy-size: 28px; --copy-gap: 3px; position: relative; align-self: flex-end; max-width: 85%; margin-block-end: calc(var(--copy-size) + var(--copy-gap) - 8px); padding: 9px 14px; border-radius: 18px 18px 5px 18px; background: color-mix(in oklab, var(--alf) 16%, var(--raise)); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--alf) 22%, transparent); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 /* The transparent padding keeps hover active while the pointer crosses the gap. */
 .said-tools { position: absolute; inset-block-start: 100%; inset-inline-end: 0; padding-block-start: var(--copy-gap); opacity: 0; pointer-events: none; user-select: none; }
@@ -345,7 +345,7 @@ button.ghost, .notice-actions button.ghost { background: none; color: var(--copy
 .suggestion:hover { color: var(--ink); background: var(--wash); }
 .asked-on { align-self: center; color: var(--muted); font-size: .75rem; }
 .composer { display: flex; flex-direction: column; gap: 2px; max-width: var(--read-w); width: calc(100% - 32px); margin: 8px auto calc(16px + env(safe-area-inset-bottom, 0px)); padding: 8px 8px 8px 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--field); box-shadow: 0 1px 2px oklch(0 0 0 / .04), 0 6px 20px oklch(0 0 0 / .05); transition: border-color .15s, box-shadow .15s; }
-/* Isocline's colour is on the composer only while you are in it, and on send once there is something to send. */
+/* Zirma's colour is on the composer only while you are in it, and on send once there is something to send. */
 .composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--alf-soft); }
 .composer textarea { resize: none; border: 0; background: none; outline: none; padding: 4px 2px; line-height: 1.5; max-height: 40vh; }
 .composer textarea::placeholder { color: var(--muted); }
@@ -722,7 +722,7 @@ button.ghost, .notice-actions button.ghost { background: none; color: var(--copy
 button.link { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--accent) 35%, transparent); text-underline-offset: 3px; }
 
 /* Notices */
-/* Beside Isocline's panel, not over it. */
+/* Beside Zirma's panel, not over it. */
 
 /* Inside the Mac app: the window buttons sit at the top bar's left; the bar and the tops of the columns drag the window. */
 html.desktop .topbar-lead { padding-left: 82px; }
@@ -730,7 +730,7 @@ html.desktop.full-screen .topbar-lead { padding-left: 12px; } /* full screen: no
 html.desktop .topbar, html.desktop .page-head, html.desktop .alf-head { -webkit-app-region: drag; }
 html.desktop .topbar button, html.desktop .page-head button, html.desktop .alf-head button { -webkit-app-region: no-drag; }
 
-/* Phone: one column, a dock at the bottom, Isocline and the sidebar as sheets. */
+/* Phone: one column, a dock at the bottom, Zirma and the sidebar as sheets. */
 @media (max-width: 700px) {
   /* --dock-h: the room the dock's two bubbles take at the foot of the page, with the gap under them and over them. */
   .workspace { --dock-h: 74px; --dock-clear: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px)); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "page"; }
@@ -759,7 +759,7 @@ html.desktop .topbar button, html.desktop .page-head button, html.desktop .alf-h
   .scrim { display: block; position: fixed; inset: 0; z-index: 31; background: #00000040; }
   /* The dock is two bubbles floating over the page, no band behind them: at the left one pill with three lines
      for the sidebar's sheet (it comes in from that side) and the daily pages in their colours, icons alone; at
-     the right Isocline, in a circle of its own with room around it. The page in view has a quiet pill behind its
+     the right Zirma, in a circle of its own with room around it. The page in view has a quiet pill behind its
      icon, as its row has in the sidebar; the page's head says its name. Between the bubbles the page is in reach. */
   .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; padding: 0 14px calc(10px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none; }
   .dock > * { pointer-events: auto; }
@@ -780,7 +780,7 @@ html.desktop .topbar button, html.desktop .page-head button, html.desktop .alf-h
   .dock-listening { position: absolute; right: 14px; bottom: calc(100% + 10px); padding: 6px 12px; border-radius: 999px; background: var(--raise); color: var(--copy); font-size: .8125rem; white-space: nowrap; box-shadow: 0 6px 18px oklch(0 0 0 / .14), inset 0 0 0 1px var(--line-soft); }
   .pal kbd { display: none; }
 }
-/* Keep all five buttons in the pill within reach beside Isocline on a 320px phone. */
+/* Keep all five buttons in the pill within reach beside Zirma on a 320px phone. */
 @media (max-width: 355px) {
   .dock:not([data-asking]) { padding-inline: 8px; gap: 8px; }
   .dock-tabs button { width: 44px; }
@@ -1239,10 +1239,10 @@ textarea.ev-field:disabled { opacity: .5; }
 .ev:hover { filter: brightness(.97); }
 /* On its way to Google: there, but not settled. Being typed: lifted, with its outline. Being dragged out: only the hours. */
 .ev[data-pending], .agenda-ev[data-pending] { opacity: .6; }
-/* Proposed by Isocline: where it would land, dashed in Isocline's colour until the user says yes. */
+/* Proposed by Zirma: where it would land, dashed in Zirma's colour until the user says yes. */
 .ev[data-proposed], .mo-ev[data-proposed], .agenda-ev[data-proposed] { background: var(--alf-soft); color: var(--alf); box-shadow: none; outline: 1.5px dashed var(--alf); outline-offset: -1.5px; }
 .ev[data-proposed] small { color: var(--alf); }
-/* Made in Isocline: it can be carried to another hour or day. While it is, it stays faint where it was, and where it
+/* Made in Zirma: it can be carried to another hour or day. While it is, it stays faint where it was, and where it
    would be put down is drawn lifted, with its new hours. */
 .ev[data-movable] { cursor: grab; }
 .ev[data-carried] { opacity: .35; cursor: grabbing; }
@@ -1282,7 +1282,7 @@ textarea.ev-field:disabled { opacity: .5; }
 .mo-cell:nth-child(7n + 1) { border-left: 0; }
 .mo-cell[data-weekend] { background-color: color-mix(in srgb, var(--paper) 55%, transparent); }
 .mo-cell[data-today] { background-color: color-mix(in oklch, var(--now) 4%, transparent); }
-/* A day Isocline has not read: hatched, so an empty box is not taken for a free day. */
+/* A day Zirma has not read: hatched, so an empty box is not taken for a free day. */
 .mo-cell[data-unread] { background-image: repeating-linear-gradient(135deg, transparent 0 7px, var(--line-soft) 7px 8px); }
 .mo-cell[data-open] { cursor: cell; }
 .mo-day { flex: none; align-self: flex-start; min-width: 24px; height: 24px; margin-bottom: 2px; padding: 0 7px; border-radius: 12px; color: var(--ink); font-size: .8125rem; font-weight: 500; white-space: nowrap; }
@@ -1415,7 +1415,7 @@ textarea.ev-field:disabled { opacity: .5; }
 .mail-pick { display: grid; place-items: center; }
 .mail-body { margin: 18px 0; max-width: 72ch; color: var(--copy); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mail-back { display: none; }
-/* Drafts and replies. A draft sits under the mail it answers: dashed and in Isocline's colour while Isocline's and only
+/* Drafts and replies. A draft sits under the mail it answers: dashed and in Zirma's colour while Zirma's and only
    a draft, plain when the user's own; what was sent is solid and quiet. */
 .mail .inbox-said { margin: 0 0 10px; }
 .mail > :is([role="status"], [role="alert"]) { overflow-wrap: anywhere; }
@@ -1445,7 +1445,7 @@ textarea.ev-field:disabled { opacity: .5; }
 .mail-draft-also { display: flex; flex-direction: column; gap: 2px; color: var(--copy); font-size: .8125rem; }
 .mail-draft-also li::before { content: "+ "; color: var(--muted); }
 .mail-reply { margin: 18px 0; display: flex; flex-direction: column; gap: 8px; }
-/* Isocline writing. While it works the card is already there with lines being written in it; when the draft lands
+/* Zirma writing. While it works the card is already there with lines being written in it; when the draft lands
    its text is written out in the same box the user then edits, so nothing jumps. */
 .mail-draft:is([data-writing], :has(.mail-draft-typing)) { animation: none; }
 .mail-draft-lines, .mail-draft-typing { min-height: 5.4em; padding: 8px 10px; border-radius: 8px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line-soft); }
@@ -1515,18 +1515,18 @@ textarea.ev-field:disabled { opacity: .5; }
   .mail-sendbar button, .mail-add-cc { min-height: 40px; }
 }
 
-/* Isocline telling you something (shell/Says.tsx, speech/speech.css): the card sits by the figure it comes out of. */
+/* Zirma telling you something (shell/Says.tsx, speech/speech.css): the card sits by the figure it comes out of. */
 .figure-anchor { display: inline-flex; flex: none; }
 .figure-anchor > [data-speaking] { --hop: 12px; --big: 1.3; }
 .says { position: fixed; z-index: 40; }
-/* No figure in sight: a small Isocline comes up in the corner to say it. */
+/* No figure in sight: a small Zirma comes up in the corner to say it. */
 .says-own {
   position: fixed; right: 20px; bottom: 20px; z-index: 39; display: flex; padding: 8px; border-radius: 16px;
   background: var(--raise); box-shadow: 0 10px 30px #00000026, inset 0 0 0 1px var(--line-soft);
   animation: says-rise 560ms cubic-bezier(.23, 1, .32, 1) both;
 }
 .says-own[data-phase="sink"] { animation: says-sink 520ms cubic-bezier(.55, 0, .75, .2) both; }
-/* In a session that fills the page the corner is the composer's: Isocline comes down into the session's bar, small
+/* In a session that fills the page the corner is the composer's: Zirma comes down into the session's bar, small
    (Says.tsx gives it its place there). */
 .says-own[data-at="bar"] { right: auto; bottom: auto; padding: 5px; border-radius: 12px; box-shadow: 0 4px 14px #0000001f, inset 0 0 0 1px var(--line-soft); animation-name: says-drop; }
 .says-own[data-at="bar"] [data-speaking] { --hop: 6px; }
@@ -1540,7 +1540,7 @@ textarea.ev-field:disabled { opacity: .5; }
 /* A proposal step with more than a line to read (an email's whole text). */
 .step-detail { margin: 6px 0 2px; max-height: 320px; overflow: auto; padding: 10px 12px; border-radius: 8px; background: var(--wash); color: var(--copy); font: .8125rem/1.6 var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* Voice: the microphone beside every place you talk to Isocline (voice/MicButton.tsx). */
+/* Voice: the microphone beside every place you talk to Zirma (voice/MicButton.tsx). */
 .mic { position: relative; display: inline-flex; align-items: center; gap: 6px; flex: none; }
 .mic-button { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 50%; color: var(--muted); background: none; transition: background .15s, color .15s, box-shadow .08s linear; }
 .mic-button:hover:not(:disabled) { color: var(--ink); background: color-mix(in oklab, var(--field), var(--ink) 7%); }
@@ -1658,7 +1658,7 @@ html.desktop .dev-browser-bar { -webkit-app-region: no-drag; }
 .dev-proc-add input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: .75rem var(--mono); outline: none; }
 .dev-proc-cmd { margin: 0; overflow-wrap: anywhere; }
 .dev-logs { flex: 1; min-height: 0; margin: 0; overflow: auto; padding: 10px 12px; border-radius: 10px; background: var(--paper); box-shadow: inset 0 0 0 1px var(--line-soft); font: .75rem/1.5 var(--mono); color: var(--copy); white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Lighter talk (2026-11-20). A question Isocline waits on is a line in the reply, not a box in a box: a mark at its
+/* Lighter talk (2026-11-20). A question Zirma waits on is a line in the reply, not a box in a box: a mark at its
    left, the choices as outlined chips, only a yes to a permission filled. */
 .request { gap: 8px; padding: 2px 0 2px 12px; border: 0; border-left: 2px solid var(--warm); border-radius: 0; background: none; }
 .request[data-kind="permission"] { border-left-color: var(--bad); }
@@ -1669,7 +1669,7 @@ html.desktop .dev-browser-bar { -webkit-app-region: no-drag; }
 .turn-actions button { min-height: 28px; padding: 0 12px; font-size: .75rem; }
 .turn-actions button.ghost { padding: 0 10px; color: var(--muted); box-shadow: none; }
 .turn-actions button.ghost:hover:not(:disabled) { color: var(--ink); background: var(--wash); }
-/* In a development session, like beside a daily page: your side a quiet bubble, Isocline's side plain text. */
+/* In a development session, like beside a daily page: your side a quiet bubble, Zirma's side plain text. */
 .dev-session .said { padding: 7px 13px; border-radius: 14px; background: var(--wash); box-shadow: none; }
 .dev-session .reply { padding: 2px 0; border-radius: 0; background: none; box-shadow: none; }
 .dev-session .reply[data-state="failed"], .dev-session .reply[data-state="interrupted"] { box-shadow: none; }

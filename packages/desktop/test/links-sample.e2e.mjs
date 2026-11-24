@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
-import { updateSettings } from "@isocline/core";
-import { createLinksModule, saveClip } from "@isocline/module-links";
-import { createHttpServer, openHome } from "@isocline/server";
+import { updateSettings } from "@zirma/core";
+import { createLinksModule, saveClip } from "@zirma/module-links";
+import { createHttpServer, openHome } from "@zirma/server";
 
 async function drag(page, source, target) {
   const from = await source.boundingBox();

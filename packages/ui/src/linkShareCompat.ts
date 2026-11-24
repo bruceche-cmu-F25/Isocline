@@ -1,5 +1,5 @@
-import type { Clip } from "@isocline/module-links/types";
-import { findUrl, parseLinkPaste, parseShareText } from "@isocline/module-links/url";
+import type { Clip } from "@zirma/module-links/types";
+import { findUrl, parseLinkPaste, parseShareText } from "@zirma/module-links/url";
 
 /** An older home stores the platform's whole share in note; an upgraded home already separates it. */
 export function legacyShareClip(clip: Clip): Clip {

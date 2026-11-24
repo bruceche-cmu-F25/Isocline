@@ -2,7 +2,7 @@
  * do: a figure always on screen that tells the user things itself (system
  * notifications only when it cannot), a menu bar item, a global hotkey, and
  * knowing when the user locks the screen and comes back.
- * The home node runs under launchd, so none of Isocline's work depends on it.
+ * The home node runs under launchd, so none of Zirma's work depends on it.
  */
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -13,23 +13,23 @@ import {
   app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, Notification, powerMonitor, screen, shell, Tray,
   type IpcMainEvent, type MenuItemConstructorOptions,
 } from "electron";
-import type { AwayDigest, Notice, PresenceResponse, StateResponse } from "@isocline/protocol";
-import { assistantNameFor, detectLocale, setAssistant, translate, type Key, type Locale } from "@isocline/ui/i18n";
-import { waitingCount } from "@isocline/ui/inbox";
-import { inboxTarget, inboxUrl, noticeLines } from "@isocline/ui/notice";
-import { awayUpdate, welcomeLines } from "@isocline/ui/welcome";
+import type { AwayDigest, Notice, PresenceResponse, StateResponse } from "@zirma/protocol";
+import { assistantNameFor, detectLocale, setAssistant, translate, type Key, type Locale } from "@zirma/ui/i18n";
+import { waitingCount } from "@zirma/ui/inbox";
+import { inboxTarget, inboxUrl, noticeLines } from "@zirma/ui/notice";
+import { awayUpdate, welcomeLines } from "@zirma/ui/welcome";
 import { BrowserPane } from "./browser.ts";
 import { HomeClient } from "./client.ts";
 import { ensureHomeNode, healthy, homeNodeConfig, restartHomeNode, retireLegacyAgent, stopHomeNode, type HomeNodeMode } from "./home-node.ts";
-import { adoptLegacyEnv } from "@isocline/core/legacy";
-import { currentStage, dataDirFor } from "@isocline/core/stage";
-import { moveRenamedFolders } from "@isocline/server/rename";
+import { adoptLegacyEnv } from "@zirma/core/legacy";
+import { currentStage, dataDirFor } from "@zirma/core/stage";
+import { moveRenamedFolders } from "@zirma/server/rename";
 import { appIcon, trayIcon } from "./icon.ts";
 import { installApp, lastCommit, UPDATE_LOG, updateText } from "./update-app.ts";
 import { installTextMenu } from "./text-menu.ts";
 
 const HOTKEY = "Alt+Space";
-/** Quick talk (docs/design/voice.md §1.1): press to start talking to Isocline, press again to send. Not ⌥Space, which
+/** Quick talk (docs/design/voice.md §1.1): press to start talking to Zirma, press again to send. Not ⌥Space, which
  * opens the window here and is a dictation app's default too. */
 const TALK_HOTKEY = "Alt+Shift+Space";
 /** Room for the figure to hop and grow and for its speech card; the transparent rest lets clicks through. */
@@ -44,27 +44,26 @@ const OUTLET_CHECK_MS = 5_000;
 /** Untouched for this long at the last report, and touched since: the user came back. */
 const BACK_AFTER_S = 30;
 
-// An install from before the rename (Alfred → Isocline): its settings still apply.
+// An install from before a rename (Isocline, Alfred): its settings still apply.
 adoptLegacyEnv();
 // Production is the installed app on its own world; run from the source tree, or on a world given by
-// ISOCLINE_DATA_DIR, it is development (core stage.ts): its own world, port, agent and keychain.
-process.env.ISOCLINE_ENV ??= app.isPackaged && !process.env.ISOCLINE_DATA_DIR ? "production" : "development";
+// ZIRMA_DATA_DIR, it is development (core stage.ts): its own world, port, agent and keychain.
+process.env.ZIRMA_ENV ??= app.isPackaged && !process.env.ZIRMA_DATA_DIR ? "production" : "development";
 const production = currentStage() === "production";
 // The commit this app was built from (package-mac.ts). It goes into the home node's agent, so installing another
 // build changes the agent and the node restarts on the new code (home-node.ts ensureHomeNode).
 if (app.isPackaged) {
-  try { process.env.ISOCLINE_BUILD ??= (JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8")) as { commit?: string }).commit; } catch { /* an older build */ }
+  try { process.env.ZIRMA_BUILD ??= (JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8")) as { commit?: string }).commit; } catch { /* an older build */ }
 }
-if (production) {
-  // Its old home node agent is retired and its folders move to the new names, before anything below opens a file.
-  retireLegacyAgent(homeNodeConfig({ runtime: process.execPath, cli: "", env: process.env }));
-  moveRenamedFolders(undefined, (message) => console.log(`[isocline] ${message}`));
-}
+// Its home node's agents under the earlier names are retired and its folders move to the new names, before anything
+// below opens a file. Both stages: development had its own folder and agent under Isocline too (server rename.ts).
+retireLegacyAgent(homeNodeConfig({ runtime: process.execPath, cli: "", env: process.env }));
+moveRenamedFolders(undefined, (message) => console.log(`[zirma] ${message}`));
 
-app.setName(production ? "Isocline" : "Isocline Dev");
+app.setName(production ? "Zirma" : "Zirma Dev");
 // The app's own files (window state, device id) live beside the world, never inside it:
-// ~/Library/Application Support/Isocline/Desktop in production, <data dir>/desktop otherwise.
-app.setPath("userData", production ? join(app.getPath("appData"), "Isocline", "Desktop") : join(dataDirFor(), "desktop"));
+// ~/Library/Application Support/Zirma/Desktop in production, <data dir>/desktop otherwise.
+app.setPath("userData", production ? join(app.getPath("appData"), "Zirma", "Desktop") : join(dataDirFor(), "desktop"));
 if (!app.requestSingleInstanceLock()) app.quit();
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
@@ -146,14 +145,14 @@ function sayAttention(window: BrowserWindow | null = main, locked: boolean = scr
 
 function createMain(path = "/"): BrowserWindow {
   const window = new BrowserWindow({
-    width: 1120, height: 760, minWidth: 720, minHeight: 480, show: false, title: "Isocline",
+    width: 1120, height: 760, minWidth: 720, minHeight: 480, show: false, title: "Zirma",
     titleBarStyle: "hiddenInset", trafficLightPosition: { x: 18, y: 19 }, // centred in the 52 px top bar (styles.css --top-h)
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#171613" : "#fcf9f6", // the paper theme's page colour (tokens.css)
     webPreferences: webPreferences("main"),
   });
   installTextMenu(window, window.webContents);
   window.on("close", (event) => {
-    // Closing the window hides it; Isocline keeps running.
+    // Closing the window hides it; Zirma keeps running.
     if (!quitting) { event.preventDefault(); window.hide(); }
   });
   const attention = () => sayAttention(window);
@@ -292,7 +291,7 @@ function createPresence(): BrowserWindow {
     x: figurePlace.x,
     y: figurePlace.y,
     frame: false, transparent: true, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
-    alwaysOnTop: true, skipTaskbar: true, focusable: false, hasShadow: false, show: false, title: "Isocline",
+    alwaysOnTop: true, skipTaskbar: true, focusable: false, hasShadow: false, show: false, title: "Zirma",
     webPreferences: webPreferences("presence"),
   });
   window.setAlwaysOnTop(true, "floating");
@@ -353,7 +352,7 @@ async function greet(notice: Notice, preferredName: string | null): Promise<void
   notify(greeting, summary, () => openNotice(notice));
 }
 
-/** Isocline says these from the figure. If the user hid the figure, it comes out just to say them and hides again
+/** Zirma says these from the figure. If the user hid the figure, it comes out just to say them and hides again
  * when the page settles. False when there is no figure window to say them. */
 function speak(notices: Notice[]): boolean {
   if (!presence || presence.isDestroyed() || presence.webContents.isLoading()) return false;
@@ -415,7 +414,7 @@ async function handleNotices(state: StateResponse): Promise<void> {
     const { title, body } = noticeLines(notice, LOCALE);
     notify(title, body, () => openNotice(notice));
   } else {
-    notify("Isocline", say("mac.several", { n: presented.length }), () => showMain({ inbox: null }));
+    notify("Zirma", say("mac.several", { n: presented.length }), () => showMain({ inbox: null }));
   }
 }
 
@@ -427,7 +426,7 @@ function dockBadge(state: StateResponse): void {
 }
 
 /** Menus and notifications follow the user's language setting. */
-/** Whether Isocline is muted, as the home node last said: the menus show it and turn it on and off. */
+/** Whether Zirma is muted, as the home node last said: the menus show it and turn it on and off. */
 let muted = false;
 function followVoice(state: StateResponse): void {
   const now = state.settings?.voice?.muted ?? false;
@@ -474,7 +473,7 @@ function reportPresence(kind: "active" | "away"): void {
     .catch(() => { /* the node is down; the next report catches up */ });
 }
 
-/** The figure, as a place where Isocline can tell the user something. It says what this Mac sees: whether its screen
+/** The figure, as a place where Zirma can tell the user something. It says what this Mac sees: whether its screen
  * can be seen (not locked, no screen saver), and how long since it was touched. The home node decides from that
  * whether a notice is the figure's to say (docs/design/attention.md).
  *
@@ -539,7 +538,7 @@ function updateTray(): void {
         { label: say("mac.log"), enabled: existsSync(config.logFile), click: () => void shell.openPath(config.logFile) },
       ],
     },
-    { label: say("mac.restart"), enabled: !restarting, click: () => void restartIsocline() },
+    { label: say("mac.restart"), enabled: !restarting, click: () => void restartZirma() },
     // Run from the source tree: put the last commit into the installed app (update-app.ts).
     ...(app.isPackaged ? [] : [{ label: updateText(LOCALE, updating ? "running" : "menu"), enabled: !updating, click: () => void updateInstalledApp() }]),
     {
@@ -550,10 +549,10 @@ function updateTray(): void {
     { label: say("mac.quit"), click: () => app.quit() },
   ];
   tray.setContextMenu(Menu.buildFromTemplate(items));
-  tray.setToolTip(`Isocline · ${statusLabel()}`);
+  tray.setToolTip(`Zirma · ${statusLabel()}`);
 }
 
-/** Development only: asks, then installs the last commit into /Applications/Isocline.app, and says how it went. */
+/** Development only: asks, then installs the last commit into /Applications/Zirma.app, and says how it went. */
 let updating = false;
 async function updateInstalledApp(): Promise<void> {
   const root = here("../../..");
@@ -573,7 +572,7 @@ async function updateInstalledApp(): Promise<void> {
   updating = false;
   updateTray();
   const note = new Notification({
-    title: "Isocline Dev",
+    title: "Zirma Dev",
     body: failure ? updateText(LOCALE, "failed", { reason: failure }) : updateText(LOCALE, "done", last),
   });
   if (failure) note.on("click", () => void shell.openPath(UPDATE_LOG));
@@ -605,14 +604,14 @@ function toggleHomeNode(): void {
 }
 
 /**
- * Restart Isocline to see a change: when run from the source tree, rebuild the page, restart the home node (when this
+ * Restart Zirma to see a change: when run from the source tree, rebuild the page, restart the home node (when this
  * app runs it), then start the app again. The node keeps working if the build fails; the page tells why.
  */
 let restarting = false;
-async function restartIsocline(): Promise<void> {
+async function restartZirma(): Promise<void> {
   if (restarting) return;
   restarting = true;
-  tray?.setToolTip(`Isocline · ${say("mac.restart")}…`);
+  tray?.setToolTip(`Zirma · ${say("mac.restart")}…`);
   try {
     if (!app.isPackaged) {
       await new Promise<void>((done, fail) => execFile(process.execPath, [here("../../../node_modules/vite/bin/vite.js"), "build"],
@@ -637,7 +636,7 @@ function appMenu(): void {
     { role: "editMenu" },
     {
       label: say("mac.view"), submenu: [
-        { role: "reload" }, { label: say("mac.restart"), accelerator: "CmdOrCtrl+Shift+R", click: () => void restartIsocline() },
+        { role: "reload" }, { label: say("mac.restart"), accelerator: "CmdOrCtrl+Shift+R", click: () => void restartZirma() },
         { role: "toggleDevTools" }, { type: "separator" },
         { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, { type: "separator" }, { role: "togglefullscreen" },
       ],
@@ -708,7 +707,7 @@ function wireIpc(): void {
 
 app.on("second-instance", () => showMain({ composer: true }));
 app.on("activate", () => showMain());
-app.on("window-all-closed", () => { /* Isocline stays in the menu bar */ });
+app.on("window-all-closed", () => { /* Zirma stays in the menu bar */ });
 app.on("before-quit", () => { quitting = true; });
 app.on("will-quit", () => globalShortcut.unregisterAll());
 
@@ -755,8 +754,8 @@ app.whenReady().then(async () => {
   presence = createPresence();
   void serveDesk();
   if (!app.getLoginItemSettings().wasOpenedAtLogin) showMain();
-  if (!globalShortcut.register(HOTKEY, toggleMain)) console.warn(`[isocline] could not register ${HOTKEY}`);
-  if (!globalShortcut.register(TALK_HOTKEY, quickTalk)) console.warn(`[isocline] could not register ${TALK_HOTKEY}`);
+  if (!globalShortcut.register(HOTKEY, toggleMain)) console.warn(`[zirma] could not register ${HOTKEY}`);
+  if (!globalShortcut.register(TALK_HOTKEY, quickTalk)) console.warn(`[zirma] could not register ${TALK_HOTKEY}`);
   watchPresence();
 }).catch((error: unknown) => {
   console.error(error);

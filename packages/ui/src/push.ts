@@ -30,7 +30,7 @@ async function registration(): Promise<ServiceWorkerRegistration> {
 }
 
 /** Set while the user wants notifications on this device, so a subscription lost on the way is made again. */
-const WANTED = "isocline.push";
+const WANTED = "zirma.push";
 const wanted = (on: boolean) => { try { if (on) localStorage.setItem(WANTED, "on"); else localStorage.removeItem(WANTED); } catch { /* private mode */ } };
 const isWanted = () => { try { return localStorage.getItem(WANTED) === "on"; } catch { return false; } };
 

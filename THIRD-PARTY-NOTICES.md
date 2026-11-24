@@ -1,11 +1,11 @@
 # Third-party notices
 
-Isocline is MIT licensed (see `LICENSE`). Parts of it come from, or follow, other people's open-source work. This file
+Zirma is MIT licensed (see `LICENSE`). Parts of it come from, or follow, other people's open-source work. This file
 says what, where, and under which licence. Where code was adapted, the file it lives in also names its source.
 
 ## Code adapted from other projects
 
-| In Isocline | From | Licence |
+| In Zirma | From | Licence |
 | --- | --- | --- |
 | `packages/engine-pi/src/skills.ts`: switching a skill off and on by editing one frontmatter line (`setSkillDisabled`, `frontmatterBlock`) | [pi-web](https://github.com/agegr/pi-web), `lib/skill-frontmatter.ts` | MIT, © 2026 agegr |
 | `packages/engine-pi/src/usage.ts`: the request and response formats for a subscription's usage windows | [pi-web](https://github.com/agegr/pi-web), `lib/provider-usage.ts`, which follows [@narumitw/pi-usage](https://github.com/narumiruna/pi-extensions) | MIT, © 2026 agegr; MIT, © 2026 narumiruna |
@@ -21,11 +21,11 @@ The logos are trademarks of their owners; see `packages/ui/src/brand/README.md`.
 
 | Used by | Library | Licence |
 | --- | --- | --- |
-| `modules/links/src/fetch.ts` (`shrinkCover`): saved covers are resized to the size they are drawn | [sharp](https://github.com/lovell/sharp) 0.35.5, with its prebuilt [libvips](https://github.com/libvips/libvips) (`@img/sharp-libvips-*`) | sharp: Apache-2.0; libvips: LGPL-3.0-or-later, linked dynamically. A packaged Isocline.app must carry libvips's licence and leave the library replaceable. |
+| `modules/links/src/fetch.ts` (`shrinkCover`): saved covers are resized to the size they are drawn | [sharp](https://github.com/lovell/sharp) 0.35.5, with its prebuilt [libvips](https://github.com/libvips/libvips) (`@img/sharp-libvips-*`) | sharp: Apache-2.0; libvips: LGPL-3.0-or-later, linked dynamically. A packaged Zirma.app must carry libvips's licence and leave the library replaceable. |
 
 ## Designs followed (no code copied)
 
-These parts were written for Isocline, but their shape follows [pi-web](https://github.com/agegr/pi-web) (MIT,
+These parts were written for Zirma, but their shape follows [pi-web](https://github.com/agegr/pi-web) (MIT,
 © 2026 agegr):
 
 - Settings split into tabs, and the General tab (`packages/ui/src/Settings.tsx`, `packages/ui/src/General.tsx`)
@@ -36,15 +36,15 @@ These parts were written for Isocline, but their shape follows [pi-web](https://
   (`packages/ui/src/Conversation.tsx`, `packages/ui/src/styles.css`)
 - Keeping a conversation's session open between turns (`packages/engine-pi`)
 
-## Where Isocline came from
+## Where Zirma came from
 
-Isocline grew out of pi-web-robin, its author's own fork of pi-web. The parts ported from Robin (the todo rules,
-presence, the Google Calendar and Gmail readers, Links) were written by Isocline's author and are not third-party
+Zirma grew out of pi-web-robin, its author's own fork of pi-web. The parts ported from Robin (the todo rules,
+presence, the Google Calendar and Gmail readers, Links) were written by Zirma's author and are not third-party
 code. Anything in Robin that came from pi-web is listed above.
 
 ## Built on
 
-Isocline runs on these packages; they are installed from npm, not copied in, and keep their own licences.
+Zirma runs on these packages; they are installed from npm, not copied in, and keep their own licences.
 
 | Package | Used for | Licence |
 | --- | --- | --- |

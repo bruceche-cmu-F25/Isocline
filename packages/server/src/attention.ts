@@ -15,7 +15,7 @@
 import {
   ATTENTION, attends, claimNotice, decide, isOpen, presentNotice, releaseNotice, reportPresence, undeliveredNotices,
   type AttentionPolicy, type Notice, type Outlet, type PresenceOptions, type World,
-} from "@isocline/core";
+} from "@zirma/core";
 
 /** An outlet as it last described itself, and the device it spoke from. */
 export interface SeenOutlet extends Outlet {

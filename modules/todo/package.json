@@ -1,5 +1,5 @@
 {
-  "name": "@isocline/module-todo",
+  "name": "@zirma/module-todo",
   "version": "0.0.0",
   "private": true,
   "description": "Todo module: a personal task list. Moved from Robin's todo domain.",
@@ -10,7 +10,7 @@
     "./types": "./src/types.ts"
   },
   "dependencies": {
-    "@isocline/core": "*",
-    "@isocline/module-kit": "*"
+    "@zirma/core": "*",
+    "@zirma/module-kit": "*"
   }
 }

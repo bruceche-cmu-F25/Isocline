@@ -1,4 +1,4 @@
-/** One-off: turns the links of a pi-web-robin install into a browser bookmarks file, so they come into Isocline the
+/** One-off: turns the links of a pi-web-robin install into a browser bookmarks file, so they come into Zirma the
  * way anyone's bookmarks do (Links page → ⋯ → Import bookmarks; docs/design/links.md §4.10.4). The app itself knows
  * nothing of Robin. Robin's database is only read.
  *

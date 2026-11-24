@@ -3,8 +3,8 @@
 export type SettingsTab = "general" | "voice" | "models" | "accounts" | "skills" | "connectors" | "devices";
 
 /** The tab last looked at, on this device. */
-export const SETTINGS_TAB_KEY = "isocline.settings.tab";
-export const SETTINGS_TAB_EVENT = "isocline:settings-tab";
+export const SETTINGS_TAB_KEY = "zirma.settings.tab";
+export const SETTINGS_TAB_EVENT = "zirma:settings-tab";
 
 export function openSettings(tab: SettingsTab): void {
   try { localStorage.setItem(SETTINGS_TAB_KEY, tab); } catch { /* the open page still hears the event */ }

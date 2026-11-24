@@ -16,7 +16,7 @@
   /* A field brought into view stops a little short of the keyboard's edge. */
   input, textarea, [contenteditable] { scroll-margin-block: 12px; }
   html[data-keyboard] .ask[data-dock] .ask-over { bottom: calc(var(--kb, 0px) + 52px + 16px); }
-  /* The sheets: the sidebar's, and Isocline's (its composer at its foot). */
+  /* The sheets: the sidebar's, and Zirma's (its composer at its foot). */
   .sidebar[data-visible] { bottom: var(--kb, 0px); }
   html[data-keyboard] .sidebar[data-visible] { padding-bottom: 0; }
   .mail-phone-actions { bottom: calc(var(--kb, 0px) + max(12px, env(safe-area-inset-bottom))); }

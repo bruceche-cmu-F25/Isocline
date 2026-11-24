@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   addArea, AreaError, CORE_MIGRATIONS, isArea, listAreas, listEvents, moveArea, openWorld, updateArea, updateSettings, type World,
-} from "@isocline/core";
-import { assistantTools, moduleGuidance, moduleMigrations, removeArea } from "@isocline/module-kit";
-import { linksModule, ensureTopic, listTopics } from "@isocline/module-links";
+} from "@zirma/core";
+import { assistantTools, moduleGuidance, moduleMigrations, removeArea } from "@zirma/module-kit";
+import { linksModule, ensureTopic, listTopics } from "@zirma/module-links";
 import { addTodo, listTodos, todoModule } from "../src/index.ts";
 
 const MODULES = [todoModule, linksModule];

@@ -1,15 +1,15 @@
 /** The mail page: the Gmail inbox's last two weeks, read one message at a time, and answered from here.
  *
- * Under an open mail: draft a reply (Isocline writes one), reply in a line (a few words in the bar under the page, and
- * Isocline writes it out), or write it yourself. A draft is shown where it will go, under the mail it answers, and its
- * text can be changed by hand before it is sent. Isocline's drafts are proposals (they wait on the home node, and show
- * in 通知 too); a draft the user wrote, or took over by editing Isocline's, is kept on this device until it is sent.
- * Nothing goes out without a press on 发送: Isocline's as it stands is the proposal accepted, anything else is the
+ * Under an open mail: draft a reply (Zirma writes one), reply in a line (a few words in the bar under the page, and
+ * Zirma writes it out), or write it yourself. A draft is shown where it will go, under the mail it answers, and its
+ * text can be changed by hand before it is sent. Zirma's drafts are proposals (they wait on the home node, and show
+ * in 通知 too); a draft the user wrote, or took over by editing Zirma's, is kept on this device until it is sent.
+ * Nothing goes out without a press on 发送: Zirma's as it stands is the proposal accepted, anything else is the
  * user's own `mail.send`.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { Proposal, Run, StateResponse } from "@isocline/protocol";
-import type { MailCategory, MailDetail, MailMessage, MailSent, MailSnapshot, SendInput } from "@isocline/module-mail/types";
+import type { Proposal, Run, StateResponse } from "@zirma/protocol";
+import type { MailCategory, MailDetail, MailMessage, MailSent, MailSnapshot, SendInput } from "@zirma/module-mail/types";
 import { api, newRequestId } from "./api.ts";
 import { NewMail } from "./NewMail.tsx";
 import { outcomeText } from "./Inbox.tsx";
@@ -107,7 +107,7 @@ const VIEW = "mail.inbox";
 const COMPOSE = "compose";
 const GOING = new Set<Run["state"]>(["queued", "running", "cancelling"]);
 
-/** A draft: Isocline's (a step of an open proposal) or the user's own (kept on this device). */
+/** A draft: Zirma's (a step of an open proposal) or the user's own (kept on this device). */
 type Draft =
   | { kind: "alfred"; key: string; input: SendInput; at: string; proposal: Proposal; index: number }
   | ({ kind: "own" } & OwnDraft);
@@ -125,7 +125,7 @@ function when(iso: string): string {
   return date.toLocaleDateString(intlLocale(), { month: "short", day: "numeric" });
 }
 
-const OWN_KEY = "isocline.mail.drafts";
+const OWN_KEY = "zirma.mail.drafts";
 function readOwn(): OwnDraft[] {
   try {
     const kept = JSON.parse(localStorage.getItem(OWN_KEY) ?? "[]") as unknown;
@@ -158,14 +158,14 @@ interface Acts {
  * send, change, or not. */
 function DraftCard({ draft, acts, changing, heading, written, onWritten }: {
   draft: Draft; acts: Acts; changing: boolean; heading?: boolean;
-  /** Isocline has just written it: its text is written out in front of the user, once. */
+  /** Zirma has just written it: its text is written out in front of the user, once. */
   written?: boolean;
   onWritten?(): void;
 }) {
   const { input } = draft;
   const others = draft.kind === "alfred" ? draft.proposal.steps.filter((_, index) => index !== draft.index) : [];
   const stale = draft.kind === "alfred" && !!draft.proposal.stale;
-  // A proposal with more steps is accepted as it was shown; its words change through Isocline.
+  // A proposal with more steps is accepted as it was shown; its words change through Zirma.
   const editable = others.length === 0 && !stale;
   const [text, setText] = useState(input.body);
   const [busy, setBusy] = useState(false);
@@ -244,7 +244,7 @@ function useWritten(text: string, on: boolean): [string, boolean, () => void] {
   return [count === null ? text : chars.slice(0, count).join(""), count !== null, finish];
 }
 
-/** Isocline is writing: the draft's card is already where it will be, with lines being written in it. */
+/** Zirma is writing: the draft's card is already where it will be, with lines being written in it. */
 function Writing({ to }: { to?: string }) {
   const root = useRef<HTMLElement>(null);
   useEffect(() => { root.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, []);
@@ -280,10 +280,10 @@ interface ReaderProps {
   archive: ArchiveProps;
   line: PageLine;
   acts: Acts;
-  /** The draft has just come from Isocline, and has not been written out yet. */
+  /** The draft has just come from Zirma, and has not been written out yet. */
   written: boolean;
   onWritten(): void;
-  /** Asks Isocline for a reply to this mail; `words` is what it should say, if the user gave any. */
+  /** Asks Zirma for a reply to this mail; `words` is what it should say, if the user gave any. */
   onDraft(words?: string): Promise<void>;
   /** Starts the user's own reply, empty or with the text of one that did not go out. */
   onOwn(body?: string): void;
@@ -420,7 +420,7 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
     ...own.map((draft): Draft => ({ kind: "own", ...draft })),
   ], [state.proposals, own]);
 
-  // Isocline's drafts that turned up while the page was open are written out when first shown, once. Those that
+  // Zirma's drafts that turned up while the page was open are written out when first shown, once. Those that
   // were already waiting when it opened are simply there.
   const known = useRef<Set<string> | null>(null);
   const fresh = useRef(new Set<string>());
@@ -428,14 +428,14 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
   known.current = new Set(drafts.map((draft) => draft.key));
   const shownWritten = (draft: Draft | undefined) => ({ written: !!draft && fresh.current.has(draft.key), onWritten: () => { if (draft) fresh.current.delete(draft.key); } });
 
-  /** The message a draft answers: the one it replies to, or the one picked when Isocline was asked for it. */
+  /** The message a draft answers: the one it replies to, or the one picked when Zirma was asked for it. */
   const answers = useCallback((draft: Draft): string | null => {
     if (draft.input.replyTo) return `${draft.input.account}|${draft.input.replyTo.id}`;
     if (draft.kind !== "alfred") return null;
     const asked = runs.find((run) => run.id === draft.proposal.runId)?.context;
     return asked?.view === VIEW && asked.selection && asked.selection.id !== COMPOSE ? `${draft.input.account}|${asked.selection.id}` : null;
   }, [runs]);
-  // Isocline's newest draft for a message comes before the user's own.
+  // Zirma's newest draft for a message comes before the user's own.
   const draftFor = (key: string) => drafts.filter((draft) => answers(draft) === key).sort((a, b) => (a.kind === b.kind ? b.at.localeCompare(a.at) : a.kind === "alfred" ? -1 : 1))[0];
   const isWriting = (thing: string, selection: string) => {
     const followed = follow[thing];
@@ -469,7 +469,7 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
   const composing = isWriting(COMPOSE, COMPOSE);
 
   // A draft that is not under a message (a new email) is followed by the run that writes it: the pane waits while
-  // Isocline writes, then shows what it made; a new version takes the place of the one it changed.
+  // Zirma writes, then shows what it made; a new version takes the place of the one it changed.
   const composeRun = follow[COMPOSE]?.run;
   useEffect(() => {
     if (!picked?.startsWith("d:") || openDraft || composing) return;
@@ -491,7 +491,7 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
     setActionError(null);
     setSaid(null);
     try {
-      // Gmail's half goes out after this answers; if Gmail refuses it, Isocline says so in a notice.
+      // Gmail's half goes out after this answers; if Gmail refuses it, Zirma says so in a notice.
       const saved = (await api.op("mail.favorite", { account: message.account, id: message.id, starred })).result as { starred: boolean; scope: "gmail" | "local" };
       refresh();
       setSaid(saved.scope === "gmail"
@@ -552,7 +552,7 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
         if (!draft.input.replyTo) setSaid(t("mail.sent.queued"));
         return;
       }
-      // The user's own wording: Isocline's version gives way, and theirs goes as their own. It is kept here first, so
+      // The user's own wording: Zirma's version gives way, and theirs goes as their own. It is kept here first, so
       // a send that fails leaves it to try again.
       const mine: OwnDraft = { key: answers(draft) ?? `new:${Date.now()}`, at: new Date().toISOString(), input: { ...draft.input, body } };
       put(mine);

@@ -1,4 +1,4 @@
-/** 「朗读」 under one of Isocline's replies: says it out loud; pressed again, stops. Not shown when muted. */
+/** 「朗读」 under one of Zirma's replies: says it out loud; pressed again, stops. Not shown when muted. */
 import { Icon } from "../shell/icons.tsx";
 import { t } from "../i18n/dict.ts";
 import { forSpeech, say, stopSpeaking, useSpeaking, useVoiceSettings } from "./voice.ts";

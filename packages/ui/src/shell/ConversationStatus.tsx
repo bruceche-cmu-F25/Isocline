@@ -1,4 +1,4 @@
-import type { Conversation } from "@isocline/protocol";
+import type { Conversation } from "@zirma/protocol";
 import { t } from "../i18n/index.ts";
 
 /** The same run state beside a conversation in the sidebar and the Code page. */

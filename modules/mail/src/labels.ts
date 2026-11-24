@@ -1,4 +1,4 @@
-import type { Delivered, Locale, ModuleServices } from "@isocline/module-kit";
+import type { Delivered, Locale, ModuleServices } from "@zirma/module-kit";
 
 export class MailLabelError extends Error {
   override name = "MailLabelError";

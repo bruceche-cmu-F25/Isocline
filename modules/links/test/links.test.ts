@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CORE_MIGRATIONS, listEvents, openWorld, withCoreContext, type World } from "@isocline/core";
-import { invokeOp, runTools } from "@isocline/module-kit";
+import { CORE_MIGRATIONS, listEvents, openWorld, withCoreContext, type World } from "@zirma/core";
+import { invokeOp, runTools } from "@zirma/module-kit";
 import {
   classify, createLinksModule, findUrl, getIcon, iconsToFetch, linksModule, listClips, listPlaces, listTopics, nameFromUrl, normalizeUrl, PageFetchError, pendingClips,
   pinPlace, recordPage, removeLink, saveClip, updateClip, type LinksSnapshot, type PageFetcher,
@@ -120,7 +120,7 @@ test("looking a page up fills in what the page says of itself, keeps a given tit
   assert.equal(listClips(w).find((clip) => clip.id === short.clip.id)!.url, "https://b23.tv/other");
 });
 
-test("Isocline saves, files, pins and lists through its tools; deleting asks first; the snapshot says what Isocline did", () => {
+test("Zirma saves, files, pins and lists through its tools; deleting asks first; the snapshot says what Zirma did", () => {
   const w = world();
   const tools = runTools(w, [linksModule]);
   const call = (name: string, params: Record<string, unknown>) => withCoreContext({ actor: "alfred" }, () => String(tools.find((tool) => tool.name === name)!.execute(params, signal)));
@@ -145,7 +145,7 @@ test("Isocline saves, files, pins and lists through its tools; deleting asks fir
   assert.equal(remove.permission!({ id: paper.id }), "Delete the link “arxiv.org · 2401.00001” for good? This can't be undone.");
 
   const snapshot = linksModule.snapshot!(w) as LinksSnapshot;
-  assert.deepEqual(snapshot.clips.map((clip) => [clip.title, clip.byIsocline ?? false]), [["example.com · coffee", true], ["arxiv.org · 2401.00001", true]]);
+  assert.deepEqual(snapshot.clips.map((clip) => [clip.title, clip.byZirma ?? false]), [["example.com · coffee", true], ["arxiv.org · 2401.00001", true]]);
   assert.deepEqual(snapshot.topics.map((topic) => topic.name), ["RAG", "Coffee"]);
 });
 

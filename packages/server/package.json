@@ -1,5 +1,5 @@
 {
-  "name": "@isocline/server",
+  "name": "@zirma/server",
   "version": "0.0.0",
   "private": true,
   "description": "The home node: holds the world, executes runs, serves the client protocol and the UI.",
@@ -13,15 +13,15 @@
     "./rename": "./src/rename.ts"
   },
   "dependencies": {
-    "@isocline/core": "*",
-    "@isocline/engine-pi": "*",
-    "@isocline/module-calendar": "*",
-    "@isocline/module-kit": "*",
-    "@isocline/module-links": "*",
-    "@isocline/module-mail": "*",
-    "@isocline/module-todo": "*",
-    "@isocline/protocol": "*",
-    "@isocline/ui": "*",
+    "@zirma/core": "*",
+    "@zirma/engine-pi": "*",
+    "@zirma/module-calendar": "*",
+    "@zirma/module-kit": "*",
+    "@zirma/module-links": "*",
+    "@zirma/module-mail": "*",
+    "@zirma/module-todo": "*",
+    "@zirma/protocol": "*",
+    "@zirma/ui": "*",
     "node-pty": "1.2.0-beta.15",
     "web-push": "3.6.7"
   },

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { adoptLegacyEnv, carryingOver, type SecretStore } from "../src/index.ts";
+import { adoptLegacyEnv, carryingOver, legacyKeychainServices, type SecretStore } from "../src/index.ts";
 import { assistantNameOf, getSettings, SettingsError, updateSettings } from "../src/index.ts";
 import { openWorld, CORE_MIGRATIONS } from "../src/index.ts";
 
@@ -32,11 +32,26 @@ test("a secret the user removes never comes back from the old place, and a new v
   assert.equal(await both.get("b"), "new-b");
 });
 
-test("a setting made under the old prefix still applies, unless the new one is set", () => {
-  const env: NodeJS.ProcessEnv = { ALFRED_PORT: "7490", ALFRED_DATA_DIR: "/old", ISOCLINE_DATA_DIR: "/new" };
+test("a setting made under an old prefix still applies, the newer old name first, unless the new one is set", () => {
+  const env: NodeJS.ProcessEnv = { ALFRED_PORT: "7490", ALFRED_DATA_DIR: "/old", ZIRMA_DATA_DIR: "/new", ISOCLINE_UI_DIR: "/ui", ALFRED_UI_DIR: "/older-ui" };
   adoptLegacyEnv(env);
-  assert.equal(env.ISOCLINE_PORT, "7490");
-  assert.equal(env.ISOCLINE_DATA_DIR, "/new");
+  assert.equal(env.ZIRMA_PORT, "7490");
+  assert.equal(env.ZIRMA_DATA_DIR, "/new");
+  assert.equal(env.ZIRMA_UI_DIR, "/ui");
+});
+
+test("secrets come over from the newest old keychain service that has them; each stage reads only its own", async () => {
+  const store = memory(), isocline = memory(), alfred = memory();
+  isocline.data.set("a", "from-isocline");
+  alfred.data.set("a", "from-alfred");
+  alfred.data.set("b", "only-alfred");
+  const all = carryingOver(store, isocline, alfred);
+  assert.equal(await all.get("a"), "from-isocline");
+  assert.equal(await all.get("b"), "only-alfred");
+  await all.delete("a");
+  assert.equal(isocline.data.has("a") || alfred.data.has("a"), false, "deleting removes every old copy");
+  assert.deepEqual(legacyKeychainServices("production"), ["Isocline", "Alfred"]);
+  assert.deepEqual(legacyKeychainServices("development"), ["Isocline Dev"]);
 });
 
 test("the assistant is Ana until the user picks Kata or gives it a name of their own", () => {

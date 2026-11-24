@@ -3,9 +3,9 @@
  * categories. The user renames, sets areas and merges on this card; only then is anything written, in parts, as one
  * import that can be undone. */
 import { useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
-import type { Area } from "@isocline/protocol";
-import type { Topic } from "@isocline/module-links/types";
-import { IMPORT_CHUNK, importEntries, parseBookmarks, proposeImport, type ImportProposal } from "@isocline/module-links/bookmarks";
+import type { Area } from "@zirma/protocol";
+import type { Topic } from "@zirma/module-links/types";
+import { IMPORT_CHUNK, importEntries, parseBookmarks, proposeImport, type ImportProposal } from "@zirma/module-links/bookmarks";
 import { mergeProposed, setProposedArea } from "./linkTree.ts";
 import { Mark } from "./LinkRows.tsx";
 import { api } from "./api.ts";

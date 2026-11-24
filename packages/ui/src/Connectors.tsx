@@ -1,4 +1,4 @@
-/** Settings → Connectors: the MCP servers Isocline's runs can use (docs/design/settings-and-connections.md §3.3).
+/** Settings → Connectors: the MCP servers Zirma's runs can use (docs/design/settings-and-connections.md §3.3).
  *
  * On top, the user's own: each with what it is, whether it is reached, how many tools it has, and how many of those
  * run without asking (the ones its server marks read-only; every other call still asks first). Below, the catalog:
@@ -6,7 +6,7 @@
  * of the user's own, by address or by command. Tokens and secrets go to the home node's keychain, never to a file.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import type { McpCatalogItem, McpConnector, McpConnectorsResponse, McpSignIn } from "@isocline/protocol";
+import type { McpCatalogItem, McpConnector, McpConnectorsResponse, McpSignIn } from "@zirma/protocol";
 import { request as call } from "./api.ts";
 import { connectorMark, Logo } from "./brand/Logo.tsx";
 import { getLocale, t } from "./i18n/index.ts";
@@ -14,7 +14,7 @@ import { getLocale, t } from "./i18n/index.ts";
 const at = (name: string, action: string) => `/api/connections/mcp/${encodeURIComponent(name)}/${action}`;
 const open = (url: string) => { const page = window.open(url, "_blank"); if (page) page.opener = null; };
 
-/** The service's own mark, where Isocline has one; its first letter stands in otherwise. */
+/** The service's own mark, where Zirma has one; its first letter stands in otherwise. */
 const mark = (server: { catalog?: string; name?: string; where?: string }) => { const name = connectorMark(server); return name ? <Logo name={name} /> : null; };
 
 type Own = { kind: "url" | "command"; name: string; where: string; secretName: string; secret: string };

@@ -5,10 +5,10 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fileStore } from "@isocline/core";
-import { createCredentialStore, ModelAccounts } from "@isocline/engine-pi";
-import { todoModule } from "@isocline/module-todo";
-import type { ModelAccountsResponse, ModelSignIn } from "@isocline/protocol";
+import { fileStore } from "@zirma/core";
+import { createCredentialStore, ModelAccounts } from "@zirma/engine-pi";
+import { todoModule } from "@zirma/module-todo";
+import type { ModelAccountsResponse, ModelSignIn } from "@zirma/protocol";
 import { createHttpServer, openHome } from "../src/index.ts";
 
 test("over HTTP: list providers, sign in with a key by answering Pi's question, import from Pi, sign out", async () => {

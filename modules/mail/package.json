@@ -1,5 +1,5 @@
 {
-  "name": "@isocline/module-mail",
+  "name": "@zirma/module-mail",
   "version": "0.0.0",
   "private": true,
   "description": "Mail module: the user's Gmail inbox, mirrored for reading.",
@@ -10,7 +10,7 @@
     "./types": "./src/types.ts"
   },
   "dependencies": {
-    "@isocline/core": "*",
-    "@isocline/module-kit": "*"
+    "@zirma/core": "*",
+    "@zirma/module-kit": "*"
   }
 }

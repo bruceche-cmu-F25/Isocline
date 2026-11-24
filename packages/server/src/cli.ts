@@ -5,12 +5,12 @@
  */
 import { parseArgs } from "node:util";
 import { join } from "node:path";
-import { createPiEngine } from "@isocline/engine-pi";
-import { todoModule } from "@isocline/module-todo";
-import { calendarModule } from "@isocline/module-calendar";
-import { mailModule } from "@isocline/module-mail";
-import { linksModule } from "@isocline/module-links";
-import type { ModuleServices } from "@isocline/module-kit";
+import { createPiEngine } from "@zirma/engine-pi";
+import { todoModule } from "@zirma/module-todo";
+import { calendarModule } from "@zirma/module-calendar";
+import { mailModule } from "@zirma/module-mail";
+import { linksModule } from "@zirma/module-links";
+import type { ModuleServices } from "@zirma/module-kit";
 import { googleService } from "./google-service.ts";
 import { DEFAULT_PORT, defaultDataDir, defaultUiDir } from "./config.ts";
 import { openHome } from "./home.ts";
@@ -21,16 +21,16 @@ import { RemoteAccess } from "./remote.ts";
 import { PushService } from "./push.ts";
 import { cliRunner, findTailscale, Tailscale } from "./tailscale.ts";
 import { GoogleConnections } from "./google.ts";
-import { createCredentialStore, McpConnectors, ModelAccounts, Skills } from "@isocline/engine-pi";
-import { adoptLegacyEnv, checkStage, currentStage, recordDomainEvent } from "@isocline/core";
+import { createCredentialStore, McpConnectors, ModelAccounts, Skills } from "@zirma/engine-pi";
+import { adoptLegacyEnv, checkStage, currentStage, recordDomainEvent } from "@zirma/core";
 import { defaultSecretStore } from "./secrets.ts";
 import { watchTodoSources } from "./todo-sources.ts";
 import { moveRenamedFolders } from "./rename.ts";
 
 const MODULES = [todoModule, calendarModule, mailModule, linksModule];
-// Settings an install made before the rename still apply: ALFRED_X is read as ISOCLINE_X.
+// Settings an install made before a rename still apply: ISOCLINE_X, else ALFRED_X, is read as ZIRMA_X.
 adoptLegacyEnv();
-const log = (message: string) => console.log(`[isocline] ${message}`);
+const log = (message: string) => console.log(`[zirma] ${message}`);
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -40,25 +40,24 @@ const { values, positionals } = parseArgs({
     "ingress-port": { type: "string" },
   },
 });
-// An install from before the rename keeps its world: the old folders move to the new names (once; production only,
-// not for --data-dir).
-if (!values["data-dir"] && currentStage() === "production") moveRenamedFolders(undefined, log);
+// An install from before a rename keeps its world: the old folders move to the new names (once; not for --data-dir).
+if (!values["data-dir"]) moveRenamedFolders(undefined, log);
 const dataDir = values["data-dir"] ?? defaultDataDir();
 // A development run never opens production's world or its keychain (core stage.ts).
 const crossing = checkStage(dataDir);
 if (crossing) {
-  console.error(`[isocline] ${crossing}`);
+  console.error(`[zirma] ${crossing}`);
   process.exit(1);
 }
 const command = positionals[0] ?? "serve";
 
 if (command === "serve") {
-  const port = Number(values.port ?? process.env.ISOCLINE_PORT ?? DEFAULT_PORT);
+  const port = Number(values.port ?? process.env.ZIRMA_PORT ?? DEFAULT_PORT);
   // The model runs in worker processes; each conversation keeps its session under <data>/engine/sessions.
   // MCP servers come from <data>/mcp.json, skills from <data>/skills/.
   const engine = createPiEngine({ cwd: join(dataDir, "engine"), config: dataDir, log });
   // How long a locked screen counts as "away" before coming back is a return (default 10 minutes).
-  const awayMinutes = Number(process.env.ISOCLINE_AWAY_MINUTES);
+  const awayMinutes = Number(process.env.ZIRMA_AWAY_MINUTES);
   const presence = Number.isFinite(awayMinutes) && awayMinutes > 0 ? { awayReturnMs: awayMinutes * 60_000 } : {};
   let home: ReturnType<typeof openHome>;
   let services: ModuleServices = {};
@@ -66,10 +65,10 @@ if (command === "serve") {
     home = openHome({ dataDir, engine, modules: MODULES, presence, log, services: () => services });
   } catch (error) {
     if (!(error instanceof Error && error.name === "AlreadyRunningError")) throw error;
-    console.error(`[isocline] ${error.message}. Stop it first, or use another --data-dir.`);
+    console.error(`[zirma] ${error.message}. Stop it first, or use another --data-dir.`);
     process.exit(1);
   }
-  // Google accounts: tokens in the keychain, Isocline's own OAuth client from the data directory (or the default one).
+  // Google accounts: tokens in the keychain, Zirma's own OAuth client from the data directory (or the default one).
   const google = new GoogleConnections({ dataDir, secrets: defaultSecretStore(dataDir), world: home.world, clientDirs: [...new Set([dataDir, defaultDataDir()])], log });
   // Model sign-in: credentials in the keychain too, shared with the engine workers (which use the same store).
   const models = new ModelAccounts({
@@ -89,7 +88,7 @@ if (command === "serve") {
   // The calendar and mail modules read the connected accounts through it.
   services = { google: googleService(google) };
   // Other devices: Tailscale Serve forwards to the ingress port, where every request needs a paired device.
-  const ingressPort = Number(values["ingress-port"] ?? process.env.ISOCLINE_INGRESS_PORT ?? port + 10);
+  const ingressPort = Number(values["ingress-port"] ?? process.env.ZIRMA_INGRESS_PORT ?? port + 10);
   const tailscaleBinary = findTailscale();
   const remote = new RemoteAccess({ dataDir, world: home.world, tailscale: new Tailscale(tailscaleBinary ? cliRunner(tailscaleBinary) : null), ingressPort, log });
   // Notices nobody took within seconds go to the devices that turned notifications on.
@@ -108,13 +107,13 @@ if (command === "serve") {
     void engine.close();
     home.close();
     if (error.code === "EADDRINUSE") {
-      console.error(`[isocline] Port ${port} is already in use (another Isocline, or something else). Stop it, or pick another port: npm start -- --port <n>`);
+      console.error(`[zirma] Port ${port} is already in use (another Zirma, or something else). Stop it, or pick another port: npm start -- --port <n>`);
       process.exit(1);
     }
     throw error;
   });
   server.listen(port, "127.0.0.1", () => {
-    log(`${currentStage()} home node${process.env.ISOCLINE_BUILD ? ` ${process.env.ISOCLINE_BUILD}` : ""} on http://127.0.0.1:${port}  (data: ${dataDir})`);
+    log(`${currentStage()} home node${process.env.ZIRMA_BUILD ? ` ${process.env.ZIRMA_BUILD}` : ""} on http://127.0.0.1:${port}  (data: ${dataDir})`);
     home.kick();
     ingress.listen(ingressPort, "127.0.0.1", () => {
       log(`ingress for other devices on http://127.0.0.1:${ingressPort}`);
