@@ -16,7 +16,9 @@
   "scripts": {
     "isocline": "node packages/server/src/cli.ts",
     "start": "npm run build:ui && node packages/server/src/cli.ts serve",
-    "dev:ui": "npm run dev --workspace @isocline/ui",
+    "trial": "ISOCLINE_DATA_DIR=\"$(mktemp -d)\" ISOCLINE_SECRETS=file ISOCLINE_PORT=\"${ISOCLINE_PORT:-7520}\" node packages/server/src/cli.ts serve",
+    "dev:ui": "ISOCLINE_PORT=\"${ISOCLINE_PORT:-7520}\" npm run dev --workspace @isocline/ui -- --host 127.0.0.1",
+    "prototype": "python3 -m http.server 4173 --bind 127.0.0.1 --directory prototype",
     "build:ui": "npm run build --workspace @isocline/ui",
     "test": "node --test \"packages/*/test/*.test.ts\" \"modules/*/test/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspace @isocline/ui",

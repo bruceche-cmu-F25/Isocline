@@ -43,7 +43,7 @@ v0.1，2026-11-24。Bruce 已定：产品名 Zirma，存下来的数据也一起
 | CLI `isocline` | 改成 `zirma` |
 | 日历里建的日程 id 前缀 | 新建的用 `zirma…`；`isocline…`、`alfred…` 继续认 |
 | 开发会话分支前缀 | 新的用 `zirma/`，旧分支不动 |
-| `.claude/launch.json` 的名字 | `zirma-dev`、`zirma-ui`、`zirma-prototype`；AGENTS.md 跟着改 |
+| 启动命令 | npm 脚本 `trial`、`dev:ui`、`prototype` 不带产品名，不用改；各工具自己的本地配置（不进仓库）自己改 |
 | 事件里的 `actor: "alfred"`、偏好 `by: "alfred"`、`read_in_alfred` 列 | **不改**。它们是存下来的值，界面显示时本来就换成助手名 |
 
 ### 3.4 不改的历史
