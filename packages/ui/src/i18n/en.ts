@@ -502,6 +502,10 @@ export const en: Record<keyof typeof zh, string> = {
   "mac.view": "View",
   "mac.startError": "Alfred's home node did not start",
   "mac.ok": "OK",
+  "mac.move.title": "Move Alfred to your Applications folder?",
+  "mac.move.detail": "Alfred's home node keeps running in the background and starts from where the app is. From here (a disk image or Downloads) it may not be found after a restart.",
+  "mac.move.yes": "Move",
+  "mac.move.no": "Not now",
 
   // Settings
   "settings.general": "General",

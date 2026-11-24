@@ -501,6 +501,10 @@ export const zh = {
   "mac.view": "显示",
   "mac.startError": "Alfred 的主节点没有启动",
   "mac.ok": "好",
+  "mac.move.title": "把 Alfred 移到「应用程序」文件夹？",
+  "mac.move.detail": "Alfred 的主节点在后台一直运行，要从一个固定的位置启动。放在这里（磁盘映像或下载文件夹）的话，下次开机可能找不到它。",
+  "mac.move.yes": "移过去",
+  "mac.move.no": "先不用",
 
   // Settings
   "settings.general": "通用",

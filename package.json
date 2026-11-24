@@ -1,5 +1,6 @@
 {
   "name": "alfred",
+  "version": "0.1.0",
   "private": true,
   "description": "An open-source personal agent: one home node, every device a window onto it.",
   "license": "MIT",
@@ -19,7 +20,8 @@
     "build:ui": "npm run build --workspace @alfred/ui",
     "test": "node --test \"packages/*/test/*.test.ts\" \"modules/*/test/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspace @alfred/ui",
-    "desktop": "npm run build:ui && electron packages/desktop"
+    "desktop": "npm run build:ui && electron packages/desktop",
+    "package:mac": "node scripts/package-mac.ts"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

@@ -655,7 +655,23 @@ app.on("window-all-closed", () => { /* Alfred stays in the menu bar */ });
 app.on("before-quit", () => { quitting = true; });
 app.on("will-quit", () => globalShortcut.unregisterAll());
 
+/** launchd starts the home node from wherever this app is. Run from a disk image or a translocated Downloads copy,
+ * that place is gone after the next restart, so a packaged app offers to move itself first (a development world,
+ * ALFRED_DATA_DIR, is left where it is). Moving quits and reopens the app from Applications. */
+function offerToMove(): void {
+  if (!app.isPackaged || process.env.ALFRED_DATA_DIR || app.isInApplicationsFolder()) return;
+  const choice = dialog.showMessageBoxSync({
+    type: "question", message: say("mac.move.title"), detail: say("mac.move.detail"),
+    buttons: [say("mac.move.yes"), say("mac.move.no")], defaultId: 0, cancelId: 1,
+  });
+  if (choice !== 0) return;
+  try { app.moveToApplicationsFolder(); } catch (error) {
+    dialog.showMessageBoxSync({ type: "error", message: say("mac.move.title"), detail: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 app.whenReady().then(async () => {
+  offerToMove();
   DEVICE = deviceId();
   loadSettings();
   appMenu();
