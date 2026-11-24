@@ -143,7 +143,11 @@ export async function ensureHomeNode(config: HomeNodeConfig): Promise<HomeNodeMo
   mkdirSync(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
   mkdirSync(join(homedir(), "Library", "Logs", "Isocline"), { recursive: true });
   writeFileSync(path, plist, { mode: 0o644 });
-  if (isLoaded(config)) launchctl("bootout", `${domain()}/${config.label}`);
+  if (isLoaded(config)) {
+    launchctl("bootout", `${domain()}/${config.label}`);
+    // bootout returns before launchd has let go of the agent; loading it again before then fails (error 5).
+    await waitUntil(async () => !isLoaded(config), 10_000);
+  }
   const loaded = launchctl("bootstrap", domain(), path);
   if (!loaded.ok) throw new Error(`launchctl could not start the home node: ${loaded.output.trim()}`);
   if (!(await waitUntil(() => healthy(config.port), 20_000))) {
