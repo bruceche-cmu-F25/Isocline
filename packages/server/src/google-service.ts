@@ -5,6 +5,13 @@
 import { ServiceError, type GoogleService } from "@isocline/module-kit";
 import type { GoogleConnections } from "./google.ts";
 
+/** undici says only "fetch failed"; the reason (no DNS, connection reset, a certificate) is in its cause. */
+function unreachable(error: unknown): ServiceError {
+  const cause = (error as { cause?: { code?: unknown; message?: unknown } }).cause;
+  const why = typeof cause?.code === "string" ? cause.code : typeof cause?.message === "string" ? cause.message : "";
+  return new ServiceError("unavailable", `Google could not be reached: ${(error as Error).message}${why ? ` (${why})` : ""}`);
+}
+
 function requestSignal(signal?: AbortSignal): AbortSignal {
   const deadline = AbortSignal.timeout(20_000);
   return signal ? AbortSignal.any([signal, deadline]) : deadline;
@@ -27,7 +34,7 @@ export function googleService(connections: GoogleConnections, fetchImpl: typeof 
           try {
             response = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` }, signal: requestSignal(signal) });
           } catch (error) {
-            throw new ServiceError("unavailable", `Google could not be reached: ${(error as Error).message}`);
+            throw unreachable(error);
           }
           const body = (await response.json().catch(() => {
             if (response.ok) throw new ServiceError("unavailable", "Google returned an incomplete response");
@@ -49,7 +56,7 @@ export function googleService(connections: GoogleConnections, fetchImpl: typeof 
               ...(body === undefined ? {} : { body: JSON.stringify(body) }),
             });
           } catch (error) {
-            throw new ServiceError("unavailable", `Google could not be reached: ${(error as Error).message}`);
+            throw unreachable(error);
           }
           if (response.status === 401) throw new ServiceError("reconnect", "Google refused the account's access", 401);
           return { status: response.status, body: (await response.json().catch(() => ({}))) as Record<string, unknown> };

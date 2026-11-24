@@ -5,6 +5,8 @@
  * A pass runs shortly after the home node starts, then on the module's own interval; at once when a device asks for a
  * refresh (`sync`), when a change was just accepted (`deliver`), or after an event the module named (`sync.onEvents`).
  * Whatever asks, a module never has two passes at a time: what arrives during one gets one more pass right after it.
+ * A pass that could not reach its service (the module's sync says `retrySoon`) is tried again within seconds, waiting
+ * twice as long each time up to the module's own interval, so a moment without network is not shown for half an hour.
  */
 import { listOutbound, onEvents, type World } from "@isocline/core";
 import { deliverQueued, type IsoclineModule, type ModuleServices } from "@isocline/module-kit";
@@ -13,6 +15,8 @@ import { deliverQueued, type IsoclineModule, type ModuleServices } from "@isocli
 const DELIVER_EVERY_MS = 5 * 60_000;
 /** How long after the home node starts each module's first pass runs. */
 const FIRST_PASS_MS = 2_000;
+/** The first wait before trying again a pass that could not reach its service; it doubles each time. */
+const RETRY_FIRST_MS = 10_000;
 
 export interface PassesOptions {
   world: World;
@@ -20,6 +24,8 @@ export interface PassesOptions {
   /** The outside services the user has connected (read when each pass runs). */
   services?: () => ModuleServices;
   log?: (message: string) => void;
+  /** The first wait before trying again a pass that could not reach its service (tests shorten it). */
+  retryFirstMs?: number;
 }
 
 export interface ModulePasses {
@@ -40,6 +46,18 @@ export function modulePasses(options: PassesOptions): ModulePasses {
   const again = new Set<string>();
   /** Modules one of whose events came while their pass was under way: the pass may have read before it. */
   const stale = new Set<string>();
+  /** Per module: how many passes in a row could not reach the service, and the timer for the next try. */
+  const retries = new Map<string, { count: number; timer?: NodeJS.Timeout }>();
+  const retryLater = (module: IsoclineModule, unreachable: boolean) => {
+    const before = retries.get(module.id);
+    clearTimeout(before?.timer);
+    if (!unreachable || stopped()) { retries.delete(module.id); return; }
+    const count = (before?.count ?? 0) + 1;
+    const wait = Math.min((options.retryFirstMs ?? RETRY_FIRST_MS) * 2 ** (count - 1), module.sync?.everyMs ?? DELIVER_EVERY_MS);
+    const timer = setTimeout(() => void pass(module), wait);
+    timer.unref();
+    retries.set(module.id, { count, timer });
+  };
   const queued = (id: string) => listOutbound(world, { module: id, states: ["queued"] }).length > 0;
 
   const pass = (module: IsoclineModule): Promise<void> => {
@@ -48,7 +66,10 @@ export function modulePasses(options: PassesOptions): ModulePasses {
     const services = options.services?.() ?? {};
     const work = (async () => {
       await deliverQueued(world, module, services, stopping.signal);
-      if (module.sync && !stopped()) await module.sync.run(world, services, stopping.signal);
+      if (module.sync && !stopped()) {
+        const outcome = await module.sync.run(world, services, stopping.signal);
+        retryLater(module, !!outcome?.retrySoon);
+      }
     })()
       .catch((error) => { if (!stopped()) options.log?.(`module ${module.id}: ${error instanceof Error ? error.message : String(error)}`); })
       .finally(() => {
@@ -98,6 +119,7 @@ export function modulePasses(options: PassesOptions): ModulePasses {
     },
     close() {
       for (const timer of timers) clearTimeout(timer);
+      for (const retry of retries.values()) clearTimeout(retry.timer);
       offEager();
       stopping.abort();
     },

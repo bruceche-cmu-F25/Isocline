@@ -235,6 +235,15 @@ test("a Google session keeps its request deadline when a sync also supplies a sh
   await assert.rejects(session.send("POST", "https://example.test/modify", {}, { signal: live }), { code: "unavailable" });
 });
 
+test("Google out of reach names the network's reason, not only \"fetch failed\"", async (t) => {
+  const fixture = setup();
+  const connection = new GoogleConnections({ dataDir: fixture.dataDir, secrets: fixture.secrets, fetch: fixture.fakeFetch });
+  t.mock.method(connection, "accessToken", async () => "fixture-token");
+  const offline = async () => { throw new TypeError("fetch failed", { cause: Object.assign(new Error("getaddrinfo ENOTFOUND"), { code: "ENOTFOUND" }) }); };
+  const session = await googleService(connection, offline as typeof fetch).session("sample@example.com");
+  await assert.rejects(session.get("https://example.test/messages"), { code: "unavailable", message: "Google could not be reached: fetch failed (ENOTFOUND)" });
+});
+
 test("a newcomer's own Google client: a Desktop app client file is checked, kept privately, and used at once", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alfred-google-client-"));
   const google = new GoogleConnections({ dataDir, secrets: fileStore(join(dataDir, "secrets.json")) });

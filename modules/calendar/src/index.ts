@@ -110,9 +110,10 @@ WHERE undo.module = 'calendar' AND undo.action = 'delete' AND undo.state IN ('qu
 
 const canRead = (capabilities: readonly string[]) => capabilities.includes("calRead") || capabilities.includes("calWrite");
 
-/** Reads every connected account; one that fails keeps its last events and says why. Records `calendar.synced` only
+/** Reads every connected account; one that fails keeps its last events and says why (and, unless it needs
+ * reconnecting, asks for a retry soon). Records `calendar.synced` only
  * when something changed, so devices refresh without the log filling up every few minutes. */
-export async function syncCalendar(world: World, services: ModuleServices, signal?: AbortSignal, now: number = Date.now()): Promise<void> {
+export async function syncCalendar(world: World, services: ModuleServices, signal?: AbortSignal, now: number = Date.now()): Promise<{ retrySoon: boolean } | void> {
   const google = services.google;
   const readable = (google?.accounts() ?? []).filter((account) => canRead(account.capabilities));
   const accounts = readable.map((account) => account.email);
@@ -127,6 +128,7 @@ export async function syncCalendar(world: World, services: ModuleServices, signa
       recordDomainEvent(world, { kind: "calendar.synced", subject: `calendar:${account}`, payload: { removed: true } });
     }
   }));
+  let retrySoon = false;
   for (const account of accounts) {
     if (signal?.aborted) return;
     let result: Awaited<ReturnType<typeof readAccount>> | null = null;
@@ -138,6 +140,7 @@ export async function syncCalendar(world: World, services: ModuleServices, signa
     } catch (error) {
       if (signal?.aborted) return;
       failure = { error: (error as Error).message.slice(0, 300), reconnect: error instanceof ServiceError && error.code === "reconnect" };
+      if (!failure.reconnect) retrySoon = true;
     }
     withDefaultActor("system", () => world.tx((db) => {
       const before = db.prepare("SELECT digest, error FROM calendar_sources WHERE account = ?").get(account);
@@ -158,6 +161,7 @@ export async function syncCalendar(world: World, services: ModuleServices, signa
       recordDomainEvent(world, { kind: "calendar.synced", subject: `calendar:${account}`, payload: { events: result!.events.length } });
     }));
   }
+  return { retrySoon };
 }
 
 /** Events touching the days from `from` to `to` (inclusive), by start. */

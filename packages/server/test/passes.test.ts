@@ -59,3 +59,24 @@ test("closing stops what was about to run", async () => {
   assert.equal(passes, 0);
   w.close();
 });
+
+test("a pass that could not reach its service is tried again soon, backing off, and stops once it gets through", async () => {
+  const w = world();
+  const at: number[] = [];
+  const mirror = defineModule({
+    id: "mirror", title: "Mirror", migrations: [], ops: [], tools: [],
+    sync: { everyMs: 3_600_000, async run() { at.push(Date.now()); return { retrySoon: at.length < 3 }; } },
+  });
+  const running = modulePasses({ world: w, modules: [mirror], retryFirstMs: 20 });
+  try {
+    await running.sync("mirror");
+    await settle(() => at.length === 3);
+    assert.equal(at.length, 3, "two retries, not the hour-long interval");
+    assert.ok(at[2]! - at[1]! >= at[1]! - at[0]! - 5, "each wait at least as long as the one before");
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    assert.equal(at.length, 3, "no more once a pass gets through");
+  } finally {
+    running.close();
+    w.close();
+  }
+});

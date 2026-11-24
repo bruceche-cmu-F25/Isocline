@@ -68,12 +68,13 @@ CREATE INDEX mail_messages_verification ON mail_messages(account, labels_checked
 const SYNC_TIMEOUT_MS = 45_000;
 const VERIFY_RETAINED_AFTER_MS = 24 * 60 * 60_000;
 
-export async function syncMail(world: World, services: ModuleServices, signal?: AbortSignal, now: number = Date.now()): Promise<void> {
+export async function syncMail(world: World, services: ModuleServices, signal?: AbortSignal, now: number = Date.now()): Promise<{ retrySoon: boolean } | void> {
   const google = services.google;
   if (!google) return;
   const connected = google.accounts(true);
   const byEmail = new Map(connected.map((account) => [account.email, account]));
   const accounts = new Set([...byEmail.keys(), ...world.db.prepare("SELECT account FROM mail_sources").all().map((row) => row.account as string)]);
+  let retrySoon = false;
   for (const account of accounts) {
     if (signal?.aborted) return;
     await (async () => {
@@ -109,6 +110,7 @@ export async function syncMail(world: World, services: ModuleServices, signal?: 
         if (signal?.aborted) return;
         const reason = (error as Error).message.slice(0, 300);
         const reconnect = Number(error instanceof ServiceError && error.code === "reconnect");
+        if (!reconnect) retrySoon = true;
         withDefaultActor("system", () => world.tx((db) => {
           const changed = db.prepare(`INSERT INTO mail_sources (account, error, reconnect, can_send, can_modify) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(account) DO UPDATE SET error = excluded.error, reconnect = excluded.reconnect, can_read = 1, can_send = excluded.can_send, can_modify = excluded.can_modify
@@ -169,6 +171,7 @@ export async function syncMail(world: World, services: ModuleServices, signal?: 
       }));
     })();
   }
+  return { retrySoon };
 }
 
 const gmailLink = (account: string, threadId: string) => `https://mail.google.com/mail/u/${encodeURIComponent(account)}/#all/${encodeURIComponent(threadId)}`;

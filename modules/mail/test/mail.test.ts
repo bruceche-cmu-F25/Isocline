@@ -105,7 +105,7 @@ test("a sync mirrors the inbox: new mail read once in full, read and archived ma
   await syncMail(w, { google: fakeGmail({ inbox: ["m4", "m1", "m2"], unread: ["m4"], messages }) });
   assert.equal(listEvents(w).events.filter((event) => event.kind === "mail.synced").length, 2, "an unchanged inbox records nothing");
 
-  await syncMail(w, { google: fakeGmail({ inbox: [], unread: [], messages }, { fail: new ServiceError("unavailable", "Google answered 503") }) });
+  assert.deepEqual(await syncMail(w, { google: fakeGmail({ inbox: [], unread: [], messages }, { fail: new ServiceError("unavailable", "Google answered 503") }) }), { retrySoon: true });
   snapshot = mailModule.snapshot!(w) as MailSnapshot;
   assert.equal(snapshot.messages.length, 3, "a failed read keeps the last mirror");
   assert.deepEqual([snapshot.sources[0].error, snapshot.sources[0].reconnect], ["Google answered 503", false]);

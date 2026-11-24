@@ -98,7 +98,8 @@ test("in a calendar of the user's own each series has its own colour, and keeps 
 test("an account that cannot be read keeps its last events and says why; one disconnected leaves the mirror", async () => {
   const w = world();
   await syncCalendar(w, { google: fakeGoogle({ "me@example.com": [{ id: "a", summary: "Dentist", start: { dateTime: at(19, 15) } }] }) }, undefined, NOW);
-  await syncCalendar(w, { google: fakeGoogle({}, { fail: new ServiceError("reconnect", "Google refused the account's access") }) }, undefined, NOW);
+  assert.deepEqual(await syncCalendar(w, { google: fakeGoogle({}, { fail: new ServiceError("unavailable", "Google could not be reached: fetch failed") }) }, undefined, NOW), { retrySoon: true }, "out of reach: try again soon");
+  assert.deepEqual(await syncCalendar(w, { google: fakeGoogle({}, { fail: new ServiceError("reconnect", "Google refused the account's access") }) }, undefined, NOW), { retrySoon: false }, "needs the user: no retry");
   const snapshot = calendarModule.snapshot!(w) as CalendarSnapshot;
   assert.equal(snapshot.events.length, 1);
   assert.deepEqual([snapshot.sources[0].error, snapshot.sources[0].reconnect], ["Google refused the account's access", true]);

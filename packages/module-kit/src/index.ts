@@ -106,7 +106,10 @@ export interface IsoclineModule {
     /** Event kinds after which a pass should run soon, not at the next scheduled one (a link was saved: look its
      * page up now). The module's own events, usually. */
     onEvents?: readonly string[];
-    run(world: World, services: ModuleServices, signal: AbortSignal): Promise<void>;
+    /** Says `retrySoon` when a service could not be reached for some of it (a dropped network, Google down for a
+     * moment): the home node then tries again within seconds, backing off, instead of leaving the error up until
+     * the next scheduled pass. Not for a refusal that waits on the user (reconnect). */
+    run(world: World, services: ModuleServices, signal: AbortSignal): Promise<void | { retrySoon?: boolean }>;
   };
   /** A small file the module keeps and a device shows (a site's icon): GET /api/modules/<id>/files/<name>. Only
    * images are served, as the bytes say they are; null when there is none by that name. */
