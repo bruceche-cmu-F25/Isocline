@@ -63,7 +63,17 @@ npm run package:mac -- --no-dmg
 - 打包只用已提交的代码：工作区里有没提交的改动（`packages/`、`modules/` 等）就停下；提交号写进 `Info.plist` 的 `IsoclineCommit`。只为试一下可以加 `--allow-uncommitted`，这样的包不要拿来日常用。
 - App 换了位置或换了版本，代理文件变了，打开时会重新载入主节点，让它跑新的代码（以前要等下次登录）。
 
-**从「源码版当正式版」换过来**（2026-11-23 之前的做法）：旧的 `isocline.home-node` 代理指向仓库里的 `cli.ts`。打包、装进「应用程序」、打开一次 Isocline.app，它会把这个代理改成指向 App 自己，并重启主节点；真实数据目录不动。在这之前如果旧代理自己重启了，它会以开发身份打开一个空的开发世界（真实数据仍在原处，没有丢）。
+**更新你自己电脑上的生产版：一条命令**
+
+```bash
+npm run install:mac
+```
+
+它把当前分支的最后一次提交取到一个临时目录（不管工作区里有什么没提交的），在那里 `npm ci`、跑类型检查和全部测试，通过了才打包；然后退出 /Applications 里的 Isocline、换成新的、再打开。App 里记着提交号，换了版本，主节点的代理跟着变，App 打开时会让主节点用新代码重启，数据不动。要装别的提交：`npm run install:mac -- <提交或分支>`。见 [scripts/install-mac.ts](../scripts/install-mac.ts)。
+
+日常就是：在开发版里改（`npm run desktop`）→ 满意了提交 → `npm run install:mac`。
+
+**从「源码版当正式版」换过来**（2026-11-23 之前的做法）：旧的 `isocline.home-node` 代理指向仓库里的 `cli.ts`。先退出源码版的 Isocline（两个都用 `Isocline/Desktop`，同时只能开一个），再 `npm run install:mac`：新 App 把这个代理改成指向它自己，并重启主节点；真实数据目录不动。在这之前如果旧代理自己重启了，它会以开发身份打开一个空的开发世界（真实数据仍在原处，没有丢）。
 
 ## 5. 安全地试一个新包（不碰真实的数据）
 

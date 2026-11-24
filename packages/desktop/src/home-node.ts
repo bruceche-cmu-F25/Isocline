@@ -34,6 +34,7 @@ export function homeNodeConfig(options: { runtime: string; cli: string; env: Nod
   const env: Record<string, string> = { ISOCLINE_ENV: options.env.ISOCLINE_ENV === "production" ? "production" : "development" };
   if (options.env.ISOCLINE_AWAY_MINUTES) env.ISOCLINE_AWAY_MINUTES = options.env.ISOCLINE_AWAY_MINUTES;
   if (options.env.ISOCLINE_KEYCHAIN_SERVICE) env.ISOCLINE_KEYCHAIN_SERVICE = options.env.ISOCLINE_KEYCHAIN_SERVICE;
+  if (options.env.ISOCLINE_BUILD) env.ISOCLINE_BUILD = options.env.ISOCLINE_BUILD;
   return {
     label,
     legacyLabel: label.replace(/^isocline\./, "alfred."),

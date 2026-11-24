@@ -49,6 +49,11 @@ adoptLegacyEnv();
 // ISOCLINE_DATA_DIR, it is development (core stage.ts): its own world, port, agent and keychain.
 process.env.ISOCLINE_ENV ??= app.isPackaged && !process.env.ISOCLINE_DATA_DIR ? "production" : "development";
 const production = currentStage() === "production";
+// The commit this app was built from (package-mac.ts). It goes into the home node's agent, so installing another
+// build changes the agent and the node restarts on the new code (home-node.ts ensureHomeNode).
+if (app.isPackaged) {
+  try { process.env.ISOCLINE_BUILD ??= (JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8")) as { commit?: string }).commit; } catch { /* an older build */ }
+}
 if (production) {
   // Its old home node agent is retired and its folders move to the new names, before anything below opens a file.
   retireLegacyAgent(homeNodeConfig({ runtime: process.execPath, cli: "", env: process.env }));

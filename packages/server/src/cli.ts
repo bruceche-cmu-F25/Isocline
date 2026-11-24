@@ -114,7 +114,7 @@ if (command === "serve") {
     throw error;
   });
   server.listen(port, "127.0.0.1", () => {
-    log(`${currentStage()} home node on http://127.0.0.1:${port}  (data: ${dataDir})`);
+    log(`${currentStage()} home node${process.env.ISOCLINE_BUILD ? ` ${process.env.ISOCLINE_BUILD}` : ""} on http://127.0.0.1:${port}  (data: ${dataDir})`);
     home.kick();
     ingress.listen(ingressPort, "127.0.0.1", () => {
       log(`ingress for other devices on http://127.0.0.1:${ingressPort}`);

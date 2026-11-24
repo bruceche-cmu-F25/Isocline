@@ -109,7 +109,7 @@ step("Copying Isocline's sources");
 mkdirSync(appDir, { recursive: true });
 writeFileSync(join(appDir, "package.json"), JSON.stringify({
   name: "isocline", productName: name, version, description: pkg.description, license: pkg.license, homepage: pkg.homepage,
-  type: "module", main: "packages/desktop/src/main.ts",
+  type: "module", main: "packages/desktop/src/main.ts", commit,
 }, null, 2) + "\n");
 for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.md"]) cpSync(join(root, file), join(appDir, file));
 /** What each workspace package needs at run time: its manifest and sources, never its tests. */
