@@ -176,7 +176,7 @@ npm run typecheck              类型检查（服务端 + 界面）
 npm run package:mac            打包 dist/mac/Alfred.app 和 .dmg
 ```
 
-Node 24 以上，直接运行 `.ts`（只用可擦除的语法）。开发配置在 `.claude/launch.json`：`isocline-dev`（临时世界，:7520）、`isocline-ui`（:5173）、`isocline-prototype`（:4173）。
+Node 24 以上，直接运行 `.ts`（只用可擦除的语法）。启动命令是 npm 脚本：`npm run trial`（临时世界，:7520）、`npm run dev:ui`（:5173）、`npm run prototype`（:4173）。
 
 ## 8. 文档地图
 
