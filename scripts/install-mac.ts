@@ -8,20 +8,26 @@
  *    uncommitted, and no package from this checkout, gets in.
  * 2. Its typecheck and tests must pass there.
  * 3. package-mac.ts builds the app there (it stamps the commit).
- * 4. The Isocline.app in /Applications is quit and replaced, and the new one is opened. Its home node agent now names
+ * 4. Production's world is backed up to <data>/backups/ (the last ten are kept), so going back to an older tag can
+ *    take the data back too: an older build may not read what a newer one migrated (docs/WORKFLOW.md §5).
+ * 5. The Isocline.app in /Applications is quit and replaced, and the new one is opened. Its home node agent now names
  *    another build, so the app reloads it and the node runs the new code on the same world (docs/packaging.md §4.1).
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { backup, DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { stageDataDir } from "../packages/core/src/stage.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const target = "/Applications/Isocline.app";
 /** The app's own process, not the home node (which runs the same executable with arguments). */
 const APP_PROCESS = `^${target}/Contents/MacOS/Isocline$`;
 const ref = process.argv[2] ?? "HEAD";
+/** How many of the installer's world backups are kept. */
+const KEEP_BACKUPS = 10;
 const step = (text: string) => console.log(`▸ ${text}`);
 const run = (command: string, args: string[], cwd = root) => execFileSync(command, args, { cwd, stdio: "inherit" });
 const read = (command: string, args: string[], cwd = root) => execFileSync(command, args, { cwd, encoding: "utf8" }).trim();
@@ -46,6 +52,10 @@ try {
   step("Building Isocline.app");
   run("npm", ["run", "package:mac", "--", "--no-dmg"], build);
   const built = join(build, "dist", "mac", "Isocline.app");
+
+  const installed = existsSync(target) ? JSON.parse(readFileSync(join(target, "Contents", "Resources", "app", "package.json"), "utf8")).commit as string | undefined : undefined;
+  const saved = await backupWorld(installed ?? "none");
+  if (saved) step(`Backed up the world (as ${installed ?? "no build"} left it) to ${saved}`);
 
   if (existsSync(target)) {
     step("Quitting the installed Isocline");
@@ -73,4 +83,21 @@ try {
 /** Whether the installed app's own process is still running (its home node is launchd's, not the app's). */
 function running(): boolean {
   try { return read("/usr/bin/pgrep", ["-f", APP_PROCESS]) !== ""; } catch { return false; }
+}
+
+/** A copy of production's world, made with SQLite's own backup so the running node may keep writing. Named by time
+ * and by the build that wrote it; only the last KEEP_BACKUPS of these are kept. Null when there is no world yet. */
+async function backupWorld(build: string): Promise<string | null> {
+  const data = stageDataDir("production");
+  const world = join(data, "world.sqlite");
+  if (!existsSync(world)) return null;
+  const folder = join(data, "backups");
+  mkdirSync(folder, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").replace(/\..*$/, "");
+  const path = join(folder, `world-${stamp}-${build}.sqlite`);
+  const source = new DatabaseSync(world, { readOnly: true });
+  try { await backup(source, path); } finally { source.close(); }
+  const ours = readdirSync(folder).filter((name) => /^world-\d{8}-\d{6}-[\w.-]+\.sqlite$/.test(name)).sort();
+  for (const name of ours.slice(0, -KEEP_BACKUPS)) rmSync(join(folder, name));
+  return path;
 }
