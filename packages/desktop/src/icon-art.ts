@@ -15,9 +15,9 @@ export function appIconPixels(size = 512): Uint8ClampedArray {
   const half = (size * 824) / 1024 / 2, centre = size / 2;
   const n = 5; // superellipse exponent: close to Apple's continuous corners
 
-  // The mark's 120-unit box fills 80% of the square (the tesseract itself about 61%).
-  const unit = (half * 2 * 0.8) / 120, origin = centre - 60 * unit;
-  const halfWidth = (4.6 * unit) / 2;
+  // The tesseract (92 of the mark's 120 units tall, centred on 60,60) fills 78% of the square's height.
+  const unit = (half * 2 * 0.78) / 92, origin = centre - 60 * unit;
+  const halfWidth = (4 * unit) / 2;
   const lines = markSegments().sort((a, b) => a[2] - b[2]).map(([a, b, near]) => ({
     ax: origin + a[0] * unit, ay: origin + a[1] * unit, bx: origin + b[0] * unit, by: origin + b[1] * unit,
     colour: mix(ink, paper, (1 - near) * 0.62),

@@ -73,6 +73,8 @@ npm run install:mac
 
 日常就是：在开发版里改（`npm run desktop`）→ 满意了提交 → `npm run install:mac`。
 
+**让开发版有真实的数据**：`npm run dev:copy-world` 把生产的世界复制一份给开发（生产只读、可以照常运行；开发原来的世界留作 `Isocline Dev.previous`）。手机推送、远程访问、Google 账号不复制，等着发出去的改动在副本里标成失败、不会发出。见 [scripts/copy-world-to-dev.ts](../scripts/copy-world-to-dev.ts)。
+
 **从「源码版当正式版」换过来**（2026-11-23 之前的做法）：旧的 `isocline.home-node` 代理指向仓库里的 `cli.ts`。先退出源码版的 Isocline（两个都用 `Isocline/Desktop`，同时只能开一个），再 `npm run install:mac`：新 App 把这个代理改成指向它自己，并重启主节点；真实数据目录不动。在这之前如果旧代理自己重启了，它会以开发身份打开一个空的开发世界（真实数据仍在原处，没有丢）。
 
 ## 5. 安全地试一个新包（不碰真实的数据）

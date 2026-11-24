@@ -22,7 +22,8 @@
     "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspace @isocline/ui",
     "desktop": "npm run build:ui && electron packages/desktop",
     "package:mac": "node scripts/package-mac.ts",
-    "install:mac": "node scripts/install-mac.ts"
+    "install:mac": "node scripts/install-mac.ts",
+    "dev:copy-world": "node scripts/copy-world-to-dev.ts"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
