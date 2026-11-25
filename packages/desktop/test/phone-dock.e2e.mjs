@@ -64,7 +64,8 @@ test("a paired phone can open Models and refresh its subscription usage", async 
   await pane.getByText("45%", { exact: true }).waitFor();
   assert.equal(await meter.getAttribute("aria-valuenow"), "45");
 
-  // Restore Models before /api/remote has answered. Only usage may be requested, even during this handoff.
+  // Reloaded before /api/remote has answered, Settings opens on General, not the tab last looked at.
+  // Only usage may be requested, even during this handoff.
   const gate = Promise.withResolvers();
   identifyPhone = gate.promise;
   result = "empty";
@@ -72,6 +73,9 @@ test("a paired phone can open Models and refresh its subscription usage", async 
   await page.reload();
   await identifying;
   gate.resolve();
+  await page.getByRole("tabpanel", { name: "General" }).waitFor();
+  assert.equal(await models.getAttribute("aria-selected"), "false");
+  await models.click();
   await pane.getByText(/No subscription usage to show/).waitFor();
   assert.equal(await models.getAttribute("aria-selected"), "true");
   assert.equal(await pane.getByRole("meter").count(), 0);

@@ -22,7 +22,7 @@ import { Skills } from "./Skills.tsx";
 import { VoiceSettings } from "./VoiceSettings.tsx";
 import { t, useLocale, type Key } from "./i18n/index.ts";
 import { Icon, type IconName } from "./shell/icons.tsx";
-import { SETTINGS_TAB_EVENT, SETTINGS_TAB_KEY, type SettingsTab } from "./settingsTab.ts";
+import { SETTINGS_TAB_EVENT, takeSettingsTab, type SettingsTab } from "./settingsTab.ts";
 import "./settings.css";
 
 type Tab = SettingsTab;
@@ -38,14 +38,12 @@ const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
   { id: "accounts", icon: "person", home: true },
   { id: "devices", icon: "phone" },
 ];
-const KEY = SETTINGS_TAB_KEY;
-const saved = (): Tab => { try { const value = localStorage.getItem(KEY); return TABS.some((tab) => tab.id === value) ? value as Tab : "general"; } catch { return "general"; } };
 
 export function Settings({ name, saveName, dockOptions, onEvent, state }: GeneralProps & Pick<Zirma, "onEvent"> & { state: StateResponse }) {
   useLocale();
   /** Null until known; an older home node without remote access answers 404, which is treated as the Mac. */
   const [remote, setRemote] = useState<RemoteResponse | null | "old" | "unavailable">(null);
-  const [tab, setTab] = useState<Tab>(saved);
+  const [tab, setTab] = useState<Tab>(takeSettingsTab);
   const [opened, setOpened] = useState<ReadonlySet<Tab>>(() => new Set([tab]));
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -64,18 +62,17 @@ export function Settings({ name, saveName, dockOptions, onEvent, state }: Genera
   const device = typeof remote === "object" ? remote : null;
   const local = remote === "old" || device?.local === true;
   const tabs = TABS.filter((item) => (local || !item.home) && (item.id !== "devices" || remote !== "old"));
-  // A tab that is the Mac's, remembered from there, is not this device's to show.
+  // A tab that is the Mac's (asked for from a link) is not this device's to show.
   const shown = tabs.some((item) => item.id === tab) ? tab : "general";
   // In a narrow column the row of tabs scrolls sideways: the one that is open is brought into sight.
   useEffect(() => { list.current?.querySelector(`#set-tab-${shown}`)?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [shown, tabs.length]);
   const open = (next: Tab) => {
     setTab(next);
     setOpened((current) => new Set(current).add(next));
-    try { localStorage.setItem(KEY, next); } catch { /* opens on General next time */ }
   };
   // Sent from elsewhere ("connect a model" on a failed turn): this page may already be open.
   useEffect(() => {
-    const go = (event: Event) => { const next = (event as CustomEvent<Tab>).detail; setTab(next); setOpened((current) => new Set(current).add(next)); };
+    const go = (event: Event) => { const next = (event as CustomEvent<Tab>).detail; takeSettingsTab(); setTab(next); setOpened((current) => new Set(current).add(next)); };
     window.addEventListener(SETTINGS_TAB_EVENT, go);
     return () => window.removeEventListener(SETTINGS_TAB_EVENT, go);
   }, []);
