@@ -2,6 +2,7 @@
  * (public/sw.js) only shows them. On an iPhone, Web Push works only in the app added to the home screen.
  */
 import { api } from "./api.ts";
+import { resumeStep } from "./push-resume.ts";
 
 export type PushSupport = "ok" | "homeScreen" | "unsupported" | "denied";
 
@@ -58,21 +59,21 @@ export async function enablePush(): Promise<void> {
   wanted(true);
 }
 
-/** On start: notifications were turned on here, but the home node no longer has this device's subscription (a push
- * service said it was gone, iOS dropped it, or the node got a new key). It is made again without asking, as the
- * permission is still granted. Nothing happens on a device that never turned them on. */
-export async function resumePush(): Promise<boolean> {
-  if (pushSupport() !== "ok" || Notification.permission !== "granted") return false;
+/** On start, where notifications were turned on: the browser's current subscription goes to the home node again
+ * (push-resume.ts says why every time), made anew first if it is gone or for another key (a push service said it was
+ * gone, iOS dropped it, the node got a new key). Without asking, as the permission is still granted. Nothing happens
+ * on a device that never turned them on. */
+export async function resumePush(): Promise<void> {
+  if (pushSupport() !== "ok" || Notification.permission !== "granted") return;
   const worker = await navigator.serviceWorker.getRegistration("/");
   const existing = await worker?.pushManager.getSubscription();
   // Turned on before this was remembered: the browser still holds the subscription.
-  if (!isWanted() && !existing) return false;
-  const info = await api.pushInfo();
+  if (!isWanted() && !existing) return;
+  const { publicKey } = await api.pushInfo();
   const key = existing?.options.applicationServerKey;
-  if (info.subscribed && existing && key && keyText(key) === info.publicKey) { wanted(true); return false; }
-  await subscribe(info.publicKey, worker ?? await registration());
+  if (existing && resumeStep(key ? keyText(key) : null, publicKey) === "resend") await api.pushSubscribe(existing.toJSON());
+  else await subscribe(publicKey, worker ?? await registration());
   wanted(true);
-  return true;
 }
 
 export async function disablePush(): Promise<void> {

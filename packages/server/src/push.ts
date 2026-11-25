@@ -169,8 +169,15 @@ export class PushService {
   async publicKey(): Promise<string> { return (await this.keys()).publicKey; }
   subscribed(deviceId: string): boolean { return deviceId in this.#subscriptions; }
 
+  /** A device hands its subscription over when notifications are turned on and again every time it opens (ui
+   * push-resume.ts), so one the browser replaced without saying takes the old one's place here. */
   subscribe(deviceId: string, subscription: unknown): void {
-    this.#subscriptions[deviceId] = { ...checkSubscription(subscription), at: new Date().toISOString() };
+    const fresh = checkSubscription(subscription);
+    const held = this.#subscriptions[deviceId];
+    if (held && held.endpoint === fresh.endpoint && held.keys.p256dh === fresh.keys.p256dh && held.keys.auth === fresh.keys.auth) return;
+    // What was sent to the old one since it changed was taken by the push service and never shown.
+    if (held) this.#options.log?.(`push: ${deviceId} has a new subscription; the old one is replaced`);
+    this.#subscriptions[deviceId] = { ...fresh, at: new Date().toISOString() };
     this.#save();
   }
 
