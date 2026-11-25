@@ -24,7 +24,9 @@ import { DevAccessApproval } from "./DevAccessApproval.tsx";
 import { ArchiveNotice } from "./shell/ArchiveNotice.tsx";
 import { MOD, Nav } from "./shell/Nav.tsx";
 import { Topbar, type Mode } from "./shell/Topbar.tsx";
-import { availablePages, listedPages, moduleOf, pageView } from "./shell/pages.tsx";
+import { availablePages, dockOrder, listedPages, moduleOf, pageView } from "./shell/pages.tsx";
+import { pageBeside, useEdgeSwipe } from "./swipe.ts";
+import { useDockShortcut } from "./prefs.ts";
 import { automationTitle } from "./automationText.ts";
 import { Palette } from "./shell/Palette.tsx";
 import { Pair } from "./Pair.tsx";
@@ -555,6 +557,15 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
     onPlace: (url) => { window.open(url, "_blank", "noopener,noreferrer"); },
   };
 
+  // On a phone, a swipe in from the screen's edge goes to the page beside this one in the dock (swipe.ts). Not while
+  // something is laid over the page.
+  const dockShortcut = useDockShortcut();
+  const dockKeys = dockOrder(listed, dockShortcut).map((page) => page.key);
+  const sidebarKeys = listed.map((page) => page.key);
+  const edge = useEdgeSwipe(phone && !sheet && !asking && !palette && !showArchive && !firstRun && !greet,
+    (side) => current ? pageBeside(dockKeys, sidebarKeys, current.key, side) : null, goPage);
+  const edgeTo = edge && pages.find((page) => page.key === edge.to);
+
   const pageHistory = (
     <div className="page-history" role="group" aria-label={t("nav.history")}>
       <button type="button" className="icon-btn" disabled={!route.canGoBack} onClick={route.goBack}
@@ -651,6 +662,11 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
             <AskBar dock state={state} selected={selected} figure={figure} suggestions={view?.suggestions ?? []} find={find} page={current?.key} about={about} onAbout={setAbout}
               onAsk={ask} onOpen={() => setSheet("alfred")} onProposal={showProposal} onEvent={onEvent} onBack={() => { setAsking(false); setAbout(null); }} />
           ) : undefined} />
+      )}
+
+      {edge && edgeTo && (
+        <div className="edge-pull" data-side={edge.side} data-k={edgeTo.k} data-armed={edge.pull >= 1 || undefined} aria-hidden="true"
+          style={{ "--pull": edge.pull.toFixed(3) } as CSSProperties}><Icon name={edgeTo.icon} /></div>
       )}
 
       {palette && (

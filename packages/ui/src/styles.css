@@ -235,6 +235,14 @@ body.resizing { cursor: col-resize; user-select: none; }
 .pal kbd { color: var(--muted); font: .6875rem var(--mono); }
 
 .dock, .scrim { display: none; }
+/* A swipe in from the phone's edge (swipe.ts): the page it goes to comes out of that edge, and fills once letting go
+   would get there. */
+.edge-pull { position: fixed; z-index: 60; top: 50%; width: 44px; height: 44px; margin-top: -22px; display: grid; place-items: center; border-radius: 50%;
+  background: var(--raise); color: var(--k-text); box-shadow: 0 0 0 1px var(--k-line), 0 6px 18px oklch(0 0 0 / .18); opacity: calc(.35 + var(--pull) * .65); pointer-events: none; transition: background .15s, color .15s; }
+.edge-pull[data-side="left"] { left: 0; transform: translateX(calc(-44px + var(--pull) * 60px)); }
+.edge-pull[data-side="right"] { right: 0; transform: translateX(calc(44px - var(--pull) * 60px)); }
+.edge-pull[data-armed] { background: var(--k-solid); color: oklch(.985 0 0); }
+.edge-pull svg { width: 20px; height: 20px; }
 
 .conversation-head { padding: 16px max(16px, 6vw) 6px; }
 .conversation-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -1357,7 +1365,14 @@ textarea.ev-field:disabled { opacity: .5; }
 .mail-row { width: 100%; display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; column-gap: 8px; row-gap: 1px; padding: 9px 10px; border-radius: 10px; color: var(--copy); text-align: left; }
 .mail-row:hover { background: var(--wash); }
 .mail-row[aria-current] { background: var(--wash); box-shadow: inset 0 0 0 1px var(--line-soft); }
-.mail-list-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
+.mail-list-face { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
+/* On a phone a row is swiped leftwards to archive it (swipe.ts): it slides off the green underneath, then folds away. */
+.mail-list-entry[data-swipe] { position: relative; display: grid; grid-template-rows: 1fr; overflow: hidden; border-radius: 10px; touch-action: pan-y; transition: grid-template-rows .22s ease .12s; }
+.mail-list-entry[data-swipe] > .mail-list-face { position: relative; z-index: 1; min-height: 0; background: var(--bg); transition: transform .2s ease; }
+.mail-list-entry[data-swipe] > .mail-list-face[data-dragging] { transition: none; }
+.mail-list-entry[data-gone] { grid-template-rows: 0fr; }
+.mail-swipe-under { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-right: 18px; background: var(--k-fill); color: var(--k-text); font-size: .8125rem; font-weight: 600; transition: background .15s, color .15s; }
+.mail-list-entry[data-armed] .mail-swipe-under, .mail-list-entry[data-gone] .mail-swipe-under { background: var(--k-solid); color: oklch(.985 0 0); }
 .mail-message-action { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 2px 8px; border-radius: 7px; color: var(--copy); font-size: .8125rem; }
 .mail-message-action.compact { width: 32px; color: var(--muted); }
 .mail-message-action[aria-pressed="true"] svg { fill: currentColor; color: var(--accent); }
