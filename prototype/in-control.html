@@ -1,0 +1,844 @@
+<!doctype html>
+<!--
+  Zirma: keeping the person in control of what an agent builds. Layout prototype with sample data only; no build step.
+  Design: docs/design/in-control.md (v0.3).
+  A project keeps track of three things, plus the sessions where work happens (sidebar, or ?scene=session|product|map|decisions):
+    会话 session: started from a card; progress lines; a guardrail stops a shortcut and asks; the receipt (effect, decisions, lines, what changed).
+    产品 product: the plan you can see and change: who, effort, what not to use; places in a row, feature cards under each;
+                  what isn't settled is a gap on the card, not a question in chat. ?fresh shows a new project's first guess (the kickoff).
+    地图 map: the code in a few modules named by what they provide, who uses whom, health computed from code, at most three improvements.
+    决策 decisions: one tree for the whole project: accepted decisions on the main line, sessions as branches; select one to see what depends on it.
+  ?lang=en, ?scheme=dark, ?bare hides the prototype controls. Under 760px it is the phone layout.
+  The project, files and names are sample data.
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zirma 在控制</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --ease: cubic-bezier(.23, 1, .32, 1);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 14.5px/1.6 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
+h1, h2, h3, p, ul, ol { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+code, .mono { font-family: var(--mono); font-size: .86em; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.grow { flex: 1; min-width: 0; }
+
+/* Shell */
+.app { height: 100dvh; display: grid; grid-template-columns: 228px minmax(0, 1fr); }
+.side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; padding: 10px 8px 12px; background: var(--paper); border-right: 1px solid var(--line-soft); }
+.lights { display: flex; gap: 8px; padding: 4px 6px 14px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: var(--line); }
+.proj { display: flex; flex-direction: column; gap: 1px; padding: 2px 9px 10px; }
+.proj b { font-weight: 600; font-size: 14px; }
+.proj span { color: var(--muted); font: 11.5px var(--mono); }
+.nav-label { display: flex; align-items: center; padding: 14px 9px 4px; color: var(--muted); font-size: 12px; }
+.nav-label button { margin-left: auto; color: var(--muted); font-size: 16px; line-height: 1; }
+.nav-item { width: 100%; min-height: 30px; display: flex; align-items: center; gap: 9px; padding: 4px 9px; border-radius: 8px; color: var(--copy); font-size: 13.5px; }
+.nav-item:hover { background: var(--wash); }
+.nav-item[aria-current="page"] { background: var(--wash); color: var(--ink); font-weight: 500; }
+.nav-item .t { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.nav-item .n { font: 11.5px var(--mono); color: var(--k-text, var(--muted)); white-space: nowrap; }
+.nav-sub { display: block; padding: 0 9px 4px 25px; margin-top: -3px; color: var(--k-text, var(--muted)); font-size: 11.5px; }
+.dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--k-solid, var(--line)); }
+.spacer { flex: 1; min-height: 16px; }
+.proto { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 8px; padding: 6px; border-radius: 10px; outline: 1px dashed var(--line); outline-offset: -1px; font-size: 11.5px; }
+.proto b { width: 100%; padding: 0 4px 2px; color: var(--muted); font-weight: 500; }
+.proto button { height: 24px; padding: 0 8px; border-radius: 7px; color: var(--copy); white-space: nowrap; }
+.proto button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+html[data-bare] .proto { display: none; }
+
+.main { min-width: 0; min-height: 0; display: flex; flex-direction: column; container: page / inline-size; }
+.top { flex: none; min-height: 52px; display: flex; align-items: center; gap: 12px; padding: 8px 24px; border-bottom: 1px solid var(--line-soft); }
+.top h1 { flex: 0 1 auto; min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top .sum { min-width: 0; color: var(--muted); font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.top .end { margin-left: auto; display: flex; gap: 6px; flex: 0 1 auto; min-width: 0; }
+.top .end .scope { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.page { max-width: 840px; margin: 0 auto; padding: 22px 24px 48px; display: flex; flex-direction: column; gap: 18px; }
+.page.wide { max-width: 1140px; }
+.dock { flex: none; padding: 0 24px 16px; display: flex; flex-direction: column; gap: 6px; }
+.dock:empty { display: none; }
+.dock .reply { max-width: 792px; width: 100%; margin: 0 auto; padding: 0 4px; color: var(--copy); font-size: 13px; }
+.composer { max-width: 792px; width: 100%; margin: 0 auto; padding: 8px 10px 8px 12px; border-radius: 16px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-size: 13.5px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.composer .ph { flex: 1; min-width: 140px; }
+.mnav { display: none; }
+
+/* Bits */
+.btn { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 999px; background: var(--ink); color: var(--bg); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.btn[disabled] { opacity: .35; cursor: default; }
+.btn.ghost { background: none; color: var(--copy); box-shadow: inset 0 0 0 1px var(--line); font-weight: 400; }
+.btn.ghost:hover { color: var(--ink); }
+.btn.sm { min-height: 26px; padding: 0 10px; font-size: 12px; }
+.link { color: var(--alf); font-size: 12.5px; text-align: left; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--alf) 35%, transparent); text-underline-offset: 3px; }
+.tag { display: inline-flex; align-items: center; gap: 5px; min-height: 20px; padding: 0 7px; border-radius: 6px; background: var(--k-fill); color: var(--k-text); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 10px; border-radius: 999px; background: var(--k-fill, var(--wash)); color: var(--k-text, var(--copy)); font-size: 12.5px; white-space: nowrap; }
+.chip.off { text-decoration: line-through; opacity: .55; }
+.chip.dash { background: none; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.scope { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 10px; border-radius: 8px; background: var(--alf-soft); color: var(--alf); font-size: 12.5px; white-space: nowrap; }
+.scope svg { width: 14px; height: 14px; }
+.seg { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--wash); flex-wrap: wrap; }
+.seg button { height: 26px; padding: 0 10px; border-radius: 7px; color: var(--copy); font-size: 12.5px; white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--raise); color: var(--ink); box-shadow: 0 1px 2px #0002; }
+.card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); min-width: 0; }
+.card h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ok { color: var(--ok); }
+.warnc { color: var(--warm); }
+.badc { color: var(--now); }
+.fadein { animation: fadein 300ms var(--ease); }
+@keyframes fadein { from { opacity: 0; transform: translateY(4px); } }
+.toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 9; padding: 8px 14px; border-radius: 999px; background: var(--ink); color: var(--bg); font-size: 13px; box-shadow: 0 6px 20px #0003; animation: fadein 200ms var(--ease); max-width: calc(100vw - 32px); }
+.kv { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--copy); min-width: 0; }
+.kv h3 { font-size: 12px; color: var(--muted); font-weight: 500; }
+.side-detail { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; }
+.side-detail h2 { font-size: 15px; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; align-items: start; }
+.empty { padding: 28px; border-radius: 16px; background: var(--paper); color: var(--copy); text-align: center; font-size: 13.5px; }
+.lbl { width: 56px; flex: none; color: var(--muted); font-size: 12px; line-height: 22px; }
+
+/* Conversation */
+.me { align-self: flex-end; max-width: 86%; padding: 8px 13px; border-radius: 16px 16px 4px 16px; background: var(--wash); }
+.me small { display: block; color: var(--muted); font-size: 11.5px; }
+.al { display: flex; flex-direction: column; gap: 8px; }
+.steps { display: flex; flex-direction: column; gap: 1px; }
+.step > button { width: 100%; min-height: 30px; display: flex; align-items: center; gap: 9px; padding: 3px 8px; border-radius: 9px; color: var(--copy); font-size: 13.5px; }
+.step > button:hover { background: var(--wash); }
+.step .st { flex: none; width: 14px; display: grid; place-items: center; }
+.step .st svg { width: 14px; height: 14px; stroke-width: 2.2; }
+.step .t { flex: 1; min-width: 0; }
+.step .tm { flex: none; color: var(--muted); font: 11.5px var(--mono); }
+.step .chev { width: 13px; height: 13px; color: var(--muted); transition: transform 150ms; }
+.step[data-open] .chev { transform: rotate(90deg); }
+.step[data-state="run"] .t { color: var(--ink); }
+.step[data-state="wait"] .t { color: var(--k-text); }
+.pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--alf); animation: breathe 1.6s ease-in-out infinite; }
+.pulse.warm { background: var(--warm); }
+@keyframes breathe { 50% { opacity: .35; transform: scale(.8); } }
+.cmds { margin: 2px 0 6px 31px; padding: 6px 0 6px 12px; border-left: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 3px; font: 12px/1.5 var(--mono); color: var(--copy); }
+.cmds div { overflow-wrap: anywhere; }
+.ask { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warm) 55%, var(--line)); }
+.ask .why { color: var(--copy); font-size: 13px; }
+.ask .why b { font-weight: 600; color: var(--ink); }
+.opt { width: 100%; display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: 11px; box-shadow: inset 0 0 0 1px var(--line); text-align: left; font-size: 13px; }
+.opt:hover:not([disabled]) { background: var(--wash); }
+.opt[disabled] { cursor: default; opacity: .55; }
+.opt[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--alf); background: var(--alf-soft); }
+.opt .k { flex: none; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: var(--wash); font: 12px var(--mono); }
+.opt .what { flex: 1; min-width: 0; }
+.opt .what small { display: block; color: var(--muted); font-size: 12px; }
+
+/* Receipt */
+.receipt { display: flex; flex-direction: column; border-radius: 16px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); overflow: hidden; }
+.receipt > section { padding: 12px 16px; border-top: 1px solid var(--line-soft); display: flex; gap: 10px; }
+.receipt > section:first-child { border-top: 0; display: block; }
+.r-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.r-head h2 { font-size: 15px; font-weight: 600; }
+.ev { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.shot { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--muted); }
+.mini { width: 132px; padding: 7px; border-radius: 8px; background: var(--paper); box-shadow: inset 0 0 0 1px var(--line-soft); display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+.mini::before { content: ""; grid-column: 1 / -1; height: 6px; width: 46%; border-radius: 2px; background: var(--line); margin-bottom: 2px; }
+.mini i { aspect-ratio: 4/3; border-radius: 2px; background: var(--line); }
+.mini i.new { background: color-mix(in srgb, var(--alf) 45%, var(--line)); }
+.dec { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; }
+.dec + .dec { border-top: 1px dashed var(--line-soft); }
+.dec .tag { margin-top: 1px; }
+.dec .what { flex: 1; min-width: 0; font-size: 13.5px; }
+.dec .what small { display: block; color: var(--muted); font-size: 12px; }
+.checks { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--copy); }
+.checks div { display: flex; align-items: flex-start; gap: 8px; }
+.checks svg { width: 14px; height: 14px; margin-top: 4px; stroke-width: 2.2; flex: none; }
+.r-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; background: var(--paper); border-top: 1px solid var(--line-soft); }
+
+/* Product */
+.strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.strip > div { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-left: 1px solid var(--line-soft); min-width: 0; font-size: 13px; color: var(--copy); }
+.strip > div:first-child { border-left: 0; }
+.strip h3 { font-size: 12px; color: var(--muted); font-weight: 500; }
+.strip .note { color: var(--muted); font-size: 12px; }
+.story { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.colh { position: relative; display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; border-radius: 10px; background: var(--paper); font-size: 13px; font-weight: 600; }
+.colh small { color: var(--muted); font-weight: 400; font-size: 11.5px; margin-left: auto; white-space: nowrap; }
+.col:not(:last-child) .colh::after { content: "→"; position: absolute; z-index: 1; right: -6px; top: 50%; transform: translate(50%, -50%); color: var(--muted); font-weight: 400; font-size: 12px; }
+.col.plan .colh { background: none; outline: 1.5px dashed var(--line); outline-offset: -1.5px; }
+.colh.off span { text-decoration: line-through; opacity: .55; }
+.fcard { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 9px 11px; border-radius: 11px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); text-align: left; font-size: 13px; color: var(--ink); }
+.fcard:hover { box-shadow: inset 0 0 0 1px var(--muted); }
+.fcard[data-st="idea"] { background: none; box-shadow: none; outline: 1.5px dashed var(--line); outline-offset: -1.5px; }
+.fcard[data-st="decided"] { box-shadow: inset 3px 0 0 var(--alf), inset 0 0 0 1px var(--line); }
+.fcard[data-st="problem"] { box-shadow: inset 3px 0 0 var(--now), inset 0 0 0 1px var(--line); }
+.fcard[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 1px; }
+.fcard.new { animation: fadein 400ms var(--ease); }
+.fcard .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 11.5px; }
+.fcard .meta svg { width: 12px; height: 12px; stroke-width: 2.2; }
+.gap { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 12px; background: var(--paper); }
+.gap > b { font-size: 13px; font-weight: 600; color: var(--ink); }
+.gap .opt { background: var(--raise); }
+.stores { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 4px; }
+.store { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: 9px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); font-size: 12.5px; }
+.store.plan { background: none; box-shadow: none; outline: 1.5px dashed var(--line); outline-offset: -1.5px; color: var(--muted); }
+.banner { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--alf-soft); color: var(--copy); font-size: 13px; }
+.banner svg { color: var(--alf); margin-top: 3px; }
+.banner.warm { background: color-mix(in srgb, var(--warm) 12%, transparent); }
+.banner.warm svg { color: var(--warm); }
+
+/* Map */
+.improve { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.imp { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); font-size: 13px; color: var(--copy); min-width: 0; }
+.imp b { color: var(--ink); font-size: 13.5px; font-weight: 600; }
+.imp .meta { color: var(--muted); font-size: 12px; }
+.graph { position: relative; padding: 20px; border-radius: 16px; background: var(--paper); box-shadow: inset 0 0 0 1px var(--line-soft); display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.mgrid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px 30px; }
+.edges { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; overflow: visible; }
+.edges line { stroke: var(--muted); stroke-width: 1.4; }
+.edges line.plan { stroke-dasharray: 5 4; stroke: var(--line); }
+.mod { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 10px 11px; border-radius: 12px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); text-align: left; min-width: 0; }
+.mod b { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600; }
+.mod small { color: var(--copy); font-size: 12px; line-height: 1.45; }
+.mod .h { font-size: 11.5px; color: var(--k-text, var(--muted)); }
+.mod.plan { background: none; box-shadow: none; outline: 1.5px dashed var(--line); outline-offset: -1.5px; }
+.mod.fresh { box-shadow: inset 0 0 0 1.5px var(--alf); background: var(--raise); outline: none; }
+.mod[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+.hd { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--k-solid, var(--line)); }
+.orphans { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 14px; border-top: 1px dashed var(--line); }
+.orphans .lbl { width: auto; margin-right: 2px; }
+.orphan { display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 0 12px; border-radius: 9px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); font-size: 12.5px; }
+.orphan[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.hrows { display: flex; flex-direction: column; gap: 3px; }
+.hrows div { display: flex; gap: 8px; font-size: 12.5px; color: var(--copy); }
+.hrows div > span:first-child { flex: none; width: 52px; color: var(--muted); }
+.hrows .hd { margin-top: 6px; }
+.paths { font: 12px/1.6 var(--mono); color: var(--copy); }
+details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+
+/* Decisions */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.filters .chip { cursor: pointer; }
+.filters .chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.tl { position: relative; display: flex; flex-direction: column; gap: 2px; }
+.tl::before { content: ""; position: absolute; left: 13px; top: 14px; bottom: 20px; width: 2px; border-radius: 1px; background: var(--muted); opacity: .55; }
+.lane.m::before { display: none; }
+.lane { position: relative; display: flex; flex-direction: column; gap: 2px; --lane: var(--muted); }
+.lane::before { content: ""; position: absolute; left: 13px; top: 14px; bottom: 14px; width: 2px; border-radius: 1px; background: var(--lane); opacity: .55; }
+.lane.old::before { background: repeating-linear-gradient(var(--lane) 0 4px, transparent 4px 8px); }
+.lane.a { --lane: var(--warm); }
+.lane.b { --lane: var(--alf); }
+.branch { margin-left: 22px; display: flex; flex-direction: column; gap: 2px; }
+.bh { --lane: var(--warm); position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 9px 2px 30px; font-size: 12px; color: var(--muted); }
+.bh::before { content: ""; position: absolute; left: -8px; top: 12px; width: 21px; height: calc(100% + 4px); border-top: 2px solid color-mix(in srgb, var(--lane) 55%, transparent); border-right: 2px solid color-mix(in srgb, var(--lane) 55%, transparent); border-top-right-radius: 10px; }
+.bh b { color: var(--ink); font-weight: 600; font-size: 12.5px; }
+.node { position: relative; width: 100%; display: flex; align-items: flex-start; gap: 8px; padding: 6px 9px 6px 32px; border-radius: 10px; text-align: left; font-size: 13.5px; color: var(--ink); }
+.node::before { content: ""; position: absolute; left: 8px; top: 11px; width: 8px; height: 8px; border-radius: 50%; background: var(--bg); box-shadow: 0 0 0 2px var(--lane); }
+.node:hover { background: var(--wash); }
+.node[aria-current="true"] { background: var(--wash); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.node.hit { background: var(--alf-soft); }
+.node.dim { opacity: .35; }
+.node .tag { margin-top: 1px; }
+.node .what { flex: 1; min-width: 0; }
+.node .what small { display: block; color: var(--muted); font-size: 11.5px; }
+.node.old .what > span { text-decoration: line-through; text-decoration-color: var(--line); color: var(--muted); }
+.optl { display: flex; flex-direction: column; gap: 6px; }
+.optl div { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--copy); }
+.optl div.on { color: var(--ink); }
+.optl svg { width: 14px; height: 14px; margin-top: 4px; stroke-width: 2.2; flex: none; }
+.optl small { display: block; color: var(--muted); font-size: 12px; }
+.rewind { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--paper); font-size: 13px; }
+.impact { padding: 10px 12px; border-radius: 12px; background: var(--alf-soft); color: var(--copy); font-size: 13px; }
+
+/* Narrow page column */
+@container page (max-width: 940px) {
+  .two { grid-template-columns: minmax(0, 1fr); }
+  .side-detail { position: static; }
+  .story { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .col:nth-child(2n) .colh::after { display: none; }
+  .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .strip > div:nth-child(3) { border-left: 0; }
+  .strip > div:nth-child(n+3) { border-top: 1px solid var(--line-soft); }
+  .improve { grid-template-columns: minmax(0, 1fr); }
+}
+@container page (max-width: 640px) {
+  .page { padding: 16px 16px 40px; }
+  .top { padding: 8px 16px; }
+  .top .sum { display: none; }
+  .dock { padding: 0 16px 12px; }
+  .story { grid-template-columns: minmax(0, 1fr); }
+  .col .colh::after { display: none; }
+  .strip { grid-template-columns: minmax(0, 1fr); }
+  .strip > div { border-left: 0 !important; }
+  .strip > div + div { border-top: 1px solid var(--line-soft); }
+  .mgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 30px 18px; }
+  .graph { padding: 14px; }
+  .receipt > section { flex-wrap: wrap; }
+  .lbl { width: 100%; line-height: 1.4; }
+  .branch { margin-left: 12px; }
+  .me { max-width: 92%; }
+}
+@media (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .side { display: none; }
+  .mnav { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 16px; border-bottom: 1px solid var(--line-soft); background: var(--paper); }
+  .mnav button { height: 28px; padding: 0 10px; border-radius: 8px; font-size: 13px; color: var(--copy); white-space: nowrap; }
+  .mnav button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .mnav .p { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px; }
+  html[data-bare] .mnav .p { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <main class="main">
+    <nav class="mnav" id="mnav"></nav>
+    <header class="top" id="top"></header>
+    <div class="scroll" id="scroll"><div id="view"></div></div>
+    <div class="dock" id="dock"></div>
+  </main>
+</div>
+<div id="toast"></div>
+<script>
+/* ── State ── */
+const q = new URLSearchParams(location.search);
+const S = {
+  lang: q.get("lang") === "en" ? "en" : "zh",
+  scheme: q.get("scheme") === "dark" ? "dark" : "light",
+  scene: q.get("scene") || "session",
+  fresh: q.has("fresh"), kick: { off: {}, effort: "weekend", started: false },
+  play: null, waiting: false, answered: false, choice: "sharp", open: {}, accepted: false,
+  card: "c10", gap: {}, settled: {}, added: false,
+  mod: "pages", dropped: {},
+  sel: "d1", filter: "all", rewound: {}, confirm: null, realigned: false,
+};
+if (q.has("bare")) document.documentElement.dataset.bare = "";
+const L = (zh, en) => (S.lang === "en" ? en : zh);
+const T = (x) => (Array.isArray(x) ? (S.lang === "en" ? x[1] : x[0]) : x);
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const ICON = {
+  check: '<path d="M4 10.5l4 4 8-9"/>', x: '<path d="M5 5l10 10M15 5L5 15"/>', chev: '<path d="M8 5l5 5-5 5"/>',
+  warn: '<path d="M10 4v7M10 15v.5"/>', scope: '<rect x="3.5" y="3.5" width="13" height="13" rx="3"/><path d="M7 10h6"/>',
+  chat: '<path d="M4 5h12v8H9l-4 3v-3H4z"/>', tree: '<circle cx="6" cy="4" r="1.6"/><circle cx="6" cy="16" r="1.6"/><circle cx="14" cy="10" r="1.6"/><path d="M6 6v8M6 8c0 2 3 2 6.4 2"/>',
+  product: '<rect x="3" y="3" width="4" height="6" rx="1"/><rect x="8" y="3" width="4" height="9" rx="1"/><rect x="13" y="3" width="4" height="4" rx="1"/><path d="M3 15h14"/>',
+  map: '<rect x="7.5" y="2.5" width="5" height="4" rx="1"/><rect x="2.5" y="13.5" width="5" height="4" rx="1"/><rect x="12.5" y="13.5" width="5" height="4" rx="1"/><path d="M10 6.5v3.5M5 13.5V10h10v3.5"/>',
+  back: '<path d="M8 5L4 9l4 4"/><path d="M4 9h8a4 4 0 010 8h-2"/>', plus: '<path d="M10 4v12M4 10h12"/>', spark: '<path d="M10 3v4M10 13v4M3 10h4M13 10h4"/>',
+};
+const ic = (n, cls = "i") => `<svg class="${cls}" viewBox="0 0 20 20">${ICON[n]}</svg>`;
+
+/* ── Sample data: a static portfolio site ── */
+const PLACES = [["home", ["首页", "Home"]], ["work", ["作品详情", "Work details"]], ["about", ["关于", "About"]], ["contact", ["联系", "Contact"], "plan"]];
+const ST = {
+  idea: [["想法", "Idea"], "gray"], decided: [["定了", "Decided"], "alfred"], doing: [["在做", "In progress"], "warm"],
+  done: [["做好", "Done"], "green"], problem: [["有问题", "Problem"], "now"],
+};
+const GAPS = {
+  g1: { q: ["筛选放在哪", "Where the filter goes"], guess: 0, opts: [["作品区上面一排年份", "A row of years above the gallery", "一眼看到，不占地方", "Visible at a glance, small"], ["侧边一列", "A side column", "能放更多条件，首页变挤", "Room for more filters; crowds the page"]] },
+  g2: { q: ["手机上怎么放", "On a phone", ], guess: 0, opts: [["一排年份横着滑", "Years in a row you swipe", "和电脑上一样", "Same as on a computer"], ["收成一个按钮", "Folded into one button", "多点一下", "One more tap"]] },
+  g3: { q: ["留言送到哪", "Where messages go"], guess: 0, opts: [["用免费表单服务发到你的邮箱", "A free form service mails them to you", "不加后端；多一个外部服务", "No backend; one outside service"], ["只放一个邮箱链接", "Just an email link", "什么都不加；没有表单", "Adds nothing; no form"], ["加一个后端", "Add a backend", "越过了：不要后端", "Crosses: no backend", "blocked"]] },
+};
+const CARDS = {
+  c1: { place: "home", t: ["一段介绍", "A short intro"], st: "done", s: ["你是谁、画什么，两三句", "Who you are and what you paint, in a few lines"], mods: ["pages"], decs: [] },
+  c2: { place: "home", t: ["作品格子", "Gallery grid"], st: "done", s: ["所有作品，三列，新的在前", "All works, three columns, newest first"], mods: ["pages", "content"], decs: ["d1", "d3"] },
+  c3: { place: "home", t: ["加三张画", "Add three works"], st: "doing", task: "A", s: ["new-art 里的三张画加进作品区", "Three works from new-art into the gallery"], mods: ["content", "pages", "images"], decs: ["a1", "a2", "a3"] },
+  c4: { place: "home", t: ["首页深色", "Dark home page"], st: "doing", task: "B", s: ["首页换成深色", "The home page in dark colours"], mods: ["style", "pages"], decs: ["b1", "b2"] },
+  c5: { place: "home", t: ["按年份筛选", "Filter by year"], st: "idea", s: ["只看某一年的画", "Show works from one year"], mods: ["pages", "content"], decs: [], gaps: ["g1", "g2"], added: true },
+  c6: { place: "work", t: ["弹窗看大图", "Large image in a pop-up"], st: "done", s: ["点作品弹出大图和说明，不离开首页", "Click a work for a large image and notes, without leaving Home"], mods: ["pages"], decs: ["d2"] },
+  c7: { place: "work", t: ["左右翻", "Flip left and right"], st: "decided", s: ["弹窗里用方向键翻到上一张、下一张", "Arrow keys flip to the previous or next work"], mods: ["pages"], decs: [] },
+  c8: { place: "about", t: ["简介和照片", "Bio and photo"], st: "done", s: ["一段简介和一张照片", "A short bio and a photo"], mods: ["pages", "content"], decs: [] },
+  c9: { place: "about", t: ["社交链接", "Social links"], st: "problem", s: ["一个链接打不开：体检查到", "One link is broken: found by the check-up"], mods: ["pages"], decs: [] },
+  c10: { place: "contact", t: ["约稿表单", "Commission form"], st: "idea", s: ["想约稿的人留下名字、邮箱和想法", "People leave a name, email and idea for a commission"], mods: ["msgs", "pages"], decs: [], gaps: ["g3"] },
+};
+const KICK = { home: [["作品格子", "Gallery grid"], ["一段介绍", "A short intro"]], work: [["弹窗看大图", "Large image in a pop-up"]], about: [["简介和照片", "Bio and photo"], ["社交链接", "Social links"]], contact: [["约稿表单", "Commission form"]] };
+
+const MODS = {
+  deploy: { name: ["上线", "Going live"], job: ["把网页构建好，放到免费的静态托管上", "Builds the pages and puts them on free static hosting"], provides: [["构建", "Build"], ["托管", "Hosting"]], uses: ["pages"], w: [2, 1], n: [1, 1], h: "ok",
+            hl: ["测试跟着构建跑 · 过了", "Tests run with the build · passing"], paths: ["astro.config.mjs", ".github/workflows/deploy.yml"],
+            rows: [["测试", "Tests", "构建前跑全部测试", "All tests run before a build", "ok"], ["依赖", "Deps", "astro 4.16，最新", "astro 4.16, current", "ok"]] },
+  style: { name: ["样子", "Look"], job: ["颜色、字体、间距，跟着系统深浅", "Colours, type and spacing; follows light and dark"], provides: [["颜色", "Colours"], ["字体", "Type"]], uses: [], w: [1, 2], n: [2, 1], h: "ok",
+           hl: ["没事", "All fine"], paths: ["src/styles/"], rows: [["大小", "Size", "210 行，没怎么变", "210 lines, steady", "ok"], ["越界", "Leaks", "没有", "None", "ok"]] },
+  pages: { name: ["页面", "Pages"], job: ["把作品和文字变成首页、作品弹窗和关于页", "Turns works and text into Home, the work pop-up and About"], provides: [["首页", "Home"], ["作品弹窗", "Work pop-up"], ["关于页", "About"]], uses: ["content", "style", "images", "msgs"], w: [2, 2], n: [1, 2], h: "warn",
+           hl: ["一个月大了 40% · 弹窗没有测试", "40% bigger in a month · pop-up untested"], paths: ["src/pages/", "src/components/"],
+           rows: [["测试", "Tests", "8 个；作品弹窗 0 个", "8; none for the work pop-up", "warn"], ["大小", "Size", "1,240 行，一个月前 880（+40%）", "1,240 lines, 880 a month ago (+40%)", "warn"], ["改得勤", "Churn", "一个月改了 14 次", "Changed 14 times this month", "warn"], ["越界", "Leaks", "没有", "None", "ok"], ["依赖", "Deps", "astro 4.16，最新", "astro 4.16, current", "ok"]] },
+  msgs: { name: ["收消息", "Messages"], job: ["约稿表单的留言送到你的邮箱", "Sends commission-form messages to your inbox"], provides: [["收留言", "Take messages"]], uses: [], w: [3, 2], n: [2, 2], h: "plan",
+          hl: ["产品里「约稿表单」要它；还没有代码", "“Commission form” needs it; no code yet"], paths: [], rows: [] },
+  content: { name: ["作品内容", "Works"], job: ["每张作品的图和说明，一张一个文件夹", "Each work's image and notes, one folder per work"], provides: [["作品列表", "List of works"], ["每张的说明", "Notes per work"]], uses: [], w: [1, 3], n: [1, 3], h: "ok", stale: true,
+             hl: ["9 张 · 测试过了", "9 works · tests passing"], paths: ["content/art/", "content/about.md"],
+             rows: [["测试", "Tests", "2 个，过了", "2, passing", "ok"], ["大小", "Size", "9 张作品", "9 works", "ok"]] },
+  images: { name: ["压图片", "Image shrinking"], job: ["构建时把原图压成 WebP", "Shrinks originals to WebP at build time"], provides: [["压缩图片", "Shrink images"]], uses: ["content"], w: [3, 3], n: [2, 3], h: "new",
+            hl: ["这次会话新加的，还没接受", "Added by this session, not accepted yet"], paths: ["scripts/build.ts"],
+            rows: [["测试", "Tests", "1 个，过了", "1, passing", "ok"], ["依赖", "Deps", "sharp 0.33（你同意的）", "sharp 0.33 (your pick)", "ok"]] },
+  lightbox: { name: ["旧灯箱", "Old lightbox"], job: ["以前看大图用的，换成弹窗后留下的", "The old large-image viewer, left over from before the pop-up"], provides: [["看大图（旧）", "Large image (old)"]], uses: [], orphan: true, h: "bad",
+              hl: ["没有功能、也没有别的块在用", "No feature and no other module uses it"], paths: ["src/components/Lightbox.astro", "src/lib/lightbox.ts"],
+              rows: [["没人用", "Unused", "没有功能卡，也没有别的块引用", "No card and no module refers to it", "bad"], ["大小", "Size", "180 行", "180 lines", "ok"]] },
+};
+const HEALTH = { ok: ["好", "Fine", "green"], warn: ["要留意", "Watch", "warm"], bad: ["有问题", "Problem", "now"], plan: ["规划了", "Planned", "gray"], new: ["这次新加", "New", "alfred"] };
+const IMPROVE = [
+  { id: "i1", mod: "lightbox", t: ["删掉旧灯箱", "Remove the old lightbox"], why: ["没有功能、也没有别的块在用它", "No feature and no other module uses it"], size: ["约 5 分钟 · 少 180 行 · 风险低", "About 5 min · 180 fewer lines · low risk"] },
+  { id: "i2", mod: "pages", t: ["给作品弹窗加 2 个测试", "Two tests for the work pop-up"], why: ["页面改得勤，弹窗却没有测试管", "Pages changes often, yet nothing tests the pop-up"], size: ["约 10 分钟 · 风险低", "About 10 min · low risk"] },
+  { id: "i3", mod: "pages", t: ["把作品排序挪回作品内容", "Move the work order back into Works"], why: ["页面一个月大了 40%：排序写在了页面里", "Pages grew 40% in a month: the ordering lives there"], size: ["约 20 分钟 · 3 个文件 · 风险中", "About 20 min · 3 files · medium risk"] },
+];
+
+const KIND = { you: ["你定的", "Yours", "alfred"], guess: ["替你定的", "My guess", "warm"], rule: ["按规矩", "By the rules", "gray"], unrep: ["它没说", "Unreported", "now"] };
+const NODES = {
+  d0: { kind: "you", t: ["开题：放画作的个人网站 · 一个周末 · 不要后端、不加 Python、不用付费服务", "Kickoff: a site for paintings · a weekend · no backend, no Python, no paid services"], q: ["这个项目是什么", "What this project is"], mods: [], after: [], opts: [], snap: "a41c0e2" },
+  d1: { kind: "guess", t: ["用 Astro 生成静态页面", "Static pages with Astro"], q: ["用什么做", "What to build it with"], mods: ["deploy", "pages"], after: ["d0"], snap: "a41c0e2",
+        opts: [["Astro 生成静态页面", "Astro static pages", "没有后端；加作品只要放进文件夹", "No backend; adding a work means dropping it in a folder"], ["Next.js", "Next.js", "能做的多，但要服务器：越过了「不要后端」", "Does more, but needs a server: crosses “no backend”", "blocked"], ["纯 HTML", "Plain HTML", "最简单，但加一张画要改好几处", "Simplest, but each new work edits several places"]] },
+  d2: { kind: "you", t: ["作品详情用弹窗，不单独开一页", "Work details in a pop-up, not a page"], q: ["作品详情怎么打开", "How a work's details open"], card: "c6", mods: ["pages"], after: ["d1"], snap: "7be19d0",
+        opts: [["弹窗", "Pop-up", "不离开首页", "You stay on Home"], ["单独一页", "Its own page", "能分享链接", "Has a shareable link"]] },
+  d3: { kind: "rule", t: ["每张作品一个文件夹：图和一段说明", "One folder per work: image and notes"], q: ["作品怎么存", "How works are stored"], card: "c2", mods: ["content"], after: ["d1"], snap: "7be19d0",
+        opts: [["一张一个文件夹", "A folder per work", "加作品只要放文件", "Adding a work is adding files"], ["一个大表格", "One big table", "改起来容易冲突", "Edits clash easily"]] },
+  d4: { kind: "guess", t: ["颜色用暖灰，跟着系统深浅", "Warm greys, following light and dark"], q: ["颜色", "Colours"], mods: ["style"], after: ["d0"], snap: "9c2e413",
+        opts: [["暖灰，跟着系统", "Warm greys, follow the system", "晚上自动变暗", "Dims at night by itself"], ["固定浅色", "Always light", "深夜看刺眼", "Glaring late at night"]] },
+  a1: { kind: "rule", t: ["新画排在最前，按年份倒序", "New works first, newest year first"], q: ["新画放哪", "Where the new works go"], card: "c3", mods: ["content", "pages"], after: ["d3"], snap: "c03f5aa",
+        opts: [["最前，按年份倒序", "First, newest year first", "和原来的排法一样", "Same order as before"], ["最后", "Last", "要改排法", "Changes the order"]] },
+  a2: { kind: "you", out: true, t: ["压缩用 sharp（只在构建时用）", "Shrink with sharp (build time only)"], q: ["压缩用什么（出了范围：要新加一块「压图片」）", "What shrinks them (out of scope: a new “Image shrinking” module)"], card: "c3", mods: ["images"], after: ["d1"], snap: "f19a8c4",
+        opts: [["Python 的 Pillow 脚本", "A Python Pillow script", "产品里你写过不加 Python", "Your product page says no Python", "blocked"], ["sharp", "sharp", "npm 包，约 8 MB，只在构建时用；快", "npm package, about 8 MB, build time only; fast"], ["不压缩，只懒加载", "Don't shrink; lazy-load only", "不加东西；首页多 3.7 MB", "Nothing added; +3.7 MB on Home"]] },
+  a3: { kind: "guess", t: ["图片压成 1600px 宽的 WebP", "Images shrunk to 1600px WebP"], q: ["图片多大", "How big the images are"], card: "c3", mods: ["images"], after: ["a2"], snap: "e5d2b71",
+        opts: [["1600px 宽的 WebP", "1600px WebP", "清楚，每张约 130 KB", "Sharp, about 130 KB each"], ["原图", "Originals", "首页多 3.7 MB，手机上慢", "+3.7 MB on Home; slow on phones"], ["1200px 宽", "1200px wide", "更小，大屏上略糊", "Smaller; a little soft on big screens"]] },
+  b1: { kind: "you", t: ["深色只用在首页", "Dark on Home only"], q: ["深色用在哪", "Where dark applies"], card: "c4", mods: ["style", "pages"], after: ["d4"], snap: "b77a019",
+        opts: [["只首页", "Home only", "改一处", "One place to change"], ["全站", "Whole site", "要改 3 个地方", "Three places to change"]] },
+  b2: { kind: "guess", t: ["作品格子的边框在深色下变浅", "Gallery borders lighten in dark"], q: ["作品格子在深色下", "The gallery in dark"], card: "c4", mods: ["pages"], after: ["b1", "d3"], snap: "b80d3e2",
+        opts: [["边框变浅", "Lighter borders", "格子分得清", "Tiles stay distinct"], ["不要边框", "No borders", "更干净，格子贴在一起", "Cleaner; tiles run together"]] },
+};
+const CHOSEN = { d1: 0, d2: 0, d3: 0, d4: 0, a1: 0, a2: 1, a3: 0, b1: 0, b2: 0 };
+const MAIN = ["d0", "d1", "d2", "d3", "d4"];
+const BR_A = ["a1", "a2", "a3"], BR_B = ["b1", "b2"];
+
+const STEPS = [
+  { run: ["正在找首页作品区", "Finding the home gallery"], done: ["找到首页作品区", "Found the home gallery"], tm: "3s", cmds: ['rg -l "gallery" src', "cat src/components/Gallery.astro"] },
+  { run: ["正在加入三张画", "Adding the three works"], done: ["加入了三张画", "Added the three works"], tm: "8s", cmds: ["cp ~/Desktop/new-art/*.jpg content/art/", "write content/art/dusk.md · tide.md · kiln.md"] },
+  { out: true, run: ["正在压缩图片", "Shrinking the images"], wait: ["停下了：这一步出了范围，也越过了底线", "Stopped: this step leaves the scope and crosses a line"],
+    done: { sharp: ["用 sharp 压好了三张：4.1 MB → 390 KB", "Shrank three with sharp: 4.1 MB → 390 KB"], none: ["没压缩，加了懒加载", "Not shrunk; lazy loading added"] }, tm: "12s",
+    cmds: { sharp: ["npm install -D sharp@0.33", "edit scripts/build.ts  (+9)"], none: ["edit src/components/Gallery.astro  (+1)"] } },
+  { run: ["正在截图对比", "Taking before and after screenshots"], done: ["截了前后两张图", "Took before and after screenshots"], tm: "6s", cmds: ["preview http://localhost:4321 → before.webp, after.webp"] },
+  { run: ["正在跑测试和构建", "Running the tests and the build"], done: ["测试 12/12、构建通过", "Tests 12/12, build passed"], tm: "9s", cmds: ["npm test → 12 passed", "npm run build → ok"] },
+];
+
+/* ── Derived ── */
+const modName = (id) => T(MODS[id].name);
+const cardSt = (id) => {
+  const c = CARDS[id];
+  if (id === "c3" && S.accepted) return "done";
+  if (c.gaps && S.settled[id]) return "decided";
+  return c.st;
+};
+const nodeChosen = (id) => (S.rewound[id] != null ? S.rewound[id] : id === "a2" ? (S.choice === "none" ? 2 : 1) : CHOSEN[id]);
+const nodeText = (id) => {
+  const n = NODES[id];
+  if (!n.opts.length) return T(n.t);
+  const c = nodeChosen(id);
+  if (c === CHOSEN[id] && !(id === "a2" && S.choice === "none")) return T(n.t);
+  return L(n.opts[c][0], n.opts[c][1]);
+};
+const showA3 = () => S.choice === "sharp" && S.rewound.a2 !== 2;
+const nodeVisible = (id) => id !== "a3" || showA3();
+const allNodes = () => [...MAIN, ...BR_A, ...BR_B].filter(nodeVisible);
+const dependents = (id) => {
+  const out = new Set(); let grew = true;
+  while (grew) { grew = false; for (const x of allNodes()) if (!out.has(x) && NODES[x].after.some((a) => a === id || out.has(a))) { out.add(x); grew = true; } }
+  return [...out];
+};
+const isMain = (id) => MAIN.includes(id) || (S.accepted && BR_A.includes(id));
+
+/* ── Helpers ── */
+function toast(msg) { const t = document.getElementById("toast"); t.innerHTML = `<div class="toast">${esc(msg)}</div>`; clearTimeout(toast.h); toast.h = setTimeout(() => (t.innerHTML = ""), 2800); }
+function go(s) { S.scene = s; render(); document.getElementById("scroll").scrollTop = 0; }
+const SCENES = [["product", ["产品", "Product"], "product"], ["map", ["地图", "Map"], "map"], ["decisions", ["决策", "Decisions"], "tree"]];
+const scopeChip = () => `<span class="scope">${ic("scope")}${L("范围：作品内容 · 页面", "Scope: Works · Pages")}</span>`;
+function protoControls() {
+  return `<button data-lang="zh" aria-pressed="${S.lang === "zh"}">中</button><button data-lang="en" aria-pressed="${S.lang === "en"}">EN</button>
+    <button data-scheme="light" aria-pressed="${S.scheme === "light"}">${L("浅", "Light")}</button><button data-scheme="dark" aria-pressed="${S.scheme === "dark"}">${L("深", "Dark")}</button>
+    <button data-replay>${L("重播会话", "Replay")}</button><button data-fresh aria-pressed="${S.fresh}">${L("空项目", "Empty project")}</button>`;
+}
+function renderSide() {
+  const a = S.accepted ? ["green", L("已合并", "merged")] : ["warm", L("等你", "yours")];
+  const bSub = S.accepted && !S.realigned ? `<span class="nav-sub" data-k="warm">${L("A 接受了，要重新对齐", "A accepted: needs re-aligning")}</span>` : !S.accepted ? `<span class="nav-sub">${L("和 A 都碰「页面」", "Also touches Pages, like A")}</span>` : "";
+  const sessions = S.fresh ? `<span class="nav-sub" style="padding-left:9px">${L("还没有。从产品里一张卡开始。", "None yet. Start from a card in Product.")}</span>` : `
+    <button class="nav-item" data-go="session" aria-current="${S.scene === "session" ? "page" : "false"}"><span class="dot" data-k="${a[0]}"></span><span class="t">A · ${L("作品区加三张画", "Three works in the gallery")}</span><span class="n" data-k="${a[0]}">${a[1]}</span></button>
+    <button class="nav-item" data-go="decisions" data-node="b1"><span class="dot" data-k="${S.accepted && !S.realigned ? "warm" : "alfred"}"></span><span class="t">B · ${L("首页换成深色", "Dark home page")}</span><span class="n">${L("在做", "running")}</span></button>${bSub}
+    <button class="nav-item" data-go="decisions" data-node="d2"><span class="dot" data-k="green"></span><span class="t">${L("详情改成弹窗", "Details as a pop-up")}</span><span class="n">3d</span></button>`;
+  document.getElementById("side").innerHTML = `
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="proj"><b>my-portfolio</b><span>~/code/my-portfolio</span></div>
+    ${SCENES.map(([id, n, i]) => `<button class="nav-item" data-go="${id}" aria-current="${S.scene === id ? "page" : "false"}">${ic(i)}<span class="t">${T(n)}</span></button>`).join("")}
+    <div class="nav-label">${L("会话", "Sessions")}<button aria-label="${L("新会话", "New session")}" data-newsession>+</button></div>
+    ${sessions}
+    <div class="spacer"></div>
+    <div class="proto"><b>${L("原型", "Prototype")}</b>${protoControls()}</div>`;
+  const m = [["session", ["会话", "Session"]], ...SCENES];
+  document.getElementById("mnav").innerHTML = m.map(([id, n]) => `<button data-go="${id}" aria-pressed="${S.scene === id}">${T(n)}</button>`).join("") + `<span class="p">${protoControls()}</span>`;
+}
+
+/* ── Session ── */
+function stepHTML(st, i) {
+  let state = "done";
+  if (S.play !== null) state = i < S.play ? "done" : i === S.play ? (S.waiting ? "wait" : "run") : "todo";
+  if (state === "todo") return "";
+  const done = st.out ? st.done[S.choice] : st.done;
+  const text = state === "run" ? T(st.run) : state === "wait" ? T(st.wait) : T(done);
+  const mark = state === "done" ? `<span class="st ok">${ic("check")}</span>` : `<span class="st"><span class="pulse ${state === "wait" ? "warm" : ""}"></span></span>`;
+  const cmds = st.out ? (state === "done" ? st.cmds[S.choice] : ["write scripts/resize.py   ← " + L("被拦下", "stopped")]) : st.cmds;
+  return `<li class="step" data-state="${state}" ${state === "wait" ? 'data-k="warm"' : ""} ${S.open[i] ? "data-open" : ""}>
+    <button data-step="${i}" aria-expanded="${!!S.open[i]}">${mark}<span class="t">${esc(text)}</span>${state === "done" ? `<span class="tm">${st.tm}</span>` : ""}${ic("chev", "i chev")}</button>
+    ${S.open[i] ? `<div class="cmds">${cmds.map((c) => `<div>$ ${esc(c)}</div>`).join("")}</div>` : ""}</li>`;
+}
+function askHTML() {
+  const n = NODES.a2;
+  return `<div class="ask fadein">
+    <p class="why">${L("压缩图片，我本来想<b>写一个 Python 的 Pillow 脚本</b>。产品里你写过<b>不加 Python</b>；而且这要新加一块「压图片」，不在这次的范围（作品内容、页面）里。换个办法，你选：", "To shrink the images I was about to <b>write a Python Pillow script</b>. Your product page says <b>no Python</b>, and it would add a new “Image shrinking” module, outside this session's scope (Works, Pages). Pick another way:")}</p>
+    ${n.opts.map((o, k) => o[4] === "blocked" ? "" : `<button class="opt" data-choose="${k === 1 ? "sharp" : "none"}"><span class="k">${"AB"[k - 1]}</span><span class="what">${esc(L(o[0], o[1]))}<small>${esc(L(o[2], o[3]))}</small></span></button>`).join("")}
+    <small class="muted">${L("不依赖这个答案的步骤，我先接着做。", "Steps that don't depend on this go on meanwhile.")}</small>
+  </div>`;
+}
+function decRow(id, extra = "") {
+  const n = NODES[id]; const k = KIND[n.kind];
+  return `<div class="dec"><span class="tag" data-k="${k[2]}">${T(k)}</span><div class="what">${esc(nodeText(id))}<small>${esc(T(n.q))}${extra}</small></div><button class="link" data-back="${id}">${L("回到这里", "Go back here")}</button></div>`;
+}
+function receiptHTML() {
+  const sharp = S.choice === "sharp";
+  const foot = S.accepted
+    ? `<span class="ok">${ic("check")}</span><span class="grow">${L("已合并。卡变成做好，支线并进了主线。", "Merged. The card is done; the branch joined the main line.")}</span><button class="link" data-go="decisions" data-node="b1">${L("B 要重新对齐", "B needs re-aligning")}</button>`
+    : `<button class="btn" data-accept>${L("接受", "Accept")}</button><button class="btn ghost">${L("再改", "Change more")}</button><button class="btn ghost">${L("整个退回", "Drop it all")}</button><span class="grow"></span><button class="link">${L("看代码", "See code")}</button>`;
+  return `<div class="receipt fadein">
+    <section><div class="r-head"><h2>${L("作品区加三张画", "Three works in the gallery")}</h2><span class="muted">${L("首页作品区 6 → 9 张", "Home gallery: 6 → 9 works")}</span></div></section>
+    <section><span class="lbl">${L("效果", "Effect")}</span><div class="ev grow">
+      <div class="shot"><div class="mini">${"<i></i>".repeat(6)}</div>${L("之前", "Before")}</div>
+      <div class="shot"><div class="mini">${"<i class=new></i>".repeat(3)}${"<i></i>".repeat(6)}</div>${L("之后", "After")}</div></div></section>
+    <section><span class="lbl">${L("决定", "Decisions")}</span><div class="grow">
+      ${decRow("a2", " · " + L("出了范围，你选的", "out of scope; you chose"))}
+      ${showA3() ? decRow("a3") : ""}
+      <div class="small muted" style="padding-top:4px">${L("还有 1 条按规矩的：新画排在最前", "And 1 by the rules: new works go first")}</div></div></section>
+    <section><span class="lbl">${L("底线", "Lines")}</span><div class="checks grow">
+      <div><span class="ok">${ic("check")}</span><span>${L("没装新运行时（拦下 1 次：Python）", "No new runtime (stopped once: Python)")}</span></div>
+      <div><span class="${sharp ? "warnc" : "ok"}">${ic(sharp ? "warn" : "check")}</span><span>${sharp ? L("新依赖 1 个：sharp（你选的，只在构建时用）", "1 new dependency: sharp (your pick, build time only)") : L("没加依赖", "No new dependency")}</span></div>
+      <div><span class="ok">${ic("check")}</span><span>${L("一句话 → 4 个文件、46 行，比例正常", "One sentence → 4 files, 46 lines: in proportion")}</span></div>
+      <div><span class="ok">${ic("check")}</span><span>${L("测试 12/12、构建通过 · 改动小，没跑独立审查", "Tests 12/12, build passed · small change, no independent review")}</span></div></div></section>
+    <section><span class="lbl">${L("变了", "Changed")}</span><div class="checks grow">
+      <div><span class="muted">${ic("product")}</span><span>${L("产品：「加三张画」", "Product: “Add three works”")} ${S.accepted ? L("做好了", "is done") : L("接受后变成做好", "becomes done when accepted")} · <button class="link" data-go="product" data-card="c3">${L("看卡", "See card")}</button></span></div>
+      <div><span class="muted">${ic("map")}</span><span>${sharp ? L("地图：新加一块「压图片」；「作品内容」9 张", "Map: new module “Image shrinking”; Works has 9") : L("地图：「作品内容」9 张", "Map: Works has 9")} · <button class="link" data-go="map" data-mod="${sharp ? "images" : "content"}">${L("看地图", "See map")}</button></span></div></div></section>
+    <section><span class="lbl">${L("没验证", "Not checked")}</span><div class="grow small" style="color:var(--copy);line-height:22px">${L("手机宽度的排版", "Layout at phone width")}</div></section>
+    <div class="r-foot">${foot}</div></div>`;
+}
+function renderSession() {
+  if (S.fresh) return `<div class="page"><div class="empty">${L("还没有会话。在产品里点一张卡的「做这个」就开始。", "No sessions yet. Press “Do this” on a card in Product to start one.")}</div></div>`;
+  return `<div class="page">
+    <div class="me"><small>${L("从产品里「首页 · 加三张画」开始", "Started from “Home · Add three works” in Product")}</small>${L("作品区再加三张画，图在桌面的 new-art 文件夹里", "Add three more works to the gallery; the images are in the new-art folder on the desktop")}</div>
+    <div class="al"><p>${L("把 new-art 里的三张画加进作品区，排在最前。", "Putting the three works from new-art into the gallery, first in line.")}</p></div>
+    <ol class="steps">${STEPS.map(stepHTML).join("")}</ol>
+    ${S.waiting ? askHTML() : ""}
+    ${S.play === null ? receiptHTML() : ""}
+  </div>`;
+}
+
+/* ── Product ── */
+function stripHTML() {
+  const K = S.kick;
+  const nos = [["backend", ["不要后端", "No backend"]], ["python", ["不加 Python", "No Python"]], ["paid", ["不用付费服务", "No paid services"]]];
+  const noChips = nos.map(([id, n]) => S.fresh ? `<button class="chip ${K.off[id] ? "off" : ""}" data-k="alfred" data-kchip="${id}">${T(n)}${ic("x")}</button>` : `<span class="chip" data-k="alfred">${T(n)}</span>`).join("");
+  return `<div class="strip">
+    <div><h3>${L("给谁", "For whom")}</h3><span>${L("来看作品的人，和想找你约稿的人", "People who come to see the work, and people who might commission you")}</span></div>
+    <div><h3>${L("花多大力气", "Effort")}</h3>${S.fresh ? `<div class="seg"><button data-effort="weekend" aria-pressed="${K.effort === "weekend"}">${L("一个周末", "A weekend")}</button><button data-effort="long" aria-pressed="${K.effort === "long"}">${L("要长期用", "Built to last")}</button></div>` : `<span>${L("一个周末能上线", "Live in a weekend")}</span>`}
+      <span class="note">${K.effort === "weekend" ? L("取舍时：能用就好，少加东西", "Trade-offs: good enough, add little") : L("取舍时：好维护优先", "Trade-offs: easy upkeep first")}</span></div>
+    <div><h3>${L("不用什么", "Not using")}</h3><div class="chips">${noChips}</div><span class="note">${L("就是底线，每一轮由机器查", "These are the lines; checked every round")}</span></div>
+    <div><h3>${L("用什么做", "Built with")}</h3><span>Astro</span>${S.fresh ? `<span class="note">${L("我猜的：没有后端，加画只要放文件", "My guess: no backend; adding a work is adding a file")}</span>` : `<button class="link" data-go="decisions" data-node="d1">${L("决策：替你定的", "Decision: my guess")}</button>`}</div>
+  </div>`;
+}
+function fcardHTML(id) {
+  const c = CARDS[id], st = cardSt(id), s = ST[st];
+  const gaps = (c.gaps || []).filter(() => !S.settled[id]).length;
+  const meta = st === "doing" ? `<span class="pulse ${c.task === "A" ? "warm" : ""}"></span> ${L(`会话 ${c.task}`, `Session ${c.task}`)}`
+    : st === "done" ? `<span class="ok">${ic("check")}</span>${T(s[0])}`
+    : `<span class="tag" data-k="${s[1]}">${T(s[0])}</span>${gaps ? `<span>${L(`${gaps} 处没想清`, `${gaps} open`)}</span>` : ""}`;
+  return `<button class="fcard ${c.added && S.justAdded ? "new" : ""}" data-card="${id}" data-st="${st}" aria-pressed="${S.card === id}">${T(c.t)}<span class="meta">${meta}</span></button>`;
+}
+function cardDetail() {
+  const id = S.card, c = CARDS[id]; if (!c) return "";
+  const st = cardSt(id), s = ST[st];
+  const place = PLACES.find((p) => p[0] === c.place);
+  const gaps = (c.gaps || []).map((g) => {
+    const G = GAPS[g]; const pick = S.gap[g] != null ? S.gap[g] : G.guess;
+    return `<div class="gap"><b>${T(G.q)}</b>${G.opts.map((o, i) => `<button class="opt" data-gap="${g}" data-gi="${i}" aria-pressed="${!S.settled[id] && i === pick}" ${o[4] === "blocked" ? "disabled" : ""}><span class="what">${esc(L(o[0], o[1]))}${i === G.guess && S.gap[g] == null ? ` <span class="tag" data-k="warm">${L("我猜的", "My guess")}</span>` : ""}<small class="${o[4] === "blocked" ? "badc" : ""}">${esc(L(o[2], o[3]))}</small></span></button>`).join("")}</div>`;
+  }).join("");
+  const settledLine = c.gaps && S.settled[id] ? `<div class="kv"><h3>${L("定下的", "Settled")}</h3>${c.gaps.map((g) => `<span>${esc(T(GAPS[g].q))}：${esc(L(...GAPS[g].opts[S.gap[g] != null ? S.gap[g] : GAPS[g].guess].slice(0, 2)))}</span>`).join("")}</div>` : "";
+  const action = st === "idea" ? `<button class="btn" data-settle="${id}">${L("就这样定", "Settle it")}</button><span class="small muted">${L("没点的按我猜的", "Untouched gaps use my guess")}</span>`
+    : st === "decided" ? `<button class="btn" data-do="${id}">${L("做这个", "Do this")}</button>`
+    : st === "doing" ? `<button class="btn ghost" data-go="${c.task === "A" ? "session" : "decisions"}" data-node="b1">${L(`看会话 ${c.task}`, `Open session ${c.task}`)}</button>`
+    : st === "problem" ? `<button class="btn" data-do="${id}">${L("修它", "Fix it")}</button><button class="link" data-go="map" data-mod="pages">${L("在地图上看", "See it on the map")}</button>`
+    : `<button class="btn ghost" data-change="${id}">${L("改它", "Change it")}</button>`;
+  return `<div class="card side-detail">
+    <div class="acts"><span class="tag" data-k="${s[1]}">${T(s[0])}</span><span class="small muted">${T(place[1])}</span></div>
+    <h2>${T(c.t)}</h2>
+    <p style="font-size:13px;color:var(--copy)">${T(c.s)}</p>
+    ${gaps && !S.settled[id] ? `<div class="kv"><h3>${L("没想清的，点一下就行", "Not settled yet: just pick")}</h3></div>${gaps}` : settledLine}
+    <div class="kv"><h3>${L("实现它的模块", "Modules behind it")}</h3><div class="chips">${c.mods.map((m) => `<button class="chip" data-go="map" data-mod="${m}">${modName(m)}${MODS[m].h === "plan" ? " · " + L("还没有", "not yet") : ""}</button>`).join("")}</div></div>
+    <div class="kv"><h3>${L("为它做的决定", "Decisions for it")}</h3>${c.decs.length ? c.decs.filter(nodeVisible).map((d) => `<button class="link" data-go="decisions" data-node="${d}">${esc(nodeText(d))}</button>`).join("") : `<span class="muted">${st === "idea" || st === "decided" ? L("还没开始，开始后会记在这里", "Not started; they'll show here") : L("没有要紧的", "None worth noting")}</span>`}</div>
+    <div class="acts">${action}</div>
+  </div>`;
+}
+function renderProduct() {
+  if (S.fresh) return renderKickoff();
+  const cols = PLACES.map(([pid, n, plan]) => {
+    const ids = Object.keys(CARDS).filter((id) => CARDS[id].place === pid && (!CARDS[id].added || S.added));
+    return `<div class="col ${plan ? "plan" : ""}"><div class="colh"><span>${T(n)}</span>${plan ? `<small>${L("还没有", "not built")}</small>` : ""}</div>${ids.map(fcardHTML).join("")}</div>`;
+  }).join("");
+  return `<div class="page wide">
+    ${stripHTML()}
+    <div class="two">
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+        <div class="legend">${Object.values(ST).map(([n, k]) => `<span><span class="tag" data-k="${k}">${T(n)}</span></span>`).join("")}<span>${L("横向：用户走过的地方", "Across: the places a visitor goes")}</span></div>
+        <div class="story">${cols}</div>
+        <div class="stores"><span class="lbl" style="width:auto">${L("存的东西", "Stored")}</span><span class="store">${L("作品", "Works")} · 9</span><span class="store plan">${L("留言", "Messages")}</span></div>
+      </div>
+      ${cardDetail()}
+    </div></div>`;
+}
+function renderKickoff() {
+  const K = S.kick;
+  const cols = PLACES.map(([pid, n]) => `<div class="col ${pid === "contact" ? "plan" : ""}"><button class="colh ${K.off[pid] ? "off" : ""}" data-kchip="${pid}"><span>${T(n)}</span><small>${K.off[pid] ? L("点回来", "restore") : "×"}</small></button>
+    ${K.off[pid] ? "" : KICK[pid].map((t) => `<div class="fcard" data-st="${K.started ? "decided" : "idea"}">${T(t)}<span class="meta"><span class="tag" data-k="${K.started ? "alfred" : "gray"}">${K.started ? L("定了", "Decided") : L("想法", "Idea")}</span></span></div>`).join("")}</div>`).join("");
+  return `<div class="page wide">
+    <div class="me">${L("我想做一个放我画作的个人网站", "I want a personal site for my paintings")}</div>
+    <div class="banner">${ic("spark")}<span>${K.started ? L("开始了：这一版成了决策树的根，「不用什么」成了底线。第一个会话从哪张卡开始都行。", "Started: this version is the root of the decision tree, and “Not using” is now the project's lines. Start the first session from any card.") : L("我按最常见的样子先猜了一版。点掉、改掉不对的，不用一条条回答。", "Here's a first guess at the usual shape. Strike or change what's wrong; no need to answer one by one.")}</span></div>
+    ${stripHTML()}
+    <div class="story">${cols}</div>
+    <div class="acts">${K.started ? `<button class="btn ghost" data-go="decisions">${L("看决策树", "Decisions")}</button>` : `<button class="btn" data-start>${L("就这样开始", "Start with this")}</button><span class="small muted">${L("以后随时能回来改", "You can change it any time")}</span>`}</div>
+  </div>`;
+}
+
+/* ── Map ── */
+function modBtn(id) {
+  const m = MODS[id];
+  const h = id === "images" && S.accepted ? "ok" : m.h;
+  const H = HEALTH[h];
+  const cls = h === "plan" ? "plan" : h === "new" ? "fresh" : "";
+  const hl = id === "images" && S.accepted ? L("测试 1 个 · 过了", "1 test · passing") : T(m.hl);
+  return `<button class="mod ${cls}" data-mod="${id}" aria-pressed="${S.mod === id}" data-w="${m.w}" data-n="${m.n}">
+    <b><span class="hd" data-k="${H[2]}"></span>${T(m.name)}</b><small>${T(m.job)}</small><span class="h" data-k="${H[2]}">${hl}</span></button>`;
+}
+function modDetail() {
+  const id = S.mod, m = MODS[id];
+  const h = id === "images" && S.accepted ? "ok" : m.h; const H = HEALTH[h];
+  const usedBy = Object.keys(MODS).filter((x) => MODS[x].uses.includes(id));
+  const cards = Object.keys(CARDS).filter((c) => CARDS[c].mods.includes(id) && (!CARDS[c].added || S.added));
+  const decs = allNodes().filter((d) => NODES[d].mods.includes(id)).slice(-3);
+  const chipList = (ids, attr) => ids.length ? `<div class="chips">${ids.map((x) => `<button class="chip" ${attr}="${x}">${attr === "data-mod" ? modName(x) : T(CARDS[x].t)}</button>`).join("")}</div>` : `<span class="muted">${L("没有", "None")}</span>`;
+  const imp = IMPROVE.find((i) => i.mod === id && !S.dropped[i.id]);
+  return `<div class="card side-detail">
+    <div class="acts"><span class="tag" data-k="${H[2]}">${T(H)}</span><h2 class="grow">${T(m.name)}</h2></div>
+    <div class="kv"><h3>${L("干什么", "What it does")}</h3><span>${T(m.job)}</span>
+      ${m.stale && !S.rewrote ? `<span class="small warnc">${L("可能过时：现在这里也放了关于页的文字", "May be stale: About's text lives here now too")} · <button class="link" data-rewrite>${L("让 Zirma 重写", "Let Zirma rewrite")}</button></span>` : m.h === "plan" ? `<span class="small muted">${L("产品里定了，代码里还没有", "Settled in Product, not in the code yet")}</span>` : `<span class="small muted">${S.rewrote && m.stale ? L("刚重写，等你确认", "Just rewritten; confirm it") : L("你确认过", "You confirmed this")}</span>`}</div>
+    <div class="kv"><h3>${L("提供", "Provides")}</h3><div class="chips">${m.provides.map((p) => `<span class="chip">${T(p)}</span>`).join("")}</div></div>
+    ${m.rows.length ? `<div class="kv"><h3>${L("健康 · 从代码算的", "Health · computed from code")}</h3><div class="hrows">${m.rows.map((r) => `<div><span>${L(r[0], r[1])}</span><span class="hd" data-k="${HEALTH[r[4]][2]}"></span><span>${esc(L(r[2], r[3]))}</span></div>`).join("")}</div></div>` : ""}
+    <div class="kv"><h3>${L("用到", "Uses")}</h3>${chipList(m.uses, "data-mod")}</div>
+    <div class="kv"><h3>${L("谁用它", "Used by")}</h3>${chipList(usedBy, "data-mod")}</div>
+    <div class="kv"><h3>${L("服务的功能", "Features it serves")}</h3>${cards.length ? `<div class="chips">${cards.map((c) => `<button class="chip" data-go="product" data-card="${c}">${T(CARDS[c].t)}</button>`).join("")}</div>` : `<span class="badc">${L("没有功能卡用到它", "No feature card uses it")}</span>`}</div>
+    <div class="kv"><h3>${L("最近的决定", "Recent decisions")}</h3>${decs.length ? decs.map((d) => `<button class="link" data-go="decisions" data-node="${d}">${esc(nodeText(d))}</button>`).join("") : `<span class="muted">${L("没有", "None")}</span>`}</div>
+    ${m.paths.length ? `<details><summary>${L("在哪", "Where it lives")}</summary><div class="paths">${m.paths.map(esc).join("<br>")}</div></details>` : ""}
+    <div class="acts">${m.h === "plan" ? `<button class="btn" data-go="product" data-card="c10">${L("去产品里定下来", "Settle it in Product")}</button>` : `<button class="btn" data-probe="${id}">${L("从这里查", "Look into this")}</button>${imp ? `<button class="btn ghost" data-imp="${imp.id}">${L("改进它", "Improve it")}</button>` : ""}`}</div>
+  </div>`;
+}
+function renderMap() {
+  if (S.fresh) return `<div class="page wide"><div class="empty">${L("还没有代码。第一个会话做完后，地图从代码算出来；Zirma 先提一个分块方案，你点头。", "No code yet. After the first session the map is computed from the code; Zirma proposes how to split it and you agree.")}</div></div>`;
+  const imps = IMPROVE.filter((i) => !S.dropped[i.id]);
+  const grid = Object.keys(MODS).filter((x) => !MODS[x].orphan).map(modBtn).join("");
+  return `<div class="page wide">
+    ${imps.length ? `<div class="kv"><h3>${L(`可以改进 · ${imps.length} 条，按值不值得排`, `Could improve · ${imps.length}, most worth it first`)}</h3></div>
+    <div class="improve">${imps.map((i) => `<div class="imp fadein"><b>${T(i.t)}</b><span>${T(i.why)}</span><span class="meta">${T(i.size)}</span>
+      <div class="acts"><button class="btn sm" data-imp="${i.id}">${L("做这个", "Do this")}</button><button class="btn ghost sm" data-drop="${i.id}">${L("不做", "Skip")}</button><button class="link" data-mod="${i.mod}">${modName(i.mod)}</button></div></div>`).join("")}</div>` : `<div class="banner">${ic("check")}<span>${L("没有要改进的。三个月内不做的不会再提。", "Nothing to improve. Skipped ones won't come back for three months.")}</span></div>`}
+    <div class="two">
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+        <div class="legend"><span>→ ${L("用到", "uses")}</span>${["ok", "warn", "bad"].map((h) => `<span><span class="hd" data-k="${HEALTH[h][2]}"></span>${T(HEALTH[h])}</span>`).join("")}<span>${L("虚线：规划了，还没有", "Dashed: planned, not built")}</span><span>${L("结构每次从代码算", "Structure computed from code each time")}</span></div>
+        <div class="graph" id="graph"><svg class="edges" id="edges"><defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker></defs></svg>
+          <div class="mgrid" id="mgrid">${grid}</div>
+          ${S.dropped.lb ? "" : `<div class="orphans"><span class="lbl">${L("没人用的", "Unused")}</span><button class="orphan" data-mod="lightbox" aria-pressed="${S.mod === "lightbox"}"><span class="hd" data-k="now"></span>${modName("lightbox")}</button></div>`}
+        </div>
+      </div>
+      ${modDetail()}
+    </div></div>`;
+}
+function drawEdges() {
+  const g = document.getElementById("graph"), svg = document.getElementById("edges"), grid = document.getElementById("mgrid");
+  if (!g || !svg || !grid) return;
+  const narrow = grid.getBoundingClientRect().width < 500;
+  grid.querySelectorAll(".mod").forEach((b) => { const [c, r] = (narrow ? b.dataset.n : b.dataset.w).split(","); b.style.gridColumn = c; b.style.gridRow = r; });
+  const base = g.getBoundingClientRect();
+  const box = (id) => { const r = grid.querySelector(`[data-mod="${id}"]`).getBoundingClientRect(); return { x: r.left - base.left + r.width / 2, y: r.top - base.top + r.height / 2, w: r.width / 2 + 5, h: r.height / 2 + 5 }; };
+  const clip = (a, b) => { const dx = b.x - a.x, dy = b.y - a.y; const t = Math.min(a.w / Math.abs(dx || 1e-6), a.h / Math.abs(dy || 1e-6)); return { x: a.x + dx * t, y: a.y + dy * t }; };
+  svg.querySelectorAll("line").forEach((l) => l.remove());
+  for (const [f, m] of Object.entries(MODS)) for (const to of m.uses) {
+    if (m.orphan) continue;
+    const a = box(f), b = box(to), p = clip(a, b), q2 = clip(b, a);
+    const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    l.setAttribute("x1", p.x); l.setAttribute("y1", p.y); l.setAttribute("x2", q2.x); l.setAttribute("y2", q2.y);
+    const plan = MODS[to].h === "plan" || ((to === "images" || f === "images") && !S.accepted);
+    if (plan) l.setAttribute("class", "plan");
+    l.setAttribute("marker-end", "url(#ar)");
+    svg.appendChild(l);
+  }
+}
+
+/* ── Decisions ── */
+function nodeBtn(id, opts = {}) {
+  const n = NODES[id]; const k = KIND[n.kind];
+  const deps = S.sel && !opts.old ? dependents(S.sel) : [];
+  const dim = S.filter !== "all" && !n.mods.includes(S.filter);
+  const sub = [];
+  if (opts.old) sub.push(L("旧分支，留着可比较", "Old branch, kept to compare"));
+  else if (S.rewound[id] != null && !isMain(id)) sub.push(`<span class="pulse"></span> ${L("新分支，正在重做", "New branch, redoing")}`);
+  else {
+    if (n.card) sub.push(esc(T(CARDS[n.card].t)));
+    if (n.mods.length) sub.push(n.mods.map(modName).join("、"));
+    if (n.out) sub.push(L("出了范围", "out of scope"));
+  }
+  const text = opts.old ? opts.text : esc(nodeText(id));
+  return `<button class="node ${opts.old ? "old" : ""} ${deps.includes(id) ? "hit" : ""} ${dim ? "dim" : ""}" ${opts.old ? "" : `data-node="${id}" aria-current="${S.sel === id}"`}>
+    <span class="tag" data-k="${k[2]}">${T(k)}</span><span class="what"><span>${text}</span><small>${sub.join(" · ")}</small></span></button>`;
+}
+function oldLane(id) {
+  if (S.rewound[id] == null) return "";
+  const n = NODES[id], c = id === "a2" ? (S.choice === "none" ? 2 : 1) : CHOSEN[id];
+  const rows = [nodeBtn(id, { old: true, text: esc(L(n.opts[c][0], n.opts[c][1])) })];
+  if (id === "a2" && c === 1) rows.push(nodeBtn("a3", { old: true, text: esc(T(NODES.a3.t)) }));
+  return `<div class="branch"><div class="lane old a">${rows.join("")}</div></div>`;
+}
+function renderDecisions() {
+  if (S.fresh) return `<div class="page wide">${S.kick.started ? `<div class="tl"><div class="lane">${nodeBtn("d0")}</div></div><p class="muted small">${L("开题这一版就是树根。之后每个会话的决定都挂在这棵树上。", "The kickoff version is the root. Every session's decisions hang on this tree.")}</p>` : `<div class="empty">${L("在产品里点「就这样开始」，那一版就是树根。", "Press “Start with this” in Product; that version becomes the root.")}</div>`}</div>`;
+  const main = [...MAIN, ...(S.accepted ? BR_A.filter(nodeVisible) : [])];
+  const aBranch = S.accepted ? "" : `<div class="branch"><div class="bh"><span class="dot" data-k="warm"></span><b>A · ${L("作品区加三张画", "Three works in the gallery")}</b><span>${L("等你接受", "waiting for you")}</span><button class="link" data-go="session">${L("看会话", "Open")}</button></div>
+    <div class="lane a">${BR_A.filter(nodeVisible).map((id) => nodeBtn(id) + oldLane(id)).join("")}</div></div>`;
+  const realign = S.accepted && !S.realigned;
+  const bBranch = `<div class="branch"><div class="bh" style="--lane:var(--alf)"><span class="dot" data-k="${realign ? "warm" : "alfred"}"></span><b>B · ${L("首页换成深色", "Dark home page")}</b><span>${realign ? L("需要重新对齐", "needs re-aligning") : S.realigned ? L("已重新对齐", "re-aligned") : L("在做 · 和 A 都碰「页面」", "running · also touches Pages")}</span></div>
+    ${realign ? `<div class="banner warm fadein" style="margin:4px 0 4px 30px">${ic("warn")}<span class="grow">${L("A 接受后重放了 B 的决定：「作品格子的边框」不再成立，A 多了 3 张新画。其余不受影响。", "B's decisions replayed after A: “Gallery borders” no longer holds; A added 3 works. The rest is unaffected.")}<br><button class="btn sm" style="margin-top:6px" data-realign>${L("重新对齐（重做 1 步，约 30 秒）", "Re-align (redo 1 step, about 30s)")}</button></span></div>` : ""}
+    <div class="lane b">${BR_B.map((id) => nodeBtn(id)).join("")}</div></div>`;
+  const mods = ["pages", "content", "images", "style", "deploy"];
+  return `<div class="page wide">
+    <div class="filters"><button class="chip" data-filter="all" aria-pressed="${S.filter === "all"}">${L("全部", "All")}</button>${mods.map((m) => `<button class="chip" data-filter="${m}" aria-pressed="${S.filter === m}">${modName(m)}</button>`).join("")}</div>
+    <div class="two">
+      <div class="card"><div class="tl"><div class="lane m">${main.map((id) => nodeBtn(id)).join("")}</div>${aBranch}${bBranch}</div></div>
+      ${decDetail()}
+    </div></div>`;
+}
+function decDetail() {
+  const id = S.sel, n = NODES[id]; if (!n) return "";
+  const k = KIND[n.kind], chosen = nodeChosen(id);
+  const deps = dependents(id);
+  const touched = [...new Set(deps.flatMap((d) => NODES[d].mods).concat(n.mods))];
+  let back = "";
+  if (n.opts.length) {
+    if (isMain(id)) back = `<div class="rewind"><b>${L("这条已经接受了，改它会开一个新任务", "This is accepted; changing it opens a new task")}</b><span>${deps.length ? L(`开始前列出牵动的 ${deps.length} 个决定和 ${touched.length} 块：${touched.map(modName).join("、")}。`, `Before it starts it lists the ${deps.length} decisions and ${touched.length} modules affected: ${touched.map(modName).join(", ")}.`) : L("没有决定依赖它。", "No decision depends on it.")}</span><div class="acts"><button class="btn sm" data-newtask>${L("改这个决定（新任务）", "Change it (new task)")}</button></div></div>`;
+    else if (S.confirm === id) back = `<div class="rewind fadein"><b>${L("回到这里，换成：", "Go back here and switch to:")}</b>
+      ${n.opts.map((o, i) => i === chosen || o[4] === "blocked" ? "" : `<button class="opt" data-rewind="${i}"><span class="k">${i + 1}</span><span class="what">${esc(L(o[0], o[1]))}<small>${esc(L(o[2], o[3]))}</small></span></button>`).join("")}
+      <span class="small muted">${L(`要重做 ${deps.length + 2} 步，约 1 分钟。现在这条留着，接受前都能比较。`, `Redoes ${deps.length + 2} steps, about a minute. The current branch stays; compare until you accept.`)}</span></div>`;
+    else back = `<button class="btn ghost" data-confirm>${ic("back")}${L("回到这里，换一条路", "Go back here, take another way")}</button>`;
+  }
+  return `<div class="card side-detail">
+    <div class="acts"><span class="tag" data-k="${k[2]}">${T(k)}</span>${isMain(id) ? `<span class="tag" data-k="gray">${L("主线", "Main line")}</span>` : ""}</div>
+    <h2>${esc(T(n.q))}</h2>
+    ${n.opts.length ? `<div class="optl">${n.opts.map((o, i) => `<div class="${i === chosen ? "on" : ""}">${i === chosen ? `<span class="ok">${ic("check")}</span>` : o[4] === "blocked" ? `<span class="badc">${ic("x")}</span>` : `<span style="width:14px;flex:none"></span>`}<span>${esc(L(o[0], o[1]))}<small>${esc(L(o[2], o[3]))}</small></span></div>`).join("")}</div>` : `<p style="font-size:13px;color:var(--copy)">${esc(nodeText(id))}</p>`}
+    <div class="impact">${deps.length ? L(`依赖它的有 ${deps.length} 个决定（左边亮着的），碰到 ${touched.map(modName).join("、")}。`, `${deps.length} decisions depend on it (lit on the left), touching ${touched.map(modName).join(", ")}.`) : L("没有决定依赖它。", "No decision depends on it.")}</div>
+    <div class="kv"><h3>${L("为哪张卡 · 碰了哪些块", "For which card · which modules")}</h3><div class="chips">${n.card ? `<button class="chip" data-go="product" data-card="${n.card}">${T(CARDS[n.card].t)}</button>` : id === "d0" ? `<button class="chip" data-go="product">${L("产品顶上一条", "Product header")}</button>` : ""}${n.mods.map((m) => `<button class="chip" data-go="map" data-mod="${m}">${modName(m)}</button>`).join("")}</div></div>
+    <div class="kv"><h3>${L("快照", "Snapshot")}</h3><span class="mono">${n.snap} · ${L("代码能回到这一刻", "the code can return to this moment")}</span></div>
+    ${back}
+  </div>`;
+}
+
+/* ── Top, dock, render ── */
+function renderTop() {
+  const imps = IMPROVE.filter((i) => !S.dropped[i.id]).length;
+  const m = {
+    session: [L("作品区加三张画", "Three works in the gallery"), S.accepted ? L("已合并", "Merged") : L("等你接受", "Waiting for you"), S.fresh ? "" : scopeChip()],
+    product: [L("产品", "Product"), S.fresh ? L("先猜一版，你改不对的", "A first guess; you fix what's wrong") : L("4 个地方 · 10 张卡 · 2 张有没想清的", "4 places · 10 cards · 2 with open gaps"), ""],
+    map: [L("地图", "Map"), S.fresh ? "" : L(`6 块 · 1 块要留意 · ${imps} 条可以改进`, `6 modules · 1 to watch · ${imps} improvements`), ""],
+    decisions: [L("决策", "Decisions"), S.fresh ? "" : L(`整个项目一棵树 · ${S.accepted ? 1 : 2} 个会话没接受`, `One tree for the project · ${S.accepted ? 1 : 2} open sessions`), ""],
+  }[S.scene];
+  document.getElementById("top").innerHTML = `<h1>${m[0]}</h1><span class="sum">${m[1]}</span><span class="end">${m[2]}</span>`;
+  let dock = "";
+  if (S.scene === "session" && !S.fresh) dock = `<div class="composer"><span class="ph">${L("接着说，或者点回执里的一条「回到这里」…", "Say more, or press “Go back here” on a line in the receipt…")}</span></div>`;
+  if (S.scene === "product") dock = `${S.reply ? `<div class="reply fadein">${esc(S.reply)}</div>` : ""}<div class="composer"><span class="ph">${L("和 Zirma 一起想：说说要加什么、改什么…", "Think it through with Zirma: say what to add or change…")}</span>${!S.added && !S.fresh ? `<button class="chip dash" data-suggest>${L("试试：作品区加个按年份筛选", "Try: filter the gallery by year")}</button>` : ""}</div>`;
+  document.getElementById("dock").innerHTML = dock;
+}
+function render() {
+  document.documentElement.lang = S.lang === "en" ? "en" : "zh-CN";
+  document.documentElement.dataset.scheme = S.scheme;
+  document.title = L("Zirma 在控制", "Zirma in control");
+  renderSide(); renderTop();
+  const v = { session: renderSession, product: renderProduct, map: renderMap, decisions: renderDecisions }[S.scene] || renderSession;
+  document.getElementById("view").innerHTML = v();
+  if (S.scene === "map" && !S.fresh) requestAnimationFrame(drawEdges);
+  S.justAdded = false;
+}
+
+/* ── Replay the session ── */
+let timer;
+function replay() { clearTimeout(timer); Object.assign(S, { scene: "session", fresh: false, play: 0, waiting: false, accepted: false, open: {}, answered: false, realigned: false, rewound: {} }); render(); tick(); }
+function tick() {
+  timer = setTimeout(() => {
+    if (S.play === null) return;
+    if (STEPS[S.play].out && !S.answered) { S.waiting = true; render(); return; }
+    S.play++; S.answered = false;
+    if (S.play >= STEPS.length) S.play = null;
+    render(); if (S.play !== null) tick();
+  }, 1000);
+}
+
+/* ── Events ── */
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const d = b.dataset;
+  if (d.lang) { S.lang = d.lang; return render(); }
+  if (d.scheme) { S.scheme = d.scheme; return render(); }
+  if ("replay" in d) return replay();
+  if ("fresh" in d) { S.fresh = !S.fresh; S.scene = "product"; return render(); }
+  if (d.node) { S.sel = d.node; S.confirm = null; }
+  if (d.card) S.card = d.card;
+  if (d.mod) S.mod = d.mod;
+  if (d.go) return go(d.go);
+  if (d.node || d.card || d.mod) return render();
+  if ("newsession" in d) return toast(L("新会话从哪里开始都行：一张卡、一个模块，或者直接说", "Start a session anywhere: a card, a module, or just say it"));
+  // session
+  if (d.step) { S.open[d.step] = !S.open[d.step]; return render(); }
+  if (d.choose) { S.choice = d.choose; S.waiting = false; S.answered = true; render(); return tick(); }
+  if ("accept" in d) { S.accepted = true; render(); return toast(L("已合并：卡做好了，B 要重新对齐", "Merged: the card is done; B needs re-aligning")); }
+  if (d.back) { S.sel = d.back; S.confirm = d.back; return go("decisions"); }
+  // product
+  if (d.kchip) { S.kick.off[d.kchip] = !S.kick.off[d.kchip]; return render(); }
+  if (d.effort) { S.kick.effort = d.effort; return render(); }
+  if ("start" in d) { S.kick.started = true; render(); return toast(L("开始了：这一版是树根，底线也定了", "Started: this version is the root, and the lines are set")); }
+  if ("suggest" in d) { S.added = true; S.justAdded = true; S.card = "c5"; S.reply = L("Zirma：加在首页下面了。2 处没想清，先填了我的猜测，在卡上点就行。", "Zirma: added under Home. Two things aren't settled; I filled in my guesses, just pick on the card."); return render(); }
+  if (d.gap) { S.gap[d.gap] = +d.gi; return render(); }
+  if (d.settle) { S.settled[d.settle] = true; S.reply = ""; render(); return toast(L("定了：卡上出现「做这个」", "Settled: the card now has “Do this”")); }
+  if (d.do) return toast(L(`会开一个会话，范围：${CARDS[d.do].mods.filter((m) => MODS[m].h !== "plan").map(modName).join("、") || modName("pages")}（原型里不真的开）`, `Would open a session scoped to ${CARDS[d.do].mods.filter((m) => MODS[m].h !== "plan").map(modName).join(", ") || modName("pages")} (not in the prototype)`));
+  if (d.change) return toast(L("改一张做好的卡会开一个任务，先列出会碰到的模块", "Changing a done card opens a task that lists the modules first"));
+  // map
+  if (d.imp) { const i = IMPROVE.find((x) => x.id === d.imp); return toast(L(`会开一个会话「${T(i.t)}」，范围：${modName(i.mod)}`, `Would open “${T(i.t)}”, scoped to ${modName(i.mod)}`)); }
+  if (d.drop) { S.dropped[d.drop] = true; render(); return toast(L("不做。三个月内不再提。", "Skipped. Won't come back for three months.")); }
+  if (d.probe) return toast(L(`会开一个范围是「${modName(d.probe)}」的会话，先带上它的说明、健康和最近的决定`, `Would open a session scoped to “${modName(d.probe)}”, starting with its description, health and recent decisions`));
+  if ("rewrite" in d) { S.rewrote = true; render(); return toast(L("重写了一句话说明，等你确认", "Rewrote the one-line description; confirm it")); }
+  // decisions
+  if (d.filter) { S.filter = d.filter; return render(); }
+  if ("confirm" in d) { S.confirm = S.sel; return render(); }
+  if (d.rewind) { S.rewound[S.sel] = +d.rewind; S.confirm = null; render(); return toast(L("开了一条新分支，正在重做；旧的留着", "Opened a new branch and redoing; the old one stays")); }
+  if ("newtask" in d) return toast(L("原型里不真的开：会开一个改这个决定的任务，先列出牵动的决定和模块", "Not in the prototype: it would open a task that lists what's affected first"));
+  if ("realign" in d) { S.realigned = true; render(); return toast(L("重新对齐了 1 步", "Re-aligned 1 step")); }
+});
+let rz; addEventListener("resize", () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(drawEdges); });
+render();
+</script>
+</body>
+</html>
