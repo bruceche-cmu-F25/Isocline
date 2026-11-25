@@ -170,3 +170,28 @@ test("only devices with development access receive development conversation noti
     assert.equal(await outlet.send(update), false);
   } finally { world.close(); }
 });
+
+test("a device handing over a new subscription replaces the old one, and the next push goes to the new one", async () => {
+  const sent: string[] = [];
+  const logged: string[] = [];
+  const dataDir = mkdtempSync(join(tmpdir(), "zirma-push-"));
+  const world = openWorld(":memory:", CORE_MIGRATIONS);
+  const push = new PushService({ dataDir, world, secrets: memorySecrets(), send: async (subscription) => { sent.push(subscription.endpoint); }, log: (line) => logged.push(line) });
+  const phone = pairDevice(world, { token: "p".repeat(43), name: "iPhone", kind: "phone" });
+  try {
+    push.subscribe(phone.id, APPLE);
+    const saved = statSync(join(dataDir, "push.json")).mtimeMs;
+    // The same one again, as every start hands it over: nothing changes, nothing is written.
+    await wait(15);
+    push.subscribe(phone.id, APPLE);
+    assert.equal(statSync(join(dataDir, "push.json")).mtimeMs, saved);
+    assert.deepEqual(logged, []);
+    // iOS replaced it without telling the page; the push service would still accept sends to the old one.
+    const replaced = { ...APPLE, endpoint: "https://web.push.apple.com/NEWONE" };
+    push.subscribe(phone.id, replaced);
+    assert.match(logged.join("\n"), /new subscription/);
+    assert.match(readFileSync(join(dataDir, "push.json"), "utf8"), /NEWONE/);
+    await push.sendTo({ title: "t", body: "b", url: "/", tag: "test" });
+    assert.deepEqual(sent, [replaced.endpoint]);
+  } finally { world.close(); }
+});
