@@ -286,6 +286,13 @@ export function dockPages(pages: PageDef[]) {
   return { fixed, options: pages.filter((page) => !fixed.includes(page)) };
 }
 
+/** The dock's pages from left to right: the fixed ones, then this device's shortcut. */
+export function dockOrder(pages: PageDef[], shortcut: string): PageDef[] {
+  const { fixed, options } = dockPages(pages);
+  const extra = options.find((item) => item.key === shortcut);
+  return extra ? [...fixed, extra] : fixed;
+}
+
 export const moduleOf = (page: PageDef) => page.key.split(".")[0];
 
 /** The page as Zirma hears about it with a question: which page, its title and its facts. Context, not a request. */

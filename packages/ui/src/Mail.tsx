@@ -7,7 +7,7 @@
  * Nothing goes out without a press on 发送: Zirma's as it stands is the proposal accepted, anything else is the
  * user's own `mail.send`.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Proposal, Run, StateResponse } from "@zirma/protocol";
 import type { MailCategory, MailDetail, MailMessage, MailSent, MailSnapshot, SendInput } from "@zirma/module-mail/types";
 import { api, newRequestId } from "./api.ts";
@@ -18,6 +18,7 @@ import { SourceBar } from "./SourceBar.tsx";
 import { Icon } from "./shell/icons.tsx";
 import { Select } from "./shell/Select.tsx";
 import { PHONE, useMedia } from "./shell/layout.ts";
+import { useRowSwipe } from "./swipe.ts";
 import type { PageLine, Picked } from "./shell/about.ts";
 import { MicButton } from "./voice/MicButton.tsx";
 import { appendDictation } from "./voice/wav.ts";
@@ -87,7 +88,19 @@ interface ArchiveProps {
   message: MailMessage;
   canModify: boolean;
   pending: boolean;
-  onArchive(message: MailMessage): void;
+  onArchive(message: MailMessage): unknown;
+}
+
+/** A message in the list. On a phone a finger swipes it leftwards to archive it (swipe.ts); where an archived
+ * message stays in view (Favorites, Important) it slides back once archived, without its archive button. */
+function MailEntry({ swipe, leaves, onArchive, children }: { swipe: boolean; leaves: boolean; onArchive(): Promise<boolean>; children: ReactNode }) {
+  const row = useRowSwipe(swipe, async () => { if (!(await onArchive()) || !leaves) row.reset(); });
+  return (
+    <li className="mail-list-entry" data-swipe={swipe || undefined} data-armed={row.armed || undefined} data-gone={row.gone || undefined} {...(swipe ? row.handlers : {})}>
+      {swipe && <span className="mail-swipe-under" data-k="green" aria-hidden="true"><Icon name="archive" />{t("mail.archive")}</span>}
+      <div className="mail-list-face" data-dragging={row.dragging || undefined} style={row.offset ? { transform: `translateX(${row.offset}px)` } : undefined}>{children}</div>
+    </li>
+  );
 }
 
 function ArchiveButton({ message, canModify, pending, onArchive, compact = false }: ArchiveProps & { compact?: boolean }) {
@@ -509,9 +522,10 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
     pending: savingFavorites.includes(messageKey(message)), onChange: changeFavorite,
   });
 
-  const archive = async (message: MailMessage) => {
+  /** Whether it went: a swiped row that did not comes back. */
+  const archive = async (message: MailMessage): Promise<boolean> => {
     const key = messageKey(message);
-    if (archiving.includes(key)) return;
+    if (archiving.includes(key)) return false;
     setArchiving((keys) => [...keys, key]);
     setActionError(null);
     setSaid(null);
@@ -519,8 +533,10 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
       const { result } = await api.op("mail.archive", { account: message.account, id: message.id });
       const { queued } = result as { queued: string | null };
       setSaid(t(queued ? "mail.archive.queued" : "mail.archive.already", { subject: message.subject }));
+      return true;
     } catch (reason) {
       setActionError(t("mail.archive.failed", { subject: message.subject, error: (reason as Error).message }));
+      return false;
     } finally {
       refresh();
       setArchiving((keys) => keys.filter((saving) => saving !== key));
@@ -738,8 +754,11 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
                   {shown.length === 0 && <li className="quiet empty-list">{t("mail.empty")}</li>}
                   {shown.map((message) => {
                     const key = messageKey(message);
+                    // On a phone a row that can be swiped away does not need its own archive button as well.
+                    const swipe = phone && message.inInbox !== false && canModify(message);
                     return (
-                      <li key={key} className="mail-list-entry">
+                      <MailEntry key={key} swipe={swipe} leaves={filter === "inbox" || filter === "unread"}
+                        onArchive={() => archive(message)}>
                         <button type="button" className="mail-row" data-unread={message.unread || undefined} aria-current={picked === key || undefined} onClick={() => setPicked(key)}>
                           <span className="mail-dot" aria-hidden="true" />
                           <span className="mail-who">{message.from}</span>
@@ -751,8 +770,8 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
                           <span className="mail-snippet">{message.snippet}</span>
                         </button>
                         <FavoriteButton {...favoriteProps(message)} compact />
-                        <ArchiveButton {...archiveProps(message)} compact />
-                      </li>
+                        {!swipe && <ArchiveButton {...archiveProps(message)} compact />}
+                      </MailEntry>
                     );
                   })}
                 </>

@@ -6,7 +6,7 @@ import { Figure } from "./Figure.tsx";
 import { t, getAssistant } from "../i18n/index.ts";
 import { useDockShortcut } from "../prefs.ts";
 import { Icon } from "./icons.tsx";
-import { dockPages, moduleOf, type PageDef } from "./pages.tsx";
+import { dockOrder, moduleOf, type PageDef } from "./pages.tsx";
 
 export interface DockProps {
   state: StateResponse;
@@ -36,8 +36,7 @@ export function Dock({ state, pages, page, figure, onPage, onZirma, onMenu, ask,
   const hold = useRef<{ timer: number; talking: boolean } | null>(null);
   const listening = talk?.state === "recording" || talk?.state === "starting";
   const shortcut = useDockShortcut();
-  const { fixed, options } = dockPages(pages);
-  const extra = options.find((item) => item.key === shortcut);
+  const tabs = dockOrder(pages, shortcut);
   const waiting = state.conversations.reduce((sum, conversation) => sum + conversation.attention, 0);
   const button = (item: PageDef) => {
     const count = item.badge?.(state.modules[moduleOf(item)], state);
@@ -54,8 +53,7 @@ export function Dock({ state, pages, page, figure, onPage, onZirma, onMenu, ask,
           <button type="button" onClick={onMenu} aria-label={t("nav.menu")} title={t("nav.menu")}>
             <Icon name="menu" />{waiting ? <span className="count">{waiting}</span> : null}
           </button>
-          {fixed.map(button)}
-          {extra && button(extra)}
+          {tabs.map(button)}
         </div>
       )}
       {listening && <span className="dock-listening" role="status" style={{ "--level": talk!.dictation.level.toFixed(2) } as CSSProperties}>{t("voice.quick.listening")}</span>}
