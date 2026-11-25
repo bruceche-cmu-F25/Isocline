@@ -17,6 +17,7 @@ v0.3，2026-11-24。写给每一个改这个仓库的人和编码代理，不管
 - **一件事一条分支。** 做到一半发现是两件事，就拆成两条分支、两个 PR。
 - **一条分支一个工作目录。** 同一时间可能有好几个人或代理在改这个仓库，所以每条分支用自己的 `git worktree`，不在别人正在用的文件夹里切分支、改文件。
 - **主文件夹 `~/Alfred` 一直停在 `zirma`。** 本机开发版主节点（`zirma.home-node.dev`）跑的就是这个文件夹里的源码，它在哪条分支，开发版就跑哪条。在这个文件夹里只做 `git pull`，不做功能。
+- **产品叫 Zirma。** 主文件夹还叫 `~/Alfred` 只是历史原因（开发版主节点、各个工具的会话都指着这个路径，先不改）。新的工作目录、脚本、文档里一律用 Zirma：工作目录是 `~/Zirma-<主题>`，不是 `~/Alfred-<主题>`。
 - 主题用英文短词，连字符分隔，比如 `feat/notes-library`、`fix/google-retry`、`docs/workflow`。
 - 分支活得越短越好。超过一周还没合的，要么拆小先合一部分，要么先把最新的 `zirma` 合进来。
 
@@ -26,15 +27,15 @@ v0.3，2026-11-24。写给每一个改这个仓库的人和编码代理，不管
 1. **开分支和工作目录。**
    ```bash
    cd ~/Alfred && git fetch origin
-   git worktree add ../Alfred-<主题> -b feat/<主题> origin/zirma
-   cd ../Alfred-<主题> && npm install
+   git worktree add ../Zirma-<主题> -b feat/<主题> origin/zirma
+   cd ../Zirma-<主题> && npm install
    ```
 2. **小步提交。** 一个提交只做一件说得清的事，提交之后测试仍然能过。
 3. **本地验证。** `npm test` 和 `npm run typecheck` 全过。界面改动按 `AGENTS.md` 去浏览器里看：中英文、窄屏、文字不重叠。没验证到的，写进 PR。
 4. **推之前扫一遍。** `origin` 是公开的。看一遍 `git log -p origin/zirma..HEAD`，里面不能有名字、主机、地址、密钥，也不能有别家产品的截图。然后 `git push -u origin feat/<主题>`。
 5. **开 PR，目标分支选 `zirma`。** 标题就是合并后的那条提交信息（§3）。正文写四件事：做了什么、为什么、怎么验证的、还没验证什么。有设计文档就链上。
 6. **审一遍。** 从头到尾读一遍 PR 的 diff：有没有 bug、有没有漏测、有没有不该进仓库的东西。能找别的人或代理来审更好。发现真问题就在这条分支上改，再推。
-7. **CI 绿了再合。** 用 **squash merge**：`zirma` 上一个 PR 只留一条提交，以后回退也只要退一条。合完删掉远端分支，再删掉本地工作目录：`git worktree remove ../Alfred-<主题>`。
+7. **CI 绿了再合。** 用 **squash merge**：`zirma` 上一个 PR 只留一条提交，以后回退也只要退一条。合完删掉远端分支，再删掉本地工作目录：`git worktree remove ../Zirma-<主题>`。
 8. **主文件夹跟上。** `cd ~/Alfred && git pull`。需要的话重启开发版主节点。
 
 ## 3. 提交信息

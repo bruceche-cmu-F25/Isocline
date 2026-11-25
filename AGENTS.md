@@ -25,6 +25,7 @@ Rules for anyone changing this repository, person or coding agent. Read them bef
 ## Commit and push
 - Branches, commits, versions and releases follow `docs/WORKFLOW.md`: one branch per task (`feat/`, `fix/`, `docs/`, `chore/`) cut from `zirma` (the trunk and GitHub's default branch), in its own git worktree, merged back by a squash-merged pull request once CI passes; production installs only from a version tag. `main` and `alfred-harness` are history; leave them alone.
 - `~/Alfred` itself stays on `zirma` (the development node runs its source); never build a feature in it. Agents commit and push only when asked.
+- The product is Zirma. `~/Alfred` keeps its old name only because the development node and tools point at it; name worktrees `../Zirma-<topic>` (not `Alfred-…`), and write Zirma in new code, scripts and docs.
 - No AI co-author or "generated with" lines in commits.
 - `origin` is public. Before a push, scan the unpushed commits for private details (names, hosts, addresses, keys) and for reference screenshots of other products.
 - Borrowed code, designs or assets: a header comment with source and licence, plus a row in `THIRD-PARTY-NOTICES.md`.
