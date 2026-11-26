@@ -36,7 +36,7 @@ v0.4，2026-11-25（v0.3 是 2026-11-24）。写给每一个改这个仓库的�
 4. **推之前扫一遍。** `origin` 是公开的。看一遍 `git log -p origin/zirma..HEAD`，里面不能有名字、主机、地址、密钥，也不能有别家产品的截图。然后 `git push -u origin feat/<主题>`。
 5. **开 PR，目标分支选 `zirma`。** 标题就是合并后的那条提交信息（§3）。正文写四件事：做了什么、为什么、怎么验证的、还没验证什么。有设计文档就链上。
 6. **按大小审。** 小修（一个 bug、几行、不碰数据库结构）测试和 CI 过了就合，只扫一眼有没有不该进仓库的东西。大功能、改数据库结构或迁移数据的改动，才从头到尾读一遍 diff：有没有 bug、有没有漏测，能找别的人或代理来审更好。发现真问题就在这条分支上改，再推。
-7. **CI 绿了再合。** 只改 `docs/`、`prototype/` 或根目录 Markdown 文件的 PR，CI 会跳过测试（§6），开完就能合。用 **squash merge**：`zirma` 上一个 PR 只留一条提交，以后回退也只要退一条。合完删掉远端分支，再删掉本地工作目录：`git worktree remove ../Zirma-<主题>`。
+7. **CI 绿了再合，交给 GitHub 去合。** 仓库开了自动合并（2026-11-26）：开完 PR 就 `gh pr merge <号> --auto --squash`（网页上是「Enable auto-merge」），CI 一绿它自己合，不用等人点。要从头到尾审的 PR（第 6 步）审完再开。 只改 `docs/`、`prototype/` 或根目录 Markdown 文件的 PR，CI 会跳过测试（§6），开完就能合。用 **squash merge**：`zirma` 上一个 PR 只留一条提交，以后回退也只要退一条。合完删掉远端分支，再删掉本地工作目录：`git worktree remove ../Zirma-<主题>`。
 8. **开发版自己跟上。** 在主文件夹里装一次：`cd ~/Alfred && npm run dev:follow -- --install`。之后每两分钟看一次 `origin/zirma`，有新提交就：
    - 快进 `~/Alfred`；
    - 包文件变了就 `npm install`；
