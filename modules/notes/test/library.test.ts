@@ -323,3 +323,54 @@ test("attachments go where Obsidian would put them, are named as it names them, 
   writeFileSync(join(root, "手冲/img/a.png"), png);
   assert.equal(library.findFile("img/a.png", "手冲/V60"), join(root, "手冲/img/a.png"));
 });
+
+test("a page made and left as it was made is not kept; anything done to it keeps it", () => {
+  const { op, root, world } = setup();
+  const untouched = op("note.create", { title: "无标题" }).id as string;
+  assert.deepEqual(op("note.discard", { id: untouched }), { ok: true });
+  assert.ok(!existsSync(join(root, "无标题.md")), "gone, not in the trash");
+  assert.equal(listHistory(world, untouched).length, 0);
+  // Written in: kept.
+  const written = op("note.create", { title: "写了字" }).id as string;
+  const { library, id: libraryId } = createNotesModule({ defaultRoot: root }).library(world);
+  savePage(world, library, libraryId, { library: libraryId, id: written, base: library.read(written)!.fp, text: `${library.read(written)!.text}正文\n` });
+  assert.deepEqual(op("note.discard", { id: written }), { ok: false, reason: "changed" });
+  // A page under it: kept.
+  const parent = op("note.create", { title: "上级" }).id as string;
+  op("note.create", { parent, title: "下级" });
+  assert.deepEqual(op("note.discard", { id: parent }), { ok: false, reason: "changed" });
+  // Renamed: kept.
+  const named = op("note.create", { title: "无标题" }).id as string;
+  const renamed = op("note.move", { id: named, title: "起了名" }).id as string;
+  assert.deepEqual(op("note.discard", { id: renamed }), { ok: false, reason: "changed" });
+  // Not one of the library's own pages to throw away: a page that was there before.
+  writeFileSync(join(root, "原来就有.md"), "x\n");
+  indexLibrary(world, library);
+  assert.deepEqual(op("note.discard", { id: "原来就有" }), { ok: false, reason: "changed" });
+  assert.ok(existsSync(join(root, "原来就有.md")));
+});
+
+test("two pages of one name: a link takes the one in its own folder; elsewhere it is not guessed", () => {
+  const { write, index, world, module } = setup();
+  write("项目/会议", "项目的\n");
+  write("旅行/会议", "旅行的\n");
+  write("项目/总览", "见 [[会议]]\n");
+  write("首页", "见 [[会议]]\n");
+  index();
+  const detail = (id: string) => runQuery([module], world, "note.page", { id }) as PageDetail;
+  assert.deepEqual(detail("项目/会议").mentions.map((page) => page.id), ["项目/总览"]);
+  assert.deepEqual(detail("旅行/会议").mentions.map((page) => page.id), []);
+});
+
+test("a change read from the folder is told to devices (an event); one Zirma made itself is not told twice", () => {
+  const { write, index, world, library } = setup();
+  const events = () => (world.db.prepare("SELECT count(*) AS n FROM core_events WHERE kind = 'note.indexed'").get()!.n as number);
+  write("页", "一\n");
+  assert.ok(indexLibrary(world, library, true) > 0);
+  assert.equal(events(), 1);
+  assert.equal(indexLibrary(world, library, true), 0, "nothing new: nothing told");
+  assert.equal(events(), 1);
+  write("页", "二\n");
+  index();
+  assert.equal(events(), 1, "a pass that is not the folder watcher's tells nothing");
+});

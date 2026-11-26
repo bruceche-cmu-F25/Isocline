@@ -14,7 +14,8 @@ import { EditorState, Plugin, TextSelection, type Command } from "prosemirror-st
 import { EditorView, type NodeView } from "prosemirror-view";
 import { assignSources, compose, parsePage, writeBlocks, type ParsedPage } from "@zirma/module-notes/markdown";
 import type { PageDetail } from "@zirma/module-notes/types";
-import { blocksToDoc, docToBlocks, schema } from "./schema.ts";
+import { blocksToDoc, docToBlocks, flattenLists, schema } from "./schema.ts";
+import { Fragment, Slice } from "prosemirror-model";
 import { AtomView, fileUrl, isFileName, linkName, putFiles, showTask, tasksKey, tasksPlugin, WikiView, type PageContext } from "./embeds.ts";
 import { t } from "../i18n/index.ts";
 
@@ -205,7 +206,7 @@ class ItemView implements NodeView {
   }
 }
 
-export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, tasks, focus, onError }: {
+export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, tasks, focus, onError, onEdit }: {
   detail: PageDetail;
   readOnly: boolean;
   /** A link to a page was clicked. */
@@ -220,6 +221,8 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
   focus?: string | null;
   /** Something the user did could not be done (a file not put in). */
   onError(message: string): void;
+  /** The words changed here (typed, pasted, a to-do ticked). */
+  onEdit?(): void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -233,8 +236,8 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
   report.current = onState;
   const linkTo = useRef(onLink);
   linkTo.current = onLink;
-  const latest = useRef({ exists, tasks, onError });
-  latest.current = { exists, tasks, onError };
+  const latest = useRef({ exists, tasks, onError, onEdit });
+  latest.current = { exists, tasks, onError, onEdit };
   const context = (): PageContext => ({ page: detail.id, library: detail.library, exists: (target) => latest.current.exists(target) });
 
   const flush = async (): Promise<void> => {
@@ -345,6 +348,14 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
         view.dispatch(view.state.tr.replaceSelectionWith(schema.nodes.atom.create({ raw: text }), false));
         return true;
       },
+      // Lists from a web page stay lists (one block per item, with its depth).
+      transformPastedHTML: (html) => flattenLists(html),
+      // Plain text: one block per line, as words only; the formatting at the cursor is not put on it.
+      clipboardTextParser(text) {
+        const lines = text.replace(/\r\n?/g, "\n").split("\n");
+        const blocks = lines.filter((line) => line.trim()).map((line) => schema.nodes.paragraph.create(null, schema.text(line)));
+        return new Slice(Fragment.from(blocks.length ? blocks : [schema.nodes.paragraph.create()]), 1, 1);
+      },
       handleDrop(view, event) {
         if (!editable) return false;
         const files = [...((event as DragEvent).dataTransfer?.files ?? [])];
@@ -357,6 +368,7 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
       dispatchTransaction(transaction) {
         editor.updateState(editor.state.apply(transaction));
         if (transaction.docChanged && editable) {
+          latest.current.onEdit?.();
           window.clearTimeout(timer.current);
           timer.current = window.setTimeout(() => void flush(), 700);
         }

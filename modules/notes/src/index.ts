@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { defineModule, defineOp, defineQuery, defineTool, Type, userLocale, type World, type ZirmaModule } from "@zirma/module-kit";
 import {
-  applyEdit, createPage, flipHistory, getPage, indexLibrary, libraryRow, listHistory, listPages, MIGRATIONS, movePage, pageDetail, pruneHistory, searchPages,
+  applyEdit, createPage, discardPage, flipHistory, getPage, indexLibrary, libraryRow, listHistory, listPages, MIGRATIONS, movePage, pageDetail, pruneHistory, searchPages,
   setIcon, setLibrary, trashPage,
 } from "./domain.ts";
 import { Library, LibraryError } from "./library.ts";
@@ -91,6 +91,14 @@ export function createNotesModule(options: NotesOptions): ZirmaModule & { librar
         input: Type.Object({ id: PageId }),
         run: (world, input) => {
           try { return trashPage(world, ready(world).library, input.id); } catch (error) { return refused(error); }
+        },
+      }),
+      defineOp({
+        // A page made here and left as it was made is not kept (discardPage).
+        name: "note.discard",
+        input: Type.Object({ id: PageId }),
+        run: (world, input) => {
+          try { return discardPage(world, ready(world).library, input.id); } catch (error) { return refused(error); }
         },
       }),
       defineOp({
@@ -255,7 +263,7 @@ export function createNotesModule(options: NotesOptions): ZirmaModule & { librar
       run: async (world) => {
         const { library } = ready(world);
         try {
-          indexLibrary(world, library);
+          indexLibrary(world, library, true);
           library.pruneVersions();
           pruneHistory(world);
           world.tx((db) => db.prepare("UPDATE note_library SET error = NULL, scanned_at = ? WHERE one = 1 AND error IS NOT NULL").run(new Date().toISOString()));

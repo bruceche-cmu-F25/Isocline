@@ -131,7 +131,7 @@ function dropIndexed(world: World, id: string): void {
 
 /** Which page a link's target names (Obsidian's rules, without guessing): a path names that page; a bare name names
  * the one page with that name, and nothing when two pages share it. Case does not matter. */
-export function resolveTarget(target: string, pages: ReadonlyMap<string, string[]>, ids: ReadonlySet<string>): string | null {
+export function resolveTarget(target: string, pages: ReadonlyMap<string, string[]>, ids: ReadonlySet<string>, from?: string | null): string | null {
   const name = linkPage(target).replace(/\.md$/i, "").replace(/^\/+/, "");
   if (!name) return null;
   const lower = name.toLowerCase();
@@ -141,7 +141,12 @@ export function resolveTarget(target: string, pages: ReadonlyMap<string, string[
     return ending.length === 1 ? ending[0] : null;
   }
   const named = pages.get(lower) ?? [];
-  return named.length === 1 ? named[0] : null;
+  if (named.length === 1) return named[0];
+  // Two pages of the same name: the one in the linking page's own folder, as Obsidian takes it; else not guessed.
+  const folder = from ? (from.includes("/") ? from.slice(0, from.lastIndexOf("/")).toLowerCase() : "") : null;
+  if (folder === null) return null;
+  const here = named.filter((id) => (id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : "") === folder);
+  return here.length === 1 ? here[0] : null;
 }
 
 function resolveAll(world: World): void {
@@ -156,8 +161,8 @@ function resolveAll(world: World): void {
   }
   const ids = new Set(byLower.keys());
   const update = world.db.prepare("UPDATE note_links SET resolved = ? WHERE rowid = ?");
-  for (const link of world.db.prepare("SELECT rowid, target, resolved FROM note_links").all()) {
-    const found = resolveTarget(link.target as string, byName, ids);
+  for (const link of world.db.prepare("SELECT rowid, page, target, resolved FROM note_links").all()) {
+    const found = resolveTarget(link.target as string, byName, ids, link.page as string);
     const id = found ? byLower.get(found) ?? null : null;
     if (id !== link.resolved) update.run(id, link.rowid as number);
   }
@@ -166,7 +171,7 @@ function resolveAll(world: World): void {
 /** Reads what changed in the library into the index: new and changed files (by time and size, then fingerprint),
  * pages gone, and pages moved (a path gone and another with the same fingerprint appearing in the same pass is a
  * move, and the page's history moves with it). Returns how many pages changed. */
-export function indexLibrary(world: World, library: Library): number {
+export function indexLibrary(world: World, library: Library, announce = false): number {
   if (!library.exists()) throw new LibraryError("not_found", "The notes folder is not there");
   const files = library.list();
   const known = new Map(world.db.prepare("SELECT id, fp, mtime, size, file FROM note_pages").all().map((row) => [row.id as string, row]));
@@ -199,6 +204,8 @@ export function indexLibrary(world: World, library: Library): number {
     }
     for (const id of gone) { dropIndexed(world, id); changed++; }
     if (changed) resolveAll(world);
+    // Read from the folder (another app, a sync service): devices learn of it through the event, and read again.
+    if (changed && announce) recordDomainEvent(world, { kind: "note.indexed", subject: "note:library", payload: { changed } });
   });
   return changed;
 }
@@ -421,6 +428,25 @@ export function trashPage(world: World, library: Library, id: string): { place: 
     recordStep(world, id, "delete", { place });
   });
   return { place };
+}
+
+/** A page made here a moment ago and left as it was made (no words, no other change, no pages under it) is not
+ * kept: opening "new page" or following a link to a page that is not there should not leave empty files behind.
+ * Removed outright, not to the trash: there is nothing in it. Anything else about it keeps it. */
+export function discardPage(world: World, library: Library, id: string): { ok: true } | { ok: false; reason: "changed" | "gone" } {
+  if (inZirma(id)) return { ok: false, reason: "changed" };
+  const rows = world.db.prepare("SELECT * FROM note_history WHERE page = ?").all(id);
+  const read = library.read(id);
+  if (!read) return { ok: false, reason: "gone" };
+  const made = rows.length === 1 && rows[0].kind === "create" && rows[0].undone === 0 ? rows[0] : null;
+  if (!made || made.after !== read.text || library.list().some((page) => page.parent === id)) return { ok: false, reason: "changed" };
+  library.removeUntouched(id);
+  world.tx(() => {
+    world.db.prepare("DELETE FROM note_history WHERE page = ?").run(id);
+    indexLibrary(world, library);
+    recordDomainEvent(world, { kind: "note.discarded", subject: `note:${id}`, payload: { page: id } });
+  });
+  return { ok: true };
 }
 
 /** Sets or removes the page's icon (by name, `icon: cup`): one line at the top of the file changes. */

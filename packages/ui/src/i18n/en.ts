@@ -1557,6 +1557,8 @@ export const en: Record<keyof typeof zh, string> = {
   "today.placed": "On the calendar",
   "today.open": "Open",
   // Notes (docs/design/notes-two-layers.md)
+  "notes.goneElsewhere": "This page was deleted or renamed elsewhere. Your words are still here; you can save them as a new page.",
+  "notes.choose": "{n} pages are called “{name}”. Which one?",
   "notes.help.open": "Markdown help",
   "notes.help.title": "How to write",
   "notes.help.lines": "At the start of a line, then a space",
