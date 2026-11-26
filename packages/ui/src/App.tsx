@@ -691,6 +691,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
           todo: snapshotOf(state, "todo"),
           calendar: snapshotOf(state, "calendar"),
           mail: snapshotOf(state, "mail"),
+          notes: !!snapshotOf(state, "note"),
           onOpen: goTo,
         }} />
       )}

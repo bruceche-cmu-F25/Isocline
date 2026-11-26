@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { api } from "../api.ts";
 import { t, type Key } from "../i18n/index.ts";
 import { findContent, findItems, type ContentSources, type FindItem, type FindSources } from "./find.ts";
 import { Icon } from "./icons.tsx";
@@ -25,6 +26,7 @@ const SECTIONS: ReadonlyArray<{ kinds: readonly Kind[]; title: Key }> = [
   { kinds: ["event"], title: "page.calendar" },
   { kinds: ["folder", "place"], title: "links.places" },
   { kinds: ["mail"], title: "page.mail" },
+  { kinds: ["note"], title: "page.notes" },
   { kinds: ["conversation"], title: "pal.conversations" },
 ];
 
@@ -38,9 +40,24 @@ export function Palette({ find, content, onAsk, onClose }: PaletteProps) {
   const list = useRef<HTMLUListElement>(null);
   useEffect(() => { input.current?.focus(); }, []);
 
+  // Notes are searched on the home node (their words are not in the state): a moment after typing stops.
+  const [notes, setNotes] = useState<FindItem[]>([]);
+  useEffect(() => {
+    const q = query.trim();
+    if (!q || !content.notes) { setNotes([]); return; }
+    let live = true;
+    const timer = window.setTimeout(() => {
+      api.query<Array<{ id: string; title: string; line: string }>>("note.search", { q, limit: 6 }).then((hits) => {
+        if (!live || !Array.isArray(hits)) return;
+        setNotes(hits.map((hit) => ({ kind: "note", id: `note:${hit.id}`, label: hit.title, detail: hit.line || undefined, icon: "write", run: () => content.onOpen("note.list", hit.id) })));
+      }, () => { if (live) setNotes([]); });
+    }, 120);
+    return () => { live = false; window.clearTimeout(timer); };
+  }, [query, content.notes, content.onOpen]);
+
   const { top, groups, items } = useMemo(() => {
     const q = query.trim();
-    const found = [...findItems(query, find), ...findContent(query, content)];
+    const found = [...findItems(query, find), ...findContent(query, content), ...notes];
     // The best match: what Enter opens. A page or command named outright, else the first thing found in the order
     // the sections show them; a conversation only when nothing else matches, as in the ask bar.
     const ordered = SECTIONS.flatMap(({ kinds }) => found.filter((item) => kinds.includes(item.kind)));
@@ -51,7 +68,7 @@ export function Palette({ find, content, onAsk, onClose }: PaletteProps) {
     // Nothing found: the words go to Zirma, the only row.
     const items: Item[] = [...(best ? [best] : []), ...groups.flatMap((group) => group.items), ...(ask ? [ask] : [])];
     return { top: best, groups, items };
-  }, [query, find, content, onAsk]);
+  }, [query, find, content, onAsk, notes]);
 
   useEffect(() => { setIndex(0); }, [query]);
   useEffect(() => { list.current?.querySelector(`#pal-${index}`)?.scrollIntoView({ block: "nearest" }); }, [index]);
