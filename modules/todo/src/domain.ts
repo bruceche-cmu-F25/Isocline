@@ -191,6 +191,47 @@ export function addTodo(world: World, input: { title: string } & TodoPatch): { t
   return insertTodo(world, input, "added");
 }
 
+/** A to-do from a note, put on the list by the user (docs/research/notes-editor.md 3.5). The same one (by `ref`)
+ * is never on the list twice: asked again, the todo already there is the answer. One the user removed from the list
+ * comes back, since they asked for it again. */
+export function addFromNote(world: World, input: { title: string; source: { kind: "note"; ref: string; label: string } }): { todo: Todo; existing: boolean } {
+  if (!/^note:[^:]+:.+#[0-9a-f]+:\d+$/.test(input.source.ref)) throw new Error("Not a note's to-do");
+  const linked = world.db.prepare("SELECT todo_id FROM todo_sources WHERE ref = ? AND state = 'linked'").get(input.source.ref);
+  const there = linked?.todo_id ? world.db.prepare("SELECT payload FROM todo_items WHERE id = ?").get(linked.todo_id as string) : undefined;
+  if (there) return { todo: JSON.parse(there.payload as string) as Todo, existing: true };
+  const source: TodoSource = { kind: "note", ref: input.source.ref, label: input.source.label.replace(/\s+/g, " ").trim().slice(0, 200) };
+  return { todo: insertTodo(world, { title: input.title }, "added", { source }).todo, existing: false };
+}
+
+/** A note page moved or was renamed (`from` → `to`, page paths in the library): the todos from it, and from the pages
+ * under it, follow, so they still lead back to their lines. */
+export function moveNoteSources(world: World, from: string, to: string): number {
+  let moved = 0;
+  world.tx((db) => {
+    for (const row of db.prepare("SELECT ref, todo_id FROM todo_sources WHERE ref >= 'note:' AND ref < 'note;'").all()) {
+      const ref = row.ref as string;
+      const found = /^note:([^:]+):(.+)#([0-9a-f]+:\d+)$/.exec(ref);
+      if (!found) continue;
+      const [, library, page, tail] = found;
+      if (page !== from && !page.startsWith(`${from}/`)) continue;
+      const next = `note:${library}:${to}${page.slice(from.length)}#${tail}`;
+      db.prepare("UPDATE todo_sources SET ref = ?, updated_at = ? WHERE ref = ?").run(next, new Date().toISOString(), ref);
+      if (row.todo_id) {
+        const item = db.prepare("SELECT payload FROM todo_items WHERE id = ?").get(row.todo_id as string);
+        if (item) {
+          const todo = JSON.parse(item.payload as string) as Todo;
+          if (todo.source?.ref === ref) {
+            todo.source = { ...todo.source, ref: next, ...(page === from ? { label: to.split("/").pop()! } : {}) };
+            db.prepare("UPDATE todo_items SET payload = ? WHERE id = ?").run(JSON.stringify(todo), todo.id);
+          }
+        }
+      }
+      moved++;
+    }
+  });
+  return moved;
+}
+
 /** What of a todo Zirma wrote from its source, kept to tell later whether the user has changed it since. */
 const seenOf = (todo: Todo) => ({ title: todo.title, due: todo.due ?? null, startDate: todo.startDate ?? null, at: todo.at ?? null });
 
@@ -631,7 +672,7 @@ export function formatTodo(todo: Todo, today: string = localDate()): string {
   const area = todo.area ? ` [area: ${todo.area}]` : "";
   const repeat = todo.source?.repeat;
   const repeats = repeat ? `; repeats ${repeat.days.length === 7 ? "every day" : repeat.days.map((day) => WEEKDAYS[day]).join(", ")}${repeat.at ? ` at ${repeat.at}` : ""}, this is its next time` : "";
-  const from = todo.suggested ? " (your suggestion; the user has not kept it yet)" : todo.source?.kind === "calendar" ? ` (from the calendar${repeats})` : todo.source?.kind === "mail" ? " (from mail)" : "";
+  const from = todo.suggested ? " (your suggestion; the user has not kept it yet)" : todo.source?.kind === "calendar" ? ` (from the calendar${repeats})` : todo.source?.kind === "mail" ? " (from mail)" : todo.source?.kind === "note" ? ` (from the note ${todo.source.label})` : "";
   return `${box} ${todo.id}  ${todo.title}${area}${progress}${date}${by}${plan}${from}${link}`;
 }
 

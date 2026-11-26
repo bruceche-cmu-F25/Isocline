@@ -1,0 +1,1233 @@
+<!doctype html>
+<!--
+  Zirma: Notes (v2, 2026-11-25). A prototype for docs/design/notes.md: no build step, sample notes (made up), and
+  scripts in place of the disk, the file watcher and the model.
+  The question it asks: what is a note in Zirma when the truth is a Markdown file in a folder?
+    Tree     the library's folders on the left, the same tree as Links (v0.5): Recent and Quick Notes (随手记) on top,
+             then the folders, nested. Counts include everything below. Drag a note onto a folder to move the file;
+             drag a folder onto another to move it; a folder's ⋯ adds a sub-folder, renames it or removes it (its
+             notes move up one level). On a narrow page the tree is a drawer behind the folder button.
+    List     the picked folder: its sub-folders as rows first, then its notes. In Quick Notes, Zirma's guess at where
+             a note belongs is a dashed chip; a click moves the file.
+    Read     a note takes the whole page (a note is long; the pop-up card is for short things, and is still used
+             here to confirm a delete). Double links open the other note; a link to a note that does not exist is
+             dashed and makes it. An address that was saved in Links shows as that clip. Under the note: who links
+             here, and addresses not saved yet.
+    Write    the Markdown source, coloured, saved a moment after you stop. Typing [[ offers note names. (The app
+             will use CodeMirror 6; here it is a textarea over a coloured copy of the same text.)
+    Elsewhere  "changed elsewhere" in the strip plays another app writing the same file. While reading, the note
+             just changes. While writing, your text is not saved over it: keep theirs, or save yours as a copy.
+    Zirma   while reading, the line at the bottom carries the note: say what to change and Zirma proposes it in
+             place (dashed, old line struck through). Yes / change / no. A proposal goes stale if the file changes.
+  The line at the bottom on the list: a few words and return makes a note in Quick Notes; the same words also
+  search what the notes say.
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zirma：笔记</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --ease: cubic-bezier(.23, 1, .32, 1);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
+h1, h2, h3, h4, p, ul, ol, pre, blockquote { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+a { color: inherit; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+.grow { flex: 1; min-width: 0; }
+
+/* ── The prototype's own strip ── */
+.proto { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; }
+.proto b { flex: none; padding: 0 6px; }
+.proto .lab { flex: none; padding: 0 4px 0 10px; opacity: .6; }
+.proto button, .proto a { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; text-decoration: none; }
+.proto button:hover, .proto a:hover { opacity: 1; }
+.proto button[aria-pressed="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+.proto .what { flex: 1; min-width: 0; padding: 0 10px; opacity: .7; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1100px) { .proto .what { display: none; } }
+@media (max-width: 620px) { .proto .lab, .proto b { display: none; } }
+
+/* ── Frame: the page column, narrow on demand so the container rules can be seen ── */
+.stage { flex: 1; min-height: 0; display: flex; justify-content: center; background: var(--paper, var(--bg)); }
+.page { position: relative; flex: 1; min-width: 0; max-width: 100%; display: flex; background: var(--bg); container: page / inline-size; }
+.stage[data-narrow] .page { max-width: 390px; box-shadow: 0 0 0 1px var(--line); }
+.pane { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; container: pane / inline-size; }
+
+/* ── Tree: the library's folders, the same tree as Links ── */
+.tree { flex: none; width: 240px; display: flex; flex-direction: column; border-right: 1px solid var(--line-soft); background: var(--bg); }
+.page[data-folded] .tree { display: none; }
+.tree-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 8px 16px; }
+.tree-head { display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 2px 0 8px; color: var(--muted); font-size: .75rem; }
+.node { position: relative; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px 0 calc(6px + var(--d, 0) * 16px); border-radius: 8px; color: var(--copy); font-size: .875rem; cursor: pointer; user-select: none; }
+.node:hover { background: var(--wash); color: var(--ink); }
+.node[aria-current="true"] { background: var(--wash); color: var(--ink); font-weight: 600; }
+.node.drop { box-shadow: inset 0 0 0 1.5px var(--alf); background: var(--alf-soft); }
+.node .tw { flex: none; width: 14px; height: 14px; display: grid; place-items: center; color: var(--muted); transition: transform 160ms var(--ease); }
+.node .tw svg { width: 12px; height: 12px; }
+.node .tw[data-open] { transform: rotate(90deg); }
+.node .tw.none { visibility: hidden; }
+.node > svg.i { width: 16px; height: 16px; color: var(--muted); }
+.node[aria-current="true"] > svg.i { color: var(--k-solid); }
+.node .nm { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.node .n { flex: none; color: var(--muted); font-size: .75rem; font-weight: 400; font-variant-numeric: tabular-nums; }
+.node .more { flex: none; width: 22px; height: 22px; display: none; place-items: center; border-radius: 6px; color: var(--muted); }
+.node:hover .more, .node .more[aria-expanded="true"] { display: grid; }
+.node:hover .more ~ .n, .node .more[aria-expanded="true"] ~ .n { display: none; }
+.node .more:hover { background: var(--line-soft); color: var(--ink); }
+.node input { flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 0; border-radius: 6px; outline: 0; background: var(--field); box-shadow: inset 0 0 0 1.5px var(--alf); font-size: .875rem; }
+.node.add { color: var(--muted); }
+.tree .sep { height: 1px; margin: 8px 6px; background: var(--line-soft); }
+.tree .lib { flex: none; display: flex; align-items: center; gap: 6px; padding: 10px 12px 12px 14px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: .75rem; }
+.tree .lib .path { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tree .lib button { flex: none; color: var(--copy); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+[data-dragging] { opacity: .45; }
+/* On a narrow page the tree is a drawer over the page. */
+.scrim { display: none; }
+@container page (max-width: 720px) {
+  .tree { display: none; }
+  .page[data-drawer] .tree { display: flex; position: absolute; inset: 0 auto 0 0; z-index: 20; width: min(300px, 86%); box-shadow: var(--shadow), 0 0 40px oklch(0 0 0 / .18); }
+  .page[data-drawer] .scrim { display: block; position: absolute; inset: 0; z-index: 19; background: color-mix(in oklch, var(--bg) 40%, transparent); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  .tree-head [data-a="fold"] { display: none; }
+}
+
+/* A small menu: our own, never a native select. */
+.menu { position: fixed; z-index: 40; min-width: 200px; max-width: min(280px, calc(100vw - 24px)); max-height: 60vh; overflow-y: auto; padding: 4px; border-radius: 12px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); font-size: .875rem; }
+.menu button { width: 100%; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 calc(10px + var(--d, 0) * 14px); border-radius: 8px; white-space: nowrap; }
+.menu button:hover, .menu button:focus-visible { background: var(--wash); }
+.menu button span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.menu button svg.i { width: 15px; height: 15px; color: var(--muted); }
+.menu button[aria-checked="true"]::after { content: "✓"; color: var(--alf); }
+.menu button.danger { color: var(--now); }
+.menu .sep { height: 1px; margin: 4px 6px; background: var(--line-soft); }
+
+/* ── The page ── */
+.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 0 170px; }
+.page[data-view="edit"] .scroll { padding-bottom: 60px; }
+.col { max-width: 860px; margin: 0 auto; padding: 0 28px; }
+.page[data-view="read"] .col, .page[data-view="edit"] .col { max-width: 740px; }
+.page-head { display: flex; align-items: flex-start; gap: 8px; padding: 22px 0 14px; }
+.page-head .ht { min-width: 0; flex: 1; }
+.page-head h1 { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 1.625rem; line-height: 1.25; font-weight: 650; letter-spacing: -.01em; }
+.page-head h1 span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.page-head h1 svg { width: 24px; height: 24px; color: var(--k-solid); }
+.page-head p { margin-top: 4px; color: var(--muted); font-size: .875rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.page-head p button { color: var(--copy); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+/* The tree button: folds the tree on a wide page, opens the drawer on a narrow one. Shown where the tree is not. */
+.tree-btn { flex: none; display: none; width: 34px; height: 34px; place-items: center; margin: 0 0 0 -8px; border-radius: 10px; color: var(--copy); }
+.tree-btn:hover { background: var(--wash); color: var(--ink); }
+.page[data-folded] .tree-btn { display: grid; }
+@container page (max-width: 720px) { .tree-btn { display: grid; } }
+.page-head .tree-btn { margin-top: -1px; }
+
+/* A note in a list: its name, how it starts, where it is, when it changed. */
+.rows { display: flex; flex-direction: column; }
+.row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 14px; padding: 2px 10px; margin: 0 -10px; border-radius: 12px; transition: background 200ms var(--ease); }
+.row + .row::before { content: ""; position: absolute; left: 10px; right: 10px; top: 0; height: 1px; background: var(--line-soft); }
+.row:hover { background: var(--wash); }
+.row:hover::before, .row:hover + .row::before, .row[data-fresh]::before, .row[data-fresh] + .row::before { display: none; }
+.row[data-fresh] { background: var(--alf-soft); }
+.row-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 9px 0; border-radius: 8px; }
+.rt { font-weight: 550; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rs { color: var(--muted); font-size: .8125rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rs:empty::before { content: "\00a0"; }
+.rm { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 6px; background: var(--k-fill, var(--wash)); color: var(--k-text, var(--copy)); font-size: .75rem; font-weight: 500; white-space: nowrap; }
+.sug { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px dashed var(--k-line); background: var(--k-fill); color: var(--k-text); font-size: .75rem; white-space: nowrap; }
+.sug:hover { border-style: solid; }
+.when { min-width: 3.2em; text-align: right; }
+.empty { padding: 36px 0; color: var(--muted); font-size: .875rem; }
+.empty b { display: block; margin-bottom: 4px; color: var(--ink); font-size: 1rem; font-weight: 600; }
+.path { font: .75rem/1.6 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+
+/* Sub-folders, above the notes: a line each. */
+.folders { margin-bottom: 6px; }
+.folders li { box-shadow: 0 1px 0 var(--line-soft); }
+.folders button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 10px; margin: 0 -10px; width: calc(100% + 20px); border-radius: 12px; }
+.folders button:hover { background: var(--wash); }
+.folders button.drop { box-shadow: inset 0 0 0 1.5px var(--alf); background: var(--alf-soft); }
+.folders svg { color: var(--muted); }
+.folders .n { color: var(--muted); font-size: .75rem; }
+.folders .mark { color: var(--muted); font-size: .75rem; }
+.crumb { display: flex; align-items: center; gap: 6px; padding: 0 0 6px; color: var(--muted); font-size: .8125rem; }
+.crumb button { color: var(--copy); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.crumb b { color: var(--ink); font-weight: 600; }
+.lib { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 22px; padding-top: 14px; box-shadow: 0 -1px 0 var(--line-soft); color: var(--muted); font-size: .8125rem; }
+
+.btn { min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .8125rem; white-space: nowrap; text-decoration: none; }
+.btn:hover { color: var(--ink); }
+.btn.solid { background: var(--alf-solid); color: var(--on-alf); box-shadow: none; }
+.btn.danger { background: var(--now); color: var(--on-alf); box-shadow: none; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn svg.i { width: 15px; height: 15px; }
+.ib { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 50%; color: var(--copy); }
+.ib:hover { background: var(--wash); color: var(--ink); }
+.move { max-width: 170px; }
+.move span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.move .caret { width: 12px; height: 12px; color: var(--muted); }
+
+/* ── One note, the whole page ── */
+.bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 12px 0 10px; background: var(--bg); }
+.back { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 10px 0 4px; margin-left: -4px; border-radius: 999px; color: var(--copy); font-size: .875rem; }
+.back:hover { background: var(--wash); color: var(--ink); }
+.status { color: var(--muted); font-size: .8125rem; }
+.note > h1 { padding-top: 8px; font-size: 1.625rem; line-height: 1.3; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.props { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; color: var(--muted); font-size: .8125rem; }
+.props .sep { opacity: .5; }
+
+.md { padding-top: 14px; color: var(--copy); overflow-wrap: anywhere; }
+.md > * + * { margin-top: .8em; }
+.md h2 { margin-top: 1.5em; color: var(--ink); font-size: 1.1875rem; font-weight: 650; }
+.md h3 { margin-top: 1.3em; color: var(--ink); font-size: 1.0625rem; font-weight: 600; }
+.md h4 { margin-top: 1.2em; color: var(--ink); font-size: .9375rem; font-weight: 600; }
+.md ul { list-style: disc; padding-left: 1.3em; }
+.md ol { list-style: decimal; padding-left: 1.5em; }
+.md li + li { margin-top: .25em; }
+.md li::marker { color: var(--muted); }
+.md li.task { list-style: none; margin-left: -1.3em; display: flex; gap: 9px; }
+.md li.plain { list-style: none; margin-left: -1.3em; }
+.md ol li.plain { margin-left: -1.5em; }
+.md [data-fresh] { background: var(--alf-soft); border-radius: 6px; box-shadow: 0 0 0 4px var(--alf-soft); }
+.box { flex: none; width: 16px; height: 16px; margin-top: .3em; display: grid; place-items: center; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--line); }
+.box[aria-checked="true"] { background: var(--alf-solid); box-shadow: none; }
+.box[aria-checked="true"]::after { content: ""; width: 8px; height: 4px; margin-top: -2px; border-left: 1.8px solid var(--on-alf); border-bottom: 1.8px solid var(--on-alf); transform: rotate(-45deg); }
+.box[aria-checked="true"] + span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+.md strong { color: var(--ink); font-weight: 600; }
+.md code { padding: 1px 5px; border-radius: 5px; background: var(--wash); font: .8125rem var(--mono); }
+.md pre.code { padding: 12px 14px; border-radius: 10px; background: var(--wash); overflow-x: auto; }
+.md pre.code code { padding: 0; background: none; white-space: pre; }
+.md blockquote { padding: 2px 0 2px 14px; box-shadow: inset 2px 0 0 var(--line); color: var(--muted); }
+.wl { color: var(--alf); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--alf) 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.wl.missing { text-decoration-style: dashed; text-decoration-color: var(--alf); opacity: .8; }
+.ext { color: var(--alf); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--alf) 35%, transparent); text-underline-offset: 3px; }
+/* An address that is already in Links shows as that clip. */
+.clip { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; height: 26px; padding: 0 9px 0 3px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line); vertical-align: middle; text-decoration: none; color: var(--copy); font-size: .8125rem; }
+.clip:hover { color: var(--ink); background: var(--wash); }
+.clip .tile { flex: none; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: var(--k-fill); color: var(--k-text); font: 600 .625rem/1 var(--sans); }
+.clip .ct { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.clip .cs { flex: none; color: var(--muted); font-size: .75rem; }
+.embed { display: flex; align-items: center; gap: 10px; padding: 18px 14px; border-radius: 10px; background: var(--wash); color: var(--muted); font-size: .8125rem; }
+
+/* Zirma's change, where it would land: dashed, with what it replaces struck through. */
+.prop { margin: 4px 0; padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--k-line); background: var(--k-fill); }
+.prop .was { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+.prop .will { color: var(--ink); min-height: 1.6em; }
+.prop .stale { color: var(--muted); font-size: .875rem; }
+.prop .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.prop .who { color: var(--k-text); font-size: .75rem; }
+
+.under { margin-top: 30px; padding-top: 14px; box-shadow: 0 -1px 0 var(--line-soft); }
+.under h2 { margin-bottom: 6px; color: var(--muted); font-size: .8125rem; font-weight: 500; }
+.under li { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; min-width: 0; font-size: .875rem; }
+.under .bt { flex: none; max-width: 45%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.under .bs { min-width: 0; flex: 1; color: var(--muted); font-size: .8125rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* ── Writing ── */
+.conflict { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: 10px; background: var(--k-fill); color: var(--k-text); font-size: .8125rem; }
+.title-in { width: 100%; margin-top: 8px; padding: 0; border: 0; outline: none; background: none; font-size: 1.625rem; line-height: 1.3; font-weight: 650; letter-spacing: -.01em; }
+.ed { position: relative; margin-top: 14px; min-height: 46vh; }
+.ed .hl, .ed textarea, .ed .mirror { font: .9375rem/1.75 var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; tab-size: 2; letter-spacing: 0; }
+.ed .hl { color: var(--copy); pointer-events: none; min-height: 46vh; }
+.ed .hl .hd { color: var(--ink); }
+.ed .hl .dim { color: var(--muted); }
+.ed .hl .lk { color: var(--alf); }
+.ed textarea { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; outline: none; resize: none; overflow: hidden; background: none; color: transparent; caret-color: var(--ink); }
+.ed textarea::selection { background: color-mix(in oklch, var(--alf) 22%, transparent); }
+.ed .mirror { position: absolute; inset: 0 0 auto 0; visibility: hidden; pointer-events: none; }
+.ac { position: absolute; z-index: 3; width: 240px; max-width: 100%; padding: 4px; border-radius: 12px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); font-size: .875rem; }
+.ac button { width: 100%; display: flex; align-items: baseline; gap: 8px; padding: 6px 9px; border-radius: 8px; min-width: 0; }
+.ac button[aria-selected="true"] { background: var(--wash); }
+.ac .at { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ac small { flex: none; color: var(--muted); font-size: .75rem; }
+.ac .none { padding: 6px 9px; color: var(--muted); font-size: .8125rem; }
+.edhint { margin-top: 14px; color: var(--muted); font-size: .75rem; }
+.edhint code { font: .75rem var(--mono); }
+
+@container pane (max-width: 560px) {
+  .col { padding: 0 16px; }
+  .row { grid-template-columns: minmax(0, 1fr); padding-bottom: 9px; }
+  .row-main { padding-bottom: 2px; }
+  .rm { flex-wrap: wrap; }
+  .when { min-width: 0; text-align: left; }
+  .under .bt { max-width: 60%; }
+  .bar { flex-wrap: nowrap; }
+  .back { padding: 0 4px; }
+  .back span { display: none; }
+  .move { max-width: 100px; }
+}
+
+/* ── The line at the bottom ── */
+.line-wrap { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 16px 16px; pointer-events: none; background: linear-gradient(to top, var(--bg) 62%, transparent); }
+.page[data-view="edit"] .line-wrap { display: none; }
+.line-col { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
+#toast:empty, #above:empty, #tries:empty { display: none; }
+.toast { width: fit-content; margin: 0 auto; display: flex; align-items: center; gap: 10px; max-width: 100%; padding: 6px 8px 6px 14px; border-radius: 999px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); color: var(--copy); font-size: .8125rem; }
+.toast span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.toast button { flex: none; height: 24px; padding: 0 10px; border-radius: 999px; color: var(--alf); }
+.toast button:hover { background: var(--alf-soft); }
+.above { border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); overflow: hidden; }
+.will-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line-soft); font-size: .875rem; min-width: 0; }
+.will-row:first-child { border-top: 0; }
+.will-row b { flex: none; font-weight: 600; white-space: nowrap; }
+.will-row .u { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: .8125rem; }
+.will-row kbd { flex: none; padding: 1px 6px; border-radius: 5px; background: var(--wash); color: var(--muted); font: .6875rem var(--mono); }
+.hit { display: block; width: 100%; padding: 9px 14px; border-top: 1px solid var(--line-soft); min-width: 0; }
+.hit:first-child { border-top: 0; }
+.hit:hover { background: var(--wash); }
+.hit .ht { display: flex; align-items: baseline; gap: 8px; font-size: .875rem; }
+.hit .ht span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hit .ht small { flex: none; color: var(--muted); font-size: .75rem; }
+.hit .hs { display: block; color: var(--muted); font-size: .8125rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+mark { background: var(--alf-soft); color: var(--ink); border-radius: 3px; }
+.tries { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tries::-webkit-scrollbar { display: none; }
+.tries button { flex: none; height: 28px; padding: 0 11px; border-radius: 999px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .8125rem; white-space: nowrap; }
+.line { display: flex; align-items: center; gap: 8px; height: 50px; padding: 0 8px 0 16px; border-radius: 16px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); }
+.line:focus-within { box-shadow: inset 0 0 0 1.5px var(--alf), var(--shadow); }
+.line input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; outline: none; }
+.line input::placeholder { color: var(--muted); }
+#hang { flex: none; max-width: 42%; min-width: 0; display: flex; }
+#hang:empty { display: none; }
+.hang { max-width: 100%; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: var(--alf-soft); color: var(--alf); font-size: .8125rem; }
+.hang span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.line .mic { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: var(--copy); }
+.line .mic:hover { background: var(--wash); }
+.line .mic[aria-pressed="true"] { background: var(--alf-soft); color: var(--alf); }
+.line .go { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--alf-solid); color: var(--on-alf); }
+.line .go:disabled { background: var(--wash); color: var(--muted); cursor: default; }
+.pulse { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--alf); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+
+/* ── A small thing to confirm: a card over the blurred page ── */
+.pop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: color-mix(in oklch, var(--bg) 40%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: fade 160ms var(--ease); }
+.pop-card { width: min(380px, 100%); padding: 20px; border-radius: 18px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft), 0 2px 6px oklch(0 0 0 / .08), 0 24px 70px oklch(0 0 0 / .22); }
+.pop-card h2 { font-size: 1.0625rem; font-weight: 650; overflow-wrap: anywhere; }
+.pop-card p { margin-top: 6px; color: var(--copy); font-size: .875rem; }
+.pop-card .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+@keyframes fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pulse, .pop { animation: none; } }
+</style>
+</head>
+<body>
+<div class="proto" id="proto"></div>
+<div class="stage" id="stage"><main class="page" id="main" data-k="yellow" data-view="list">
+  <nav class="tree" id="tree" aria-label="文件夹"></nav>
+  <div class="scrim" data-a="drawer-close"></div>
+  <div class="pane">
+  <div class="scroll" id="scroll"><div class="col" id="page"></div></div>
+  <div class="line-wrap"><div class="line-col">
+    <div id="toast"></div>
+    <div id="above"></div>
+    <div id="tries"></div>
+    <form class="line" id="lineform">
+      <span id="hang"></span>
+      <input id="draft" autocomplete="off" spellcheck="false">
+      <button type="button" class="mic" id="mic" data-a="mic"><svg class="i" viewBox="0 0 20 20"><rect x="7.5" y="3" width="5" height="9" rx="2.5"/><path d="M5 10a5 5 0 0010 0M10 15v2.5"/></svg></button>
+      <button type="submit" class="go" id="go"><svg class="i" viewBox="0 0 20 20"><path d="M4 10h11M11 5l5 5-5 5"/></svg></button>
+    </form>
+  </div></div>
+  </div>
+</main></div>
+<div id="pop"></div>
+<div id="menu"></div>
+
+<script type="module">
+/* ── State ── */
+const params = new URLSearchParams(location.search);
+const S = {
+  lang: params.get("lang") === "en" ? "en" : "zh",
+  view: "list",         // list | read | edit
+  node: "recent",       // the tree's pick: recent | quick | a folder id
+  expanded: new Set(["tech", "life"]),
+  folded: false,        // the tree, folded away on a wide page
+  drawer: false,        // the tree as a drawer on a narrow page
+  narrow: params.get("narrow") === "1",
+  menu: null,           // { kind: "folder" | "move", id, x, y }
+  renaming: null,       // a folder id while its name is being typed
+  folders: [],
+  open: null,           // the opened note's id
+  edit: null,           // { base, draft, title, status, conflict } while writing
+  ac: null,             // the [[ menu
+  proposal: null,       // { note, find, to, typed, stale }
+  revising: false,
+  thinking: false,
+  listening: false,
+  fresh: new Set(),
+  freshLine: null,
+  toast: null,
+  pop: null,
+  empty: false,
+  notes: [],
+  clips: [],
+};
+const L = () => (S.lang === "en" ? 1 : 0);
+const t = (zh, en) => (S.lang === "en" ? en : zh);
+const pick = (pair) => (Array.isArray(pair) ? pair[L()] : pair);
+const esc = (text) => String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+const $ = (id) => document.getElementById(id);
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const TODAY = "2026-11-25";
+
+/* ── Sample library: ~/Documents/Zirma Notes ── */
+// A folder is a directory in the library; parent null is the library's top. Quick Notes is always there.
+const FOLDERS = () => [
+  { id: "quick", parent: null, name: ["随手记", "Quick Notes"] },
+  { id: "tech", parent: null, name: ["技术", "Tech"] },
+  { id: "search", parent: "tech", name: ["检索", "Retrieval"] },
+  { id: "design", parent: "tech", name: ["设计", "Design"] },
+  { id: "proj", parent: null, name: ["项目", "Projects"] },
+  { id: "life", parent: null, name: ["生活", "Life"] },
+  { id: "coffee", parent: "life", name: ["咖啡", "Coffee"] },
+  { id: "travel", parent: "life", name: ["旅行", "Travel"] },
+];
+const md = (...lines) => lines.join("\n");
+function seed() {
+  S.folders = FOLDERS();
+  const n = (id, folder, days, title, zh, en, more = {}) => ({ id, folder, days, title: [...title], text: [zh, en], ...more });
+  S.clips = [
+    { url: "https://www.pinecone.io/learn/chunking-strategies/", site: "pinecone.io", mark: "P", k: "violet", title: ["五种分块策略的比较", "Five chunking strategies compared"] },
+    { url: "https://www.bilibili.com/video/BV1coffee", site: "Bilibili", mark: "B", k: "teal", title: ["V60 冲煮", "Brewing with a V60"] },
+    { url: "https://example.org/density", site: "example.org", mark: "E", k: "blue", title: ["信息密度", "Information density"] },
+  ];
+  S.notes = [
+    n("q1", "quick", 0, ["周末想试的豆子", "Beans for the weekend"],
+      "埃塞俄比亚水洗，浅烘。按 [[V60 参数]] 冲，水温调高一点。",
+      "Washed Ethiopian, light roast. Brew by [[V60 numbers]], a little hotter.", { suggest: "coffee" }),
+    n("q2", "quick", 0, ["2026-11-25 14-32", "2026-11-25 14-32"],
+      md("---", "created: 2026-11-25", "---", "系统设计面试先问清规模：多少用户、读多还是写多，再画图。"),
+      md("---", "created: 2026-11-25", "---", "In a system design interview, ask about scale first: how many users, read-heavy or write-heavy. Then draw."), { suggest: "tech" }),
+    n("n3", "proj", 0, ["Zirma 的搜索", "Search in Zirma"],
+      md("先做全文，向量以后再说。", "", "- [x] 确认 FTS5 能搜中文", "- [ ] 笔记和链接用同一套索引", "- [ ] 搜索结果给出命中的那一句", "",
+        "```sql", "create virtual table note_fts using fts5(title, body, tokenize='trigram');", "```", "",
+        "依据是 [[混合检索]] 和 [[RAG 分块笔记]]。", "", "还没看完：https://sqlite.org/fts5.html"),
+      md("Full text first; vectors can wait.", "", "- [x] Check that FTS5 finds Chinese", "- [ ] One index for notes and links", "- [ ] Results show the sentence that matched", "",
+        "```sql", "create virtual table note_fts using fts5(title, body, tokenize='trigram');", "```", "",
+        "It rests on [[Hybrid retrieval]] and [[RAG chunking notes]].", "", "Still reading: https://sqlite.org/fts5.html")),
+    n("n1", "search", 1, ["RAG 分块笔记", "RAG chunking notes"],
+      md("分块大小先看问题长什么样，不是越小越好。", "", "## 试过的", "- 按标题分块：技术文档上最好", "- 固定长度：聊天记录上最好", "- 重叠 10–15% 就够，多了只是费钱", "",
+        "## 接着看", "检索那一步记在 [[混合检索]]，排序想放到最后做，见 [[重排]]。", "", "对照的那篇：https://www.pinecone.io/learn/chunking-strategies/"),
+      md("Pick the chunk size from the questions people ask, not the smallest one.", "", "## Tried", "- By heading: best on technical docs", "- Fixed length: best on chat logs", "- 10–15% overlap is enough; more only costs", "",
+        "## Next", "Retrieval is in [[Hybrid retrieval]]; ranking comes last, see [[Reranking]].", "", "Compared against: https://www.pinecone.io/learn/chunking-strategies/")),
+    n("q3", "quick", 1, ["信息密度", "Information density"],
+      md("---", "created: 2026-11-24", "source: https://example.org/density", "---", "密度不是把东西挤在一起，是每一块都在回答一个问题。", "", "想对照着看 Zirma 的待办页。"),
+      md("---", "created: 2026-11-24", "source: https://example.org/density", "---", "Density is not packing things in. It is every block answering one question.", "", "Check Zirma's todo page against this."), { suggest: "proj" }),
+    n("n2", "search", 3, ["混合检索", "Hybrid retrieval"],
+      md("关键词和向量各取前 20，再合并。", "", "- 关键词用 SQLite 的 FTS5，中文要用 `trigram` 分词", "- 两个字的词搜不到，要退回普通的包含匹配", "- 合并用倒数排名相加，不用调权重", "", "分块怎么切见 [[RAG 分块笔记]]。"),
+      md("Take the top 20 from keywords and from vectors, then merge.", "", "- Keywords use SQLite FTS5; Chinese needs the `trigram` tokenizer", "- Two-character words are missed and fall back to a plain contains match", "- Merge by reciprocal rank; no weights to tune", "", "How to cut chunks: [[RAG chunking notes]].")),
+    n("n5", "travel", 7, ["京都三天", "Three days in Kyoto"],
+      md("1. 第一天东山", "2. 第二天岚山，早上七点前到", "3. 第三天留给伏见", "", "咖啡馆另记在 [[京都的咖啡馆]]。"),
+      md("1. Higashiyama on day one", "2. Arashiyama on day two, before 7 am", "3. Day three is for Fushimi", "", "Cafés are in [[Kyoto cafés]].")),
+    n("n4", "coffee", 8, ["V60 参数", "V60 numbers"],
+      md("---", "created: 2026-11-17", "source: https://www.bilibili.com/video/BV1coffee", "---", "想试这个参数。", "", "- 粉 15 克，水 250 克", "- 水温 92 度", "- 闷蒸 30 秒，水量是粉的两倍", "- 分三段注水，总时间两分半", "", "![[v60-分段.jpg]]", "", "> 水流细了会过萃，发苦。"),
+      md("---", "created: 2026-11-17", "source: https://www.bilibili.com/video/BV1coffee", "---", "Want to try these numbers.", "", "- 15 g coffee, 250 g water", "- Water at 92°C", "- Bloom 30 s with twice the coffee's weight in water", "- Three pours, two and a half minutes in total", "", "![[v60-pours.jpg]]", "", "> Too thin a stream over-extracts and turns bitter.")),
+    n("n6", "design", 12, ["OKLCH 为什么好用", "Why OKLCH works"],
+      md("同样的亮度数字，看起来真的一样亮。HSL 的黄和蓝，同亮度看着差很多。", "", "**用法**：先定亮度和色度，只换色相，一组颜色就齐了。"),
+      md("Equal lightness numbers actually look equally light. In HSL, yellow and blue at one lightness look far apart.", "", "**How**: fix lightness and chroma, change only the hue, and a set of colours lines up.")),
+  ];
+  Object.assign(S, { view: "list", node: "recent", expanded: new Set(["tech", "life"]), menu: null, renaming: null, drawer: false, open: null, edit: null, ac: null, proposal: null, revising: false, thinking: false, listening: false,
+    fresh: new Set(), freshLine: null, toast: null, pop: null, empty: false });
+  $("draft").value = "";
+}
+// What Zirma proposes for one note when asked; any other note gets the user's own words as a new line.
+const SCRIPT = {
+  n4: { find: ["- 水温 92 度", "- Water at 92°C"], to: ["- 水温 90–93 度，浅烘用高的", "- Water at 90–93°C, hotter for light roasts"],
+        again: ["- 水温 90–93 度：浅烘 93，深烘 90", "- Water at 90–93°C: 93 for light roasts, 90 for dark"] },
+};
+
+/* ── A note is its text: properties on top, Markdown under them ── */
+const byId = (id) => S.notes.find((note) => note.id === id);
+const body = (note) => note.text[L()];
+const titleOf = (note) => note.title[L()];
+const folderOf = (id) => S.folders.find((folder) => folder.id === id);
+const kids = (id) => S.folders.filter((folder) => folder.parent === id && folder.id !== "quick")
+  .sort((a, b) => pick(a.name).localeCompare(pick(b.name), S.lang === "en" ? "en" : "zh"));
+// A folder and every folder under it.
+function under(id) { const out = new Set([id]); for (const kid of kids(id)) for (const sub of under(kid.id)) out.add(sub); return out; }
+const countIn = (id) => { const set = under(id); return S.notes.filter((note) => set.has(note.folder)).length; };
+const depthOf = (id) => { let d = 0; for (let f = folderOf(id); f?.parent; f = folderOf(f.parent)) d++; return d; };
+const pathOf = (id) => { const out = []; for (let f = folderOf(id); f; f = folderOf(f.parent)) out.unshift(f); return out; };
+const pathText = (id) => pathOf(id).map((folder) => pick(folder.name)).join(" / ");
+// Every folder in tree order, for the move menu.
+function flat(parent = null) {
+  const top = parent === null ? [folderOf("quick"), ...kids(null)] : kids(parent);
+  return top.flatMap((folder) => [folder, ...(folder.id === "quick" ? [] : flat(folder.id))]);
+}
+const byTitle = (name) => S.notes.find((note) => titleOf(note).toLowerCase() === name.trim().toLowerCase());
+const clipOf = (url) => S.clips.find((clip) => clip.url === url);
+function touch(note) { note.days = 0; note.just = true; S.notes = [note, ...S.notes.filter((other) => other !== note)]; }
+function setBody(note, text) { note.text[L()] = text; touch(note); }
+function flash(id) { S.fresh.add(id); setTimeout(() => { S.fresh.delete(id); if (S.view === "list") renderPage(); }, 2600); }
+function parts(text) {
+  const lines = text.split("\n"), props = {};
+  let start = 0;
+  if (lines[0] === "---") {
+    const end = lines.indexOf("---", 1);
+    if (end > 0) { for (const line of lines.slice(1, end)) { const m = /^([\w-]+):\s*(.*)$/.exec(line); if (m) props[m[1]] = m[2]; } start = end + 1; }
+  }
+  return { lines, start, props };
+}
+const MARKER = /^(#{1,3} |> |- \[[ x]\] |- |\d+\. )/;
+const plain = (line) => line.replace(MARKER, "").replace(/!\[\[[^\]]*\]\]/g, "").replace(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/g, (m, a, b) => b || a).replace(/[`*]/g, "").trim();
+function firstLine(note) {
+  const { lines, start } = parts(body(note));
+  let fence = false;
+  for (const line of lines.slice(start)) {
+    if (/^```/.test(line)) { fence = !fence; continue; }
+    if (!fence && plain(line)) return plain(line);
+  }
+  return "";
+}
+const WIKI = /(?<!!)\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g;
+const URLS = /https?:\/\/[^\s<>)）]+/g;
+function backlinks(note) {
+  const out = [];
+  for (const other of S.notes) {
+    if (other === note) continue;
+    const line = body(other).split("\n").find((candidate) => [...candidate.matchAll(WIKI)].some((m) => byTitle(m[1]) === note));
+    if (line) out.push({ note: other, line: plain(line) });
+  }
+  return out;
+}
+
+/* ── Markdown, the small subset a note needs here ── */
+function inline(source) {
+  const pattern = /(`[^`]+`)|!\[\[([^\]\n]+)\]\]|\[\[([^\]\n]+)\]\]|\*\*([^*]+)\*\*|\[([^\]\n]+)\]\((https?:[^)\s]+)\)|(https?:\/\/[^\s<>)）]+)/g;
+  let html = "", last = 0;
+  for (const m of source.matchAll(pattern)) {
+    html += esc(source.slice(last, m.index));
+    last = m.index + m[0].length;
+    if (m[1]) html += `<code>${esc(m[1].slice(1, -1))}</code>`;
+    else if (m[2]) html += `<span class="embed">${ICON.image}${esc(m[2])}</span>`;
+    else if (m[3]) {
+      const [target, alias] = m[3].split("|");
+      const note = byTitle(target);
+      html += note ? `<a class="wl" data-a="wl" data-id="${note.id}">${esc(alias || target)}</a>`
+        : `<a class="wl missing" data-a="new" data-title="${esc(target)}" title="${t("还没有这篇，点了就建", "No such note yet; click to make it")}">${esc(alias || target)}</a>`;
+    }
+    else if (m[4]) html += `<strong>${esc(m[4])}</strong>`;
+    else if (m[5]) html += `<a class="ext" href="#" data-a="noop">${esc(m[5])}</a>`;
+    else html += address(m[7]);
+  }
+  return html + esc(source.slice(last));
+}
+function address(url) {
+  const clip = clipOf(url);
+  if (!clip) return `<a class="ext" href="#" data-a="noop">${esc(url.replace(/^https?:\/\/(www\.)?/, ""))}</a>`;
+  return `<a class="clip" href="#" data-a="noop" title="${t("在链接里看", "See it in Links")}"><span class="tile" data-k="${clip.k}">${clip.mark}</span><span class="ct">${esc(pick(clip.title))}</span><span class="cs">${esc(clip.site)}</span></a>`;
+}
+function proposalBlock(P, old) {
+  const text = P.to.replace(/^(- |\d+\. )/, "");
+  return `<div class="prop" data-k="alfred">
+    ${old === null ? "" : `<div class="was">${inline(old)}</div>`}
+    ${P.stale ? `<div class="stale">${t("这篇变了 · 提议过期", "The note changed · proposal expired")}</div>
+      <div class="acts"><button type="button" class="btn" data-a="p-again">${t("再提一次", "Propose again")}</button><button type="button" class="btn" data-a="p-no">${t("不", "No")}</button></div>`
+    : `<div class="will" ${P.typed ? "" : "data-typing"}>${inline(text)}</div>
+      <div class="acts"><span class="who">${old === null ? t("Zirma 想加这一句", "Zirma would add this") : t("Zirma 想改这一处", "Zirma would change this")}</span><span class="grow"></span>
+        <button type="button" class="btn solid" data-a="p-yes">${t("好", "Yes")}</button><button type="button" class="btn" data-a="p-edit">${t("改", "Change")}</button><button type="button" class="btn" data-a="p-no">${t("不", "No")}</button></div>`}
+  </div>`;
+}
+function renderBody(note) {
+  const { lines, start } = parts(body(note));
+  const P = S.proposal?.note === note.id ? S.proposal : null;
+  const hit = (raw) => P && P.find !== null && raw === P.find && !placed;
+  const fresh = (raw) => (S.freshLine !== null && raw === S.freshLine ? " data-fresh" : "");
+  let html = "", i = start, placed = false;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    if (/^```/.test(line)) {
+      const code = [];
+      for (i++; i < lines.length && !/^```/.test(lines[i]); i++) code.push(lines[i]);
+      i++;
+      html += `<pre class="code"><code>${esc(code.join("\n"))}</code></pre>`;
+      continue;
+    }
+    const heading = /^(#{1,3}) (.*)$/.exec(line);
+    if (heading) { const tag = `h${heading[1].length + 1}`; html += `<${tag}>${inline(heading[2])}</${tag}>`; i++; continue; }
+    if (/^> /.test(line)) {
+      const quote = [];
+      for (; i < lines.length && /^> /.test(lines[i]); i++) quote.push(inline(lines[i].slice(2)));
+      html += `<blockquote>${quote.join("<br>")}</blockquote>`;
+      continue;
+    }
+    if (/^(- |\d+\. )/.test(line)) {
+      const ordered = /^\d/.test(line), same = ordered ? /^\d+\. / : /^- /, items = [];
+      for (; i < lines.length && same.test(lines[i]); i++) {
+        const raw = lines[i], text = raw.replace(/^(- |\d+\. )/, "");
+        const task = /^- \[( |x)\] (.*)$/.exec(raw);
+        if (hit(raw)) { placed = true; items.push(`<li class="plain">${proposalBlock(P, text)}</li>`); }
+        else if (task) items.push(`<li class="task"><button type="button" class="box" role="checkbox" aria-checked="${task[1] === "x"}" aria-label="${esc(task[2])}" data-a="task" data-line="${i}"></button><span>${inline(task[2])}</span></li>`);
+        else items.push(`<li><span${fresh(raw)}>${inline(text)}</span></li>`);
+      }
+      html += ordered ? `<ol>${items.join("")}</ol>` : `<ul>${items.join("")}</ul>`;
+      continue;
+    }
+    const para = [];
+    for (; i < lines.length && lines[i].trim() && !/^(```|#{1,3} |> |- |\d+\. )/.test(lines[i]); i++) para.push(lines[i]);
+    if (para.length === 1 && hit(para[0])) { placed = true; html += proposalBlock(P, para[0]); }
+    else html += `<p><span${para.length === 1 ? fresh(para[0]) : ""}>${para.map(inline).join("<br>")}</span></p>`;
+  }
+  if (P && !placed) html += proposalBlock(P, null);
+  return html;
+}
+// The same text, coloured, behind the textarea. Colour only: weight or another font would move the letters.
+function highlight(text) {
+  const lines = text.split("\n");
+  let props = lines[0] === "---", fence = false;
+  return lines.map((line, i) => {
+    if (props) { if (i > 0 && line === "---") props = false; return `<span class="dim">${esc(line)}</span>`; }
+    if (/^```/.test(line)) { fence = !fence; return `<span class="dim">${esc(line)}</span>`; }
+    if (fence) return `<span class="dim">${esc(line)}</span>`;
+    if (/^#{1,3} /.test(line)) return `<span class="hd">${esc(line)}</span>`;
+    return esc(line)
+      .replace(/(!?\[\[[^\]\n]*\]\])/g, `<span class="lk">$1</span>`)
+      .replace(/(https?:\/\/[^\s<>)）]+)/g, `<span class="lk">$1</span>`)
+      .replace(/(`[^`]+`)/g, `<span class="dim">$1</span>`)
+      .replace(/^((?:- \[[ x]\]|-|\d+\.|&gt;)) /, `<span class="dim">$1</span> `);
+  }).join("\n") + "\n";
+}
+
+/* ── Finding: by what a note says ── */
+function search(query) {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  const words = (q.match(/[a-z0-9]+/g) ?? []).filter((word) => word.length > 1);
+  const han = q.replace(/[^一-鿿]/g, "");
+  const grams = [...new Set(han.length > 1 ? Array.from({ length: han.length - 1 }, (_, i) => han.slice(i, i + 2)) : [])];
+  const terms = [...words, ...grams];
+  if (!terms.length) return [];
+  const count = (text) => terms.filter((term) => text.toLowerCase().includes(term)).length;
+  return S.notes.map((note) => {
+    const { lines, start } = parts(body(note));
+    const candidates = lines.slice(start).map(plain).filter(Boolean);
+    const best = candidates.reduce((top, line) => (count(line) > count(top) ? line : top), "");
+    const score = count(titleOf(note)) * 2 + count(candidates.join(" "));
+    // Show the matched words even when they sit far into a long line.
+    const at = count(best) ? Math.min(...terms.map((term) => best.toLowerCase().indexOf(term)).filter((index) => index >= 0)) : 0;
+    return { note, score, line: count(best) ? (at > 16 ? `…${best.slice(at - 8)}` : best) : candidates[0] ?? "" };
+  }).filter((found) => found.score > (terms.length > 1 ? 1 : 0)).sort((a, b) => b.score - a.score).slice(0, 4).map((found) => ({ ...found, terms }));
+}
+function marked(text, terms) {
+  const pattern = new RegExp(`(${[...terms].sort((a, b) => b.length - a.length).map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "gi");
+  return esc(text).replace(pattern, "<mark>$1</mark>");
+}
+
+/* ── Drawing ── */
+const ICON = {
+  note: `<svg class="i" viewBox="0 0 20 20"><path d="M5.5 3.5h6l3 3v10h-9z"/><path d="M11.5 3.5v3h3M8 10.5h4M8 13.5h4"/></svg>`,
+  back: `<svg class="i" viewBox="0 0 20 20"><path d="M12 5l-5 5 5 5"/></svg>`,
+  edit: `<svg class="i" viewBox="0 0 20 20"><path d="M4.5 15.5l.8-3.2 7.9-7.9a1.4 1.4 0 012 0l.4.4a1.4 1.4 0 010 2l-7.9 7.9z"/></svg>`,
+  out: `<svg class="i" viewBox="0 0 20 20"><path d="M8 5h7v7M15 5l-9 9"/></svg>`,
+  trash: `<svg class="i" viewBox="0 0 20 20"><path d="M4.5 6h11M8 6V4.5h4V6M6 6l.7 10h6.6L14 6"/></svg>`,
+  folder: `<svg class="i" viewBox="0 0 20 20"><path d="M3.5 6.5a1 1 0 011-1h3.2l1.5 1.5h6.3a1 1 0 011 1v6.5a1 1 0 01-1 1h-11a1 1 0 01-1-1z"/></svg>`,
+  next: `<svg class="i" viewBox="0 0 20 20" style="width:15px;height:15px"><path d="M8 5l5 5-5 5"/></svg>`,
+  image: `<svg class="i" viewBox="0 0 20 20"><rect x="3.5" y="4.5" width="13" height="11" rx="2"/><path d="M3.5 13l3.5-3.5 3 3 2-2 4.5 4.5"/></svg>`,
+  recent: `<svg class="i" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M10 6.5V10l2.5 1.5"/></svg>`,
+  quick: `<svg class="i" viewBox="0 0 20 20"><path d="M4.5 15.5l.8-3.2 7.9-7.9a1.4 1.4 0 012 0l.4.4a1.4 1.4 0 010 2l-7.9 7.9zM11 15.5h4.5"/></svg>`,
+  plus: `<svg class="i" viewBox="0 0 20 20"><path d="M10 5v10M5 10h10"/></svg>`,
+  more: `<svg class="i" viewBox="0 0 20 20" style="width:15px;height:15px"><circle cx="5" cy="10" r=".9" fill="currentColor"/><circle cx="10" cy="10" r=".9" fill="currentColor"/><circle cx="15" cy="10" r=".9" fill="currentColor"/></svg>`,
+  tw: `<svg class="i" viewBox="0 0 20 20"><path d="M8 5l5 5-5 5"/></svg>`,
+  caret: `<svg class="i caret" viewBox="0 0 20 20"><path d="M6 8l4 4 4-4"/></svg>`,
+  side: `<svg class="i" viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2.5"/><path d="M8 4v12"/></svg>`,
+  rename: `<svg class="i" viewBox="0 0 20 20"><path d="M4 14h3l7-7-3-3-7 7zM11 4l3 3"/></svg>`,
+};
+const ago = (note) => (note.just ? t("刚刚", "just now") : note.days === 0 ? t("今天", "today") : note.days === 1 ? t("昨天", "yesterday") : t(`${note.days} 天前`, `${note.days} days ago`));
+
+function row(note, { tag = true, suggest = false } = {}) {
+  const to = suggest && note.folder === "quick" && note.suggest ? folderOf(note.suggest) : null;
+  return `<li class="row" draggable="true" data-drag="${note.id}" ${S.fresh.has(note.id) ? "data-fresh" : ""}>
+    <button type="button" class="row-main" data-a="note" data-id="${note.id}"><span class="rt">${esc(titleOf(note))}</span><span class="rs">${esc(firstLine(note))}</span></button>
+    <span class="rm">
+      ${to ? `<button type="button" class="sug" data-k="alfred" data-a="suggest" data-id="${note.id}" title="${esc(t(`Zirma 猜的 · ${pathText(to.id)}`, `Zirma's guess · ${pathText(to.id)}`))}">${t(`放到 ${pick(to.name)}`, `Move to ${pick(to.name)}`)}</button>` : ""}
+      ${tag ? `<span class="tag" data-k="gray" title="${esc(pathText(note.folder))}">${esc(pick(folderOf(note.folder).name))}</span>` : ""}
+      <span class="when">${ago(note)}</span>
+    </span></li>`;
+}
+const TREE_BTN = () => `<button type="button" class="tree-btn" data-a="tree" aria-label="${t("文件夹", "Folders")}" title="${t("文件夹", "Folders")}">${ICON.side}</button>`;
+function listView() {
+  const notes = S.notes, quick = notes.filter((note) => note.folder === "quick");
+  const node = S.node;
+  let icon = ICON.note, name = t("笔记", "Notes"), sum = t(`${notes.length} 篇 · 随手记 ${quick.length}`, `${notes.length} notes · ${quick.length} in Quick Notes`), content;
+  if (!notes.length) content = `<div class="empty"><b>${t("还没有笔记", "No notes yet")}</b>${t("在下面记一条，它会放进随手记", "Write one below; it lands in Quick Notes")}<p class="path" style="margin-top:14px">~/Documents/Zirma Notes</p></div>`;
+  else if (node === "recent") content = `<ul class="rows">${notes.map((note) => row(note)).join("")}</ul>`;
+  else if (node === "quick") {
+    icon = ICON.quick; name = pick(folderOf("quick").name);
+    sum = quick.length ? t(`${quick.length} 篇还没归位 · 新笔记先落在这`, `${quick.length} not filed yet · new notes land here`) : t("新笔记先落在这", "New notes land here");
+    content = quick.length ? `<ul class="rows">${quick.map((note) => row(note, { tag: false, suggest: true })).join("")}</ul>` : `<p class="empty">${t("都归位了", "All filed")}</p>`;
+  } else {
+    // The folder's own notes first, then those in its sub-folders, each tagged with where it is.
+    const folder = folderOf(node), subs = kids(node), all = under(node);
+    const inside = [...notes.filter((note) => note.folder === node), ...notes.filter((note) => note.folder !== node && all.has(note.folder))];
+    icon = ICON.folder; name = pick(folder.name);
+    const up = pathOf(node).slice(0, -1);
+    sum = `${up.map((f) => `<button type="button" data-a="node" data-id="${f.id}">${esc(pick(f.name))}</button> / `).join("")}${t(`${countIn(node)} 篇`, `${countIn(node)} ${countIn(node) === 1 ? "note" : "notes"}`)}`;
+    content = `${subs.length ? `<ul class="folders">${subs.map((sub) => `<li><button type="button" data-a="node" data-id="${sub.id}" data-drop="${sub.id}">${ICON.folder}<span class="grow">${esc(pick(sub.name))}</span><span class="n">${countIn(sub.id)}</span>${ICON.next}</button></li>`).join("")}</ul>` : ""}
+      ${inside.length ? `<ul class="rows">${inside.map((note) => row(note, { tag: note.folder !== node })).join("")}</ul>` : subs.length ? "" : `<p class="empty">${t("空的。把笔记拖到左边这个文件夹上。", "Empty. Drag a note onto this folder on the left.")}</p>`}`;
+  }
+  return `<header class="page-head">${TREE_BTN()}<div class="ht"><h1>${icon}<span>${esc(name)}</span></h1><p>${node === "recent" || node === "quick" || !notes.length ? esc(sum) : sum}</p></div></header>
+    ${content}`;
+}
+function treeView() {
+  const quick = S.notes.filter((note) => note.folder === "quick").length;
+  const item = (id, icon, name, count, d = 0, opts = {}) => {
+    const open = S.expanded.has(id), has = opts.folder && kids(id).length;
+    const twisty = opts.folder ? `<span class="tw${has ? "" : " none"}" ${open ? "data-open" : ""} data-a="twist" data-id="${id}">${ICON.tw}</span>` : `<span class="tw none"></span>`;
+    const label = S.renaming === id ? `<input id="rename" value="${esc(name)}" aria-label="${t("文件夹名", "Folder name")}" autocomplete="off" spellcheck="false">` : `<span class="nm">${esc(name)}</span>`;
+    const more = opts.folder ? `<button type="button" class="more" data-a="folder-menu" data-id="${id}" aria-label="${t("更多", "More")}" aria-expanded="${S.menu?.kind === "folder" && S.menu.id === id}">${ICON.more}</button>` : "";
+    return `<div class="node" style="--d:${d}" data-a="node" data-id="${id}" ${opts.drop ? `data-drop="${id}"` : ""} ${opts.folder && id !== "quick" ? `data-dragf="${id}" draggable="true"` : ""} ${S.node === id && S.view === "list" ? 'aria-current="true"' : ""} ${S.view !== "list" && byId(S.open)?.folder === id ? 'aria-current="true"' : ""}>
+      ${twisty}${icon}${label}${more}<span class="n">${count || ""}</span></div>`;
+  };
+  const branch = (id, d) => kids(id).map((folder) => item(folder.id, ICON.folder, pick(folder.name), countIn(folder.id), d, { folder: true, drop: true })
+    + (S.expanded.has(folder.id) ? branch(folder.id, d + 1) : "")).join("");
+  return `<div class="tree-head"><span class="grow">${t("Zirma Notes", "Zirma Notes")}</span>
+      <button type="button" class="ib" data-a="new-folder" data-id="" aria-label="${t("新文件夹", "New folder")}" title="${t("新文件夹", "New folder")}">${ICON.plus}</button>
+      <button type="button" class="ib" data-a="fold" aria-label="${t("收起", "Fold away")}" title="${t("收起", "Fold away")}">${ICON.side}</button></div>
+    <div class="tree-scroll">
+      ${item("recent", ICON.recent, t("最近", "Recent"), S.notes.length)}
+      ${item("quick", ICON.quick, pick(folderOf("quick").name), quick, 0, { drop: true, folder: true })}
+      <div class="sep"></div>
+      ${branch(null, 0)}
+    </div>
+    <div class="lib"><span class="path" title="~/Documents/Zirma Notes">~/Documents/Zirma Notes</span><button type="button" data-a="noop">${t("换", "Change")}</button></div>`;
+}
+function readView(note) {
+  const { props } = parts(body(note));
+  const source = props.source ? clipOf(props.source) : null;
+  const back = backlinks(note);
+  const loose = [...new Set(body(note).match(URLS) ?? [])].filter((url) => !clipOf(url));
+  return `<div class="bar">
+      ${TREE_BTN()}<button type="button" class="back" data-a="back" aria-label="${t("回到列表", "Back to the list")}">${ICON.back}<span>${esc(S.node === "recent" ? t("最近", "Recent") : pick(folderOf(S.node)?.name ?? ["笔记", "Notes"]))}</span></button><span class="grow"></span>
+      <button type="button" class="btn move" data-a="move-menu" aria-haspopup="menu" aria-expanded="${S.menu?.kind === "move"}" title="${esc(pathText(note.folder))}">${ICON.folder}<span>${esc(pick(folderOf(note.folder).name))}</span>${ICON.caret}</button>
+      <button type="button" class="btn" data-a="edit">${ICON.edit}${t("编辑", "Edit")}</button>
+      <button type="button" class="ib" data-a="noop" aria-label="${t("用默认 App 打开", "Open in the default app")}" title="${t("用默认 App 打开", "Open in the default app")}">${ICON.out}</button>
+      <button type="button" class="ib" data-a="del" aria-label="${t("删掉", "Delete")}" title="${t("删掉", "Delete")}">${ICON.trash}</button>
+    </div>
+    <article class="note">
+      <h1>${esc(titleOf(note))}</h1>
+      <p class="props"><span>${note.elsewhere ? t("别处刚改过", "Just changed elsewhere") : t(`${ago(note)}改的`, `Changed ${ago(note)}`)}</span>
+        ${props.created ? `<span class="sep">·</span><span>${t(`建于 ${props.created}`, `Made ${props.created}`)}</span>` : ""}
+        ${source ? `<span class="sep">·</span><span>${t("来自", "From")}</span>${address(source.url)}` : ""}</p>
+      <div class="md">${renderBody(note)}</div>
+      ${back.length ? `<section class="under"><h2>${t(`被 ${back.length} 篇提到`, `Linked from ${back.length}`)}</h2><ul>${back.map((link) => `<li><a class="wl bt" data-a="wl" data-id="${link.note.id}">${esc(titleOf(link.note))}</a><span class="bs">${esc(link.line)}</span></li>`).join("")}</ul></section>` : ""}
+      ${loose.length ? `<section class="under"><h2>${t(`${loose.length} 个没收的网址`, `${loose.length} ${loose.length === 1 ? "address" : "addresses"} not in Links`)}</h2><ul>${loose.map((url) => `<li><span class="bs" style="color:var(--copy)">${esc(url.replace(/^https?:\/\/(www\.)?/, ""))}</span><button type="button" class="btn" data-a="save-url" data-url="${esc(url)}">${t("收下", "Save")}</button></li>`).join("")}</ul></section>` : ""}
+    </article>`;
+}
+function editView(note) {
+  return `<div class="bar">${TREE_BTN()}<span class="status" id="status"></span><span class="grow"></span><button type="button" class="btn solid" id="done" data-a="done">${t("完成", "Done")}</button></div>
+    <div class="conflict" id="conflict" data-k="warm" hidden><span>${t("这篇在别处改过，你的没有存上去", "This note changed elsewhere; yours was not saved over it")}</span><span class="grow"></span>
+      <button type="button" class="btn" data-a="theirs">${t("换成那一份", "Take theirs")}</button><button type="button" class="btn" data-a="fork">${t("把我的另存一篇", "Save mine as a copy")}</button></div>
+    <article class="note">
+      <input class="title-in" id="title" value="${esc(S.edit.title)}" aria-label="${t("名字", "Name")}" autocomplete="off" spellcheck="false">
+      <div class="ed" id="ed"><pre class="hl" id="hl" aria-hidden="true"></pre><div class="mirror" id="mirror" aria-hidden="true"></div>
+        <textarea id="src" spellcheck="false" aria-label="${t("正文", "Text")}"></textarea><div class="ac" id="ac" hidden></div></div>
+      <p class="edhint">${t("打", "Type")} <code>[[</code> ${t("连到另一篇", "to link another note")}</p>
+    </article>`;
+}
+
+function renderStrip() {
+  document.documentElement.lang = S.lang === "en" ? "en" : "zh-CN";
+  document.title = t("Zirma：笔记", "Zirma: Notes");
+  $("proto").innerHTML = `<b>Notes</b>`
+    + `<span class="what">${t("笔记是 Zirma Notes 文件夹里的 Markdown 文件。把一篇拖到左边的文件夹上；打开一篇，在底下说怎么改。", "A note is a Markdown file in the Zirma Notes folder. Drag one onto a folder on the left; open one and say what to change below.")}</span>`
+    + `<span class="lab">${t("演", "Play")}</span><button type="button" data-a="ext">${t("别处改了", "Changed elsewhere")}</button><button type="button" data-a="fromlink">${t("从链接记一篇", "Note from a link")}</button>`
+    + `<button type="button" data-a="empty" aria-pressed="${S.empty}">${t("空库", "Empty")}</button>`
+    + `<span class="lab">${t("看", "View")}</span><button type="button" data-a="narrow" aria-pressed="${S.narrow}">${t("窄", "Narrow")}</button>`
+    + `<a href="links-tree.html">${t("链接", "Links")}</a><button type="button" data-a="reset">${t("重来", "Reset")}</button><button type="button" data-a="lang">${S.lang === "en" ? "中文" : "EN"}</button><button type="button" data-a="scheme" aria-label="${t("深浅", "Light or dark")}">◐</button>`;
+}
+function renderTree() {
+  const main = $("main");
+  main.toggleAttribute("data-folded", S.folded);
+  main.toggleAttribute("data-drawer", S.drawer);
+  $("stage").toggleAttribute("data-narrow", S.narrow);
+  $("tree").setAttribute("aria-label", t("文件夹", "Folders"));
+  $("tree").innerHTML = treeView();
+  const input = $("rename");
+  if (input) { input.focus(); input.select(); }
+}
+// Our own small menu, by the button that opened it.
+function renderMenu() {
+  const M = S.menu, box = $("menu");
+  if (!M) { box.innerHTML = ""; return; }
+  let items;
+  if (M.kind === "move") {
+    const note = byId(S.open);
+    items = flat().map((folder) => `<button type="button" role="menuitemradio" style="--d:${depthOf(folder.id)}" data-a="move-to" data-id="${folder.id}" aria-checked="${folder.id === note.folder}">${folder.id === "quick" ? ICON.quick : ICON.folder}<span>${esc(pick(folder.name))}</span></button>`).join("");
+  } else {
+    const quick = M.id === "quick";
+    items = (quick ? "" : `<button type="button" role="menuitem" data-a="new-folder" data-id="${M.id}">${ICON.plus}<span>${t("新建子文件夹", "New sub-folder")}</span></button>`)
+      + `<button type="button" role="menuitem" data-a="rename" data-id="${M.id}">${ICON.rename}<span>${t("改名", "Rename")}</span></button>`
+      + (quick ? "" : `<div class="sep"></div><button type="button" role="menuitem" class="danger" data-a="folder-del" data-id="${M.id}">${ICON.trash}<span>${t("删掉文件夹", "Remove folder")}</span></button>`);
+  }
+  box.innerHTML = `<div class="menu" role="menu" id="menu-box">${items}</div>`;
+  const el = $("menu-box"), w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = `${Math.max(12, Math.min(M.x, innerWidth - w - 12))}px`;
+  el.style.top = `${M.y + h > innerHeight - 12 ? Math.max(12, M.y - h - 40) : M.y}px`;
+}
+function openMenu(kind, id, button) {
+  if (S.menu?.kind === kind && S.menu.id === id) { S.menu = null; renderMenu(); return paintExpanded(); }
+  const r = button.getBoundingClientRect();
+  S.menu = { kind, id, x: kind === "move" ? r.right - 220 : r.left, y: r.bottom + 4 };
+  renderMenu();
+  paintExpanded();
+}
+function closeMenu() { if (!S.menu) return; S.menu = null; renderMenu(); paintExpanded(); }
+function paintExpanded() { document.querySelectorAll("[aria-expanded]").forEach((el) => el.setAttribute("aria-expanded", String(Boolean(S.menu) && ((el.dataset.a === "move-menu" && S.menu.kind === "move") || (el.dataset.a === "folder-menu" && S.menu.kind === "folder" && el.dataset.id === S.menu.id))))); }
+function renderPage() {
+  const note = byId(S.open);
+  renderTree();
+  $("main").dataset.view = S.view;
+  $("page").innerHTML = S.view === "list" || !note ? listView() : S.view === "read" ? readView(note) : editView(note);
+  if (S.view === "edit") { $("src").value = S.edit.draft; paintEditor(); paintStatus(); paintConflict(); }
+  if (S.view === "read") typeOut();
+}
+function renderLine() {
+  const draft = $("draft"), text = draft.value, note = S.view === "read" ? byId(S.open) : null;
+  $("mic").hidden = Boolean(note);
+  $("mic").setAttribute("aria-pressed", String(S.listening));
+  $("mic").setAttribute("aria-label", t("说一条", "Say a note"));
+  $("go").disabled = !text.trim() || S.thinking;
+  $("go").setAttribute("aria-label", t("好", "Go"));
+  $("hang").innerHTML = note ? `<span class="hang"><span>${esc(S.revising ? t("这条提议", "This proposal") : titleOf(note))}</span></span>` : "";
+  draft.placeholder = S.listening ? t("在听…", "Listening…") : note ? (S.revising ? t("说怎么改这条提议", "Say how to change the proposal") : t("说怎么改这篇", "Say what to change")) : t("记一条，或者找一篇", "Write a note, or find one");
+  draft.setAttribute("aria-label", draft.placeholder);
+  $("toast").innerHTML = S.toast ? `<div class="toast"><span>${esc(S.toast.text)}</span>${S.toast.undo ? `<button type="button" data-a="undo">${t("撤销", "Undo")}</button>` : ""}</div>` : "";
+  let above = "", tries = "";
+  if (S.thinking) above = `<div class="above"><div class="will-row"><span class="pulse"></span><span class="u">${t("Zirma 在看这篇", "Zirma is reading the note")}</span></div></div>`;
+  else if (note) {
+    if (!text && !S.proposal) tries = [SCRIPT[note.id] ? t("把水温改成一个范围", "Make the water temperature a range") : t("补一句：周末再试一次", "Add: try again this weekend")];
+  } else if (text.trim()) {
+    const hits = search(text);
+    above = `<div class="above">${hits.map((found) => `<button type="button" class="hit" data-a="hit" data-id="${found.note.id}">
+        <span class="ht"><span>${marked(titleOf(found.note), found.terms)}</span><small>${esc(pick(folderOf(found.note.folder).name))}</small></span><span class="hs">${marked(found.line, found.terms)}</span></button>`).join("")}
+      <div class="will-row"><b>${t("记成一篇", "Make it a note")}</b><span class="u">${esc(pick(folderOf("quick").name))}</span><kbd>↵</kbd></div></div>`;
+  } else if (!S.listening) tries = [t("周末试试 V60 的新参数", "Try the new V60 numbers this weekend"), t("找：分块", "Find: chunking"), t("找：水温", "Find: water temperature")];
+  $("above").innerHTML = above;
+  $("tries").innerHTML = tries ? `<div class="tries">${tries.map((text) => `<button type="button" data-a="fill" data-text="${esc(text.replace(/^(找：|Find: )/, ""))}">${esc(text)}</button>`).join("")}</div>` : "";
+}
+function renderPop() {
+  const note = byId(S.open);
+  $("pop").innerHTML = S.pop === "del" && note ? `<div class="pop" data-a="pop-close"><div class="pop-card" role="dialog" aria-modal="true" aria-labelledby="pop-h">
+      <h2 id="pop-h">${t(`删掉《${titleOf(note)}》`, `Delete “${titleOf(note)}”`)}</h2>
+      <p>${t("挪进库里的 .trash，还能拿回来", "It moves to .trash in the library and can be brought back")}</p>
+      <div class="acts"><button type="button" class="btn" data-a="pop-close">${t("不删", "Keep")}</button><button type="button" class="btn danger" data-a="del-yes">${t("删掉", "Delete")}</button></div></div></div>` : "";
+}
+function renderAll() { renderStrip(); renderPage(); renderLine(); renderPop(); }
+function say(text, undo) {
+  const toast = { text, undo };
+  S.toast = toast;
+  renderLine();
+  setTimeout(() => { if (S.toast === toast) { S.toast = null; renderLine(); } }, 5000);
+}
+// Zirma writes where you can see it: the new line types out. A click, or reduced motion, gives it at once.
+function typeOut() {
+  const el = document.querySelector("[data-typing]"), P = S.proposal;
+  if (!el || !P || P.typed) return;
+  P.typed = true;
+  if (still) return;
+  const full = el.innerHTML, text = el.textContent, step = Math.max(1, Math.round(text.length / 36));
+  let shown = 0;
+  el.textContent = "";
+  const timer = setInterval(() => {
+    shown += step;
+    if (shown >= text.length || !el.isConnected) { clearInterval(timer); if (el.isConnected) el.innerHTML = full; }
+    else el.textContent = text.slice(0, shown);
+  }, 32);
+  el.addEventListener("click", () => { clearInterval(timer); el.innerHTML = full; }, { once: true });
+}
+
+/* ── Writing ── */
+let saveTimer = 0;
+function enterEdit(id) {
+  const note = byId(id);
+  Object.assign(S, { view: "edit", open: id, ac: null, edit: { base: body(note), draft: body(note), title: titleOf(note), status: "saved", conflict: false } });
+  renderAll();
+  $("scroll").scrollTop = 0;
+  const area = $("src");
+  area.focus();
+  area.setSelectionRange(area.value.length, area.value.length);
+}
+function paintEditor() { $("hl").innerHTML = highlight($("src").value); }
+function paintStatus() {
+  const E = S.edit;
+  $("status").textContent = E.conflict ? t("没存", "Not saved") : E.status === "saving" ? t("在存…", "Saving…") : t("已存", "Saved");
+  $("done").disabled = E.conflict;
+}
+function paintConflict() { $("conflict").hidden = !S.edit.conflict; }
+function onEdit() {
+  const E = S.edit;
+  E.draft = $("src").value;
+  E.status = "saving";
+  paintEditor(); paintStatus(); paintAc();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveDraft, 900);
+}
+// Saving carries what the file was when it was opened. If the file is no longer that, nothing is written over it.
+function saveDraft() {
+  const E = S.edit, note = byId(S.open);
+  if (!E || !note || E.conflict) return;
+  clearTimeout(saveTimer);
+  if (body(note) !== E.base) { E.conflict = true; paintStatus(); paintConflict(); return; }
+  if (E.draft !== E.base) { setBody(note, E.draft); E.base = E.draft; note.elsewhere = false; }
+  E.status = "saved";
+  paintStatus();
+}
+function finishEdit() {
+  const E = S.edit, note = byId(S.open);
+  if (!E || E.conflict) return;
+  saveDraft();
+  const old = titleOf(note), name = $("title").value.trim();
+  let moved = 0;
+  if (name && name !== old && !byTitle(name)) {
+    // Renaming here also rewrites the double links that pointed at the old name.
+    const pattern = new RegExp(`\\[\\[${old.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\|[^\\]\\n]*)?\\]\\]`, "g");
+    for (const other of S.notes) {
+      const before = other.text[L()], after = before.replace(pattern, (m, alias) => { moved++; return `[[${name}${alias ?? ""}]]`; });
+      if (after !== before) other.text[L()] = after;
+    }
+    note.title[L()] = name;
+    touch(note);
+  }
+  Object.assign(S, { view: "read", edit: null, ac: null });
+  renderAll();
+  if (name && name !== old && titleOf(note) === name) say(moved ? t(`改了名 · ${moved} 处双链跟着改了`, `Renamed · ${moved} ${moved === 1 ? "link" : "links"} updated`) : t("改了名", "Renamed"));
+}
+// The [[ menu sits at the caret: a hidden copy of the text up to the caret says where that is.
+function paintAc() {
+  const area = $("src"), menu = $("ac");
+  if (!area) return;
+  const head = area.value.slice(0, area.selectionStart);
+  const open = area.selectionStart === area.selectionEnd ? /\[\[([^\[\]\n|]*)$/.exec(head) : null;
+  if (!open) { S.ac = null; menu.hidden = true; return; }
+  const items = S.notes.filter((note) => note.id !== S.open && titleOf(note).toLowerCase().includes(open[1].toLowerCase())).slice(0, 5);
+  S.ac = { from: head.length - open[1].length, q: open[1], items, index: Math.min(S.ac?.index ?? 0, Math.max(items.length - 1, 0)) };
+  const mirror = $("mirror");
+  mirror.innerHTML = `${esc(head)}<span>​</span>`;
+  const at = mirror.lastElementChild;
+  menu.style.top = `${at.offsetTop + at.offsetHeight + 4}px`;
+  menu.style.left = `${Math.max(0, Math.min(at.offsetLeft, $("ed").clientWidth - 240))}px`;
+  menu.innerHTML = items.length
+    ? items.map((note, i) => `<button type="button" data-a="ac" data-i="${i}" aria-selected="${i === S.ac.index}"><span class="at">${esc(titleOf(note))}</span><small>${esc(pick(folderOf(note.folder).name))}</small></button>`).join("")
+    : `<div class="none">${t("没有这篇 · 照样能连", "No such note · link it anyway")}</div>`;
+  menu.hidden = false;
+}
+function pickAc(index) {
+  const area = $("src"), { from, q, items } = S.ac, name = titleOf(items[index]), text = area.value, end = from + q.length;
+  area.value = text.slice(0, from) + name + (text.slice(end).startsWith("]]") ? "" : "]]") + text.slice(end);
+  const caret = from + name.length + 2;
+  area.focus();
+  area.setSelectionRange(caret, caret);
+  onEdit();
+}
+
+/* ── Acting ── */
+function openNote(id) {
+  Object.assign(S, { view: "read", open: id, revising: false });
+  if (S.proposal && S.proposal.note !== id) S.proposal = null;
+  $("draft").value = "";
+  renderAll();
+  $("scroll").scrollTop = 0;
+}
+function newNote(title, text, folder = "quick", more = {}) {
+  const note = { id: `x${Date.now()}`, folder, days: 0, just: true, title: [title, title], text: [text, text], ...more };
+  S.notes.unshift(note);
+  S.empty = false;
+  return note;
+}
+function capture(text) {
+  const clean = text.trim();
+  const cut = /^[^。！？.!?\n]{1,24}/.exec(clean)?.[0].trim() ?? "";
+  const name = cut && !byTitle(cut) ? cut : `${TODAY} ${new Date().toTimeString().slice(0, 5).replace(":", "-")}`;
+  const note = newNote(name, md("---", `created: ${TODAY}`, "---", clean));
+  $("draft").value = "";
+  if (S.node !== "recent") S.node = "quick";
+  flash(note.id);
+  renderAll();
+  $("scroll").scrollTo({ top: 0, behavior: still ? "auto" : "smooth" });
+  say(t("记进了随手记", "Saved to Quick Notes"), () => { S.notes = S.notes.filter((other) => other !== note); });
+}
+async function propose(text) {
+  const note = byId(S.open), script = SCRIPT[note.id];
+  const again = S.revising && S.proposal;
+  S.thinking = true;
+  $("draft").value = "";
+  renderLine();
+  await sleep(still ? 0 : 900);
+  S.thinking = false;
+  const said = text.replace(/^(补一句|加一句|Add)[:：]\s*/i, "").trim();
+  if (script && body(note).split("\n").includes(script.find[L()])) S.proposal = { note: note.id, find: script.find[L()], to: (again ? script.again : script.to)[L()], typed: false, stale: false };
+  else S.proposal = { note: note.id, find: null, to: said, typed: false, stale: false };
+  S.revising = false;
+  renderAll();
+  document.querySelector(".prop")?.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+}
+function accept() {
+  const P = S.proposal, note = byId(P.note), before = body(note), lines = before.split("\n");
+  if (P.find !== null) lines[lines.indexOf(P.find)] = P.to;
+  setBody(note, P.find !== null ? lines.join("\n") : `${before.replace(/\n+$/, "")}\n\n${P.to}`);
+  Object.assign(S, { proposal: null, revising: false, freshLine: P.to });
+  renderAll();
+  say(P.find !== null ? t("Zirma 改了一处", "Zirma changed one line") : t("Zirma 加了一句", "Zirma added a line"), () => { note.text[L()] = before; });
+  setTimeout(() => { S.freshLine = null; if (S.view === "read") renderPage(); }, 2600);
+}
+// Another app writes the same file. Reading: the note just changes. Writing: your text is not saved over it.
+function elsewhere() {
+  const note = byId(S.open);
+  if (S.view === "list" || !note) {
+    const made = newNote(t("重排", "Reranking"), t("重排是最便宜的提升，放在最后做。", "Reranking is the cheapest gain; do it last."), "search");
+    S.node = "recent";
+    flash(made.id);
+    renderAll();
+    return say(t("别处新建了一篇", "A note was made elsewhere"));
+  }
+  note.text[L()] = `${body(note).replace(/\n+$/, "")}\n\n${t("- （在别处加的一行）", "- (a line added elsewhere)")}`;
+  note.elsewhere = true;
+  if (S.proposal?.note === note.id) S.proposal.stale = true;
+  if (S.view === "edit") {
+    const E = S.edit;
+    if (E.draft === E.base) { E.base = E.draft = body(note); $("src").value = E.draft; paintEditor(); }
+    else { clearTimeout(saveTimer); E.conflict = true; paintStatus(); paintConflict(); }
+    return;
+  }
+  renderPage();
+}
+function fromLink() {
+  const clip = { url: "https://www.youtube.com/watch?v=ragfromscratch", site: "YouTube", mark: "▶", k: "now", title: ["从零搭一个 RAG", "RAG from scratch"] };
+  if (!clipOf(clip.url)) S.clips.push(clip);
+  const name = pick(clip.title);
+  const note = byTitle(name) ?? newNote(name, md("---", `created: ${TODAY}`, `source: ${clip.url}`, "---", t("想对照着改 Zirma 的搜索。", "To compare with Zirma's search.")), "quick", { suggest: "search" });
+  S.node = "quick";
+  openNote(note.id);
+}
+async function listen() {
+  if (S.listening) return;
+  const draft = $("draft"), text = t("面试前把系统设计的套路过一遍", "Go over the system design steps before the interview");
+  S.listening = true;
+  draft.value = "";
+  renderLine();
+  await sleep(still ? 0 : 900);
+  for (let i = 1; i <= text.length && !still; i += 2) { draft.value = text.slice(0, i); await sleep(40); }
+  draft.value = text;
+  S.listening = false;
+  renderLine();
+  draft.focus();
+}
+
+document.addEventListener("click", (event) => {
+  const el = event.target.closest("[data-a]");
+  // A click anywhere but the open menu or its own button closes it.
+  if (S.menu && !event.target.closest("#menu-box") && !(el && (el.dataset.a === "move-menu" || el.dataset.a === "folder-menu"))) closeMenu();
+  if (!el) return;
+  const d = el.dataset, note = byId(S.open);
+  switch (d.a) {
+    case "noop": event.preventDefault(); return;
+    case "lang": if (S.view === "edit") finishEdit(); S.lang = S.lang === "en" ? "zh" : "en"; S.proposal = null; return renderAll();
+    case "scheme": { const root = document.documentElement; root.dataset.scheme = root.dataset.scheme === "dark" ? "light" : "dark"; return; }
+    case "reset": seed(); return renderAll();
+    case "empty": { const was = S.empty; seed(); if (!was) { S.notes = []; S.empty = true; } return renderAll(); }
+    case "ext": return elsewhere();
+    case "fromlink": if (S.view === "edit") finishEdit(); return fromLink();
+    case "node": {
+      if (S.renaming === d.id) return;
+      if (S.view === "edit") finishEdit();
+      Object.assign(S, { node: d.id, view: "list", open: null, proposal: null, revising: false, drawer: false });
+      if (kids(d.id).length) S.expanded.add(d.id);
+      for (const f of pathOf(d.id).slice(0, -1)) S.expanded.add(f.id);
+      $("draft").value = "";
+      renderAll();
+      $("scroll").scrollTop = 0;
+      return;
+    }
+    case "twist": S.expanded.has(d.id) ? S.expanded.delete(d.id) : S.expanded.add(d.id); return renderTree();
+    case "tree": if ($("main").clientWidth <= 720) S.drawer = !S.drawer; else S.folded = !S.folded; return renderTree();
+    case "fold": S.folded = true; return renderTree();
+    case "drawer-close": S.drawer = false; return renderTree();
+    case "narrow": S.narrow = !S.narrow; S.drawer = false; return renderAll();
+    case "folder-menu": return openMenu("folder", d.id, el);
+    case "move-menu": return openMenu("move", S.open, el);
+    case "move-to": closeMenu(); return moveNote(note, d.id);
+    case "new-folder": {
+      const made = { id: `f${Date.now()}`, parent: d.id || null, name: [t("新文件夹", "New folder"), t("新文件夹", "New folder")] };
+      S.folders.push(made);
+      if (d.id) S.expanded.add(d.id);
+      S.renaming = made.id;
+      S.menu = null; renderMenu();
+      return renderTree();
+    }
+    case "rename": S.renaming = d.id; S.menu = null; renderMenu(); return renderTree();
+    case "folder-del": return removeFolder(d.id);
+    case "note": case "hit": case "wl": return openNote(d.id);
+    case "new": { const made = newNote(d.title, ""); return enterEdit(made.id); }
+    case "suggest": {
+      const moving = byId(d.id), from = moving.folder;
+      moving.folder = moving.suggest;
+      renderPage();
+      return say(t(`挪到了 ${pick(folderOf(moving.folder).name)}`, `Moved to ${pick(folderOf(moving.folder).name)}`), () => { moving.folder = from; });
+    }
+    case "back": Object.assign(S, { view: "list", open: null, proposal: null, revising: false }); $("draft").value = ""; return renderAll();
+    case "edit": return enterEdit(S.open);
+    case "done": return finishEdit();
+    case "del": S.pop = "del"; return renderPop();
+    case "pop-close": if (event.target === el) { S.pop = null; renderPop(); } return;
+    case "del-yes": {
+      const at = S.notes.indexOf(note);
+      S.notes.splice(at, 1);
+      Object.assign(S, { pop: null, view: "list", open: null, proposal: null });
+      renderAll();
+      return say(t("挪进了 .trash", "Moved to .trash"), () => { S.notes.splice(at, 0, note); });
+    }
+    case "task": {
+      const lines = body(note).split("\n"), i = Number(d.line);
+      lines[i] = lines[i].replace(/^- \[( |x)\]/, (m, mark) => (mark === "x" ? "- [ ]" : "- [x]"));
+      setBody(note, lines.join("\n"));
+      return renderPage();
+    }
+    case "save-url": S.clips.push({ url: d.url, site: d.url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0], mark: d.url.replace(/^https?:\/\/(www\.)?/, "")[0].toUpperCase(), k: "gray", title: [t("在取标题", "Fetching the title"), "Fetching the title"] });
+      renderPage(); return say(t("收进了链接", "Saved to Links"));
+    case "theirs": { const E = S.edit; E.base = E.draft = body(note); E.conflict = false; E.status = "saved"; $("src").value = E.draft; paintEditor(); paintStatus(); paintConflict(); return; }
+    case "fork": {
+      const E = S.edit, name = `${titleOf(note)} 2`;
+      newNote(name, E.draft, note.folder);
+      E.base = E.draft = body(note); E.conflict = false; E.status = "saved";
+      $("src").value = E.draft; paintEditor(); paintStatus(); paintConflict();
+      return say(t(`你的那份另存成《${name}》`, `Yours is saved as “${name}”`));
+    }
+    case "p-yes": return accept();
+    case "p-no": Object.assign(S, { proposal: null, revising: false }); return renderAll();
+    case "p-edit": S.revising = true; renderLine(); return $("draft").focus();
+    case "p-again": S.proposal = null; return void propose("");
+    case "fill": $("draft").value = d.text; renderLine(); return $("draft").focus();
+    case "undo": { const undo = S.toast?.undo; S.toast = null; undo?.(); return renderAll(); }
+    case "mic": return void listen();
+    case "ac": return pickAc(Number(d.i));
+  }
+});
+// Moving a note is moving its file; the tree's counts follow.
+function moveNote(note, to) {
+  if (!note || note.folder === to) return;
+  const from = note.folder;
+  note.folder = to;
+  renderPage();
+  say(t(`挪到了 ${pathText(to)}`, `Moved to ${pathText(to)}`), () => { note.folder = from; });
+}
+function moveFolder(id, to) {
+  const folder = folderOf(id), from = folder.parent;
+  if (from === to || under(id).has(to)) return;
+  folder.parent = to;
+  if (to) S.expanded.add(to);
+  renderPage();
+  say(t(`挪到了 ${pathText(to)}`, `Moved to ${pathText(to)}`), () => { folder.parent = from; });
+}
+// Removing a folder keeps what was in it: its notes and sub-folders move up one level (from the top, notes go to Quick Notes).
+function removeFolder(id) {
+  const folder = folderOf(id), up = folder.parent, notesTo = up ?? "quick";
+  const notes = S.notes.filter((note) => note.folder === id), subs = kids(id);
+  for (const note of notes) note.folder = notesTo;
+  for (const sub of subs) sub.parent = up;
+  S.folders = S.folders.filter((other) => other !== folder);
+  S.menu = null; renderMenu();
+  if (S.node === id) S.node = up ?? "recent";
+  renderAll();
+  const where = pathText(notesTo);
+  say(notes.length ? t(`删了「${pick(folder.name)}」· ${notes.length} 篇挪到 ${where}`, `Removed “${pick(folder.name)}” · ${notes.length} moved to ${where}`) : t(`删了「${pick(folder.name)}」`, `Removed “${pick(folder.name)}”`), () => {
+    S.folders.push(folder);
+    for (const note of notes) note.folder = id;
+    for (const sub of subs) sub.parent = id;
+  });
+}
+function commitRename(keep) {
+  const id = S.renaming, input = $("rename");
+  if (!id || !input) return;
+  const name = input.value.trim(), folder = folderOf(id);
+  S.renaming = null;
+  if (keep && name) folder.name = [name, name];
+  renderPage();
+}
+document.addEventListener("focusout", (event) => { if (event.target.id === "rename") commitRename(true); });
+
+/* ── Dragging: a note onto a folder moves the file; a folder onto another moves the folder ── */
+let drag = null;
+const clearDrop = () => document.querySelectorAll(".drop").forEach((el) => el.classList.remove("drop"));
+document.addEventListener("dragstart", (event) => {
+  const row = event.target.closest?.("[data-drag]"), node = event.target.closest?.("[data-dragf]");
+  if (row) drag = { note: row.dataset.drag };
+  else if (node) drag = { folder: node.dataset.dragf };
+  else return;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", drag.note ?? drag.folder);
+  (row ?? node).setAttribute("data-dragging", "");
+});
+const dropOk = (to) => (drag?.note ? byId(drag.note)?.folder !== to
+  : drag?.folder ? to !== "quick" && !under(drag.folder).has(to) && folderOf(drag.folder).parent !== to : false);
+document.addEventListener("dragover", (event) => {
+  const target = event.target.closest?.("[data-drop]");
+  if (!target || !dropOk(target.dataset.drop)) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  if (!target.classList.contains("drop")) { clearDrop(); target.classList.add("drop"); }
+});
+document.addEventListener("dragleave", (event) => { const target = event.target.closest?.("[data-drop]"); if (target && !target.contains(event.relatedTarget)) target.classList.remove("drop"); });
+document.addEventListener("drop", (event) => {
+  const target = event.target.closest?.("[data-drop]");
+  if (!target || !drag) return;
+  event.preventDefault();
+  const to = target.dataset.drop, was = drag;
+  drag = null; clearDrop();
+  if (was.note) moveNote(byId(was.note), to); else moveFolder(was.folder, to);
+});
+document.addEventListener("dragend", () => { drag = null; clearDrop(); document.querySelectorAll("[data-dragging]").forEach((el) => el.removeAttribute("data-dragging")); });
+document.addEventListener("input", (event) => {
+  if (event.target.id === "draft") renderLine();
+  else if (event.target.id === "src") onEdit();
+});
+document.addEventListener("selectionchange", () => { if (S.view === "edit" && document.activeElement?.id === "src") paintAc(); });
+document.addEventListener("keydown", (event) => {
+  if (event.isComposing) return;
+  if (event.target.id === "rename") {
+    if (event.key === "Enter") { event.preventDefault(); return commitRename(true); }
+    if (event.key === "Escape") { event.preventDefault(); return commitRename(false); }
+    return;
+  }
+  // ⌘J or / puts you on the line at the bottom, as the app's ask bar does.
+  const typing = /^(INPUT|TEXTAREA)$/.test(event.target.tagName);
+  if (S.view !== "edit" && (((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") || (event.key === "/" && !typing))) { event.preventDefault(); return $("draft").focus(); }
+  if (event.key === "Escape" && S.menu) return closeMenu();
+  if (event.key === "Escape" && S.drawer) { S.drawer = false; return renderTree(); }
+  if (event.key === "Escape" && S.pop) { S.pop = null; return renderPop(); }
+  if (S.view !== "edit") return;
+  const menu = S.ac;
+  if (event.target.id === "src" && menu) {
+    if (event.key === "Escape") { event.preventDefault(); S.ac = null; $("ac").hidden = true; return; }
+    if (menu.items.length && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      event.preventDefault();
+      menu.index = (menu.index + (event.key === "ArrowDown" ? 1 : menu.items.length - 1)) % menu.items.length;
+      return paintAc();
+    }
+    if (menu.items.length && (event.key === "Enter" || event.key === "Tab")) { event.preventDefault(); return pickAc(menu.index); }
+  }
+  if (event.key === "Escape") finishEdit();
+});
+$("lineform").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const text = $("draft").value;
+  if (!text.trim() || S.thinking) return;
+  if (S.view === "read") void propose(text); else capture(text);
+});
+
+if (matchMedia("(prefers-color-scheme: dark)").matches) document.documentElement.dataset.scheme = "dark";
+seed();
+renderAll();
+</script>
+</body>
+</html>

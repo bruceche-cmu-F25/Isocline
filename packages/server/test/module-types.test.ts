@@ -9,13 +9,15 @@ import { linksModule } from "@zirma/module-links";
 import { LINK_OPS } from "@zirma/module-links/types";
 import { mailModule } from "@zirma/module-mail";
 import { MAIL_OPS } from "@zirma/module-mail/types";
+import { createNotesModule } from "@zirma/module-notes";
+import { NOTE_OPS } from "@zirma/module-notes/types";
 import { todoModule } from "@zirma/module-todo";
 import { TODO_OPS } from "@zirma/module-todo/types";
 
 /** Devices name a module's operations from its `types` (they cannot load the module itself). Those lists must be the
  * module's own: an operation renamed or added on one side only would fail at the click, not at the build. */
 test("each module's operation list for devices is the module's own", () => {
-  for (const [module, listed] of [[todoModule, TODO_OPS], [calendarModule, CALENDAR_OPS], [mailModule, MAIL_OPS], [linksModule, LINK_OPS]] as const) {
+  for (const [module, listed] of [[todoModule, TODO_OPS], [calendarModule, CALENDAR_OPS], [mailModule, MAIL_OPS], [linksModule, LINK_OPS], [createNotesModule({ defaultRoot: "/nonexistent" }), NOTE_OPS]] as const) {
     assert.deepEqual(module.ops.map((op) => op.name).sort(), [...listed].sort(), module.id);
     assert.ok(listed.every((name) => name.startsWith(`${module.id}.`)), module.id);
   }

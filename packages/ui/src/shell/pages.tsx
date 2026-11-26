@@ -29,6 +29,8 @@ import { snapshotOf, type ModuleId, type ModuleSnapshots } from "../modules.ts";
 // Loaded when first opened (lazyPage.tsx): the two pages with the most code of their own that a window may never show.
 const Dev = lazyPage(() => import("../Dev.tsx").then((module) => module.Dev));
 const Settings = lazyPage(() => import("../Settings.tsx").then((module) => module.Settings));
+// The notes page brings its editor (ProseMirror); it loads when notes are first opened.
+const Notes = lazyPage(() => import("../notes/Notes.tsx").then((module) => module.Notes));
 
 export interface PageProps<S = unknown> extends NamePreference {
   /** A module page's own snapshot (see `modulePage`); nothing a core page reads. */
@@ -53,6 +55,10 @@ export interface PageProps<S = unknown> extends NamePreference {
   dev: Omit<DevProps, "state">;
   /** The bar under the page: where words about a thing picked on this page are written. */
   line: PageLine;
+  /** For a page with `side`: where its own side column goes (the sidebar's place; it slides in and out of view there,
+   * and stays the page's while the user looks at the pages list), or null when there is no sidebar (a phone, the
+   * sidebar folded). Then the page keeps its column inside itself. */
+  side: HTMLElement | null;
 }
 
 export interface PageDef<S = unknown> {
@@ -66,6 +72,10 @@ export interface PageDef<S = unknown> {
   group: "alfred" | "work" | "modules" | "dev" | "system";
   /** The page draws its own top (no title and summary above it), and Zirma's panel steps aside for it. */
   bare?: boolean;
+  /** The page brings its own side column (Notes: its page tree). While it is open the sidebar's pages list slides
+   * away and the page's column takes its place, with a row back to the list at its top. Not a mode: leaving the page
+   * brings the list back. */
+  side?: boolean;
   /** A number for the sidebar, or nothing. */
   badge?(snapshot: S, state: StateResponse): number | undefined;
   /** One plain line under the page title: the facts. It also tells Zirma what you were looking at when you ask. */
@@ -199,7 +209,7 @@ const PAGES: PageDef[] = [
       if (!open) return [];
       return late ? ["sug.todos.first", "sug.todos.late", "sug.todos.week"] : ["sug.todos.first", "sug.todos.week"];
     },
-    render: ({ snapshot, fresh, areas, state, line }) => <Todos snapshot={snapshot!} fresh={fresh} areas={areas} automations={state.automations} calendar={snapshotOf(state, "calendar")} line={line} />,
+    render: ({ snapshot, fresh, areas, state, line, go }) => <Todos snapshot={snapshot!} fresh={fresh} areas={areas} automations={state.automations} calendar={snapshotOf(state, "calendar")} line={line} go={go} />,
   }),
   modulePage("mail", {
     key: "mail.inbox", get title() { return t("page.mail"); }, icon: "mail", k: "teal", group: "modules",
@@ -231,6 +241,14 @@ const PAGES: PageDef[] = [
       return unread ? t("head.links.unread", { n: unread }) : t("head.links.clear");
     },
     render: ({ snapshot, fresh, areas, item, onItem }) => <Links snapshot={snapshot} fresh={fresh} areas={areas} focus={item} onFocused={onItem} />,
+  }),
+  modulePage("note", {
+    key: "note.list", get title() { return t("page.notes"); }, icon: "write", k: "warm", group: "modules", bare: true, side: true,
+    summary: (snapshot) => {
+      const pages = snapshot?.pages.filter((page) => page.file) ?? [];
+      return pages.length ? t("notes.sum", { n: pages.length }) : t("notes.sum.none");
+    },
+    render: ({ snapshot, item, go, side, state }) => <Notes snapshot={snapshot} item={item} go={go} side={side} todos={snapshotOf(state, "todo")?.todos} />,
   }),
   {
     key: "core.automations", get title() { return t("page.automations"); }, icon: "clock", k: "green", group: "modules",

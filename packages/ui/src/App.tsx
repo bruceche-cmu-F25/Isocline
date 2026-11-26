@@ -376,6 +376,12 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
   /** The sidebar as drawn: folded away when the window has no room for it beside Zirma. */
   const navMode = size.navMode;
   const navVisible = phone ? sheet === "nav" : navMode === "full";
+  /** A page with its own side column (PageDef.side) puts it where the pages list was; `navPeek` is the user going
+   * back to the list while that page stays open. Opening another page ends it. */
+  const [sideHost, setSideHost] = useState<HTMLElement | null>(null);
+  const [navPeek, setNavPeek] = useState(false);
+  useEffect(() => setNavPeek(false), [current?.key]);
+  const pageSide = !!current?.side && navVisible && !phone && !navPeek && alfredMode !== "wide";
   const toggleNav = useCallback(() => {
     // Folded for want of room: showing it puts Zirma away, which is what makes the room.
     if (layout.nav === "full" && navMode === "hidden") setLayout({ alfred: "closed" });
@@ -592,9 +598,19 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
         system={pages.filter((page) => page.group === "system")} page={current?.key ?? ""} onPage={goPage} />}
       <div className="sidebar" data-visible={navVisible || undefined}>
         {navVisible && (
-          <Nav state={state} pages={listed} page={alfredMode === "wide" ? "" : navigationPage} mode={phone ? "all" : mode} selected={selected} session={bare ? route.session : null}
-            onSession={openSession} onNewProjectSession={(projectId) => openSession(null, projectId)} connection={connection} onArchive={archiveConversation} onShowArchive={() => setShowArchive(true)}
-            onPage={goPage} onSelect={(id) => { setSheet(null); selectFromList(id); }} onClose={phone ? () => setSheet(null) : undefined} onLanguage={switchLanguage} />
+          <div className="side-views" data-swap={pageSide || undefined}>
+            <div className="side-view side-nav" inert={pageSide || undefined}>
+              <Nav state={state} pages={listed} page={alfredMode === "wide" ? "" : navigationPage} mode={phone ? "all" : mode} selected={selected} session={bare ? route.session : null}
+                onSession={openSession} onNewProjectSession={(projectId) => openSession(null, projectId)} connection={connection} onArchive={archiveConversation} onShowArchive={() => setShowArchive(true)}
+                onPage={(key) => { if (key === current?.key) setNavPeek(false); goPage(key); }} onSelect={(id) => { setSheet(null); selectFromList(id); }} onClose={phone ? () => setSheet(null) : undefined} onLanguage={switchLanguage} />
+            </div>
+            {!phone && (
+              <div className="side-view side-page" inert={!pageSide || undefined} data-k={current?.k}>
+                {current?.side && <button type="button" className="side-back" onClick={() => setNavPeek(true)} title={t("nav.back")}><Icon name="back" /><span>{current.title}</span></button>}
+                <div className="side-host" ref={setSideHost} />
+              </div>
+            )}
+          </div>
         )}
         {archived && <ArchiveNotice key={archived.conversation.id + archived.conversation.archivedAt} conversation={archived.conversation}
           onDismiss={dismissArchive} onUndo={async () => {
@@ -624,7 +640,8 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
             <div className="page-body">{current.render({
               snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName,
               focus: inboxFocus, onFocused, openConversation, line, refresh: alfred.refresh,
-              go: goTo, item: route.item, onItem: clearItem,
+              // The column stays the page's while the user looks at the pages list: it only slides out of view.
+              go: goTo, item: route.item, onItem: clearItem, side: current.side && navVisible && !phone && alfredMode !== "wide" ? sideHost : null,
               dev: { session: route.session, newSession, onSession: openSession, refresh: alfred.refresh, highlighted, onEvent, pageTitle, automationTitle: automationOf },
             })}</div>
             {/* Under the page: the page's own controls are at its top, Zirma and search at its foot. */}

@@ -48,6 +48,7 @@ import { isCloudProvider } from "./speak-cloud.ts";
 import { MAX_FILE_BYTES } from "./files.ts";
 import { encodingFor, HttpError, overTheWire, pack, parseObject, readBytes, readJson, send, statusOf, type Encoding } from "./wire.ts";
 import { checkAccess, NEEDS_DEV } from "./access.ts";
+import { notesRoute } from "./notes.ts";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const TYPES: Record<string, string> = {
@@ -870,6 +871,7 @@ function dispatch(home: Home, options: ServeOptions, peer: Peer, req: IncomingMe
       && await handleConnections({ google: options.google, models: options.models, mcp: options.mcp }, req, res, url)) return;
     if (options.skills && (path === "/api/skills" || path.startsWith("/api/skills/")) && await handleSkills(options.skills, req, res, url)) return;
     if (path === "/api/outlets") return outletRoute(home, peer, req, res);
+    if (path.startsWith("/api/notes/") && await notesRoute(home, req, res, path, url)) return;
     await route(home, peer, req, res, url);
   };
   answer().catch((error: unknown) => {

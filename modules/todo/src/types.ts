@@ -7,12 +7,13 @@ export type TodoStatus = (typeof TODO_STATUSES)[number];
  * if it has a time. */
 export interface TodoRepeat { days: number[]; at?: string }
 
-/** Where a todo came from, when the user did not write it: a calendar event Zirma mirrors, or a mail Zirma
- * picked it out of. `ref` names that one thing (`calendar:<account>:<event id>`, or
- * `calendar:<account>:repeat:<repeating event>` for one that repeats weekly; `mail:<message id>`): it never makes
- * a second todo at a time, and a todo the user removed is not made again. */
+/** Where a todo came from, when the user did not write it: a calendar event Zirma mirrors, a mail Zirma picked it
+ * out of, or a to-do in one of the user's notes they put on the list. `ref` names that one thing
+ * (`calendar:<account>:<event id>`, or `calendar:<account>:repeat:<repeating event>` for one that repeats weekly;
+ * `mail:<message id>`; `note:<library>:<page>#<words key>:<which of the same words>`): it never makes a second todo
+ * at a time, and a todo the user removed is not made again by itself. */
 export interface TodoSource {
-  kind: "calendar" | "mail";
+  kind: "calendar" | "mail" | "note";
   ref: string;
   /** What to call the source: the calendar's name, the mail's subject. */
   label: string;

@@ -19,6 +19,7 @@
     "@zirma/module-kit": "*",
     "@zirma/module-links": "*",
     "@zirma/module-mail": "*",
+    "@zirma/module-notes": "*",
     "@zirma/module-todo": "*",
     "@zirma/protocol": "*",
     "@zirma/ui": "*",

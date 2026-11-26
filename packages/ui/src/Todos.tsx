@@ -85,9 +85,11 @@ function repeatLabel(repeat: Repeat): string {
 const notYet = (todo: Item, today: string) => !!todo.source?.repeat && !todo.done && !!todo.due && (todo.startDate ?? todo.due) > today;
 
 /** Who put it on the list: the calendar, mail (picked out by Zirma), Zirma in a conversation, or the user. */
-type Origin = "calendar" | "mail" | "alfred" | "you";
+type Origin = "calendar" | "mail" | "note" | "alfred" | "you";
 const originOf = (todo: Item): Origin => todo.source?.kind ?? (todo.changedBy?.kind === "todo.added" ? "alfred" : "you");
 const addedDay = (todo: Item) => iso(new Date(todo.createdAt));
+/** The notes page's item for a note's to-do: its page and, after `#`, which to-do there (`note:<library>:<page>#…`). */
+const noteItem = (ref: string) => ref.replace(/^note:[^:]+:/, "");
 /** How long somebody's own todo has waited; a calendar's todo was put there by a date, not left. */
 const waited = (todo: Item, today: string) => {
   const origin = originOf(todo);
@@ -124,6 +126,7 @@ function originShort(todo: Item): string {
   const origin = originOf(todo);
   if (origin === "calendar") return todo.source!.label;
   if (origin === "mail") return t("todo.src.mail");
+  if (origin === "note") return todo.source!.label;
   if (origin === "alfred") return getAssistant();
   return t("todo.from.you");
 }
@@ -131,6 +134,7 @@ function originLong(todo: Item): string {
   const origin = originOf(todo);
   if (origin === "calendar") return t("todo.from.calendar", { name: todo.source!.label });
   if (origin === "mail") return t("todo.from.mail", { subject: todo.source!.label });
+  if (origin === "note") return t("todo.from.note", { title: todo.source!.label });
   return t(origin === "alfred" ? "todo.from.alfred" : "todo.from.youLong");
 }
 
@@ -235,7 +239,7 @@ function Pop({ onClose, children }: { onClose(): void; children: ReactNode }) {
   );
 }
 
-function TodoCard({ todo, today, all, areas, now, onClose, onError, onSay }: { todo: Item; today: string; all: Item[]; areas: Area[]; now: number; onClose(): void; onError: OnError; onSay?: () => void }) {
+function TodoCard({ todo, today, all, areas, now, go, onClose, onError, onSay }: { todo: Item; today: string; all: Item[]; areas: Area[]; now: number; go?(page: string, item?: string): void; onClose(): void; onError: OnError; onSay?: () => void }) {
   const { busy, run } = useRun(onError);
   const [title, setTitle] = useState(todo.title);
   const [confirming, setConfirming] = useState(false);
@@ -313,6 +317,7 @@ function TodoCard({ todo, today, all, areas, now, onClose, onError, onSay }: { t
             <p>
               {originLong(todo)}
               {todo.source?.link && <> · <OutLink href={todo.source.link}>{t("todo.openSource")}</OutLink></>}
+              {todo.source?.kind === "note" && go && <> · <button type="button" className="todo-note-link" onClick={() => go("note.list", noteItem(todo.source!.ref))}>{t("todo.openNote")}</button></>}
             </p>
             <p className="quiet">{t("todo.addedOn", { date: md(addedDay(todo)) })}{age >= 1 && !todo.done ? ` · ${t("todo.daysAgo", { n: age })}` : ""}</p>
           </div>
@@ -728,7 +733,7 @@ const savedView = (): View => { try { const view = localStorage.getItem(VIEW_KEY
 
 /** The todo page: what is open, day by day with today beside it, or as a board, or what repeats as a week (the
  * user picks; the device keeps it). */
-export function Todos({ snapshot, fresh, areas, automations, calendar, line }: { snapshot: TodoSnapshot; fresh: ReadonlySet<string>; areas: Area[]; automations?: Automation[]; calendar?: CalendarSnapshot; line?: PageLine }) {
+export function Todos({ snapshot, fresh, areas, automations, calendar, line, go }: { snapshot: TodoSnapshot; fresh: ReadonlySet<string>; areas: Area[]; automations?: Automation[]; calendar?: CalendarSnapshot; line?: PageLine; go?(page: string, item?: string): void }) {
   const [title, setTitle] = useState("");
   const [due, setDue] = useState("");
   const [at, setAt] = useState("");
@@ -878,7 +883,7 @@ export function Todos({ snapshot, fresh, areas, automations, calendar, line }: {
           </div>
         )}
       </div>
-      {openedTodo && <TodoCard todo={openedTodo} today={today} all={todos} areas={areas} now={now} onClose={() => setOpened(null)} onError={setError} onSay={line && !openedTodo.source?.repeat ? () => say(openedTodo) : undefined} />}
+      {openedTodo && <TodoCard todo={openedTodo} today={today} all={todos} areas={areas} now={now} go={go} onClose={() => setOpened(null)} onError={setError} onSay={line && !openedTodo.source?.repeat ? () => say(openedTodo) : undefined} />}
     </section>
   );
 }

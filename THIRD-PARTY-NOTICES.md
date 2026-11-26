@@ -55,6 +55,9 @@ Zirma runs on these packages; they are installed from npm, not copied in, and ke
 | [xterm.js](https://github.com/xtermjs/xterm.js) (`@xterm/xterm`, `@xterm/addon-fit`) | the dev terminal's screen | MIT |
 | [React](https://github.com/facebook/react) | the interface | MIT, © Meta |
 | [uqr](https://github.com/unjs/uqr) | pairing QR codes | MIT |
+| [ProseMirror](https://github.com/ProseMirror/prosemirror) (`prosemirror-model`, `-state`, `-view`, `-transform`, `-commands`, `-keymap`, `-history`, `-inputrules`, `-dropcursor`) | the notes editor | MIT, © Marijn Haverbeke and others |
+| [micromark](https://github.com/micromark/micromark) and [mdast](https://github.com/syntax-tree) (`mdast-util-from-markdown`, `micromark-extension-gfm`, `mdast-util-gfm`, `micromark-extension-frontmatter`, `mdast-util-frontmatter`, `micromark-extension-math`, `mdast-util-math`) | reading notes' Markdown | MIT, © Titus Wormer |
+| [KaTeX](https://github.com/KaTeX/KaTeX) | installed with `micromark-extension-math`; notes do not draw formulas yet | MIT |
 | [Electron](https://github.com/electron/electron) | the Mac app | MIT |
 | [Vite](https://github.com/vitejs/vite) | building the interface (dev only) | MIT |
 | [Playwright](https://github.com/microsoft/playwright) (`playwright-core`) | app tests (dev only) | Apache-2.0 |

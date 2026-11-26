@@ -18,7 +18,7 @@ function address(route: Route) {
   if (route.page) params.set("p", route.page);
   if (route.selected) params.set("c", route.selected);
   if (route.session) params.set("s", route.session);
-  if ((route.page === "core.inbox" || route.page === "mail.inbox") && route.item) params.set("item", route.item);
+  if ((route.page === "core.inbox" || route.page === "mail.inbox" || route.page === "note.list") && route.item) params.set("item", route.item);
   url.hash = params.toString();
   return url;
 }
