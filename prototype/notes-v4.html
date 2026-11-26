@@ -1,0 +1,2026 @@
+<!doctype html>
+<!--
+  Zirma: Notes (v4, 2026-11-25). A prototype for docs/design/notes.md and docs/design/notes-two-layers.md: no build
+  step, sample pages (made up), and scripts in place of the disk, the file watcher and the model.
+    Two layers (v4)  the library has yours (everything you write or keep) and Zirma's (`zirma_notes/`: pages Zirma
+             compiles from yours and keeps up to date). Every line Zirma writes there names where it came from; click
+             one to go back to your words. The Map, About you, Check-up, Updates, and topic / project / person pages.
+             "Make it mine" moves a page into your layer. Updates undo a batch. Zirma never writes into your layer by
+             itself: a check-up item can only propose. Words of Zirma's you accepted carry a mark until you own them.
+             In the strip, "New material" plays a note arriving and Zirma updating; "Daily tidy" plays the daily pass.
+  The question it asks: can notes feel like Notion (pages you write in as they look, pages inside pages, Zirma inside
+  the page) while every page is still a Markdown file in a folder you own?
+    Pages    only pages, no folders: a page can hold pages. The left side is the page tree (Recent and Quick Notes on
+             top). Drag a page onto another to move it; ⋯ adds a sub-page, moves or deletes it. On disk a page with
+             sub-pages is `Name.md` plus a folder `Name/`. "Markdown" in the top bar shows the file a page saves to.
+    Blocks   what you write is what you see. Type / for the block menu, [[ to link a page, or Markdown shortcuts at the
+             start of a line (#, -, [], 1., >, ```, ---). Enter makes the next block; Backspace at the start joins.
+             Hover a block for + and the handle; drag the handle to move the block.
+    Zirma    select text and press "Ask Zirma" (or ⌘J): shorter, as points, related notes. Its change shows in place as
+             a revision (struck through, then the new words): yes or no, nothing changes without you. "/ Ask Zirma" on
+             an empty line asks about the whole page. To-dos go to the to-do list one by one, or all at once when Zirma
+             points out the ones left behind. What Zirma says here is scripted.
+    Elsewhere  "Changed elsewhere" in the strip plays another app writing the same file: while you are not typing the
+             page just changes; while you are, nothing is written over your words: take theirs or keep yours as a copy.
+    Saving   (v3.1) the route in docs/research/notes-editor.md: only the blocks you changed are written again; the
+             rest is copied from the file as it was. "Markdown" marks the lines that changed since you opened the page.
+             Markdown the page cannot draw (a Dataview query, HTML) is a block "Kept as written", edited as text.
+             Tables are GFM tables. Icons are line drawings named in the file (`icon: book`); no emoji anywhere.
+  v2 (folders as a tree) is kept as notes-folders.html for comparison.
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zirma：笔记</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --ease: cubic-bezier(.23, 1, .32, 1);
+  --side: color-mix(in oklch, var(--wash) 55%, var(--bg));
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
+h1, h2, h3, p, ul, ol, pre { margin: 0; padding: 0; }
+ul { list-style: none; }
+a { color: inherit; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+.grow { flex: 1; min-width: 0; }
+
+/* ── The prototype's own strip ── */
+.proto { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.proto b { flex: none; padding: 0 6px; }
+.proto .lab { flex: none; padding: 0 4px 0 10px; opacity: .6; }
+.proto button, .proto a { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; text-decoration: none; }
+.proto button:hover, .proto a:hover { opacity: 1; }
+.proto button[aria-pressed="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+.proto .what { flex: 1; min-width: 0; padding: 0 10px; opacity: .7; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1180px) { .proto .what { display: none; } }
+
+/* ── Frame ── */
+.stage { flex: 1; min-height: 0; display: flex; justify-content: center; background: var(--paper, var(--bg)); }
+.page { position: relative; flex: 1; min-width: 0; max-width: 100%; display: flex; background: var(--bg); container: page / inline-size; }
+.stage[data-narrow] .page { max-width: 390px; box-shadow: 0 0 0 1px var(--line); }
+.pane { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; container: pane / inline-size; }
+
+/* ── Side: the page tree ── */
+.side { flex: none; width: 250px; display: flex; flex-direction: column; background: var(--side); border-right: 1px solid var(--line-soft); }
+.page[data-folded] .side { display: none; }
+.side-head { flex: none; display: flex; align-items: center; gap: 6px; height: 46px; padding: 0 8px 0 14px; }
+.side-head b { flex: 1; min-width: 0; font-size: .875rem; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.side-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 16px; }
+.node { position: relative; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 calc(6px + var(--d, 0) * 14px); border-radius: 8px; color: var(--copy); font-size: .875rem; cursor: pointer; user-select: none; }
+.node:hover { background: var(--wash); color: var(--ink); }
+.node[aria-current="true"] { background: var(--wash); color: var(--ink); font-weight: 600; }
+.node.drop { box-shadow: inset 0 0 0 1.5px var(--alf); background: var(--alf-soft); }
+.node .tw { flex: none; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; color: var(--muted); }
+.node .tw:hover { background: var(--line-soft); }
+.node .tw svg { width: 12px; height: 12px; transition: transform 160ms var(--ease); }
+.node .tw[data-open] svg { transform: rotate(90deg); }
+.node .tw.none { visibility: hidden; }
+.node .ic { flex: none; width: 18px; text-align: center; font-size: .9375rem; line-height: 1; }
+.node .ic svg { width: 16px; height: 16px; color: var(--muted); vertical-align: -3px; }
+.node .nm { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.node .n { flex: none; padding-right: 4px; color: var(--muted); font-size: .75rem; font-weight: 400; font-variant-numeric: tabular-nums; }
+.node .acts { flex: none; display: none; gap: 1px; }
+.node:hover .acts, .node .acts[data-on] { display: flex; }
+.node:hover .n { display: none; }
+.node .acts button { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); }
+.node .acts button:hover { background: var(--line-soft); color: var(--ink); }
+.node .acts svg { width: 14px; height: 14px; }
+.side .lab { display: flex; align-items: center; height: 28px; padding: 10px 6px 0 8px; color: var(--muted); font-size: .75rem; }
+.side .sep { height: 1px; margin: 8px 6px; background: var(--line-soft); }
+.side .lib { flex: none; display: flex; align-items: center; gap: 6px; padding: 10px 12px 12px 14px; border-top: 1px solid var(--line-soft); color: var(--muted); font: .75rem var(--mono); }
+.side .lib span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.side .lib button { flex: none; font-family: var(--sans); color: var(--copy); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+[data-dragging] { opacity: .4; }
+.scrim { display: none; }
+@container page (max-width: 720px) {
+  .side { display: none; }
+  .page[data-drawer] .side { display: flex; position: absolute; inset: 0 auto 0 0; z-index: 20; width: min(300px, 86%); box-shadow: 0 0 40px oklch(0 0 0 / .2); }
+  .page[data-drawer] .scrim { display: block; position: absolute; inset: 0; z-index: 19; background: color-mix(in oklch, var(--bg) 40%, transparent); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  .side-head [data-a="fold"] { display: none; }
+}
+
+/* ── Top bar of the pane ── */
+.top { flex: none; display: flex; align-items: center; gap: 4px; height: 46px; padding: 0 10px 0 12px; }
+.crumbs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; white-space: nowrap; font-size: .875rem; color: var(--copy); }
+.crumbs button { min-width: 0; flex-shrink: 1; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 6px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumbs button span { overflow: hidden; text-overflow: ellipsis; }
+.crumbs .ic:empty { display: none; }
+.crumbs .ic svg.i { width: 15px; height: 15px; vertical-align: -3px; color: var(--copy); }
+.crumbs button:hover { background: var(--wash); color: var(--ink); }
+.crumbs button:last-child { flex-shrink: 0; max-width: 60%; color: var(--ink); }
+.crumbs .sl { flex: none; color: var(--muted); }
+.status { flex: none; padding: 0 6px; color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.tb { flex: none; height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 8px; color: var(--copy); font-size: .8125rem; white-space: nowrap; }
+.tb:hover { background: var(--wash); color: var(--ink); }
+.tb[aria-pressed="true"] { background: var(--wash); color: var(--ink); }
+.ib { flex: none; width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 8px; color: var(--copy); }
+.ib:hover { background: var(--wash); color: var(--ink); }
+.tree-btn { display: none; }
+.page[data-folded] .tree-btn { display: inline-grid; }
+@container page (max-width: 720px) { .tree-btn { display: inline-grid; } }
+@container pane (max-width: 560px) { .top .tb span, .status { display: none; } .crumbs .up { display: none; } }
+
+/* ── The page ── */
+.scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.doc { max-width: 760px; margin: 0 auto; padding: 0 64px 160px; }
+.cover { height: 150px; margin: 0 -64px; background: linear-gradient(120deg, var(--k-fill), color-mix(in oklch, var(--k-solid) 30%, var(--bg))); }
+.head-tools { display: flex; gap: 4px; height: 30px; margin-top: 24px; opacity: 0; transition: opacity 160ms; }
+.doc-head:hover .head-tools, .head-tools:focus-within { opacity: 1; }
+.head-tools .tb { height: 26px; font-size: .75rem; color: var(--muted); }
+.head-tools .tb svg.i { width: 14px; height: 14px; }
+.big-icon { display: grid; place-items: center; width: 74px; height: 74px; margin-top: 4px; border-radius: 12px; color: var(--ink); }
+.big-icon svg.i { width: 54px; height: 54px; stroke-width: 1.25; }
+.big-icon:hover { background: var(--wash); }
+.cover + .doc-head .big-icon { margin-top: -40px; }
+.title { margin-top: 6px; font-size: 2.25rem; line-height: 1.2; font-weight: 700; letter-spacing: -.015em; outline: none; overflow-wrap: anywhere; }
+.title:empty::before { content: attr(data-ph); color: var(--muted); opacity: .6; }
+.props { margin-top: 12px; display: flex; flex-direction: column; gap: 1px; font-size: .875rem; }
+.prop-row { display: flex; align-items: center; gap: 8px; min-height: 30px; min-width: 0; }
+.prop-row .k { flex: none; width: 104px; display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.prop-row .k svg { width: 15px; height: 15px; }
+.prop-row .v { min-width: 0; flex: 1; display: flex; align-items: center; gap: 6px; color: var(--copy); overflow: hidden; }
+.event { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 24px; padding: 0 8px; border-radius: 6px; background: var(--k-fill); color: var(--k-text); font-size: .8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rule { height: 1px; margin: 14px 0 10px; background: var(--line-soft); }
+
+/* Blocks */
+.blocks { position: relative; }
+.blk { position: relative; padding: 2px 0; border-radius: 6px; }
+.blk.drop-before { box-shadow: 0 -2px 0 var(--alf); }
+.blk.drop-after { box-shadow: 0 2px 0 var(--alf); }
+.gut { position: absolute; left: -50px; top: 3px; display: flex; align-items: center; gap: 0; opacity: 0; transition: opacity 120ms; }
+.blk:hover > .gut, .blk:focus-within > .gut { opacity: 1; }
+.gut button, .gut .grip { width: 24px; height: 26px; display: grid; place-items: center; border-radius: 5px; color: var(--muted); }
+.gut button:hover, .gut .grip:hover { background: var(--wash); color: var(--ink); }
+.gut .grip { cursor: grab; font-size: 13px; letter-spacing: -2px; }
+.blk[data-t="h1"] > .gut { top: 12px; } .blk[data-t="h2"] > .gut { top: 9px; } .blk[data-t="h3"] > .gut { top: 6px; }
+.row-b { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.ed { flex: 1; min-width: 0; min-height: 1.6em; outline: none; color: var(--copy); overflow-wrap: anywhere; white-space: pre-wrap; }
+.ed:focus:empty::before, .blk[data-t^="h"] .ed:empty::before, .ed[data-always]:empty::before { content: attr(data-ph); color: var(--muted); opacity: .7; }
+.blk[data-t="h1"] { margin-top: 1.1em; } .blk[data-t="h1"] .ed { color: var(--ink); font-size: 1.625rem; line-height: 1.3; font-weight: 700; }
+.blk[data-t="h2"] { margin-top: .9em; } .blk[data-t="h2"] .ed { color: var(--ink); font-size: 1.3125rem; line-height: 1.35; font-weight: 650; }
+.blk[data-t="h3"] { margin-top: .6em; } .blk[data-t="h3"] .ed { color: var(--ink); font-size: 1.0625rem; font-weight: 650; }
+.mk { flex: none; min-width: 18px; text-align: center; color: var(--copy); }
+.blk[data-t="ul"] .mk { font-size: 1.1em; line-height: 1.45; }
+.blk[data-t="ol"] .mk { min-width: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+.box { flex: none; width: 17px; height: 17px; margin-top: .22em; display: grid; place-items: center; border-radius: 4px; box-shadow: inset 0 0 0 1.5px var(--line); }
+.box[aria-checked="true"] { background: var(--alf-solid); box-shadow: none; }
+.box[aria-checked="true"]::after { content: ""; width: 8px; height: 4px; margin-top: -2px; border-left: 1.8px solid var(--on-alf); border-bottom: 1.8px solid var(--on-alf); transform: rotate(-45deg); }
+.box[aria-checked="true"] + .ed { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+.send { flex: none; height: 22px; margin-top: 1px; display: none; align-items: center; gap: 4px; padding: 0 8px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.blk:hover .send { display: inline-flex; }
+.send:hover { color: var(--ink); }
+.sent { flex: none; height: 22px; margin-top: 1px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border-radius: 999px; background: var(--k-fill); color: var(--k-text); font-size: .75rem; white-space: nowrap; }
+.blk[data-t="quote"] .row-b { padding-left: 14px; box-shadow: inset 3px 0 0 var(--ink); }
+.blk[data-t="callout"] .row-b { padding: 12px 14px; border-radius: 8px; background: var(--wash); }
+.blk[data-t="callout"] .ci { flex: none; height: 1.6em; display: grid; place-items: center; color: var(--copy); }
+.blk[data-t="callout"] .ci svg.zm { color: var(--alf); }
+.tg { flex: none; width: 20px; height: 20px; margin-top: 2px; display: grid; place-items: center; border-radius: 5px; color: var(--copy); }
+.tg:hover { background: var(--wash); }
+.tg svg { width: 13px; height: 13px; transition: transform 160ms var(--ease); }
+.tg[aria-expanded="true"] svg { transform: rotate(90deg); }
+.tbody { margin: 2px 0 2px 28px; }
+.blk[data-t="code"] .code { width: 100%; padding: 14px 16px; border-radius: 8px; background: var(--wash); font: .8125rem/1.65 var(--mono); color: var(--ink); white-space: pre; overflow-x: auto; outline: none; }
+.blk[data-t="hr"] hr { margin: 12px 0; border: 0; height: 1px; background: var(--line); }
+.blk[data-t="hr"].sel hr { box-shadow: 0 0 0 3px var(--alf-soft); }
+.subpage { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 0 6px; margin: 0 -6px; border-radius: 6px; color: var(--ink); font-weight: 500; }
+.subpage:hover { background: var(--wash); }
+.subpage .ic { flex: none; width: 20px; text-align: center; }
+.subpage .ic svg { width: 17px; height: 17px; color: var(--muted); vertical-align: -3px; }
+.subpage span:last-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
+.mark { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line); text-decoration: none; }
+.mark:hover { background: var(--wash); }
+.mark .tile { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--k-fill); color: var(--k-text); font: 650 .8125rem/1 var(--sans); }
+.mark .mt { min-width: 0; display: flex; flex-direction: column; }
+.mark .mt b { font-weight: 550; font-size: .875rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mark .mt small { color: var(--muted); font-size: .75rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mark .inl { flex: none; margin-left: auto; color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.img { display: flex; align-items: center; justify-content: center; gap: 8px; height: 160px; border-radius: 8px; background: var(--wash); color: var(--muted); font-size: .8125rem; }
+.ed b, .ed strong { color: var(--ink); font-weight: 650; }
+.ed code { padding: 1px 5px; border-radius: 5px; background: var(--wash); color: var(--now); font: .85em var(--mono); }
+.mention { display: inline; padding: 0 2px; border-radius: 4px; color: var(--ink); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; cursor: pointer; white-space: nowrap; }
+.mention:hover { background: var(--wash); }
+.mention::before { content: ""; display: inline-block; width: .85em; height: .85em; margin-right: 3px; vertical-align: -1px; background: var(--muted); -webkit-mask: var(--doc-mask) center / contain no-repeat; mask: var(--doc-mask) center / contain no-repeat; }
+:root { --doc-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 3.5h6l3 3v10h-9z'/%3E%3Cpath d='M11.5 3.5v3h3'/%3E%3C/svg%3E"); }
+.mention.missing { color: var(--muted); text-decoration-style: dashed; text-decoration-color: var(--muted); }
+.ph-empty { color: var(--muted); }
+
+/* Zirma's revision, in place: struck through, then the new words. Nothing is written until you say yes. */
+del.sg { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--now) 70%, transparent); background: color-mix(in oklch, var(--now) 10%, transparent); border-radius: 3px; }
+ins.sg { color: var(--ink); text-decoration: none; background: var(--alf-soft); box-shadow: inset 0 -1.5px 0 var(--alf); border-radius: 3px; }
+.blk[data-sugg] .ed { cursor: default; }
+.blk.split-old .ed { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--now) 70%, transparent); }
+.split-new { margin: 4px 0 0; padding: 6px 10px; border-radius: 8px; border: 1px dashed var(--k-line); background: var(--k-fill); }
+.split-new li { display: flex; gap: 8px; color: var(--ink); }
+.split-new li::before { content: "•"; color: var(--k-text); }
+.blk.pending > .row-b { outline: 1px dashed var(--k-line); outline-offset: 2px; background: var(--k-fill); }
+.sgbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 4px; font-size: .8125rem; }
+.sgbar .who { display: inline-flex; align-items: center; gap: 6px; color: var(--k-text); }
+.btn { min-height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .8125rem; white-space: nowrap; }
+.btn:hover { color: var(--ink); }
+.btn.solid { background: var(--alf-solid); color: var(--on-alf); box-shadow: none; }
+.btn.danger { background: var(--now); color: var(--on-alf); box-shadow: none; }
+.btn svg.i { width: 14px; height: 14px; }
+svg.zm { width: 14px; height: 14px; color: var(--alf); }
+
+/* Banners above the blocks: Zirma pointing something out, or the file changed elsewhere. */
+.banner { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 14px; padding: 12px 14px; border-radius: 10px; border: 1px dashed var(--k-line); background: var(--k-fill); font-size: .875rem; }
+.banner .bt { display: flex; align-items: center; gap: 8px; color: var(--k-text); font-weight: 550; }
+.banner ul { display: flex; flex-direction: column; gap: 2px; padding-left: 2px; color: var(--copy); }
+.banner li { display: flex; align-items: center; gap: 8px; }
+.banner li::before { content: ""; flex: none; width: 12px; height: 12px; border-radius: 3px; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.banner .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.banner.warn { border-style: solid; }
+
+.under { margin-top: 36px; padding-top: 14px; box-shadow: 0 -1px 0 var(--line-soft); font-size: .875rem; }
+.under h2 { margin-bottom: 6px; color: var(--muted); font-size: .8125rem; font-weight: 500; }
+.under li { display: flex; align-items: baseline; gap: 10px; padding: 4px 0; min-width: 0; }
+.under .bt { flex: none; max-width: 45%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.under .bs { min-width: 0; flex: 1; color: var(--muted); font-size: .8125rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.empty-hint { padding: 4px 0; color: var(--muted); font-size: .875rem; cursor: text; }
+
+/* Markdown kept as written, and tables. */
+.raw { width: 100%; border-radius: 8px; border: 1px solid var(--line); overflow: hidden; }
+.raw-h { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--line-soft); color: var(--muted); font-size: .75rem; }
+.raw-h svg.i { width: 14px; height: 14px; }
+.raw-h span { color: var(--copy); font-weight: 550; }
+.raw-h small { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .75rem; }
+.raw .code { display: block; width: 100%; margin: 0; padding: 12px 14px; border-radius: 0; background: var(--bg); color: var(--copy); font: .8125rem/1.65 var(--mono); white-space: pre; overflow-x: auto; outline: none; }
+.raw .code:focus { box-shadow: inset 0 0 0 1.5px var(--alf); }
+.blk[data-t="raw"] .row-b, .blk[data-t="raw"] > .raw { width: 100%; }
+.tbl-wrap { width: 100%; overflow-x: auto; }
+.tbl { border-collapse: collapse; min-width: 100%; font-size: .875rem; }
+.tbl th, .tbl td { min-width: 90px; padding: 6px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; outline: none; color: var(--copy); overflow-wrap: anywhere; }
+.tbl th { background: var(--wash); color: var(--ink); font-weight: 600; }
+.tbl th:focus, .tbl td:focus { box-shadow: inset 0 0 0 1.5px var(--alf); }
+.tbl-acts { display: flex; gap: 2px; height: 28px; margin-top: 2px; opacity: 0; transition: opacity 120ms; }
+.blk:hover .tbl-acts, .blk:focus-within .tbl-acts { opacity: 1; }
+.tbl-acts .tb { height: 26px; font-size: .75rem; color: var(--muted); }
+.tbl-acts .tb svg.i { width: 13px; height: 13px; }
+
+/* The Markdown file a page saves to. */
+.source { margin-top: 26px; }
+.source .path { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--muted); font: .75rem var(--mono); overflow-wrap: anywhere; }
+.source pre { padding: 12px 0; border-radius: 10px; background: var(--wash); color: var(--copy); font: .8125rem/1.7 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.source .ln { display: block; padding: 0 18px; box-shadow: inset 3px 0 0 transparent; }
+.source .ln.add { background: var(--alf-soft); color: var(--ink); box-shadow: inset 3px 0 0 var(--alf); }
+.source .ln.del { background: color-mix(in oklch, var(--now) 9%, transparent); color: var(--muted); text-decoration: line-through; box-shadow: inset 3px 0 0 var(--now); }
+.source .diffsum { margin-bottom: 8px; color: var(--copy); font-size: .8125rem; }
+.source .note { margin-top: 10px; color: var(--muted); font-size: .8125rem; }
+
+/* Home and Quick Notes: capture, then rows. */
+.capture { display: flex; align-items: center; gap: 8px; height: 46px; margin: 18px 0 8px; padding: 0 8px 0 14px; border-radius: 12px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); }
+.capture:focus-within { box-shadow: inset 0 0 0 1.5px var(--alf); }
+.capture input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; }
+.capture input::placeholder { color: var(--muted); }
+.capture .ib { border-radius: 50%; }
+.desc { margin-top: 6px; color: var(--muted); font-size: .875rem; }
+.sect { margin: 22px 0 4px; color: var(--muted); font-size: .8125rem; font-weight: 500; }
+.rows { display: flex; flex-direction: column; }
+.row { position: relative; display: flex; align-items: center; gap: 10px; padding: 0 8px; margin: 0 -8px; border-radius: 10px; }
+.row + .row::before { content: ""; position: absolute; left: 8px; right: 8px; top: 0; height: 1px; background: var(--line-soft); }
+.row:hover { background: var(--wash); }
+.row:hover::before, .row:hover + .row::before, .row[data-fresh]::before, .row[data-fresh] + .row::before { display: none; }
+.row[data-fresh] { background: var(--alf-soft); }
+.row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 0; }
+.row-main .ic { flex: none; width: 22px; text-align: center; font-size: 1.05rem; }
+.row-main .ic svg { width: 17px; height: 17px; color: var(--muted); vertical-align: -3px; }
+.rt-wrap { min-width: 0; display: flex; flex-direction: column; }
+.rt { font-weight: 550; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rs { color: var(--muted); font-size: .8125rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rm { flex: none; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.sug { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px dashed var(--k-line); background: var(--k-fill); color: var(--k-text); font-size: .75rem; white-space: nowrap; }
+.sug:hover { border-style: solid; }
+@container pane (max-width: 560px) {
+  .doc { padding: 0 18px 140px; }
+  .cover { margin: 0 -18px; height: 110px; }
+  .gut { display: none; }
+  .title { font-size: 1.875rem; }
+  .prop-row .k { width: 78px; }
+  .row { flex-wrap: wrap; padding-bottom: 8px; }
+  .row-main { flex-basis: 100%; padding-bottom: 2px; }
+  .rm { padding-left: 32px; }
+  .head-tools { opacity: 1; }
+}
+
+/* ── Floating: menus, the block menu, the selection bar, the ask box ── */
+.fl { position: fixed; z-index: 40; }
+.menu { min-width: 220px; max-width: min(300px, calc(100vw - 24px)); max-height: min(380px, 60vh); overflow-y: auto; padding: 5px; border-radius: 12px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); font-size: .875rem; }
+.menu .mh { padding: 6px 10px 4px; color: var(--muted); font-size: .75rem; }
+.menu button { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 3px 10px 3px calc(8px + var(--d, 0) * 14px); border-radius: 8px; white-space: nowrap; }
+.menu button[aria-selected="true"], .menu button:hover { background: var(--wash); }
+.menu button > span:not(.gl) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.menu button small { flex: none; color: var(--muted); font: .6875rem var(--mono); }
+.menu .gl svg.i { width: 16px; height: 16px; color: inherit; }
+.menu .gl { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 7px; box-shadow: inset 0 0 0 1px var(--line); background: var(--bg); color: var(--copy); font: 600 .75rem/1 var(--sans); }
+.menu .gl.z { background: var(--alf-soft); box-shadow: none; color: var(--alf); }
+.menu button.danger { color: var(--now); }
+.menu button svg.i { width: 15px; height: 15px; color: var(--muted); }
+.menu .sep { height: 1px; margin: 4px 6px; background: var(--line-soft); }
+.menu .none { padding: 8px 10px; color: var(--muted); font-size: .8125rem; }
+.emojis { display: grid; grid-template-columns: repeat(8, 32px); gap: 2px; padding: 6px; }
+.emojis button { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; color: var(--copy); }
+.emojis button svg.i { width: 18px; height: 18px; color: inherit; }
+.selbar { display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 10px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); }
+.selbar button { height: 30px; min-width: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border-radius: 7px; color: var(--copy); font-size: .8125rem; white-space: nowrap; }
+.selbar button:hover { background: var(--wash); color: var(--ink); }
+.selbar .z { color: var(--alf); font-weight: 550; }
+.selbar .bar { width: 1px; height: 18px; margin: 0 3px; background: var(--line); }
+.ask { width: min(440px, calc(100vw - 24px)); padding: 8px; border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); font-size: .875rem; }
+.ask-in { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px 0 10px; border-radius: 10px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); }
+.ask-in:focus-within { box-shadow: inset 0 0 0 1.5px var(--alf); }
+.ask-in input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; }
+.ask-in .ctx { flex: none; max-width: 40%; height: 24px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 6px; background: var(--alf-soft); color: var(--alf); font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 2px 2px; }
+.chips button { height: 28px; padding: 0 11px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .8125rem; white-space: nowrap; }
+.chips button:hover { color: var(--ink); background: var(--wash); }
+.ask .say { padding: 8px 6px 2px; color: var(--copy); }
+.ask .rel { display: flex; flex-direction: column; padding-top: 6px; }
+.ask .rel li { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 8px; min-width: 0; }
+.ask .rel li:hover { background: var(--wash); }
+.ask .rel .rtx { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.ask .rel .rtx b { font-weight: 550; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ask .rel .rtx small { color: var(--muted); font-size: .75rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pulse { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--alf); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+
+/* Search: a palette over the blurred page, as ⌘K is in the app. */
+.veil { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; background: color-mix(in oklch, var(--bg) 40%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: fade 140ms var(--ease); }
+.veil.mid { align-items: center; padding-top: 16px; }
+.palette { width: min(600px, 100%); max-height: 70vh; display: flex; flex-direction: column; border-radius: 16px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft), 0 24px 70px oklch(0 0 0 / .22); overflow: hidden; }
+.palette .pin { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; border-bottom: 1px solid var(--line-soft); color: var(--muted); }
+.palette .pin input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--ink); font-size: 1rem; }
+.palette .res { overflow-y: auto; padding: 6px; }
+.palette .gh { padding: 8px 10px 4px; color: var(--muted); font-size: .75rem; }
+.palette .hit { width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 9px; min-width: 0; }
+.palette .hit[aria-selected="true"] { background: var(--wash); }
+.palette .hit .ic { flex: none; width: 22px; text-align: center; }
+.palette .hit .ic svg { width: 16px; height: 16px; color: var(--muted); vertical-align: -3px; }
+.palette .hit .ht { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.palette .hit .ht b { font-weight: 550; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.palette .hit .ht small { color: var(--muted); font-size: .8125rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.palette .hit kbd { flex: none; color: var(--muted); font: .6875rem var(--mono); }
+.palette .none { padding: 18px 12px; color: var(--muted); font-size: .875rem; }
+mark { background: var(--alf-soft); color: var(--ink); border-radius: 3px; }
+.card { width: min(380px, 100%); padding: 20px; border-radius: 18px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft), 0 24px 70px oklch(0 0 0 / .22); }
+.card h2 { font-size: 1.0625rem; font-weight: 650; overflow-wrap: anywhere; }
+.card p { margin-top: 6px; color: var(--copy); font-size: .875rem; }
+.card .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+@keyframes fade { from { opacity: 0; } }
+
+.toast { position: fixed; left: 50%; bottom: 22px; z-index: 60; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px); padding: 6px 8px 6px 14px; border-radius: 999px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); color: var(--copy); font-size: .8125rem; }
+.toast span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.toast button { flex: none; height: 24px; padding: 0 10px; border-radius: 999px; color: var(--alf); }
+.toast button:hover { background: var(--alf-soft); }
+@media (prefers-reduced-motion: reduce) { .pulse, .veil, .flash { animation: none; } }
+
+/* ── Zirma's layer: zirma_notes ── */
+.side .zlab { gap: 6px; color: var(--copy); font-family: var(--mono); }
+.side .zlab svg.zm { width: 12px; height: 12px; }
+.side .zg { padding: 8px 6px 2px 30px; color: var(--muted); font-size: .6875rem; }
+.node.z:hover .n { display: inline; }
+.node[data-fresh] .nm::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--alf); vertical-align: 2px; }
+.zband { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0 8px; padding: 8px 10px 8px 12px; border-radius: 10px; background: var(--alf-soft); color: var(--copy); font-size: .8125rem; }
+.zband .zt { flex: 1 1 220px; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.zband .zt span { min-width: 0; overflow-wrap: anywhere; }
+.zband .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.zband .btn:not(.solid) { background: var(--bg); }
+.zsec { margin-top: 20px; }
+.zsec > h2 { margin-bottom: 4px; color: var(--ink); font-size: 1.0625rem; font-weight: 650; }
+.zl { display: flex; flex-direction: column; }
+.zi { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 5px 8px 5px 24px; margin: 0 -8px; border-radius: 8px; color: var(--copy); }
+.zi::before { content: "•"; position: absolute; left: 9px; top: 5px; color: var(--muted); }
+.zi[data-fresh] { background: var(--alf-soft); }
+.zi .zx { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.zi .new { margin-left: 6px; color: var(--alf); font-size: .6875rem; font-weight: 600; }
+.zi .zlink { color: var(--ink); font-weight: 550; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; cursor: pointer; }
+.cites { display: inline-flex; flex-wrap: wrap; gap: 4px; min-width: 0; max-width: 100%; }
+.cite { display: inline-flex; align-items: center; gap: 4px; height: 20px; max-width: 100%; padding: 0 7px; border-radius: 6px; background: var(--wash); color: var(--muted); font-size: .75rem; line-height: 1; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.cite::before { content: ""; flex: none; width: 10px; height: 10px; background: currentColor; -webkit-mask: var(--doc-mask) center / contain no-repeat; mask: var(--doc-mask) center / contain no-repeat; }
+.cite:hover { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.cite.mail::before { display: none; }
+.zbtn { flex: none; height: 22px; padding: 0 8px; border-radius: 999px; color: var(--muted); font-size: .75rem; opacity: 0; transition: opacity 120ms; }
+.zi:hover .zbtn, .zi:focus-within .zbtn { opacity: 1; }
+.zbtn:hover { background: var(--wash); color: var(--ink); }
+.priv { display: flex; gap: 8px; margin: 2px 0 6px; padding: 10px 12px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--muted); font-size: .8125rem; }
+.priv svg.i { width: 15px; height: 15px; margin-top: 2px; }
+.banner .bs { color: var(--muted); font-size: .75rem; }
+.hc { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; padding: 12px 14px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); }
+.hc[data-fresh] { box-shadow: inset 0 0 0 1.5px var(--alf); }
+.hc .hk { align-self: flex-start; height: 20px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 999px; background: var(--k-fill); color: var(--k-text); font-size: .6875rem; font-weight: 600; }
+.hc .ht { color: var(--ink); overflow-wrap: anywhere; }
+.hc .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+.hc .wait { color: var(--k-text); font-size: .8125rem; }
+.lg { padding: 12px 0; box-shadow: 0 -1px 0 var(--line-soft); }
+.lg:first-of-type { box-shadow: none; }
+.lh { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.lh .lw { flex: none; color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.lh .lt { flex: 1 1 200px; min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
+.lh .lb { display: flex; flex-wrap: wrap; gap: 6px; }
+.lg[data-undone] .lt { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+.lg .lp { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.lg .lines { margin-top: 8px; padding: 8px 0; border-radius: 8px; background: var(--wash); font: .8125rem/1.65 var(--mono); }
+.lg .ln { display: block; padding: 0 14px; color: var(--copy); overflow-wrap: anywhere; }
+.lg .ln.add { color: var(--ink); box-shadow: inset 3px 0 0 var(--alf); }
+.lg .ln.del { color: var(--muted); text-decoration: line-through; box-shadow: inset 3px 0 0 var(--now); }
+.bymk { margin: 2px 0 4px; }
+.bymk button { display: inline-flex; align-items: center; gap: 5px; height: 22px; max-width: 100%; padding: 0 9px; border-radius: 999px; background: var(--alf-soft); color: var(--alf); font-size: .6875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bymk svg.zm { width: 11px; height: 11px; }
+.flash { animation: flash 1.8s var(--ease); border-radius: 6px; }
+@keyframes flash { 0%, 35% { background: var(--alf-soft); box-shadow: 0 0 0 4px var(--alf-soft); } 100% { background: transparent; box-shadow: 0 0 0 4px transparent; } }
+@container pane (max-width: 560px) { .zbtn { opacity: 1; } }
+</style>
+</head>
+<body>
+<div class="proto" id="proto"></div>
+<div class="stage" id="stage"><main class="page" id="main" data-k="yellow">
+  <nav class="side" id="side" aria-label="页面"></nav>
+  <div class="scrim" data-a="drawer-close"></div>
+  <div class="pane">
+    <div class="top" id="top"></div>
+    <div class="scroll" id="scroll"><div class="doc" id="doc"></div></div>
+  </div>
+</main></div>
+<div id="float"></div>
+<div id="pop"></div>
+<div id="toast"></div>
+
+<script type="module">
+/* ── State ── */
+const params = new URLSearchParams(location.search);
+const S = {
+  lang: params.get("lang") === "en" ? "en" : "zh",
+  narrow: params.get("narrow") === "1",
+  folded: false, drawer: false,
+  at: "home",            // home | a page id
+  expanded: new Set(["tech", "search", "proj", "life"]),
+  pages: [], clips: [],
+  float: null,           // { kind: "slash" | "mention" | "menu" | "selbar" | "ask" | "emoji", … }
+  pop: null,             // { kind: "search" | "del", … }
+  source: false,         // the Markdown view
+  status: "saved",       // saved | saving | elsewhere
+  conflict: null,        // { theirs } while your typing met another app's write
+  fresh: null,
+  toast: null,
+};
+const t = (zh, en) => (S.lang === "en" ? en : zh);
+const esc = (text) => String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const TODAY = "2026-11-25";
+let uid = 0;
+const nid = (p = "b") => `${p}${++uid}`;
+
+/* ── Sample library: ~/Documents/notes (made up) ── */
+// A block: { id, t, h (inline HTML), on (checked / open), body (toggle), ref (sub-page), url (bookmark), icon, sent, sugg, pending }
+const B = (type, h = "", more = {}) => ({ id: nid(), t: type, h, ...more });
+function seed() {
+  uid = 0;
+  S.clips = [
+    { url: "https://www.pinecone.io/learn/chunking-strategies/", site: "pinecone.io", mark: "P", k: "violet", title: t("五种分块策略的比较", "Five chunking strategies compared") },
+    { url: "https://www.bilibili.com/video/BV1coffee", site: "Bilibili", mark: "B", k: "teal", title: t("V60 冲煮", "Brewing with a V60") },
+    { url: "https://example.org/density", site: "example.org", mark: "E", k: "blue", title: t("信息密度", "Information density") },
+  ];
+  const P = (id, parent, icon, title, days, blocks, more = {}) => ({ id, parent, icon, title, days, blocks, props: {}, ...more });
+  S.pages = [
+    P("quick", null, "", t("随手记", "Quick Notes"), 0, [], { quick: true }),
+    P("q1", "quick", "", t("周末想试的豆子", "Beans for the weekend"), 0,
+      [B("p", t("埃塞俄比亚水洗，浅烘。按 [[V60 参数]] 冲，水温 94 度。", "Washed Ethiopian, light roast. Brew by [[V60 numbers]], at 94°C."))], { suggest: "coffee" }),
+    P("q2", "quick", "", "2026-11-25 14-32", 0,
+      [B("p", t("系统设计面试先问清规模：多少用户、读多还是写多，再画图。", "In a system design interview, ask about scale first: how many users, read-heavy or write-heavy. Then draw."))], { suggest: "tech", props: { created: TODAY } }),
+    P("q3", "quick", "", t("信息密度", "Information density"), 1,
+      [B("mark", "", { url: "https://example.org/density" }), B("p", t("密度不是把东西挤在一起，是每一块都在回答一个问题。", "Density is not packing things in. It is every block answering one question.")),
+        B("p", t("想对照着看 Zirma 的待办页。", "Check Zirma's to-do page against this."))], { suggest: "proj", props: { created: "2026-11-24", source: "https://example.org/density" } }),
+
+    P("tech", null, "book", t("技术", "Tech"), 3, [B("p", t("工作里用得上的技术笔记。", "Technical notes I use at work.")), B("page", "", { ref: "search" }), B("page", "", { ref: "oklch" })]),
+    P("search", "tech", "search", t("检索", "Retrieval"), 1, [B("p", t("检索相关的都放这。", "Everything about retrieval.")), B("page", "", { ref: "rag" }), B("page", "", { ref: "hybrid" })], { cover: "violet" }),
+    P("rag", "search", "", t("RAG 分块笔记", "RAG chunking notes"), 1, [
+      B("p", t("分块大小先看问题长什么样，不是越小越好。", "Pick the chunk size from the questions people ask, not the smallest one.")),
+      B("h2", t("试过的", "Tried")),
+      B("ul", t("按标题分块：技术文档上最好", "By heading: best on technical docs")),
+      B("ul", t("固定长度：聊天记录上最好", "Fixed length: best on chat logs")),
+      B("ul", t("重叠 10–15% 就够，多了只是费钱", "10–15% overlap is enough; more only costs")),
+      B("h2", t("接着看", "Next")),
+      B("p", t("检索那一步记在 [[混合检索]]，排序想放到最后做。", "Retrieval is in [[Hybrid retrieval]]; ranking comes last.")),
+      B("mark", "", { url: "https://www.pinecone.io/learn/chunking-strategies/" }),
+    ]),
+    P("hybrid", "search", "", t("混合检索", "Hybrid retrieval"), 3, [
+      B("p", t("关键词和向量各取前 20，再合并。", "Take the top 20 from keywords and from vectors, then merge.")),
+      B("ul", t("关键词用 SQLite 的 FTS5，中文要用 `trigram` 分词", "Keywords use SQLite FTS5; Chinese needs the `trigram` tokenizer")),
+      B("ul", t("两个字的词搜不到，要退回普通的包含匹配", "Two-character words are missed and fall back to a plain contains match")),
+      B("ul", t("合并用倒数排名相加，不用调权重", "Merge by reciprocal rank; no weights to tune")),
+      B("callout", t("分块怎么切见 [[RAG 分块笔记]]。", "How to cut chunks: [[RAG chunking notes]]."), { icon: "bulb" }),
+    ]),
+    P("oklch", "tech", "palette", t("OKLCH 为什么好用", "Why OKLCH works"), 12, [
+      B("p", t("同样的亮度数字，看起来真的一样亮。HSL 的黄和蓝，同亮度看着差很多。", "Equal lightness numbers actually look equally light. In HSL, yellow and blue at one lightness look far apart.")),
+      B("p", t("**用法**：先定亮度和色度，只换色相，一组颜色就齐了。", "**How**: fix lightness and chroma, change only the hue, and a set of colours lines up.")),
+    ]),
+
+    P("proj", null, "compass", t("项目", "Projects"), 0, [B("p", t("正在做的事。", "What I am working on.")), B("page", "", { ref: "zsearch" }), B("page", "", { ref: "review" })]),
+    P("zsearch", "proj", "", t("Zirma 的搜索", "Search in Zirma"), 0, [
+      B("p", t("先做全文，向量以后再说。", "Full text first; vectors can wait.")),
+      B("todo", t("确认 FTS5 能搜中文", "Check that FTS5 finds Chinese"), { on: true }),
+      B("todo", t("笔记和链接用同一套索引", "One index for notes and links"), { sent: true }),
+      B("todo", t("搜索结果给出命中的那一句", "Results show the sentence that matched")),
+      B("code", "create virtual table note_fts\n  using fts5(title, body, tokenize='trigram');"),
+      B("p", t("依据是 [[混合检索]] 和 [[RAG 分块笔记]]。", "It rests on [[Hybrid retrieval]] and [[RAG chunking notes]].")),
+      B("raw", t("```dataview\nTABLE file.mtime AS 改动\nFROM \"项目\"\nSORT file.mtime DESC\n```", "```dataview\nTABLE file.mtime AS Changed\nFROM \"Projects\"\nSORT file.mtime DESC\n```"), { why: t("Obsidian 插件 Dataview 的查询", "A query for the Obsidian plugin Dataview") }),
+    ]),
+    P("review", "proj", "calendar", t("设计评审 11-26", "Design review 11-26"), 0, [
+      B("h2", t("要定的", "To decide")),
+      B("ul", t("笔记页用块编辑还是源码", "Block editing or source for notes")),
+      B("ul", t("子页面取代文件夹", "Sub-pages instead of folders")),
+      B("ul", t("林晓：倾向块编辑，担心许可证", "Lin Xiao: leans to block editing, worried about the licence")),
+      B("h2", t("会后要做", "After the meeting")),
+      B("todo", t("把块编辑器的许可证查清楚", "Check the block editor's licence")),
+      B("todo", t("改 notes.md 的第 7 节", "Revise section 7 of notes.md")),
+      B("todo", t("给 Links 加「记成笔记」", "Add “Make a note” to Links")),
+      B("toggle", t("上次评审的结论", "Last review's outcome"), { body: t("页面颜色用黄；底下那一行先留着。", "The page colour is yellow; the line at the bottom stays for now.") }),
+    ], { props: { event: t("周三 11-26 14:00 · 设计评审", "Wed 11-26 14:00 · Design review") }, banner: "todos" }),
+
+    P("life", null, "leaf", t("生活", "Life"), 7, [B("page", "", { ref: "coffee" }), B("page", "", { ref: "kyoto" })]),
+    P("coffee", "life", "cup", t("手冲", "Pour-over"), 8, [B("page", "", { ref: "v60" })]),
+    P("v60", "coffee", "", t("V60 参数", "V60 numbers"), 8, [
+      B("p", t("想试这个参数。", "Want to try these numbers.")),
+      B("ul", t("粉 15 克，水 250 克", "15 g coffee, 250 g water")),
+      B("ul", t("水温 92 度", "Water at 92°C")),
+      B("ul", t("闷蒸 30 秒，水量是粉的两倍", "Bloom 30 s with twice the coffee's weight in water")),
+      B("ul", t("分三段注水，总时间两分半", "Three pours, two and a half minutes in total")),
+      B("img", t("v60-分段.jpg", "v60-pours.jpg")),
+      B("quote", t("水流细了会过萃，发苦。", "Too thin a stream over-extracts and turns bitter.")),
+      B("table", "", { rows: S.lang === "en" ? [["Beans", "Water", "Result"], ["Ethiopia, washed", "92°C", "Floral, bright"], ["Colombia", "90°C", "Sweet, balanced"]]
+        : [["豆子", "水温", "结果"], ["埃塞水洗", "92 度", "花香，偏酸"], ["哥伦比亚", "90 度", "甜，平衡"]] }),
+    ], { props: { created: "2026-11-17", source: "https://www.bilibili.com/video/BV1coffee" } }),
+    P("kyoto", "life", "map", t("京都三天", "Three days in Kyoto"), 7, [
+      B("ol", t("第一天东山", "Higashiyama on day one")),
+      B("ol", t("第二天岚山，早上七点前到", "Arashiyama on day two, before 7 am")),
+      B("ol", t("第三天留给伏见", "Day three is for Fushimi")),
+      B("p", t("咖啡馆另记在 [[京都的咖啡馆]]。", "Cafés are in [[Kyoto cafés]].")),
+    ]),
+  ];
+  // Seed text is Markdown-ish; make it the inline HTML a block holds.
+  for (const page of S.pages) for (const block of page.blocks) if (block.t !== "code" && block.t !== "raw") { block.h = inlineHtml(block.h); if (block.body) block.body = inlineHtml(block.body); }
+  Object.assign(S, { float: null, pop: null, source: false, status: "saved", conflict: null, fresh: null });
+  zseed();
+}
+function inlineHtml(text) {
+  return esc(text)
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[\[([^\]]+)\]\]/g, (m, name) => mentionHtml(name));
+}
+function mentionHtml(name) {
+  const page = S.pages.find((p) => p.title.toLowerCase() === name.toLowerCase());
+  return page ? `<a class="mention" contenteditable="false" data-ref="${page.id}">${esc(page.title)}</a>`
+    : `<a class="mention missing" contenteditable="false" data-title="${esc(name)}" title="${esc(t("还没有这页，点了就建", "No such page yet; click to make it"))}">${esc(name)}</a>`;
+}
+
+/* ── Pages ── */
+const pageOf = (id) => S.pages.find((page) => page.id === id);
+const kidsOf = (id) => S.pages.filter((page) => page.parent === id);
+function under(id) { const out = new Set([id]); for (const kid of kidsOf(id)) for (const sub of under(kid.id)) out.add(sub); return out; }
+const pathOf = (id) => { const out = []; for (let p = pageOf(id); p; p = pageOf(p.parent)) out.unshift(p); return out; };
+const pathText = (id) => pathOf(id).map((p) => p.title || t("无标题", "Untitled")).join(" / ");
+const titleOf = (page) => page.title || t("无标题", "Untitled");
+const blockOf = (page, id) => page?.blocks.find((block) => block.id === id);
+const textOf = (html) => { const div = document.createElement("div"); div.innerHTML = html; return div.textContent; };
+function firstLine(page) { for (const block of page.blocks) { const text = textOf(block.h).trim(); if (text && !["page", "mark", "img"].includes(block.t)) return text; } return ""; }
+function treeOrder(parent = null) { return S.pages.filter((p) => p.parent === parent && !p.quick).flatMap((p) => [p, ...treeOrder(p.id)]); }
+const ago = (page) => (page.just ? t("刚刚", "just now") : page.days === 0 ? t("今天", "today") : page.days === 1 ? t("昨天", "yesterday") : t(`${page.days} 天前`, `${page.days} days ago`));
+const depthOf = (id) => pathOf(id).length - 1;
+function touch(page) { if (!page) return; page.days = 0; page.just = true; }
+function backlinks(page) {
+  const out = [];
+  for (const other of S.pages) {
+    if (other === page) continue;
+    const block = other.blocks.find((b) => b.h.includes(`data-ref="${page.id}"`) && b.t !== "page");
+    if (block) out.push({ page: other, line: textOf(block.h) });
+  }
+  return out;
+}
+
+/* ── The Markdown a page saves to ── */
+function mdInline(html) {
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  const walk = (node) => [...node.childNodes].map((n) => {
+    if (n.nodeType === 3) return n.textContent.replace(/\u00a0/g, " ");
+    const inner = walk(n);
+    switch (n.nodeName) {
+      case "B": case "STRONG": return `**${inner}**`;
+      case "I": case "EM": return `*${inner}*`;
+      case "CODE": return `\`${inner}\``;
+      case "A": return n.classList.contains("mention") ? `[[${n.dataset.ref ? titleOf(pageOf(n.dataset.ref)) : n.dataset.title}]]` : inner;
+      case "BR": return "\n";
+      default: return inner;
+    }
+  }).join("");
+  return walk(div);
+}
+function toMarkdown(page) {
+  const props = [];
+  if (page.icon) props.push(`icon: ${page.icon}`);
+  if (page.cover) props.push(`cover: ${page.cover}`);
+  if (page.props.created) props.push(`created: ${page.props.created}`);
+  if (page.props.source) props.push(`source: ${page.props.source}`);
+  if (page.props.event) props.push(`event: "${page.props.event}"`);
+  const out = props.length ? ["---", ...props, "---", ""] : [];
+  let n = 0, prev = null;
+  for (const b of page.blocks) {
+    if (b.pending) continue;
+    const text = mdInline(b.h) + (b.by === "zirma" ? " %%zirma%%" : "");
+    n = b.t === "ol" ? (prev === "ol" ? n + 1 : 1) : 0;
+    const list = ["ul", "ol", "todo"];
+    if (prev && !(list.includes(prev) && list.includes(b.t))) out.push("");
+    switch (b.t) {
+      case "h1": out.push(`# ${text}`); break;
+      case "h2": out.push(`## ${text}`); break;
+      case "h3": out.push(`### ${text}`); break;
+      case "ul": out.push(`- ${text}`); break;
+      case "ol": out.push(`${n}. ${text}`); break;
+      case "todo": out.push(`- [${b.on ? "x" : " "}] ${text}`); break;
+      case "quote": out.push(`> ${text}`); break;
+      case "callout": out.push(`> [!note] ${b.icon ?? ""}`.trimEnd(), `> ${text}`); break;
+      case "toggle": out.push(`<details><summary>${text}</summary>`, "", mdInline(b.body ?? ""), "</details>"); break;
+      case "code": out.push("```", textOf(b.h), "```"); break;
+      case "hr": out.push("---"); break;
+      case "page": out.push(`[[${titleOf(pageOf(b.ref) ?? { title: "?" })}]]`); break;
+      case "mark": out.push(b.url); break;
+      case "img": out.push(`![[${textOf(b.h)}]]`); break;
+      case "raw": out.push(b.h); break;
+      case "table": out.push(...b.rows.flatMap((row, r) => { const line = `| ${row.map((c) => c.replace(/\|/g, "\\|")).join(" | ")} |`; return r === 0 ? [line, `| ${row.map(() => "---").join(" | ")} |`] : [line]; })); break;
+      default: out.push(text);
+    }
+    prev = b.t;
+  }
+  return out.join("\n").trimEnd() + "\n";
+}
+const fileOf = (page) => `notes/${pathOf(page.id).map(titleOf).join("/")}.md`;
+
+// Lines that differ between two texts (longest common subsequence; pages are short).
+function lineDiff(a, b) {
+  const A = a.split("\n"), Bl = b.split("\n"), n = A.length, m = Bl.length;
+  const L = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] === Bl[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const out = [];
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && A[i] === Bl[j]) { out.push({ k: "same", line: A[i] }); i++; j++; }
+    else if (j < m && (i >= n || L[i][j + 1] >= L[i + 1][j])) { out.push({ k: "add", line: Bl[j] }); j++; }
+    else { out.push({ k: "del", line: A[i] }); i++; }
+  }
+  while (out.length && out[out.length - 1].k === "same" && !out[out.length - 1].line) out.pop();
+  return out;
+}
+
+/* ── Icons ── */
+const ICON = {
+  doc: `<svg class="i" viewBox="0 0 20 20"><path d="M5.5 3.5h6l3 3v10h-9z"/><path d="M11.5 3.5v3h3M8 10.5h4M8 13.5h4"/></svg>`,
+  recent: `<svg class="i" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M10 6.5V10l2.5 1.5"/></svg>`,
+  quick: `<svg class="i" viewBox="0 0 20 20"><path d="M4.5 15.5l.8-3.2 7.9-7.9a1.4 1.4 0 012 0l.4.4a1.4 1.4 0 010 2l-7.9 7.9zM11 15.5h4.5"/></svg>`,
+  search: `<svg class="i" viewBox="0 0 20 20"><circle cx="9" cy="9" r="5"/><path d="M13 13l3.5 3.5"/></svg>`,
+  plus: `<svg class="i" viewBox="0 0 20 20"><path d="M10 5v10M5 10h10"/></svg>`,
+  more: `<svg class="i" viewBox="0 0 20 20"><circle cx="5" cy="10" r=".9" fill="currentColor"/><circle cx="10" cy="10" r=".9" fill="currentColor"/><circle cx="15" cy="10" r=".9" fill="currentColor"/></svg>`,
+  tw: `<svg class="i" viewBox="0 0 20 20"><path d="M8 5l5 5-5 5"/></svg>`,
+  side: `<svg class="i" viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2.5"/><path d="M8 4v12"/></svg>`,
+  out: `<svg class="i" viewBox="0 0 20 20"><path d="M8 5h7v7M15 5l-9 9"/></svg>`,
+  trash: `<svg class="i" viewBox="0 0 20 20"><path d="M4.5 6h11M8 6V4.5h4V6M6 6l.7 10h6.6L14 6"/></svg>`,
+  move: `<svg class="i" viewBox="0 0 20 20"><path d="M4 10h10M10 6l4 4-4 4"/></svg>`,
+  md: `<svg class="i" viewBox="0 0 20 20"><rect x="2.5" y="5" width="15" height="10" rx="2"/><path d="M5.5 12.5v-5l2 2.5 2-2.5v5M13.5 7.5v5M12 11l1.5 1.5L15 11"/></svg>`,
+  cal: `<svg class="i" viewBox="0 0 20 20"><rect x="3.5" y="4.5" width="13" height="12" rx="2"/><path d="M3.5 8.5h13M7 3v3M13 3v3"/></svg>`,
+  link: `<svg class="i" viewBox="0 0 20 20"><path d="M8.5 11.5a3 3 0 004.2 0l2.3-2.3a3 3 0 00-4.2-4.2l-.8.8M11.5 8.5a3 3 0 00-4.2 0L5 10.8A3 3 0 009.2 15l.8-.8"/></svg>`,
+  made: `<svg class="i" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M10 7v3h3"/></svg>`,
+  image: `<svg class="i" viewBox="0 0 20 20"><rect x="3.5" y="4.5" width="13" height="11" rx="2"/><path d="M3.5 13l3.5-3.5 3 3 2-2 4.5 4.5"/></svg>`,
+  arrow: `<svg class="i" viewBox="0 0 20 20"><path d="M4 10h11M11 5l5 5-5 5"/></svg>`,
+  mic: `<svg class="i" viewBox="0 0 20 20"><rect x="7.5" y="3" width="5" height="9" rx="2.5"/><path d="M5 10a5 5 0 0010 0M10 15v2.5"/></svg>`,
+  check: `<svg class="i" viewBox="0 0 20 20"><path d="M5 10.5l3 3 7-7"/></svg>`,
+  smile: `<svg class="i" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M7.5 11.5a3 3 0 005 0M8 8h.01M12 8h.01"/></svg>`,
+  // Zirma's mark where Zirma speaks: a small four-point star, drawn, not a character.
+  zirma: `<svg class="i zm" viewBox="0 0 20 20"><path d="M10 3.5c.5 3.4 3.1 6 6.5 6.5-3.4.5-6 3.1-6.5 6.5-.5-3.4-3.1-6-6.5-6.5 3.4-.5 6-3.1 6.5-6.5z" fill="currentColor" stroke="none"/></svg>`,
+  raw: `<svg class="i" viewBox="0 0 20 20"><path d="M7 6l-4 4 4 4M13 6l4 4-4 4"/></svg>`,
+  table: `<svg class="i" viewBox="0 0 20 20"><rect x="3.5" y="4.5" width="13" height="11" rx="1.5"/><path d="M3.5 8.5h13M3.5 12h13M8.5 4.5v11"/></svg>`,
+};
+// Page icons: line drawings in one stroke, named in the file's properties (`icon: book`). No emoji.
+const svg = (d) => `<svg class="i" viewBox="0 0 20 20">${d}</svg>`;
+const PAGE_ICON = {
+  doc: ICON.doc,
+  book: svg(`<path d="M4 4.5h4.5A1.5 1.5 0 0110 6v10a1.5 1.5 0 00-1.5-1.5H4zM16 4.5h-4.5A1.5 1.5 0 0010 6v10a1.5 1.5 0 011.5-1.5H16z"/>`),
+  search: ICON.search,
+  palette: svg(`<path d="M10 3.5a6.5 6.5 0 100 13c1 0 1.3-.8.9-1.6-.5-.9 0-1.9 1-1.9h1.6a3 3 0 003-3c0-3.6-2.9-6.5-6.5-6.5z"/><path d="M6.5 9.5h.01M8.5 6.5h.01M12 6.5h.01"/>`),
+  compass: svg(`<circle cx="10" cy="10" r="6.5"/><path d="M12.5 7.5l-1.5 3.5-3.5 1.5 1.5-3.5z"/>`),
+  calendar: ICON.cal,
+  leaf: svg(`<path d="M5 15c0-6 3.5-9.5 10.5-10.5C15 11 11.5 15 5 15z"/><path d="M5 15l5-5"/>`),
+  cup: svg(`<path d="M4.5 7.5h9v4a4 4 0 01-4 4h-1a4 4 0 01-4-4zM13.5 8.5h1a2 2 0 010 4h-1M7 3.5v2M10 3.5v2"/>`),
+  map: svg(`<path d="M3.5 5.5l4-1.5 5 1.5 4-1.5v10.5l-4 1.5-5-1.5-4 1.5zM7.5 4v10.5M12.5 5.5V16"/>`),
+  bulb: svg(`<path d="M7.5 13.5h5M8 16h4M10 3.5a4.5 4.5 0 00-2.6 8.2c.4.3.6.8.6 1.3h4c0-.5.2-1 .6-1.3A4.5 4.5 0 0010 3.5z"/>`),
+  flask: svg(`<path d="M8 3.5h4M8.5 3.5v4.5l-4 6.5a1 1 0 00.9 1.5h9.2a1 1 0 00.9-1.5l-4-6.5V3.5M6.5 12h7"/>`),
+  flag: svg(`<path d="M5 16.5v-13M5 4h9l-2 3 2 3H5"/>`),
+  star: svg(`<path d="M10 3.5l2 4.1 4.5.6-3.3 3.1.8 4.5-4-2.2-4 2.2.8-4.5-3.3-3.1 4.5-.6z"/>`),
+  code: ICON.raw,
+  home: svg(`<path d="M3.5 9.5L10 4l6.5 5.5M5.5 8v8h9V8"/>`),
+  heart: svg(`<path d="M10 16s-6-3.6-6-8a3.5 3.5 0 016-2.4A3.5 3.5 0 0116 8c0 4.4-6 8-6 8z"/>`),
+  person: svg(`<circle cx="10" cy="7" r="3"/><path d="M4.5 16.5a5.5 5.5 0 0111 0"/>`),
+  pulse: svg(`<path d="M3 10.5h3l2-4.5 4 9 2-4.5h3"/>`),
+  clock: ICON.recent,
+};
+// The block menu's small tiles.
+const GL = {
+  todo: `<span style="width:12px;height:12px;border-radius:3px;box-shadow:inset 0 0 0 1.5px currentColor"></span>`,
+  quote: `<span style="width:3px;height:14px;border-radius:2px;background:currentColor"></span>`,
+  bulb: PAGE_ICON.bulb, doc: ICON.doc, zirma: ICON.zirma, table: ICON.table, raw: ICON.raw,
+};
+const iconOf = (page, big = false) => (page.quick ? ICON.quick : page.icon && PAGE_ICON[page.icon] ? PAGE_ICON[page.icon] : big ? "" : ICON.doc);
+
+/* ── The side: the page tree ── */
+function sideView() {
+  const quick = pageOf("quick");
+  const node = (page, d) => {
+    const kids = kidsOf(page.id), open = S.expanded.has(page.id);
+    const current = S.at === page.id;
+    const menuOn = S.float?.kind === "menu" && S.float.for === page.id;
+    return `<div class="node" style="--d:${d}" data-a="go" data-id="${page.id}" data-drop="${page.id}" ${page.quick ? "" : `data-dragp="${page.id}" draggable="true"`} ${current ? 'aria-current="true"' : ""}>
+      <span class="tw${kids.length && !page.quick ? "" : " none"}" data-a="twist" data-id="${page.id}" ${open ? "data-open" : ""}>${ICON.tw}</span>
+      <span class="ic">${iconOf(page)}</span><span class="nm">${esc(titleOf(page))}</span>
+      <span class="acts" ${menuOn ? "data-on" : ""}>${page.quick ? "" : `<button type="button" data-a="page-menu" data-id="${page.id}" aria-label="${t("更多", "More")}">${ICON.more}</button>`}<button type="button" data-a="new-page" data-id="${page.id}" aria-label="${t("在里面新建一页", "New page inside")}">${ICON.plus}</button></span>
+      ${page.quick ? `<span class="n">${kids.length || ""}</span>` : ""}
+    </div>${open && !page.quick ? kids.map((kid) => node(kid, d + 1)).join("") : ""}`;
+  };
+  return `<div class="side-head"><b>notes</b>
+      <button type="button" class="ib" data-a="fold" aria-label="${t("收起", "Fold away")}" title="${t("收起", "Fold away")}">${ICON.side}</button></div>
+    <div class="side-scroll">
+      <div class="node" data-a="search"><span class="tw none"></span><span class="ic">${ICON.search}</span><span class="nm">${t("搜索", "Search")}</span><span class="n">⌘K</span></div>
+      <div class="node" data-a="go" data-id="home" ${S.at === "home" ? 'aria-current="true"' : ""}><span class="tw none"></span><span class="ic">${ICON.recent}</span><span class="nm">${t("最近", "Recent")}</span></div>
+      ${node(quick, 0)}
+      <div class="lab"><span class="grow">${t("你的页面", "Your pages")}</span><button type="button" class="ib" style="width:24px;height:24px" data-a="new-page" data-id="" aria-label="${t("新页面", "New page")}" title="${t("新页面", "New page")}">${ICON.plus}</button></div>
+      ${kidsOf(null).filter((p) => !p.quick).map((page) => node(page, 0)).join("")}
+      ${zSide()}
+    </div>
+    <div class="lib"><span title="~/Documents/notes">~/Documents/notes</span><button type="button" data-a="noop">${t("换", "Change")}</button></div>`;
+}
+
+/* ── The top bar ── */
+function topView() {
+  const tree = `<button type="button" class="ib tree-btn" data-a="tree" aria-label="${t("页面", "Pages")}" title="${t("页面", "Pages")}">${ICON.side}</button>`;
+  if (S.at === "home") return `${tree}<div class="crumbs"><button type="button" data-a="go" data-id="home">${ICON.recent}<span>${t("最近", "Recent")}</span></button></div>`;
+  if (isZ(S.at)) return zTop(tree);
+  const page = pageOf(S.at), path = pathOf(page.id);
+  const crumbs = path.map((p, i) => `${i ? `<span class="sl up">/</span>` : ""}<button type="button" class="${i < path.length - 1 ? "up" : ""}" data-a="go" data-id="${p.id}"><span class="ic">${p.icon && PAGE_ICON[p.icon] ? PAGE_ICON[p.icon] : ""}</span><span>${esc(titleOf(p))}</span></button>`).join("");
+  const status = S.status === "saving" ? t("在存…", "Saving…") : S.status === "elsewhere" ? t("别处刚改过", "Just changed elsewhere") : t("已存", "Saved");
+  return `${tree}<div class="crumbs">${crumbs}</div><span class="status" id="status">${status}</span>
+    ${page.quick ? "" : `<button type="button" class="tb" data-a="source" aria-pressed="${S.source}" title="${t("这页存成的 Markdown 文件", "The Markdown file this page saves to")}">${ICON.md}<span>Markdown</span></button>
+    <button type="button" class="ib" data-a="page-menu" data-id="${page.id}" data-top aria-label="${t("更多", "More")}">${ICON.more}</button>`}`;
+}
+
+/* ── Home (Recent) and Quick Notes ── */
+function captureBox() {
+  return `<form class="capture" id="capture"><input id="cap" autocomplete="off" placeholder="${t("记一条，回车放进随手记", "Write a note; return puts it in Quick Notes")}" aria-label="${t("记一条", "Write a note")}">
+    <button type="button" class="ib" data-a="noop" aria-label="${t("说一条", "Say a note")}">${ICON.mic}</button></form>`;
+}
+function rowView(page, { path = false, suggest = false } = {}) {
+  const to = suggest && page.suggest ? pageOf(page.suggest) : null;
+  return `<li class="row" ${S.fresh === page.id ? "data-fresh" : ""} draggable="true" data-dragp="${page.id}">
+    <button type="button" class="row-main" data-a="go" data-id="${page.id}"><span class="ic">${iconOf(page)}</span><span class="rt-wrap"><span class="rt">${esc(titleOf(page))}</span><span class="rs">${esc(path ? pathText(page.parent) : firstLine(page)) || "&nbsp;"}</span></span></button>
+    <span class="rm">${to ? `<button type="button" class="sug" data-k="alfred" data-a="file" data-id="${page.id}" title="${esc(t(`Zirma 猜的 · ${pathText(to.id)}`, `Zirma's guess · ${pathText(to.id)}`))}">${esc(t(`放到 ${titleOf(to)}`, `Move to ${titleOf(to)}`))}</button>` : ""}<span>${ago(page)}</span></span></li>`;
+}
+function homeView() {
+  const pages = S.pages.filter((p) => !p.quick).sort((a, b) => (b.just ? 1 : 0) - (a.just ? 1 : 0) || a.days - b.days).slice(0, 9);
+  return `<div class="doc-head"><div class="head-tools"></div><h1 class="title">${t("笔记", "Notes")}</h1>
+      <p class="desc">${t(`${S.pages.length - 1} 页 · 随手记里 ${kidsOf("quick").length} 页还没归位`, `${S.pages.length - 1} pages · ${kidsOf("quick").length} in Quick Notes not filed yet`)}</p></div>
+    ${captureBox()}
+    <h2 class="sect">${t("最近改过", "Changed lately")}</h2>
+    <ul class="rows">${pages.map((p) => rowView(p, { path: true })).join("")}</ul>`;
+}
+function quickView(page) {
+  const kids = kidsOf("quick");
+  return `<div class="doc-head"><div class="head-tools"></div><span class="big-icon" style="font-size:44px;color:var(--k-solid)">${ICON.quick.replace('class="i"', 'class="i" style="width:48px;height:48px;stroke-width:1.3"')}</span>
+      <h1 class="title">${esc(titleOf(page))}</h1><p class="desc">${t("新笔记先落在这。Zirma 猜的去处是虚线的，点了就挪；也能拖到左边的页面上。", "New notes land here. Zirma's guess at where each belongs is dashed; click it to move, or drag the row onto a page on the left.")}</p></div>
+    ${captureBox()}
+    ${kids.length ? `<ul class="rows">${kids.map((p) => rowView(p, { suggest: true })).join("")}</ul>` : `<p class="empty-hint">${t("都归位了", "All filed")}</p>`}`;
+}
+
+/* ── One page ── */
+function pageView(page) {
+  if (page.quick) return quickView(page);
+  const props = [];
+  if (page.props.event) props.push(`<div class="prop-row"><span class="k">${ICON.cal}${t("日程", "Event")}</span><span class="v"><a class="event" data-k="blue" href="#" data-a="noop" title="${t("在日历里看", "See it in the calendar")}">${esc(page.props.event)}</a></span></div>`);
+  if (page.props.source) { const clip = S.clips.find((c) => c.url === page.props.source); props.push(`<div class="prop-row"><span class="k">${ICON.link}${t("来自", "From")}</span><span class="v">${clip ? `<span class="event" data-k="${clip.k}">${esc(clip.title)} · ${esc(clip.site)}</span>` : esc(page.props.source)}</span></div>`); }
+  if (page.props.created) props.push(`<div class="prop-row"><span class="k">${ICON.made}${t("建于", "Made")}</span><span class="v">${esc(page.props.created)}</span></div>`);
+  const head = `${page.cover ? `<div class="cover" data-k="${page.cover}"></div>` : ""}
+    <div class="doc-head">
+      <div class="head-tools">${page.icon ? "" : `<button type="button" class="tb" data-a="emoji">${ICON.smile}${t("加图标", "Add icon")}</button>`}${page.cover ? "" : `<button type="button" class="tb" data-a="cover">${ICON.image}${t("加封面", "Add cover")}</button>`}</div>
+      ${page.icon ? `<button type="button" class="big-icon" data-a="emoji" aria-label="${t("换图标", "Change icon")}">${PAGE_ICON[page.icon] ?? ""}</button>` : ""}
+      <h1 class="title" contenteditable="true" spellcheck="false" id="title" data-ph="${t("无标题", "Untitled")}">${esc(page.title)}</h1>
+      ${props.length ? `<div class="props">${props.join("")}</div>` : ""}
+    </div><div class="rule"></div>`;
+  if (page.base === undefined) page.base = toMarkdown(page);
+  if (S.source) {
+    const diff = lineDiff(page.base, toMarkdown(page));
+    const adds = diff.filter((d) => d.k === "add").length, dels = diff.filter((d) => d.k === "del").length, same = diff.filter((d) => d.k === "same").length;
+    const changed = adds + dels;
+    return `${head}<div class="source"><p class="path">${ICON.md}${esc(fileOf(page))}${kidsOf(page.id).length ? `  +  ${esc(fileOf(page).replace(/\.md$/, "/"))}` : ""}</p>
+      <p class="diffsum">${changed ? (adds ? t(`和打开时比：${adds} 行新写或改过${dels > adds ? `，删了 ${dels - adds} 行` : ""}；其余 ${same} 行一个字节没动`, `Since you opened it: ${adds} ${adds === 1 ? "line" : "lines"} new or changed${dels > adds ? `, ${dels - adds} removed` : ""}; the other ${same} are byte for byte the same`)
+        : t(`和打开时比：删了 ${dels} 行；其余 ${same} 行一个字节没动`, `Since you opened it: ${dels} ${dels === 1 ? "line" : "lines"} removed; the other ${same} are byte for byte the same`)) : t("打开以来没改过：文件和磁盘上的一模一样", "Unchanged since you opened it: the file is exactly what is on disk")}</p>
+      <pre>${diff.map((d) => `<span class="ln ${d.k}">${esc(d.line) || " "}</span>`).join("")}</pre>
+      <p class="note">${t("存的时候只重新生成你改过的块，没改的块从原文照抄。所以在 Obsidian 或 git 里，只看得到你改的这几行。标着「原样保留」的块永远照抄。", "Saving regenerates only the blocks you changed and copies the rest from the original, so Obsidian or git shows only these lines. Blocks marked “Kept as written” are always copied as they are.")}</p></div>`;
+  }
+  const back = backlinks(page);
+  return `${head}
+    ${S.conflict ? `<div class="banner warn" data-k="warm"><div class="bt">${t("这页在别处改过，你刚写的没存上去", "This page changed elsewhere; what you just wrote was not saved over it")}</div>
+      <div class="acts"><button type="button" class="btn" data-a="theirs">${t("换成那一份", "Take theirs")}</button><button type="button" class="btn" data-a="fork">${t("把我的另存一页", "Keep mine as a copy")}</button></div></div>` : ""}
+    ${bannerView(page)}
+    <div class="blocks" id="blocks">${blocksView(page)}</div>
+    ${page.blocks.length ? "" : `<p class="empty-hint" data-a="first-block">${t("打 / 选块，或者直接写", "Type / for blocks, or just write")}</p>`}
+    ${back.length ? `<section class="under"><h2>${t(`被 ${back.length} 页提到`, `Linked from ${back.length}`)}</h2><ul>${back.map((link) => `<li><a class="mention bt" data-ref="${link.page.id}">${esc(titleOf(link.page))}</a><span class="bs">${esc(link.line)}</span></li>`).join("")}</ul></section>` : ""}
+    ${zRefs(page.id).length ? `<section class="under"><h2>${t(`Zirma 在 ${zRefs(page.id).length} 页里整理过它`, `Zirma uses it on ${zRefs(page.id).length} ${zRefs(page.id).length === 1 ? "page" : "pages"}`)}</h2><ul>${zRefs(page.id).map((r) => `<li><a class="zlink bt" data-a="go" data-id="${r.zp.id}">${esc(r.zp.title)}</a><span class="bs">${esc(r.text)}</span></li>`).join("")}</ul></section>` : ""}`;
+}
+// What Zirma points out about a page: the to-dos written here that never reached the to-do list.
+function leftTodos(page) { return page.blocks.filter((b) => b.t === "todo" && !b.on && !b.sent && !b.pending); }
+function bannerView(page) {
+  if (page.banner !== "todos") return "";
+  const left = leftTodos(page);
+  if (!left.length) return "";
+  return `<div class="banner" data-k="alfred"><div class="bt">${ICON.zirma}${t(`Zirma：这页有 ${left.length} 个待办还没进待办列表`, `Zirma: ${left.length} to-dos here are not in your to-do list`)}</div>
+    <ul>${left.map((b) => `<li>${esc(textOf(b.h))}</li>`).join("")}</ul>
+    <div class="acts"><button type="button" class="btn solid" data-a="send-all">${t("都放进去", "Add them all")}</button><button type="button" class="btn" data-a="banner-no">${t("不用", "No thanks")}</button></div></div>`;
+}
+const PH = () => ({ p: t("打 / 选块", "Type / for blocks"), h1: t("标题 1", "Heading 1"), h2: t("标题 2", "Heading 2"), h3: t("标题 3", "Heading 3"),
+  todo: t("待办", "To-do"), ul: t("列表", "List"), ol: t("列表", "List"), quote: t("引用", "Quote"), callout: t("写点什么", "Write something"), toggle: t("折叠的标题", "Toggle") });
+function blocksView(page) {
+  let n = 0, prev = null;
+  return page.blocks.map((b) => { n = b.t === "ol" ? (prev === "ol" ? n + 1 : 1) : 0; prev = b.t; return blockView(b, n); }).join("");
+}
+function blockView(b, n) {
+  const locked = Boolean(b.sugg) || b.pending;
+  const ed = (cls = "ed") => `<div class="${cls}" contenteditable="${locked ? "false" : "true"}" spellcheck="false" data-b="${b.id}" data-ph="${esc(PH()[b.t] ?? "")}">${b.sugg?.preview ?? b.h}</div>`;
+  let inner;
+  switch (b.t) {
+    case "todo": inner = `<div class="row-b"><button type="button" class="box" role="checkbox" aria-checked="${Boolean(b.on)}" data-a="check" data-id="${b.id}" aria-label="${esc(textOf(b.h))}"></button>${ed()}
+        ${b.sent ? `<span class="sent" data-k="alfred" title="${t("已在待办列表里", "In your to-do list")}">${ICON.check.replace('class="i"', 'class="i" style="width:12px;height:12px"')}${t("待办 · 今天", "To-do · today")}</span>` : b.on || locked ? "" : `<button type="button" class="send" data-a="send" data-id="${b.id}" title="${t("放进待办列表", "Add to your to-do list")}">→ ${t("待办", "To-do")}</button>`}</div>`; break;
+    case "ul": inner = `<div class="row-b"><span class="mk">•</span>${ed()}</div>`; break;
+    case "ol": inner = `<div class="row-b"><span class="mk">${n}.</span>${ed()}</div>`; break;
+    case "callout": inner = `<div class="row-b"><span class="ci">${b.icon === "zirma" ? ICON.zirma : PAGE_ICON[b.icon] ?? PAGE_ICON.bulb}</span>${ed()}</div>`; break;
+    case "toggle": inner = `<div class="row-b"><button type="button" class="tg" data-a="toggle" data-id="${b.id}" aria-expanded="${Boolean(b.on)}" aria-label="${t("展开", "Expand")}">${ICON.tw}</button>${ed()}</div>
+        ${b.on ? `<div class="tbody"><div class="ed" contenteditable="true" spellcheck="false" data-b="${b.id}" data-body data-always data-ph="${t("空的，写点什么", "Empty; write something")}">${b.body ?? ""}</div></div>` : ""}`; break;
+    case "code": inner = `<div class="row-b"><pre class="code ed" contenteditable="plaintext-only" spellcheck="false" data-b="${b.id}">${esc(b.h)}</pre></div>`; break;
+    case "hr": inner = `<hr>`; break;
+    case "page": { const p = pageOf(b.ref); inner = p ? `<button type="button" class="subpage" data-a="go" data-id="${p.id}"><span class="ic">${iconOf(p)}</span><span>${esc(titleOf(p))}</span></button>` : ""; break; }
+    case "mark": { const c = S.clips.find((clip) => clip.url === b.url); inner = `<a class="mark" href="#" data-a="noop"><span class="tile" data-k="${c?.k ?? "gray"}">${esc(c?.mark ?? "·")}</span><span class="mt"><b>${esc(c?.title ?? b.url)}</b><small>${esc(c?.site ?? b.url)}</small></span><span class="inl">${c ? t("在链接里", "In Links") : ""}</span></a>`; break; }
+    case "img": inner = `<div class="img">${ICON.image}${esc(textOf(b.h))}</div>`; break;
+    // Markdown the page cannot draw as blocks: shown as written, edited as text, written back byte for byte.
+    case "raw": inner = `<div class="raw"><div class="raw-h">${ICON.raw}<span>${t("原样保留", "Kept as written")}</span><small>${esc(b.why ?? t("这里的写法页面画不出来", "The page cannot draw this"))}</small></div>
+        <pre class="code ed" contenteditable="plaintext-only" spellcheck="false" data-b="${b.id}">${esc(b.h)}</pre></div>`; break;
+    case "table": inner = `<div class="tbl-wrap"><table class="tbl">${b.rows.map((row, r) => `<tr>${row.map((cell, c) => { const tag = r ? "td" : "th"; return `<${tag} class="cell" contenteditable="${locked ? "false" : "true"}" spellcheck="false" data-b="${b.id}" data-r="${r}" data-c="${c}">${esc(cell)}</${tag}>`; }).join("")}</tr>`).join("")}</table></div>
+        <div class="tbl-acts"><button type="button" class="tb" data-a="row-add" data-id="${b.id}">${ICON.plus}${t("行", "Row")}</button><button type="button" class="tb" data-a="col-add" data-id="${b.id}">${ICON.plus}${t("列", "Column")}</button></div>`; break;
+    default: inner = `<div class="row-b">${ed()}</div>`;
+  }
+  const bar = b.sugg ? suggBar(b) : b.pending ? `<div class="sgbar" data-k="alfred"><span class="who">${ICON.zirma}${t("Zirma 想加这一块", "Zirma would add this block")}</span><span class="grow"></span>
+      <button type="button" class="btn solid" data-a="sg-yes" data-id="${b.id}">${t("好", "Yes")}</button><button type="button" class="btn" data-a="sg-no" data-id="${b.id}">${t("不要", "No")}</button></div>` : "";
+  const split = b.sugg?.kind === "split" ? `<ul class="split-new" data-k="alfred">${b.sugg.items.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>` : "";
+  return `<div class="blk${b.sugg?.kind === "split" ? " split-old" : ""}${b.pending ? " pending" : ""}" data-id="${b.id}" data-t="${b.t}" ${b.sugg ? "data-sugg" : ""} ${b.pending ? 'data-k="alfred"' : ""}>
+    <div class="gut"><button type="button" data-a="blk-add" data-id="${b.id}" aria-label="${t("下面加一块", "Add a block below")}" title="${t("下面加一块", "Add a block below")}">${ICON.plus.replace('class="i"', 'class="i" style="width:15px;height:15px"')}</button><span class="grip" data-grip="${b.id}" title="${t("拖动", "Drag")}">⋮⋮</span></div>
+    ${inner}${split}${bar}${b.by === "zirma" && !b.sugg && !b.pending ? `<div class="bymk"><button type="button" data-a="own" data-id="${b.id}" title="${t("你点了「好」才进来的。点了算你的，标记去掉", "In because you said yes. Click to make it yours; the mark goes")}">${ICON.zirma}${t("Zirma 写的 · 点了算你的", "Written by Zirma · make it yours")}</button></div>` : ""}</div>`;
+}
+function suggBar(b) {
+  return `<div class="sgbar" data-k="alfred"><span class="who">${ICON.zirma}${b.sugg.kind === "split" ? t("Zirma 想把这段拆成要点", "Zirma would turn this into points") : t("Zirma 想这样改", "Zirma would change it to this")}</span><span class="grow"></span>
+    <button type="button" class="btn solid" data-a="sg-yes" data-id="${b.id}">${t("好", "Yes")}</button><button type="button" class="btn" data-a="sg-no" data-id="${b.id}">${t("不要", "No")}</button></div>`;
+}
+
+/* ── Zirma's layer: zirma_notes ──
+   In the app a background task compiles these from your pages: it may write only under zirma_notes/ (the library
+   service holds that line, not the prompt), every line names its source, every batch is one entry in Updates. */
+let zn = 0;
+// A line Zirma writes. `cites`: "pageId|words to find on it".
+const I = (text, cites = [], more = {}) => ({ id: `zi${++zn}`, text, cites, ...more });
+function zseed() {
+  zn = 0;
+  const coffee = { id: "z:coffee", kind: "topic", icon: "cup", title: t("咖啡", "Coffee"), updated: t("今天 14:32", "today 14:32"), secs: [
+    { h: t("怎么冲", "How to brew"), items: [
+      I(t("V60：粉 15 克、水 250 克，闷蒸 30 秒，分三段注水，总共两分半", "V60: 15 g to 250 g, 30 s bloom, three pours, two and a half minutes in all"), [`v60|${t("粉 15", "15 g")}`]),
+      I(t("水温：《V60 参数》写 92 度，《周末想试的豆子》写 94 度，还没定", "Water: “V60 numbers” says 92°C, “Beans for the weekend” says 94°C; not settled"), ["v60|92", "q1|94"], { id: "temp" }),
+      I(t("水流细了会过萃，发苦", "Too thin a stream over-extracts and turns bitter"), [`v60|${t("过萃", "over-extracts")}`]),
+    ] },
+    { h: t("喝过的豆子", "Beans so far"), items: [
+      I(t("埃塞水洗：花香，偏酸（92 度）", "Ethiopia, washed: floral, bright (92°C)"), [`v60|${t("埃塞", "Ethiopia")}`]),
+      I(t("哥伦比亚：甜，平衡（90 度）", "Colombia: sweet, balanced (90°C)"), [`v60|${t("哥伦比亚", "Colombia")}`]),
+      I(t("想试：埃塞俄比亚水洗，浅烘", "To try: washed Ethiopian, light roast"), [`q1|${t("浅烘", "light roast")}`], { id: "want" }),
+    ] },
+    { h: t("还没写的", "Not written yet"), items: [
+      I(t("京都的咖啡馆：《京都三天》里提到，还没有这一页", "Kyoto cafés: “Three days in Kyoto” mentions them; no page yet"), [`kyoto|${t("咖啡馆", "Cafés")}`]),
+    ] },
+  ] };
+  const zirma = { id: "z:zirma", kind: "project", icon: "compass", title: "Zirma", updated: t("今天 07:00", "today 07:00"), secs: [
+    { h: t("在定的", "Being decided"), items: [
+      I(t("笔记页用块编辑还是源码、子页面替不替文件夹：周三的评审定", "Notes: block editing or source, sub-pages or folders; Wednesday's review decides"), [`review|${t("块编辑还是", "Block editing or")}`]),
+      I(t("林晓倾向块编辑，担心许可证", "Lin Xiao leans to block editing and worries about the licence"), [`review|${t("林晓", "Lin Xiao")}`]),
+    ] },
+    { h: t("搜索", "Search"), items: [
+      I(t("先做全文，向量以后再说；笔记和链接用同一套索引", "Full text first, vectors later; one index for notes and links"), [`zsearch|${t("全文", "Full text")}`]),
+      I(t("中文用 trigram 分词，两个字的词退回包含匹配", "Chinese uses the trigram tokenizer; two-character words fall back to a contains match"), ["hybrid|trigram", `hybrid|${t("两个字", "Two-character")}`]),
+    ] },
+    { h: t("界面", "Interface"), items: [
+      I(t("信息密度：每一块都在回答一个问题；想拿来对照待办页", "Density: every block answers a question; to check the to-do page against"), [`q3|${t("每一块", "every block")}`]),
+      I(t("颜色：OKLCH 固定亮度和色度，只换色相", "Colour: OKLCH with lightness and chroma fixed, only the hue changing"), [`oklch|${t("色相", "hue")}`]),
+    ] },
+  ] };
+  const lin = { id: "z:lin", kind: "person", icon: "person", title: t("林晓", "Lin Xiao"), updated: t("今天 07:00", "today 07:00"), secs: [
+    { h: t("你记过的", "What you wrote"), items: [I(t("倾向块编辑，担心许可证", "Leans to block editing; worried about the licence"), [`review|${t("林晓", "Lin Xiao")}`])] },
+    { h: t("一起的事", "Together"), items: [I(t("设计评审 11-26，周三 14:00", "Design review 11-26, Wed 14:00"), ["review"])] },
+  ] };
+  const you = { id: "z:you", kind: "you", icon: "person", title: t("关于你", "About you"), updated: t("今天 14:32", "today 14:32"), secs: [
+    { h: t("喜欢的", "Likes"), items: [I(t("咖啡喝浅烘、偏花香的豆子", "Light-roast, floral coffee"), [`q1|${t("浅烘", "light roast")}`, `v60|${t("花香", "Floral")}`], { id: "ylike" })] },
+    { h: t("在做的", "Working on"), items: [I(t("Zirma：笔记页和搜索", "Zirma: the notes page and search"), [`zsearch|${t("全文", "Full text")}`, "review"])] },
+    { h: t("常提到的人", "People you mention"), items: [I(t("林晓：一起做设计评审", "Lin Xiao: on the design review"), [`review|${t("林晓", "Lin Xiao")}`], { z: "z:lin" })] },
+    { h: t("计划", "Plans"), items: [I(t("去京都三天：东山、岚山、伏见", "Three days in Kyoto: Higashiyama, Arashiyama, Fushimi"), ["kyoto"])] },
+  ],
+    ask: { text: t("从一封邮件看到：你 12 月 3 日飞大阪。要记下吗？", "From a mail: you fly to Osaka on 3 December. Remember it?"), from: t("邮件 · 订票确认", "Mail · booking confirmation") },
+    prefs: [t("回答用中文", "Answer in English"), t("提示说短一点", "Keep hints short")] };
+  S.z = {
+    pages: [coffee, zirma, lin, you],
+    health: [
+      { id: "h1", kind: "conflict", text: t("水温对不上：《V60 参数》写 92 度，《周末想试的豆子》写 94 度", "The water temperature disagrees: “V60 numbers” says 92°C, “Beans for the weekend” says 94°C"), cites: ["v60|92", "q1|94"], acts: ["go:v60|92", "propose", "no"] },
+      { id: "h2", kind: "broken", text: t("《京都三天》链接的《京都的咖啡馆》还没有这一页", "“Three days in Kyoto” links to “Kyoto cafés”, which does not exist yet"), cites: [`kyoto|${t("咖啡馆", "Cafés")}`], acts: ["make", "no"] },
+      { id: "h3", kind: "todos", text: "", cites: ["review"], acts: ["go:review"] },
+      { id: "h4", kind: "unfiled", text: "", cites: [], acts: ["go:quick"] },
+    ],
+    log: [
+      { id: "L2", when: t("今天 14:32", "today 14:32"), why: t("你记了《周末想试的豆子》", "You wrote “Beans for the weekend”"), items: ["want", "temp", "ylike"],
+        lines: [{ k: "add", z: "z:coffee", item: "temp" }, { k: "add", z: "z:coffee", item: "want" }, { k: "add", z: "z:you", item: "ylike" }] },
+      { id: "L1", when: t("今天 07:00", "today 07:00"), why: t("每日整理", "Daily tidy"), made: ["z:lin"],
+        lines: [{ k: "add", z: "z:lin", text: t("新建了这一页", "Made this page") }, { k: "add", z: "z:health", text: t("体检：4 条", "Check-up: 4 items") }] },
+    ],
+  };
+}
+const SYS = () => ({ "z:index": { icon: "map", title: t("总目录", "Map") }, "z:health": { icon: "pulse", title: t("体检", "Check-up") }, "z:log": { icon: "clock", title: t("更新记录", "Updates") } });
+const isZ = (id) => typeof id === "string" && id.startsWith("z:");
+const Z = (id) => S.z.pages.find((zp) => zp.id === id && !zp.gone);
+const zHas = (id) => Boolean(SYS()[id] || Z(id));
+const zTitle = (id) => SYS()[id]?.title ?? S.z.pages.find((zp) => zp.id === id)?.title ?? "";
+const zPages = (kind) => S.z.pages.filter((zp) => !zp.gone && (!kind || kind.includes(zp.kind)));
+const zItems = (zp) => zp.secs.flatMap((sec) => sec.items.filter((i) => !i.gone));
+const zItem = (id) => S.z.pages.flatMap((zp) => zp.secs.flatMap((sec) => sec.items)).find((i) => i.id === id);
+const zFrom = (zp) => [...new Set(zItems(zp).flatMap((i) => i.cites.map((c) => c.split("|")[0])).filter((id) => pageOf(id)))];
+const zFresh = (zp) => zItems(zp).some((i) => i.fresh);
+// Zirma's pages that use one of yours: shown apart from "Linked from" on your page.
+const zRefs = (pid) => zPages().flatMap((zp) => { const i = zItems(zp).find((it) => it.cites.some((c) => c.split("|")[0] === pid)); return i ? [{ zp, text: i.text }] : []; });
+function zHealth() {
+  const out = [];
+  for (const h of S.z.health) {
+    if (h.gone) continue;
+    if (h.kind === "todos") { const n = leftTodos(pageOf("review") ?? { blocks: [] }).length; if (!n) continue; out.push({ ...h, text: t(`《设计评审 11-26》有 ${n} 个待办不在待办列表里`, `${n} to-dos in “Design review 11-26” are not in your to-do list`) }); continue; }
+    if (h.kind === "unfiled") { const n = kidsOf("quick").length; if (!n) continue; out.push({ ...h, text: t(`随手记里有 ${n} 页还没归位`, `${n} ${n === 1 ? "page" : "pages"} in Quick Notes not filed yet`) }); continue; }
+    if (h.kind === "broken" && S.pages.some((p) => p.title === t("京都的咖啡馆", "Kyoto cafés"))) continue;
+    out.push(h);
+  }
+  return out;
+}
+const HKIND = () => ({ conflict: t("说法对不上", "Disagrees"), broken: t("断链", "Broken link"), todos: t("待办没放进去", "To-dos left behind"), unfiled: t("还没归位", "Not filed"), stale: t("久没动", "Gone quiet") });
+const ZKIND = () => ({ topic: t("主题", "Topic"), project: t("项目", "Project"), person: t("人", "Person"), you: t("关于你", "About you") });
+const zIcon = (id) => { const n = SYS()[id]?.icon ?? S.z.pages.find((zp) => zp.id === id)?.icon; return PAGE_ICON[n] ?? ICON.doc; };
+
+function zSide() {
+  const node = (id, title, n = "") => `<div class="node z" style="--d:0" data-a="go" data-id="${id}" ${S.at === id ? 'aria-current="true"' : ""} ${Z(id) && zFresh(Z(id)) ? "data-fresh" : ""}><span class="tw none"></span><span class="ic">${zIcon(id)}</span><span class="nm">${esc(title)}</span>${n ? `<span class="n">${n}</span>` : ""}</div>`;
+  const group = (label, kinds) => { const ps = zPages(kinds); return ps.length ? `<div class="zg">${label}</div>${ps.map((zp) => node(zp.id, zp.title)).join("")}` : ""; };
+  return `<div class="sep"></div><div class="lab zlab" title="${t("Zirma 整理的一层：库里的 zirma_notes 文件夹", "Zirma's layer: the zirma_notes folder in the library")}">${ICON.zirma}<span class="grow">zirma_notes</span></div>
+    ${node("z:index", zTitle("z:index"))}${Z("z:you") ? node("z:you", Z("z:you").title) : ""}${node("z:health", zTitle("z:health"), zHealth().length || "")}${node("z:log", zTitle("z:log"))}
+    ${group(t("主题和项目", "Topics and projects"), ["topic", "project"])}${group(t("人", "People"), ["person"])}`;
+}
+function zTop(tree) {
+  const page = Z(S.at);
+  const crumbs = `<button type="button" class="up" data-a="go" data-id="z:index"><span class="ic">${ICON.zirma}</span><span>zirma_notes</span></button><span class="sl up">/</span><button type="button" data-a="go" data-id="${S.at}"><span class="ic">${zIcon(S.at)}</span><span>${esc(zTitle(S.at))}</span></button>`;
+  return `${tree}<div class="crumbs">${crumbs}</div>${page ? `<button type="button" class="tb" data-a="source" aria-pressed="${S.source}" title="${t("这页存成的 Markdown 文件", "The Markdown file this page saves to")}">${ICON.md}<span>Markdown</span></button>` : ""}`;
+}
+function citeHtml(c) {
+  if (c.startsWith("mail:")) return `<span class="cite mail">${esc(c.slice(5))}</span>`;
+  const [pid, q = ""] = c.split("|"), p = pageOf(pid);
+  return p ? `<a class="cite" href="#" data-a="cite" data-id="${pid}" data-q="${esc(q)}" title="${esc(t(`出处：${pathText(pid)}`, `Source: ${pathText(pid)}`))}">${esc(titleOf(p))}</a>` : "";
+}
+function zItemView(i, { forget = false } = {}) {
+  const text = i.z && Z(i.z) ? `<a class="zlink" data-a="go" data-id="${i.z}">${esc(i.text)}</a>` : esc(i.text);
+  return `<li class="zi" ${i.fresh ? "data-fresh" : ""}><span class="zx">${text}${i.fresh ? `<span class="new">${t("新", "new")}</span>` : ""}</span><span class="cites">${i.cites.map(citeHtml).join("")}</span>${forget ? `<button type="button" class="zbtn" data-a="forget" data-id="${i.id}">${t("忘掉", "Forget")}</button>` : ""}</li>`;
+}
+function zSecs(zp, opts) {
+  return zp.secs.map((sec) => { const items = sec.items.filter((i) => !i.gone); return items.length ? `<section class="zsec"><h2>${esc(sec.h)}</h2><ul class="zl">${items.map((i) => zItemView(i, opts)).join("")}</ul></section>` : ""; }).join("");
+}
+function zBand(text, { take = null, tell = true } = {}) {
+  return `<div class="zband"><span class="zt">${ICON.zirma}<span>${text}</span></span><span class="acts">${tell ? `<button type="button" class="btn" data-a="z-tell">${t("告诉 Zirma", "Tell Zirma")}</button>` : ""}<button type="button" class="btn" data-a="go" data-id="z:log">${t("历史", "History")}</button>${take ? `<button type="button" class="btn solid" data-a="z-take" data-id="${take}">${t("收下", "Make it mine")}</button>` : ""}</span></div>`;
+}
+function zHead(id, desc = "", props = "") {
+  return `<div class="doc-head"><div class="head-tools"></div><span class="big-icon">${zIcon(id)}</span><h1 class="title" id="title">${esc(zTitle(id))}</h1>${desc ? `<p class="desc">${desc}</p>` : ""}${props}</div><div class="rule"></div>`;
+}
+const zRow = (id, icon, title, sub) => `<li class="row"><button type="button" class="row-main" data-a="go" data-id="${id}"><span class="ic">${icon}</span><span class="rt-wrap"><span class="rt">${esc(title)}</span><span class="rs">${esc(sub)}</span></span></button></li>`;
+const kept = (zp) => { const n = zFrom(zp).length; return t(`Zirma 整理的 · 依据你的 ${n} 页 · ${zp.updated} 更新`, `Kept by Zirma · from ${n} of your pages · updated ${zp.updated}`); };
+
+function zView(id) {
+  if (id === "z:index") {
+    const mine = S.pages.filter((p) => !p.quick && !p.parent);
+    const rows = (kinds) => zPages(kinds).map((zp) => zRow(zp.id, zIcon(zp.id), zp.title, t(`依据 ${zFrom(zp).length} 页 · ${zp.updated}`, `from ${zFrom(zp).length} pages · ${zp.updated}`))).join("");
+    return `${zHead(id, t(`你的 ${S.pages.length - 1} 页，Zirma 整理成 ${zPages().length} 页。你加了东西、每天早上，各整理一次。`, `Your ${S.pages.length - 1} pages, kept by Zirma as ${zPages().length}. It tidies after you add something, and every morning.`))}
+      ${zBand(t("Zirma 整理的 · 整个库的地图", "Kept by Zirma · a map of the whole library"), { tell: false })}
+      <h2 class="sect">${t("主题和项目", "Topics and projects")}</h2><ul class="rows">${rows(["topic", "project"])}</ul>
+      <h2 class="sect">${t("人", "People")}</h2><ul class="rows">${rows(["person"]) || `<li class="empty-hint">${t("还没有", "None yet")}</li>`}</ul>
+      <h2 class="sect">${t("你的页面", "Your pages")}</h2><ul class="rows">${mine.map((p) => zRow(p.id, iconOf(p), titleOf(p), t(`里面 ${under(p.id).size - 1} 页`, `${under(p.id).size - 1} inside`))).join("")}
+        ${zRow("quick", ICON.quick, titleOf(pageOf("quick")), t(`${kidsOf("quick").length} 页还没归位`, `${kidsOf("quick").length} not filed yet`))}</ul>`;
+  }
+  if (id === "z:health") {
+    const list = zHealth();
+    const act = (h, a) => {
+      if (a.startsWith("go:")) return `<button type="button" class="btn" data-a="hc-go" data-c="${esc(a.slice(3))}">${t("去看", "Go and see")}</button>`;
+      if (a === "propose") return h.state === "proposed" ? `<span class="wait">${t("提议在《V60 参数》里等你", "The proposal waits on “V60 numbers”")}</span>` : `<button type="button" class="btn solid" data-a="hc-prop" data-id="${h.id}">${t("让 Zirma 提议改", "Ask Zirma to propose a fix")}</button>`;
+      if (a === "make") return `<button type="button" class="btn solid" data-a="hc-make" data-id="${h.id}">${t("建这一页", "Make the page")}</button>`;
+      return `<button type="button" class="btn" data-a="hc-no" data-id="${h.id}">${h.kind === "conflict" ? t("不算", "Not a problem") : t("不用", "Leave it")}</button>`;
+    };
+    return `${zHead(id, t("Zirma 只指出，不改你的页。每一条都能去看，或者说不算。", "Zirma only points things out; it does not change your pages. Go and see each one, or wave it off."))}
+      ${zBand(t("Zirma 整理的 · 每天早上全库查一遍，加了东西时顺手查", "Kept by Zirma · the whole library every morning, and a quick look when you add something"), { tell: false })}
+      ${list.length ? list.map((h) => `<div class="hc" ${h.fresh ? "data-fresh" : ""} data-k="${h.kind === "conflict" ? "warm" : "alfred"}"><span class="hk">${esc(HKIND()[h.kind])}</span><p class="ht">${esc(h.text)}</p>${h.cites.length ? `<span class="cites">${h.cites.map(citeHtml).join("")}</span>` : ""}<div class="acts">${h.acts.map((a) => act(h, a)).join("")}</div></div>`).join("") : `<p class="empty-hint">${t("没有要看的", "Nothing to look at")}</p>`}`;
+  }
+  if (id === "z:log") {
+    const undoable = (L) => Boolean(L.items?.length || L.made?.length || L.edits?.length || L.hide?.length || L.health?.length);
+    return `${zHead(id, t("Zirma 每整理一批记一条。撤回就是去掉这一批改的，以后也不再加回来。", "One entry for each batch Zirma tidies. Undo takes that batch out, and Zirma will not put it back."))}
+      ${S.z.log.map((L) => `<div class="lg" ${L.undone ? "data-undone" : ""}><div class="lh"><span class="lw">${esc(L.when)}</span><span class="lt">${esc(L.why)}</span><span class="lb">${L.lines.length ? `<button type="button" class="btn" data-a="log-open" data-id="${L.id}">${L.open ? t("收起", "Hide") : t("看改了什么", "What changed")}</button>` : ""}${undoable(L) ? `<button type="button" class="btn" data-a="log-undo" data-id="${L.id}">${L.undone ? t("重做", "Redo") : t("撤回", "Undo")}</button>` : ""}</span></div>
+        ${L.lines.length ? `<p class="lp">${[...new Set(L.lines.map((l) => l.z))].map((z) => zHas(z) ? `<a class="cite" href="#" data-a="go" data-id="${z}">${esc(zTitle(z))}</a>` : `<span class="cite">${esc(zTitle(z))}</span>`).join("")}</p>` : ""}
+        ${L.open ? `<div class="lines">${L.lines.map((l) => `<span class="ln ${l.k}">${l.k === "add" ? "+" : "−"} ${esc(l.text ?? zItem(l.item)?.text ?? "")}</span>`).join("")}</div>` : ""}</div>`).join("")}`;
+  }
+  const zp = Z(id);
+  if (!zp) return `<p class="empty-hint">${t("这一页不在了", "This page is gone")}</p>`;
+  if (S.source) return zSource(zp);
+  if (zp.kind === "you") {
+    return `${zHead(id, t("Zirma 记得的、关于你和你的世界的事。删一行，Zirma 就忘了这一条。", "What Zirma remembers about you and your world. Delete a line and Zirma forgets it."))}
+      ${zBand(kept(zp))}
+      <div class="priv">${ICON.zirma}<span>${t("这一页不进 git（库里的 .gitignore 排除了它）。库在「文稿」里，开着 iCloud 的话它也会同步。从邮件、对话里看到的，先问你再记。", "This page stays out of git (the library's .gitignore leaves it out). The library is in Documents, so with iCloud on it syncs too. What Zirma sees in mail or chats, it asks before keeping.")}</span></div>
+      ${zp.ask ? `<div class="banner" data-k="alfred"><div class="bt">${ICON.zirma}<span>${esc(zp.ask.text)}</span></div><p class="bs">${esc(zp.ask.from)}</p><div class="acts"><button type="button" class="btn solid" data-a="remember-yes">${t("记下", "Remember")}</button><button type="button" class="btn" data-a="remember-no">${t("不用", "No")}</button></div></div>` : ""}
+      ${zSecs(zp, { forget: true })}
+      <section class="zsec"><h2>${t("你的偏好", "Your preferences")}</h2><p class="desc">${t("这些是 Zirma 照着做的，所以不放在库里：别的 App 能改库里的文件，不该能指挥 Zirma。在设置里改。", "Zirma acts on these, so they are not kept in the library: other apps can change files there and should not be able to steer Zirma. Change them in Settings.")}</p>
+        <ul class="zl">${zp.prefs.map((p) => `<li class="zi"><span class="zx">${esc(p)}</span></li>`).join("")}</ul><p style="margin-top:6px"><button type="button" class="btn" data-a="noop">${t("去设置", "Open Settings")}</button></p></section>`;
+  }
+  return `${zHead(id, "", `<div class="props"><div class="prop-row"><span class="k">${ICON.doc}${t("类型", "Type")}</span><span class="v">${esc(ZKIND()[zp.kind])}</span></div></div>`)}
+    ${zBand(kept(zp), { take: zp.id })}
+    ${zSecs(zp)}
+    <p class="desc" style="margin-top:24px">${t("每一句后面是出处，点了回到你那一页的那一行。这页只读：要自己改，先收下。", "Each line ends with its source; click it to go back to that line on your page. This page is read-only: to change it yourself, make it yours first.")}</p>`;
+}
+const zFolder = (zp) => ({ topic: t("主题/", "Topics/"), project: t("项目/", "Projects/"), person: t("人/", "People/") }[zp.kind] ?? "");
+function zMarkdown(zp) {
+  const name = (c) => titleOf(pageOf(c.split("|")[0]) ?? { title: "?" });
+  const out = ["---", "zirma: maintained", `type: ${zp.kind}`, `updated: ${TODAY}`, `from: [${zFrom(zp).map((id) => `"[[${titleOf(pageOf(id))}]]"`).join(", ")}]`, "---", ""];
+  for (const sec of zp.secs) {
+    const items = sec.items.filter((i) => !i.gone);
+    if (!items.length) continue;
+    out.push(`## ${sec.h}`, "", ...items.map((i) => { const cs = i.cites.filter((c) => !c.startsWith("mail:")).map((c) => `[[${name(c)}]]`); return `- ${i.text}${cs.length ? (S.lang === "en" ? ` (${cs.join(", ")})` : `（${cs.join("，")}）`) : ""}`; }), "");
+  }
+  return out.join("\n").trimEnd() + "\n";
+}
+function zSource(zp) {
+  return `${zHead(zp.id)}<div class="source"><p class="path">${ICON.md}notes/zirma_notes/${esc(zFolder(zp) + zp.title)}.md</p>
+    <pre>${zMarkdown(zp).split("\n").map((l) => `<span class="ln same">${esc(l) || " "}</span>`).join("")}</pre>
+    <p class="note">${t("出处就是普通的 [[双链]]，Obsidian 里点得过去。这一页删掉也能从你的页重新编出来；你在别处改了它，Zirma 会停下这一页来问你。", "Sources are plain [[links]], so they work in Obsidian too. Delete this page and it can be compiled again from yours; change it elsewhere and Zirma stops on this page to ask you.")}${zp.kind === "you" ? t(" 库里的 .gitignore 排除了这一页。", " The library's .gitignore leaves this page out.") : ""}</p></div>`;
+}
+
+// Go to one of your pages and light up the line a source points at.
+function flashLine(q) {
+  if (!q) return;
+  const blk = [...document.querySelectorAll("#blocks .blk")].find((el) => el.textContent.includes(q)) ?? [...document.querySelectorAll("#blocks .cell")].find((el) => el.textContent.includes(q));
+  if (!blk) return;
+  blk.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+  blk.classList.remove("flash"); void blk.offsetWidth; blk.classList.add("flash");
+}
+function zLog(entry) { const L = { id: nid("L"), when: t("刚刚", "just now"), lines: [], ...entry }; S.z.log.unshift(L); return L; }
+// Undo or redo one batch: what it added goes, what it changed goes back; Zirma remembers not to do it again.
+function zApply(L, undo) {
+  for (const id of L.items ?? []) { const i = zItem(id); if (i) i.gone = undo; }
+  for (const id of L.hide ?? []) { const i = zItem(id); if (i) i.gone = !undo; }
+  for (const id of L.made ?? []) { const zp = S.z.pages.find((p) => p.id === id); if (zp) zp.gone = undo; }
+  for (const id of L.health ?? []) { const h = S.z.health.find((x) => x.id === id); if (h) h.gone = undo; }
+  for (const e of L.edits ?? []) { const i = zItem(e.id); if (i) { i.text = undo ? e.before : e.after; i.cites = undo ? e.citesBefore : e.citesAfter; } }
+  L.undone = undo;
+}
+const clearFresh = () => { for (const zp of S.z.pages) for (const sec of zp.secs) for (const i of sec.items) delete i.fresh; for (const h of S.z.health) delete h.fresh; };
+// Play: a note arrives, and a moment later Zirma tidies the pages it touches.
+async function zNew() {
+  const made = newPage("quick", t("肯尼亚豆", "Kenyan beans"), { open: false });
+  made.blocks.push(B("p", esc(t("周日试了肯尼亚豆，94 度冲太苦，下次 91 度。", "Tried Kenyan beans on Sunday; at 94°C it was too bitter. 91°C next time."))));
+  S.fresh = made.id; renderAll();
+  say(t("记进了随手记 · Zirma 一会儿整理", "Saved to Quick Notes · Zirma will tidy in a moment"));
+  await sleep(still ? 0 : 1200);
+  const coffee = Z("z:coffee");
+  if (!coffee || !pageOf(made.id)) return;
+  clearFresh();
+  const temp = zItem("temp"), before = temp.text, citesBefore = [...temp.cites];
+  const after = t("水温：《V60 参数》写 92 度，《周末想试的豆子》写 94 度；肯尼亚 94 度太苦。还没定", "Water: “V60 numbers” says 92°C, “Beans for the weekend” says 94°C; the Kenyan was too bitter at 94°C. Not settled");
+  const citesAfter = [...citesBefore, `${made.id}|94`];
+  Object.assign(temp, { text: after, cites: citesAfter, fresh: true });
+  const bean = I(t("肯尼亚：94 度太苦，下次试 91 度", "Kenya: too bitter at 94°C; try 91°C next"), [`${made.id}|${t("肯尼亚", "Kenyan")}`], { fresh: true });
+  coffee.secs[1].items.push(bean);
+  coffee.updated = t("刚刚", "just now");
+  const L = zLog({ why: t(`你记了《${made.title}》`, `You wrote “${made.title}”`), items: [bean.id], edits: [{ id: temp.id, before, after, citesBefore, citesAfter }],
+    lines: [{ k: "del", z: "z:coffee", text: before }, { k: "add", z: "z:coffee", text: after }, { k: "add", z: "z:coffee", text: bean.text }] });
+  renderAll();
+  say(t("Zirma 整理了《咖啡》：改 1 行，加 1 行", "Zirma tidied “Coffee”: 1 line changed, 1 added"), () => zApply(L, true));
+}
+function zDaily() {
+  if (S.z.health.some((h) => h.id === "h5" && !h.gone)) return say(t("今天已经整理过了", "Already tidied today"));
+  clearFresh();
+  S.z.health = S.z.health.filter((h) => h.id !== "h5");
+  S.z.health.push({ id: "h5", kind: "stale", text: t("《OKLCH 为什么好用》12 天没动，你的页里也没有链接到它的", "“Why OKLCH works” has not changed in 12 days, and none of your pages links to it"), cites: ["oklch|OKLCH"], acts: ["go:oklch|OKLCH", "no"], fresh: true });
+  const L = zLog({ why: t("每日整理", "Daily tidy"), health: ["h5"], lines: [{ k: "add", z: "z:health", text: t("体检：多了 1 条", "Check-up: 1 more item") }, { k: "add", z: "z:index", text: t("总目录：没有变化", "Map: no change") }] });
+  renderAll();
+  say(t("每日整理：体检多了 1 条", "Daily tidy: 1 more check-up item"), () => zApply(L, true));
+}
+// Make one of Zirma's pages yours: it moves out of zirma_notes, keeps its sources as links, and Zirma stops keeping it.
+function zTake(id) {
+  const zp = Z(id);
+  if (!zp) return;
+  const made = newPage(null, zp.title, { open: false });
+  made.icon = zp.icon;
+  made.blocks = zp.secs.flatMap((sec) => { const items = sec.items.filter((i) => !i.gone); return items.length ? [B("h2", esc(sec.h)), ...items.map((i) => B("ul", `${esc(i.text)} ${i.cites.filter((c) => pageOf(c.split("|")[0])).map((c) => mentionHtml(titleOf(pageOf(c.split("|")[0])))).join(" ")}`.trim()))] : []; });
+  zp.gone = true;
+  const L = zLog({ why: t(`你收下了《${zp.title}》，Zirma 不再整理它`, `You made “${zp.title}” yours; Zirma stops keeping it`), lines: [{ k: "del", z: zp.id, text: `zirma_notes/${zFolder(zp)}${zp.title}.md` }, { k: "add", z: zp.id, text: `notes/${zp.title}.md` }] });
+  go(made.id);
+  say(t(`《${zp.title}》是你的了`, `“${zp.title}” is yours now`), () => { S.pages = S.pages.filter((p) => p !== made); zp.gone = false; S.z.log = S.z.log.filter((x) => x !== L); S.at = zp.id; });
+}
+
+/* ── Drawing ── */
+function renderStrip() {
+  document.documentElement.lang = S.lang === "en" ? "en" : "zh-CN";
+  document.title = t("Zirma：笔记", "Zirma: Notes");
+  $("proto").innerHTML = `<b>Notes v4</b>`
+    + `<span class="what">${t("两层：你的页，和 Zirma 整理的 zirma_notes。Zirma 写的每一句都带出处，点了回到你的原话。", "Two layers: your pages, and zirma_notes kept by Zirma. Every line Zirma writes names its source; click to go back to your words.")}</span>`
+    + `<span class="lab">${t("演", "Play")}</span><button type="button" data-a="ext">${t("别处改了", "Changed elsewhere")}</button><button type="button" data-a="fromlink">${t("从链接记一页", "Note from a link")}</button><button type="button" data-a="z-new">${t("加了新东西", "New material")}</button><button type="button" data-a="z-daily">${t("每日整理", "Daily tidy")}</button>`
+    + `<span class="lab">${t("看", "View")}</span><button type="button" data-a="narrow" aria-pressed="${S.narrow}">${t("窄", "Narrow")}</button>`
+    + `<a href="notes-folders.html">v2</a><a href="links-tree.html">${t("链接", "Links")}</a><button type="button" data-a="reset">${t("重来", "Reset")}</button><button type="button" data-a="lang">${S.lang === "en" ? "中文" : "EN"}</button><button type="button" data-a="scheme" aria-label="${t("深浅", "Light or dark")}">◐</button>`;
+}
+function renderSide() {
+  const main = $("main");
+  main.toggleAttribute("data-folded", S.folded);
+  main.toggleAttribute("data-drawer", S.drawer);
+  $("stage").toggleAttribute("data-narrow", S.narrow);
+  $("side").setAttribute("aria-label", t("页面", "Pages"));
+  $("side").innerHTML = sideView();
+}
+function renderTop() { $("top").innerHTML = topView(); }
+function renderDoc() {
+  if (isZ(S.at)) { $("doc").innerHTML = zView(S.at); return; }
+  const page = S.at === "home" ? null : pageOf(S.at);
+  $("doc").innerHTML = page ? pageView(page) : homeView();
+}
+function renderAll() { renderStrip(); renderSide(); renderTop(); renderDoc(); renderFloat(); renderPop(); renderToast(); }
+function say(text, undo) {
+  const toast = { text, undo };
+  S.toast = toast;
+  renderToast();
+  setTimeout(() => { if (S.toast === toast) { S.toast = null; renderToast(); } }, 5000);
+}
+function renderToast() { $("toast").innerHTML = S.toast ? `<div class="toast" role="status"><span>${esc(S.toast.text)}</span>${S.toast.undo ? `<button type="button" data-a="undo">${t("撤销", "Undo")}</button>` : ""}</div>` : ""; }
+
+/* ── Going places ── */
+function go(id) {
+  if (!pageOf(id) && id !== "home" && !zHas(id)) return;
+  Object.assign(S, { at: id, source: false, float: null, conflict: null, drawer: false, status: "saved" });
+  for (const p of pathOf(id).slice(0, -1)) S.expanded.add(p.id);
+  renderAll();
+  $("scroll").scrollTop = 0;
+}
+function newPage(parent, title = "", { open = true, at = null } = {}) {
+  const page = { id: nid("p"), parent, icon: "", title, days: 0, just: true, blocks: [], props: { created: TODAY } };
+  S.pages.push(page);
+  const host = pageOf(parent);
+  // A sub-page is also a block in its parent, as in Notion; Quick Notes lists its pages itself.
+  if (host && !host.quick) {
+    const block = B("page", "", { ref: page.id });
+    const i = at ? host.blocks.findIndex((b) => b.id === at) : -1;
+    if (i >= 0 && host.blocks[i].t === "p" && !textOf(host.blocks[i].h).trim()) host.blocks.splice(i, 1, block);
+    else if (i >= 0) host.blocks.splice(i + 1, 0, block); else host.blocks.push(block);
+  }
+  if (parent) S.expanded.add(parent);
+  if (open) { go(page.id); $("title")?.focus(); }
+  return page;
+}
+function movePage(id, to) {
+  const page = pageOf(id), from = page.parent;
+  if (!page || from === to || under(id).has(to)) return;
+  const old = pageOf(from), dest = pageOf(to);
+  const block = old?.blocks.find((b) => b.t === "page" && b.ref === id);
+  const at = block ? old.blocks.indexOf(block) : -1;
+  if (block) old.blocks.splice(at, 1);
+  page.parent = to;
+  let made = null;
+  if (dest && !dest.quick) { made = B("page", "", { ref: id }); dest.blocks.push(made); }
+  if (to) S.expanded.add(to);
+  if (page.suggest === to) delete page.suggest;
+  renderAll();
+  say(t(`挪到了 ${pathText(to)}`, `Moved to ${pathText(to)}`), () => {
+    page.parent = from;
+    if (made) dest.blocks.splice(dest.blocks.indexOf(made), 1);
+    if (block) old.blocks.splice(at, 0, block);
+  });
+}
+function deletePage(id) {
+  const page = pageOf(id), all = under(id), host = pageOf(page.parent);
+  const removed = S.pages.filter((p) => all.has(p.id));
+  const block = host?.blocks.find((b) => b.t === "page" && b.ref === id), at = block ? host.blocks.indexOf(block) : -1;
+  S.pages = S.pages.filter((p) => !all.has(p.id));
+  if (block) host.blocks.splice(at, 1);
+  S.pop = null;
+  go(all.has(S.at) ? (page.parent ?? "home") : S.at);
+  say(t(`《${titleOf(page)}》挪进了 .trash`, `“${titleOf(page)}” moved to .trash`), () => { S.pages.push(...removed); if (block) host.blocks.splice(at, 0, block); });
+}
+
+/* ── Editing blocks ── */
+const curPage = () => (S.at === "home" ? null : pageOf(S.at));
+let saveTimer = 0;
+function edited(page = curPage()) {
+  touch(page);
+  S.status = "saving";
+  const el = $("status"); if (el) el.textContent = t("在存…", "Saving…");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { S.status = "saved"; const s = $("status"); if (s) s.textContent = t("已存", "Saved"); }, 800);
+}
+function caretIn(ed) {
+  const sel = getSelection();
+  if (!sel.rangeCount) return null;
+  const r = sel.getRangeAt(0);
+  if (!ed.contains(r.startContainer)) return null;
+  const pre = document.createRange();
+  pre.selectNodeContents(ed);
+  pre.setEnd(r.startContainer, r.startOffset);
+  return pre.toString().length;
+}
+function pointAt(ed, offset) {
+  const walk = document.createTreeWalker(ed, NodeFilter.SHOW_TEXT);
+  let left = offset;
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) { if (left <= n.length) return [n, left]; left -= n.length; }
+  return null;
+}
+function placeCaret(ed, offset = null) {
+  if (!ed) return;
+  ed.focus();
+  const r = document.createRange(), sel = getSelection();
+  const at = offset === null ? null : pointAt(ed, offset);
+  if (at) { r.setStart(at[0], at[1]); r.collapse(true); } else { r.selectNodeContents(ed); r.collapse(offset === 0); }
+  sel.removeAllRanges(); sel.addRange(r);
+}
+const edOf = (id, body = false) => document.querySelector(`.ed[data-b="${id}"]${body ? "[data-body]" : ":not([data-body])"}`);
+function focusBlock(id, offset = null) { const ed = edOf(id); if (ed) placeCaret(ed, offset); }
+const EDITABLE = new Set(["p", "h1", "h2", "h3", "todo", "ul", "ol", "quote", "callout", "toggle", "code", "raw"]);
+function syncBlock(ed) {
+  const page = curPage(), block = blockOf(page, ed.dataset.b);
+  if (!block) return null;
+  const html = ed.innerHTML === "<br>" ? "" : ed.innerHTML;
+  if (ed.hasAttribute("data-body")) block.body = html; else block.h = block.t === "code" || block.t === "raw" ? ed.textContent : html;
+  return block;
+}
+function insertAfter(page, id, block) { const i = page.blocks.findIndex((b) => b.id === id); page.blocks.splice(i + 1, 0, block); return block; }
+function rerender(then) { renderDoc(); then?.(); }
+// Markdown at the start of a line turns the block into that kind.
+const SHORT = [[/^#\s$/, "h1"], [/^##\s$/, "h2"], [/^###\s$/, "h3"], [/^[-*]\s$/, "ul"], [/^\[\s?\]\s$/, "todo"], [/^1[.)]\s$/, "ol"], [/^>\s$/, "quote"], [/^```$/, "code"], [/^---$/, "hr"]];
+function onBlockInput(ed, event) {
+  const page = curPage();
+  const block = syncBlock(ed);
+  if (!block) return;
+  edited(page);
+  if (ed.hasAttribute("data-body")) return;
+  const text = ed.textContent.replace(/\u00a0/g, " ");
+  if (block.t === "p" && !ed.querySelector("*")) {
+    const hit = SHORT.find(([re]) => re.test(text));
+    if (hit) return convert(block, hit[1], "");
+  }
+  // / opens the block menu; [[ the page picker. Both read what is typed after them.
+  const caret = caretIn(ed) ?? text.length, before = text.slice(0, caret);
+  if (event.data === "/" && block.t !== "code" && block.t !== "raw") { S.float = { kind: "slash", bid: block.id, from: caret - 1, q: "", i: 0, typed: true }; return renderFloat(); }
+  if (event.data === "[" && before.endsWith("[[") && block.t !== "code" && block.t !== "raw") { S.float = { kind: "mention", bid: block.id, from: caret - 2, q: "", i: 0 }; return renderFloat(); }
+  const F = S.float;
+  if (F && (F.kind === "slash" || F.kind === "mention") && F.bid === block.id) {
+    const lead = F.kind === "slash" ? (F.typed ? 1 : 0) : 2;
+    if (caret < F.from + lead || (F.typed && text[F.from] !== "/")) { S.float = null; return renderFloat(); }
+    F.q = text.slice(F.from + lead, caret);
+    if (F.kind === "slash" && (/\s{2}/.test(F.q) || F.q.length > 14)) { S.float = null; return renderFloat(); }
+    F.i = 0;
+    renderFloat();
+  }
+}
+function convert(block, type, html = block.h) {
+  if (type === "hr") {
+    block.t = "hr"; block.h = "";
+    const next = insertAfter(curPage(), block.id, B("p"));
+    return rerender(() => focusBlock(next.id, 0));
+  }
+  block.t = type; block.h = html;
+  if (type === "callout") block.icon = block.icon ?? "bulb";
+  if (type === "toggle") block.on = true;
+  rerender(() => focusBlock(block.id, null));
+}
+// Cut the typed trigger (/query or [[query) out of the block, wherever the caret is.
+function cutTrigger(F) {
+  const ed = edOf(F.bid);
+  if (!ed) return null;
+  const lead = F.kind === "slash" ? (F.typed ? 1 : 0) : 2;
+  const start = pointAt(ed, F.from), end = pointAt(ed, F.from + lead + F.q.length);
+  if (!start || !end) return null;
+  const r = document.createRange();
+  r.setStart(start[0], start[1]); r.setEnd(end[0], end[1]);
+  r.deleteContents();
+  return r;
+}
+function enterKey(ed, event) {
+  const page = curPage(), block = blockOf(page, ed.dataset.b);
+  if (!block || block.t === "code" || block.t === "raw" || ed.hasAttribute("data-body")) return;
+  event.preventDefault();
+  const text = ed.textContent.trim();
+  const list = ["ul", "ol", "todo"];
+  // Enter on an empty list item ends the list.
+  if (list.includes(block.t) && !text) return convert(block, "p", "");
+  const sel = getSelection(), r = sel.getRangeAt(0);
+  r.deleteContents();
+  const tail = document.createRange();
+  tail.selectNodeContents(ed);
+  tail.setStart(r.endContainer, r.endOffset);
+  const box = document.createElement("div");
+  box.appendChild(tail.extractContents());
+  block.h = ed.innerHTML === "<br>" ? "" : ed.innerHTML;
+  const rest = box.innerHTML === "<br>" ? "" : box.innerHTML;
+  const next = insertAfter(page, block.id, B(list.includes(block.t) ? block.t : "p", rest));
+  edited(page);
+  rerender(() => focusBlock(next.id, 0));
+}
+function backspaceKey(ed, event) {
+  const page = curPage(), block = blockOf(page, ed.dataset.b);
+  if (!block || ed.hasAttribute("data-body") || block.t === "raw" || block.t === "code") return;
+  const sel = getSelection();
+  if (!sel.isCollapsed || caretIn(ed) !== 0) return;
+  event.preventDefault();
+  if (block.t !== "p") return convert(block, "p");
+  const i = page.blocks.indexOf(block), prev = page.blocks[i - 1];
+  if (!prev) return;
+  if (!EDITABLE.has(prev.t) || prev.t === "raw" || prev.t === "code" || prev.sugg || prev.pending) {
+    if (prev.t !== "hr" || !textOf(block.h).trim()) {
+      if (textOf(block.h).trim()) return; page.blocks.splice(i, 1); edited(page); return rerender(() => { const up = [...page.blocks.slice(0, i)].reverse().find((b) => EDITABLE.has(b.t)); if (up) focusBlock(up.id, null); }); }
+    page.blocks.splice(i - 1, 1); edited(page); return rerender(() => focusBlock(block.id, 0));
+  }
+  const join = textOf(prev.h).length;
+  prev.h = prev.t === "code" ? prev.h + textOf(block.h) : prev.h + block.h;
+  page.blocks.splice(i, 1);
+  edited(page);
+  rerender(() => focusBlock(prev.id, join));
+}
+function arrowKey(ed, event) {
+  const page = curPage(), block = blockOf(page, ed.dataset.b);
+  if (!block || ed.hasAttribute("data-body")) return;
+  const caret = caretIn(ed), len = ed.textContent.length;
+  const up = event.key === "ArrowUp";
+  if ((up && caret !== 0) || (!up && caret !== len)) return;
+  const i = page.blocks.indexOf(block);
+  const list = up ? page.blocks.slice(0, i).reverse() : page.blocks.slice(i + 1);
+  const to = list.find((b) => EDITABLE.has(b.t) && !b.sugg && !b.pending);
+  if (!to) { if (up) { event.preventDefault(); placeCaret($("title"), null); } return; }
+  event.preventDefault();
+  focusBlock(to.id, up ? null : 0);
+}
+
+/* ── The block menu, the page picker, our own menus ── */
+const KINDS = () => [
+  { k: "p", gl: "T", name: t("正文", "Text"), keys: "text p paragraph zhengwen" },
+  { k: "h1", gl: "H1", name: t("标题 1", "Heading 1"), md: "#", keys: "h1 heading title biaoti" },
+  { k: "h2", gl: "H2", name: t("标题 2", "Heading 2"), md: "##", keys: "h2 heading biaoti" },
+  { k: "h3", gl: "H3", name: t("标题 3", "Heading 3"), md: "###", keys: "h3 heading biaoti" },
+  { k: "todo", gl: GL.todo, name: t("待办", "To-do"), md: "[]", keys: "todo task check daiban" },
+  { k: "ul", gl: "•", name: t("列表", "Bulleted list"), md: "-", keys: "list bullet ul liebiao" },
+  { k: "ol", gl: "1.", name: t("编号", "Numbered list"), md: "1.", keys: "number ol bianhao" },
+  { k: "quote", gl: GL.quote, name: t("引用", "Quote"), md: ">", keys: "quote yinyong" },
+  { k: "callout", gl: GL.bulb, name: t("提示框", "Callout"), keys: "callout note tishi" },
+  { k: "toggle", gl: "▸", name: t("折叠", "Toggle"), keys: "toggle details zhedie" },
+  { k: "code", gl: "</>", name: t("代码", "Code"), md: "```", keys: "code daima" },
+  { k: "table", gl: GL.table, name: t("表格", "Table"), keys: "table grid biaoge" },
+  { k: "hr", gl: "—", name: t("分割线", "Divider"), md: "---", keys: "divider hr line fenge" },
+  { k: "page", gl: GL.doc, name: t("子页面", "Sub-page"), keys: "page sub yemian" },
+  { k: "ask", gl: GL.zirma, name: t("问 Zirma", "Ask Zirma"), keys: "ask ai zirma wen", z: true },
+];
+function slashItems(q) {
+  const s = q.trim().toLowerCase();
+  return KINDS().filter((kind) => !s || kind.name.toLowerCase().includes(s) || kind.keys.includes(s));
+}
+function mentionItems(q) {
+  const s = q.trim().toLowerCase(), page = curPage();
+  const hits = S.pages.filter((p) => !p.quick && p !== page && titleOf(p).toLowerCase().includes(s)).slice(0, 6);
+  return hits;
+}
+function pickSlash(kind) {
+  const F = S.float, page = curPage(), block = blockOf(page, F.bid);
+  S.float = null; renderFloat();
+  if (!block) return;
+  if (F.typed) { cutTrigger(F); syncBlock(edOf(block.id)); }
+  const empty = !textOf(block.h).trim();
+  if (kind.k === "ask") return openAsk({ scope: "page", bid: block.id });
+  if (kind.k === "page") { edited(page); return newPage(page.id, "", { at: block.id }); }
+  if (kind.k === "table") {
+    const made = B("table", "", { rows: [["", "", ""], ["", "", ""]] });
+    if (empty) page.blocks.splice(page.blocks.indexOf(block), 1, made); else insertAfter(page, block.id, made);
+    edited(page);
+    return rerender(() => placeCaret(document.querySelector(`.cell[data-b="${made.id}"]`), 0));
+  }
+  if (kind.k === "hr") {
+    if (empty) return convert(block, "hr");
+    insertAfter(page, block.id, B("hr")); edited(page);
+    return rerender(() => focusBlock(block.id, null));
+  }
+  edited(page);
+  if (empty || kind.k === "p") return convert(block, kind.k, block.h);
+  const next = insertAfter(page, block.id, B(kind.k, "", kind.k === "callout" ? { icon: "bulb" } : kind.k === "toggle" ? { on: true } : {}));
+  rerender(() => focusBlock(next.id, 0));
+}
+function pickMention(target, name) {
+  const F = S.float;
+  S.float = null; renderFloat();
+  const r = cutTrigger(F), ed = edOf(F.bid);
+  if (!r || !ed) return;
+  const holder = document.createElement("span");
+  holder.innerHTML = target ? mentionHtml(titleOf(target)) : mentionHtml(name);
+  const node = holder.firstChild, space = document.createTextNode("\u00a0");
+  r.insertNode(space); r.insertNode(node);
+  const after = document.createRange(); after.setStartAfter(space); after.collapse(true);
+  const sel = getSelection(); sel.removeAllRanges(); sel.addRange(after);
+  syncBlock(ed); edited();
+}
+function placeAt(el, x, y, below = 0) {
+  const w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = `${Math.max(12, Math.min(x, innerWidth - w - 12))}px`;
+  el.style.top = `${y + h > innerHeight - 12 ? Math.max(12, y - h - below - 8) : y}px`;
+}
+function caretRect() {
+  const sel = getSelection();
+  if (!sel.rangeCount) return null;
+  const r = sel.getRangeAt(0).cloneRange();
+  const rects = r.getClientRects();
+  if (rects.length) return rects[rects.length - 1];
+  const el = (r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement);
+  return el.getBoundingClientRect();
+}
+function renderFloat() {
+  const F = S.float, box = $("float");
+  if (!F) { box.innerHTML = ""; return; }
+  let html = "";
+  if (F.kind === "slash") {
+    const items = slashItems(F.q);
+    F.items = items;
+    F.i = Math.min(F.i, Math.max(items.length - 1, 0));
+    html = `<div class="menu" role="listbox"><div class="mh">${F.q ? t(`块 · “${esc(F.q)}”`, `Blocks · “${esc(F.q)}”`) : t("块", "Blocks")}</div>${items.length ? items.map((kind, i) => `${kind.z ? '<div class="sep"></div>' : ""}<button type="button" role="option" data-a="slash" data-i="${i}" aria-selected="${i === F.i}"><span class="gl${kind.z ? " z" : ""}">${kind.gl}</span><span>${esc(kind.name)}</span>${kind.md ? `<small>${esc(kind.md)}</small>` : ""}</button>`).join("") : `<div class="none">${t("没有这种块", "No such block")}</div>`}</div>`;
+  } else if (F.kind === "mention") {
+    const items = mentionItems(F.q);
+    F.items = items;
+    F.i = Math.min(F.i, items.length);
+    html = `<div class="menu" role="listbox"><div class="mh">${t("连到一页", "Link a page")}</div>${items.map((p, i) => `<button type="button" role="option" data-a="mention" data-i="${i}" aria-selected="${i === F.i}"><span class="gl">${iconOf(p)}</span><span>${esc(titleOf(p))}</span><small>${esc(pathText(p.parent))}</small></button>`).join("")}
+      ${F.q.trim() ? `<button type="button" role="option" data-a="mention" data-i="${items.length}" aria-selected="${F.i === items.length}"><span class="gl">+</span><span>${t(`连到“${esc(F.q.trim())}”（还没有这页）`, `Link “${esc(F.q.trim())}” (no such page yet)`)}</span></button>` : ""}</div>`;
+  } else if (F.kind === "menu") {
+    const page = pageOf(F.for);
+    html = F.moving
+      ? `<div class="menu" role="menu"><div class="mh">${t("挪到", "Move to")}</div><button type="button" role="menuitem" data-a="move-to" data-id="quick"><span class="gl">${ICON.quick.replace('class="i"', 'class="i" style="width:15px;height:15px"')}</span><span>${esc(titleOf(pageOf("quick")))}</span></button>
+          ${treeOrder().filter((p) => !under(page.id).has(p.id)).map((p) => `<button type="button" role="menuitem" style="--d:${depthOf(p.id)}" data-a="move-to" data-id="${p.id}" ${p.id === page.parent ? 'aria-selected="true"' : ""}><span class="gl">${iconOf(p)}</span><span>${esc(titleOf(p))}</span></button>`).join("")}</div>`
+      : `<div class="menu" role="menu">
+          <button type="button" role="menuitem" data-a="new-page" data-id="${page.id}">${ICON.plus}<span>${t("在里面新建一页", "New page inside")}</span></button>
+          <button type="button" role="menuitem" data-a="move-menu" data-id="${page.id}">${ICON.move}<span>${t("挪到…", "Move to…")}</span></button>
+          <button type="button" role="menuitem" data-a="noop">${ICON.out}<span>${t("用默认 App 打开", "Open in the default app")}</span></button>
+          <div class="sep"></div>
+          <button type="button" role="menuitem" class="danger" data-a="del" data-id="${page.id}">${ICON.trash}<span>${t("删掉", "Delete")}</span></button></div>`;
+  } else if (F.kind === "emoji") {
+    html = `<div class="menu"><div class="emojis">${Object.keys(PAGE_ICON).map((name) => `<button type="button" data-a="set-icon" data-e="${name}" aria-label="${name}">${PAGE_ICON[name]}</button>`).join("")}</div><div class="sep"></div><button type="button" data-a="set-icon" data-e="">${t("去掉图标", "Remove icon")}</button></div>`;
+  } else if (F.kind === "selbar") {
+    html = `<div class="selbar" role="toolbar"><button type="button" data-a="fmt" data-f="bold" aria-label="${t("加粗", "Bold")}"><b>B</b></button><button type="button" data-a="fmt" data-f="italic" aria-label="${t("斜体", "Italic")}"><i>I</i></button><button type="button" data-a="fmt" data-f="code" aria-label="${t("代码", "Code")}"><code style="font:.8rem var(--mono)">&lt;/&gt;</code></button>
+      <span class="bar"></span><button type="button" class="z" data-a="ask-sel">${ICON.zirma}${t("问 Zirma", "Ask Zirma")}<small style="color:var(--muted);font:.6875rem var(--mono)">⌘J</small></button></div>`;
+  } else if (F.kind === "ask") html = askView(F);
+  box.innerHTML = `<div class="fl" id="fl">${html}</div>`;
+  const el = $("fl");
+  const rect = F.x !== undefined ? null : F.kind === "selbar" ? F.rect : caretRect();
+  if (F.x !== undefined) placeAt(el, F.x, F.y, F.h ?? 0);
+  else if (rect && F.kind === "selbar") placeAt(el, rect.left, rect.top - el.offsetHeight - 8, -rect.height - el.offsetHeight - 16);
+  else if (rect) placeAt(el, rect.left - 4, rect.bottom + 6, rect.height);
+  if (F.kind === "ask" && F.state === "ask") $("ask-q")?.focus({ preventScroll: true });
+}
+// The selection bar and the menus keep the text selection and the caret where they are.
+document.addEventListener("mousedown", (event) => { if (event.target.closest?.(".selbar, .menu[role=listbox]")) event.preventDefault(); });
+function closeFloat() { if (!S.float) return; S.float = null; renderFloat(); }
+function openMenuAt(kind, button, extra = {}) {
+  const r = button.getBoundingClientRect();
+  S.float = { kind, x: kind === "menu" && button.hasAttribute("data-top") ? r.right - 230 : r.left, y: r.bottom + 4, h: r.height, ...extra };
+  renderFloat();
+}
+
+/* ── Zirma, inside the page ── */
+// The selection Zirma is asked about, kept as character offsets in one block.
+function selectionInBlock() {
+  const sel = getSelection();
+  if (!sel.rangeCount || sel.isCollapsed) return null;
+  const r = sel.getRangeAt(0);
+  const ed = (r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement).closest(".ed");
+  if (!ed || ed.hasAttribute("data-body") || ed.getAttribute("contenteditable") === "false") return null;
+  const block = blockOf(curPage(), ed.dataset.b);
+  if (!block || block.t === "code" || block.t === "raw") return null;
+  const pre = document.createRange(); pre.selectNodeContents(ed); pre.setEnd(r.startContainer, r.startOffset);
+  const start = pre.toString().length, text = r.toString();
+  if (!text.trim()) return null;
+  return { bid: block.id, start, end: start + text.length, text, rect: r.getBoundingClientRect() };
+}
+function openAsk(ctx) {
+  const rect = ctx.rect ?? edOf(ctx.bid)?.getBoundingClientRect();
+  S.float = { kind: "ask", ...ctx, x: rect ? rect.left : 80, y: rect ? rect.bottom + 8 : 120, h: rect?.height ?? 0, state: "ask" };
+  renderFloat();
+}
+function askView(F) {
+  const chips = F.scope === "sel"
+    ? [["short", t("更短", "Shorter")], ["points", t("改成要点", "As points")], ["related", t("找相关的笔记", "Find related notes")]]
+    : [["sum", t("总结这一页", "Sum up this page")], ["todos", t("哪些待办还没放进去", "To-dos not in my list")], ["related", t("找相关的笔记", "Find related notes")]];
+  const ctx = F.scope === "sel" ? t(`选中的 ${F.text.length} 个字`, `${F.text.length} characters`) : t("这一页", "This page");
+  let below = `<div class="chips">${chips.map(([id, name]) => `<button type="button" data-a="ask-do" data-do="${id}">${esc(name)}</button>`).join("")}</div>`;
+  if (F.state === "thinking") below = `<div class="say" style="display:flex;align-items:center;gap:8px"><span class="pulse"></span>${t("Zirma 在看…", "Zirma is reading…")}</div>`;
+  else if (F.state === "said") below = `<p class="say">${esc(F.said)}</p>${below}`;
+  else if (F.state === "related") below = F.related.length ? `<ul class="rel">${F.related.map((hit) => `<li><span class="ic">${iconOf(hit.page)}</span><span class="rtx"><b>${esc(titleOf(hit.page))}</b><small>${esc(hit.line)}</small></span>
+      <button type="button" class="btn" data-a="rel-link" data-id="${hit.page.id}">${t("连过来", "Link it")}</button><button type="button" class="ib" data-a="go" data-id="${hit.page.id}" aria-label="${t("打开", "Open")}">${ICON.arrow}</button></li>`).join("")}</ul>`
+    : `<p class="say">${t("没找到相关的笔记", "No related notes found")}</p>`;
+  return `<div class="ask" role="dialog" aria-label="${t("问 Zirma", "Ask Zirma")}"><form class="ask-in" id="ask-form">${ICON.zirma}<input id="ask-q" autocomplete="off" placeholder="${t("让 Zirma 做什么", "What should Zirma do")}"><span class="ctx">${esc(ctx)}</span></form>${below}</div>`;
+}
+// Scripted answers. A real model goes here; the shape of what comes back is the point.
+const SHORTER = {
+  "分块大小先看问题长什么样，不是越小越好。": "分块大小看问题，不求最小。",
+  "Pick the chunk size from the questions people ask, not the smallest one.": "Size chunks by the questions, not as small as possible.",
+  "密度不是把东西挤在一起，是每一块都在回答一个问题。": "密度是每一块都在回答一个问题。",
+  "Density is not packing things in. It is every block answering one question.": "Density: every block answers a question.",
+  "同样的亮度数字，看起来真的一样亮。HSL 的黄和蓝，同亮度看着差很多。": "OKLCH 的同一亮度看着就一样亮，HSL 不是。",
+  "Equal lightness numbers actually look equally light. In HSL, yellow and blue at one lightness look far apart.": "In OKLCH equal lightness looks equal; in HSL it does not.",
+};
+function shorter(text) {
+  if (SHORTER[text.trim()]) return SHORTER[text.trim()];
+  const parts = text.split(/(?<=[，。；,;.])\s*/).filter((s) => s.trim());
+  if (parts.length > 1) return parts[0].replace(/[，,；;]$/, S.lang === "en" ? "." : "。");
+  return text.replace(/(真的|一点|一下|先|就|really |just |actually )/g, "").trim() || text;
+}
+function related(page, text) {
+  const words = (text.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []);
+  const han = text.replace(/[^一-鿿]/g, "");
+  const terms = [...new Set([...words, ...Array.from({ length: Math.max(han.length - 1, 0) }, (_, i) => han.slice(i, i + 2))])];
+  const linked = new Set(page.blocks.flatMap((b) => [...b.h.matchAll(/data-ref="([^"]+)"/g)].map((m) => m[1])));
+  return S.pages.filter((p) => p !== page && !p.quick && p.blocks.length).map((p) => {
+    const lines = p.blocks.map((b) => textOf(b.h)).filter(Boolean);
+    const score = terms.filter((term) => (titleOf(p) + lines.join(" ")).toLowerCase().includes(term)).length + (linked.has(p.id) ? -1 : 0);
+    const line = lines.find((l) => terms.some((term) => l.toLowerCase().includes(term))) ?? lines[0] ?? "";
+    return { page: p, score, line };
+  }).filter((hit) => hit.score > 0).sort((a, b) => b.score - a.score).slice(0, 3);
+}
+const SUMMARY = {
+  rag: ["分块按问题定大小；按标题切适合文档，固定长度适合聊天；重叠 10–15%。", "Size chunks by the questions; by heading for docs, fixed length for chats; 10–15% overlap."],
+  review: ["要定两件事：块编辑还是源码、子页面替不替文件夹；会后三件事待办。", "Two decisions: block editing or source, sub-pages or folders; three to-dos after the meeting."],
+  v60: ["15 克粉 250 克水，92 度，闷蒸 30 秒，三段注水两分半。", "15 g to 250 g, 92°C, 30 s bloom, three pours in two and a half minutes."],
+};
+async function askDo(what, typed = "") {
+  const F = S.float, page = curPage();
+  if (!F || !page) return;
+  F.state = "thinking"; renderFloat();
+  await sleep(still ? 0 : 650);
+  if (S.float !== F) return;
+  const block = blockOf(page, F.bid);
+  if (what === "related") {
+    F.related = related(page, F.scope === "sel" ? F.text : page.blocks.map((b) => textOf(b.h)).join(" ") + titleOf(page));
+    F.state = "related"; return renderFloat();
+  }
+  if (what === "todos") {
+    const left = leftTodos(page);
+    if (!left.length) { F.state = "said"; F.said = t("这页没有还没放进去的待办。", "Every to-do here is already in your list."); return renderFloat(); }
+    page.banner = "todos"; closeFloat(); renderDoc();
+    return document.querySelector(".banner")?.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+  }
+  if (what === "sum") {
+    const lines = page.blocks.filter((b) => ["h1", "h2", "h3"].includes(b.t)).map((b) => textOf(b.h));
+    const text = SUMMARY[page.id]?.[S.lang === "en" ? 1 : 0] ?? (lines.length ? t(`这页讲了：${lines.join("、")}。`, `This page covers: ${lines.join(", ")}.`) : shorter(firstLine(page) || titleOf(page)));
+    const made = B("callout", esc(text), { icon: "zirma", pending: true });
+    if (block && !textOf(block.h).trim()) page.blocks.splice(page.blocks.indexOf(block), 1, made); else page.blocks.unshift(made);
+    closeFloat(); rerender(() => document.querySelector(".blk.pending")?.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" }));
+    return;
+  }
+  if (!block || F.scope !== "sel") { F.state = "said"; F.said = t("选中一段再问这个。", "Select some text to ask this."); return renderFloat(); }
+  const ed = edOf(block.id), before = block.h;
+  if (what === "points") {
+    const items = textOf(before).split(/(?<=[，。；,;.])\s*|：|: /).map((s) => s.replace(/[，。；,;.]$/, "").trim()).filter(Boolean);
+    if (items.length < 2) { F.state = "said"; F.said = t("这段太短，拆不出要点。", "Too short to make points of."); return renderFloat(); }
+    block.sugg = { kind: "split", before, items, preview: before };
+  } else if (what === "short") {
+    const start = pointAt(ed, F.start), end = pointAt(ed, F.end);
+    const r = document.createRange(); r.setStart(start[0], start[1]); r.setEnd(end[0], end[1]);
+    const del = document.createElement("del"); del.className = "sg"; del.appendChild(r.extractContents());
+    const ins = document.createElement("ins"); ins.className = "sg"; ins.textContent = shorter(F.text);
+    r.insertNode(ins); r.insertNode(del);
+    const preview = ed.innerHTML;
+    const copy = ed.cloneNode(true);
+    copy.querySelectorAll("del.sg").forEach((el) => el.remove());
+    copy.querySelectorAll("ins.sg").forEach((el) => el.replaceWith(...el.childNodes));
+    ed.innerHTML = before;
+    block.sugg = { kind: "rewrite", before, preview, after: copy.innerHTML };
+  } else { F.state = "said"; F.said = t("原型里 Zirma 只会这几件，试试下面的。", "In the prototype Zirma knows only these; try one below."); return renderFloat(); }
+  closeFloat();
+  rerender();
+}
+function askTyped(text) {
+  const s = text.toLowerCase();
+  const what = /短|short|trim/.test(s) ? "short" : /要点|point|bullet|list/.test(s) ? "points" : /相关|related|找|find/.test(s) ? "related"
+    : /总结|summar|概括/.test(s) ? "sum" : /待办|todo|to-do/.test(s) ? "todos" : "other";
+  return askDo(what, text);
+}
+function acceptSugg(block) {
+  const page = curPage(), S0 = block.sugg;
+  if (block.pending) { delete block.pending; block.icon = "bulb"; block.by = "zirma"; edited(page); renderDoc(); return say(t("Zirma 加了一块", "Zirma added a block"), () => { page.blocks.splice(page.blocks.indexOf(block), 1); }); }
+  if (S0.kind === "split") {
+    const i = page.blocks.indexOf(block);
+    const made = S0.items.map((item) => B("ul", esc(item), { by: "zirma" }));
+    page.blocks.splice(i, 1, ...made);
+    edited(page); renderDoc();
+    return say(t("拆成了要点", "Turned into points"), () => { page.blocks.splice(page.blocks.indexOf(made[0]), made.length, block); delete block.sugg; });
+  }
+  block.h = S0.after; delete block.sugg; block.by = "zirma";
+  edited(page); renderDoc();
+  say(t("Zirma 改了一处", "Zirma changed one line"), () => { block.h = S0.before; });
+}
+function rejectSugg(block) {
+  const page = curPage();
+  if (block.pending) page.blocks.splice(page.blocks.indexOf(block), 1); else delete block.sugg;
+  renderDoc();
+}
+function sendTodo(block, quiet = false) {
+  block.sent = true;
+  if (!quiet) { renderDoc(); say(t("放进了待办列表 · 今天", "Added to your to-do list · today"), () => { delete block.sent; }); }
+}
+
+/* ── Search: titles and what pages say ── */
+function searchHits(q) {
+  const s = q.trim().toLowerCase();
+  const pages = S.pages.filter((p) => !p.quick);
+  if (!s) return { titles: pages.slice().sort((a, b) => a.days - b.days).slice(0, 6), lines: [], zl: [] };
+  const titles = pages.filter((p) => titleOf(p).toLowerCase().includes(s)).slice(0, 5);
+  const lines = [];
+  for (const p of pages) for (const b of p.blocks) { const line = textOf(b.h); if (line.toLowerCase().includes(s)) { lines.push({ page: p, line }); break; } }
+  const zl = zPages().filter((zp) => zp.title.toLowerCase().includes(s) || zItems(zp).some((i) => i.text.toLowerCase().includes(s)))
+    .map((zp) => ({ page: zp, line: zp.title.toLowerCase().includes(s) ? zItems(zp)[0]?.text ?? "" : zItems(zp).find((i) => i.text.toLowerCase().includes(s)).text })).slice(0, 4);
+  return { titles, lines: lines.filter((hit) => !titles.includes(hit.page)).slice(0, 6), zl };
+}
+function marked(text, q) {
+  const s = q.trim();
+  if (!s) return esc(text);
+  const i = text.toLowerCase().indexOf(s.toLowerCase());
+  if (i < 0) return esc(text);
+  const from = Math.max(0, i - 14);
+  return `${from ? "…" : ""}${esc(text.slice(from, i))}<mark>${esc(text.slice(i, i + s.length))}</mark>${esc(text.slice(i + s.length))}`;
+}
+function renderPop() {
+  const P = S.pop, box = $("pop");
+  if (!P) { box.innerHTML = ""; return; }
+  if (P.kind === "del") {
+    const page = pageOf(P.id), n = under(P.id).size - 1;
+    box.innerHTML = `<div class="veil mid" data-a="pop-close"><div class="card" role="dialog" aria-modal="true" aria-labelledby="pop-h"><h2 id="pop-h">${esc(t(`删掉《${titleOf(page)}》`, `Delete “${titleOf(page)}”`))}</h2>
+      <p>${n ? t(`连同里面 ${n} 页一起挪进库里的 .trash，还能拿回来`, `It and the ${n} ${n === 1 ? "page" : "pages"} inside move to .trash in the library and can be brought back`) : t("挪进库里的 .trash，还能拿回来", "It moves to .trash in the library and can be brought back")}</p>
+      <div class="acts"><button type="button" class="btn" data-a="pop-close">${t("不删", "Keep")}</button><button type="button" class="btn danger" data-a="del-yes" data-id="${P.id}">${t("删掉", "Delete")}</button></div></div></div>`;
+    return;
+  }
+  const { titles, lines, zl } = searchHits(P.q);
+  const all = [...titles.map((p) => ({ page: p })), ...lines, ...zl];
+  P.all = all; P.i = Math.min(P.i, Math.max(all.length - 1, 0));
+  let k = 0;
+  const hit = (h, small) => `<button type="button" class="hit" data-a="hit" data-id="${h.page.id}" aria-selected="${k++ === P.i}"><span class="ic">${iconOf(h.page)}</span><span class="ht"><b>${marked(titleOf(h.page), P.q)}</b><small>${small}</small></span>${k - 1 === P.i ? "<kbd>↵</kbd>" : ""}</button>`;
+  const res = `${titles.length ? `<div class="gh">${P.q.trim() ? t("页面", "Pages") : t("最近", "Recent")}</div>${titles.map((p) => hit({ page: p }, esc(pathText(p.parent) || t("最上层", "Top")))).join("")}` : ""}
+    ${lines.length ? `<div class="gh">${t("内容", "In the text")}</div>${lines.map((h) => hit(h, marked(h.line, P.q))).join("")}` : ""}
+    ${zl.length ? `<div class="gh">${t("Zirma 整理的", "Kept by Zirma")}</div>${zl.map((h) => hit(h, marked(h.line, P.q))).join("")}` : ""}
+    ${!all.length ? `<p class="none">${t("没找到", "Nothing found")}</p>` : ""}`;
+  if (!box.querySelector(".palette")) {
+    box.innerHTML = `<div class="veil" data-a="pop-close"><div class="palette" role="dialog" aria-modal="true" aria-label="${t("搜索", "Search")}"><label class="pin">${ICON.search}<input id="find" autocomplete="off" placeholder="${t("搜标题和内容", "Search titles and text")}" value="${esc(P.q)}"><kbd style="font:.6875rem var(--mono)">esc</kbd></label><div class="res" id="res"></div></div></div>`;
+    $("find").focus();
+  }
+  $("res").innerHTML = res;
+}
+
+/* ── Demos in the strip ── */
+// Another app writes the same file. Not typing: the page just changes. Typing: nothing is written over your words.
+function elsewhere() {
+  const page = curPage();
+  if (!page || page.quick) {
+    const made = newPage("quick", t("在别处记的一条", "A note made elsewhere"), { open: false });
+    made.blocks.push(B("p", t("在手机上的 Obsidian 里记的。", "Written in Obsidian on the phone.")));
+    S.fresh = made.id; renderAll();
+    return say(t("别处新建了一页，出现在随手记", "A page was made elsewhere; it is in Quick Notes"));
+  }
+  const line = B("p", t("（在别处加的一行）", "(a line added elsewhere)"));
+  const typing = document.activeElement?.closest?.(".doc") && document.activeElement.isContentEditable;
+  if (typing && S.status === "saving") { S.conflict = { line }; clearTimeout(saveTimer); S.status = "saved"; return renderDoc(); }
+  page.blocks.push(line);
+  page.base = toMarkdown(page);
+  S.status = "elsewhere";
+  renderTop(); renderDoc();
+}
+function fromLink() {
+  const url = "https://www.youtube.com/watch?v=ragfromscratch";
+  if (!S.clips.some((c) => c.url === url)) S.clips.push({ url, site: "YouTube", mark: "Y", k: "now", title: t("从零搭一个 RAG", "RAG from scratch") });
+  const made = newPage("quick", t("从零搭一个 RAG", "RAG from scratch"), { open: false });
+  made.props.source = url; made.suggest = "search";
+  made.blocks.push(B("mark", "", { url }), B("p", t("想对照着改 Zirma 的搜索。", "To compare with Zirma's search.")));
+  go(made.id);
+  say(t("从链接记成了一页，在随手记", "Made a page from the link, in Quick Notes"));
+}
+
+/* ── Events ── */
+document.addEventListener("click", (event) => {
+  const el = event.target.closest("[data-a]");
+  const inFloat = event.target.closest("#fl");
+  if (S.float && !inFloat && !(el && ["page-menu", "emoji", "blk-add", "move-menu"].includes(el.dataset.a))) closeFloat();
+  // A page link inside text opens that page; a link to a page that does not exist makes it.
+  const mention = event.target.closest(".mention");
+  if (mention && !el) {
+    event.preventDefault();
+    if (mention.dataset.ref) return go(mention.dataset.ref);
+    const host = curPage();
+    const made = newPage(host?.parent ?? null, mention.dataset.title, { open: false });
+    for (const p of S.pages) for (const b of p.blocks) b.h = b.h.replace(new RegExp(`<a class="mention missing"[^>]*data-title="${mention.dataset.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*>[^<]*</a>`, "g"), mentionHtml(made.title));
+    go(made.id);
+    return say(t("建了这一页", "Made the page"));
+  }
+  if (!el && isZ(S.at) && event.target.closest(".zsec .zx")) return say(t("这页是 Zirma 整理的，只读。要自己改，先「收下」", "Zirma keeps this page; it is read-only. To change it yourself, make it yours first"));
+  if (!el) return;
+  const d = el.dataset, page = curPage();
+  switch (d.a) {
+    case "noop": event.preventDefault(); return;
+    case "lang": S.lang = S.lang === "en" ? "zh" : "en"; { const at = S.at; seed(); S.at = pageOf(at) ? at : "home"; } return renderAll();
+    case "scheme": { const root = document.documentElement; root.dataset.scheme = root.dataset.scheme === "dark" ? "light" : "dark"; return; }
+    case "reset": { const at = S.at; seed(); S.at = pageOf(at) ? at : "home"; return renderAll(); }
+    case "narrow": S.narrow = !S.narrow; S.drawer = false; return renderAll();
+    case "ext": return elsewhere();
+    case "fromlink": return fromLink();
+    case "go": event.preventDefault(); return go(d.id);
+    case "hit": S.pop = null; renderPop(); return go(d.id);
+    case "twist": event.stopPropagation(); S.expanded.has(d.id) ? S.expanded.delete(d.id) : S.expanded.add(d.id); return renderSide();
+    case "tree": if ($("main").clientWidth <= 720) S.drawer = !S.drawer; else S.folded = !S.folded; return renderSide();
+    case "fold": S.folded = true; return renderSide();
+    case "drawer-close": S.drawer = false; return renderSide();
+    case "search": S.drawer = false; renderSide(); S.pop = { kind: "search", q: "", i: 0 }; return renderPop();
+    case "pop-close": if (event.target === el) { S.pop = null; renderPop(); } return;
+    case "new-page": closeFloat(); return newPage(d.id || null);
+    case "page-menu": event.stopPropagation(); if (S.float?.kind === "menu" && S.float.for === d.id && !S.float.moving) return closeFloat(); openMenuAt("menu", el, { for: d.id }); return renderSide();
+    case "move-menu": { const f = S.float; S.float = { ...f, moving: true }; return renderFloat(); }
+    case "move-to": { const id = S.float.for; closeFloat(); return movePage(id, d.id); }
+    case "del": closeFloat(); S.pop = { kind: "del", id: d.id }; return renderPop();
+    case "del-yes": return deletePage(d.id);
+    case "file": return movePage(d.id, pageOf(d.id).suggest);
+    case "source": S.source = !S.source; closeFloat(); renderTop(); return renderDoc();
+    case "emoji": if (S.float?.kind === "emoji") return closeFloat(); return openMenuAt("emoji", el);
+    case "set-icon": page.icon = d.e; closeFloat(); edited(page); renderSide(); renderTop(); return renderDoc();
+    case "cover": page.cover = ["violet", "teal", "blue", "green", "orange", "pink"][Math.floor(S.pages.indexOf(page) % 6)]; edited(page); return renderDoc();
+    case "first-block": { const b = B("p"); page.blocks.push(b); return rerender(() => focusBlock(b.id, 0)); }
+    case "blk-add": {
+      const b = insertAfter(page, d.id, B("p"));
+      rerender(() => focusBlock(b.id, 0));
+      S.float = { kind: "slash", bid: b.id, from: 0, q: "", i: 0, typed: false };
+      return renderFloat();
+    }
+    case "slash": return pickSlash(S.float.items[Number(d.i)]);
+    case "mention": { const F = S.float; return pickMention(F.items[Number(d.i)], F.q.trim()); }
+    case "row-add": { const b = blockOf(page, d.id); b.rows.push(Array(b.rows[0].length).fill("")); edited(page); return rerender(() => placeCaret(document.querySelector(`.cell[data-b="${b.id}"][data-r="${b.rows.length - 1}"][data-c="0"]`), 0)); }
+    case "col-add": { const b = blockOf(page, d.id); b.rows.forEach((row) => row.push("")); edited(page); return rerender(() => placeCaret(document.querySelector(`.cell[data-b="${b.id}"][data-r="0"][data-c="${b.rows[0].length - 1}"]`), 0)); }
+    case "check": { const b = blockOf(page, d.id); b.on = !b.on; edited(page); return renderDoc(); }
+    case "toggle": { const b = blockOf(page, d.id); b.on = !b.on; return renderDoc(); }
+    case "send": return sendTodo(blockOf(page, d.id));
+    case "send-all": { const left = leftTodos(page); left.forEach((b) => sendTodo(b, true)); renderDoc(); return say(t(`${left.length} 个放进了待办列表`, `${left.length} added to your to-do list`), () => left.forEach((b) => delete b.sent)); }
+    case "banner-no": delete page.banner; return renderDoc();
+    case "fmt": {
+      const f = d.f;
+      if (f === "code") { const sel = getSelection(); if (sel.rangeCount) { const r = sel.getRangeAt(0), c = document.createElement("code"); c.appendChild(r.extractContents()); r.insertNode(c); } }
+      else document.execCommand(f);
+      const ed = getSelection().anchorNode?.parentElement?.closest(".ed"); if (ed) { syncBlock(ed); edited(); }
+      return;
+    }
+    case "ask-sel": { const ctx = S.float?.sel; if (!ctx) return; return openAsk({ scope: "sel", ...ctx }); }
+    case "ask-do": return void askDo(d.do);
+    case "rel-link": {
+      const F = S.float, target = pageOf(d.id), block = blockOf(page, F.bid);
+      closeFloat();
+      if (!block) return;
+      if (F.scope === "sel") block.h = `${block.h} ${mentionHtml(titleOf(target))}`;
+      else if (!textOf(block.h).trim()) block.h = mentionHtml(titleOf(target));
+      else insertAfter(page, block.id, B("p", mentionHtml(titleOf(target))));
+      edited(page); renderDoc();
+      return say(t(`连到了《${titleOf(target)}》`, `Linked “${titleOf(target)}”`));
+    }
+    case "sg-yes": return acceptSugg(blockOf(page, d.id));
+    case "sg-no": return rejectSugg(blockOf(page, d.id));
+    case "theirs": page.blocks.push(S.conflict.line); S.conflict = null; S.status = "elsewhere"; renderTop(); return renderDoc();
+    case "fork": {
+      const mine = JSON.parse(JSON.stringify(page.blocks)).map((b) => ({ ...b, id: nid() }));
+      const copy = newPage(page.parent, `${titleOf(page)} 2`, { open: false });
+      copy.blocks = mine; page.blocks.push(S.conflict.line); S.conflict = null;
+      renderAll();
+      return say(t(`你的那份另存成《${copy.title}》`, `Yours is kept as “${copy.title}”`));
+    }
+    case "undo": { const undo = S.toast?.undo; S.toast = null; undo?.(); return renderAll(); }
+    // Zirma's layer
+    case "z-new": return void zNew();
+    case "z-daily": return zDaily();
+    case "cite": event.preventDefault(); go(d.id); return flashLine(d.q);
+    case "hc-go": { const [pid, q] = d.c.split("|"); go(pid); return flashLine(q); }
+    case "z-take": return zTake(d.id);
+    case "z-tell": return say(t("在这里对这一页说一句，比如「这页别写价格」，以后每批都照做（原型里不做）", "Say one thing about this page here, such as “no prices on this page”; every batch follows it (not in the prototype)"));
+    case "log-open": { const L = S.z.log.find((x) => x.id === d.id); L.open = !L.open; return renderDoc(); }
+    case "log-undo": { const L = S.z.log.find((x) => x.id === d.id); zApply(L, !L.undone); renderAll(); return say(L.undone ? t("撤回了这一批；Zirma 不会再加回来", "Undid this batch; Zirma will not put it back") : t("重做了这一批", "Redid this batch")); }
+    case "forget": {
+      const i = zItem(d.id); i.gone = true;
+      const L = zLog({ why: t(`你让 Zirma 忘了：${i.text}`, `You had Zirma forget: ${i.text}`), items: [i.id], lines: [{ k: "del", z: "z:you", text: i.text }] });
+      L.undone = false; renderAll();
+      return say(t("忘了这一条", "Forgot that"), () => { i.gone = false; S.z.log = S.z.log.filter((x) => x !== L); });
+    }
+    case "remember-yes": {
+      const you = Z("z:you"), ask = you.ask;
+      const i = I(t("12 月 3 日飞大阪", "Flying to Osaka on 3 December"), [`mail:${ask.from}`], { fresh: true });
+      you.secs.find((sec) => sec.h === t("计划", "Plans")).items.push(i); you.ask = null;
+      zLog({ why: t("你让 Zirma 记下：12 月 3 日飞大阪", "You had Zirma remember: Osaka on 3 December"), items: [i.id], lines: [{ k: "add", z: "z:you", text: i.text }] });
+      renderAll(); return say(t("记下了", "Remembered"), () => { i.gone = true; you.ask = ask; });
+    }
+    case "remember-no": { const you = Z("z:you"), ask = you.ask; you.ask = null; renderDoc(); return say(t("没记", "Not kept"), () => { you.ask = ask; }); }
+    case "hc-no": { const h = S.z.health.find((x) => x.id === d.id); h.gone = true; renderAll(); return say(t("这一条以后不再报", "This one will not come up again"), () => { h.gone = false; }); }
+    case "hc-prop": {
+      // A fix to your page is only ever a proposal: it shows as a revision on that page, and nothing changes until you say yes.
+      const h = S.z.health.find((x) => x.id === d.id), v60 = pageOf("v60");
+      const b = v60?.blocks.find((x) => textOf(x.h).includes("92"));
+      if (!b) return;
+      const after = esc(t("水温 92–94 度，看豆子", "Water at 92–94°C, by the beans"));
+      b.sugg = { kind: "rewrite", before: b.h, preview: `<del class="sg">${b.h}</del><ins class="sg">${after}</ins>`, after };
+      h.state = "proposed";
+      go("v60"); flashLine("92");
+      return say(t("Zirma 在《V60 参数》里提了一处修改，等你点", "Zirma proposed one change on “V60 numbers”; it waits for you"));
+    }
+    case "hc-make": {
+      const kyoto = pageOf("kyoto"), name = t("京都的咖啡馆", "Kyoto cafés");
+      const made = newPage(kyoto?.parent ?? null, name, { open: false });
+      for (const p of S.pages) for (const b of p.blocks) b.h = b.h.replace(/<a class="mention missing"[^>]*data-title="[^"]*"[^>]*>[^<]*<\/a>/g, (m) => (m.includes(`data-title="${name}"`) ? mentionHtml(name) : m));
+      go(made.id); return say(t("建了这一页，《京都三天》的链接接上了", "Made the page; the link in “Three days in Kyoto” works now"));
+    }
+    case "own": { const b = blockOf(page, d.id); delete b.by; edited(page); renderDoc(); return say(t("这一块算你的了", "This block is yours now"), () => { b.by = "zirma"; }); }
+  }
+});
+document.addEventListener("input", (event) => {
+  const el = event.target;
+  if (el.id === "title") {
+    const page = curPage(); page.title = el.textContent.replace(/\n/g, " ");
+    // Renaming a page renames its file; links to it follow, since they point at the page.
+    for (const p of S.pages) for (const b of p.blocks) if (b.h.includes(`data-ref="${page.id}"`)) b.h = b.h.replace(new RegExp(`(data-ref="${page.id}">)[^<]*`, "g"), `$1${esc(titleOf(page))}`);
+    edited(page); renderSide(); renderTop(); return;
+  }
+  if (el.classList?.contains("ed")) return onBlockInput(el, event);
+  if (el.classList?.contains("cell")) { const b = blockOf(curPage(), el.dataset.b); b.rows[+el.dataset.r][+el.dataset.c] = el.textContent.replace(/\n/g, " "); return edited(); }
+  if (el.id === "find") { S.pop.q = el.value; S.pop.i = 0; return renderPop(); }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.isComposing) return;
+  const F = S.float, el = event.target;
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); S.pop = { kind: "search", q: "", i: 0 }; closeFloat(); return renderPop(); }
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
+    event.preventDefault();
+    const sel = selectionInBlock();
+    if (sel) return openAsk({ scope: "sel", ...sel });
+    const ed = el.closest?.(".ed"), page = curPage();
+    if (page && !page.quick) return openAsk({ scope: "page", bid: ed?.dataset.b ?? page.blocks[0]?.id });
+    return;
+  }
+  if (S.pop?.kind === "search") {
+    if (event.key === "Escape") { S.pop = null; return renderPop(); }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); const n = S.pop.all.length; if (n) S.pop.i = (S.pop.i + (event.key === "ArrowDown" ? 1 : n - 1)) % n; return renderPop(); }
+    if (event.key === "Enter") { event.preventDefault(); const hit = S.pop.all[S.pop.i]; if (hit) { S.pop = null; renderPop(); go(hit.page.id); } return; }
+    return;
+  }
+  if (event.key === "Escape" && S.pop) { S.pop = null; return renderPop(); }
+  if (F && (F.kind === "slash" || F.kind === "mention")) {
+    const n = F.kind === "slash" ? F.items.length : F.items.length + (F.q.trim() ? 1 : 0);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); if (n) F.i = (F.i + (event.key === "ArrowDown" ? 1 : n - 1)) % n; return renderFloat(); }
+    if (event.key === "Enter" || event.key === "Tab") { if (!n) { closeFloat(); } else { event.preventDefault(); return F.kind === "slash" ? pickSlash(F.items[F.i]) : pickMention(F.items[F.i], F.q.trim()); } }
+    if (event.key === "Escape") { event.preventDefault(); return closeFloat(); }
+  }
+  if (event.key === "Escape" && F) { event.preventDefault(); return closeFloat(); }
+  if (event.key === "Escape" && S.drawer) { S.drawer = false; return renderSide(); }
+  if (el.id === "title" && event.key === "Enter") {
+    event.preventDefault();
+    const page = curPage();
+    let first = page.blocks.find((b) => EDITABLE.has(b.t));
+    if (!first) { first = B("p"); page.blocks.unshift(first); return rerender(() => focusBlock(first.id, 0)); }
+    return focusBlock(first.id, 0);
+  }
+  if (el.id === "title" && event.key === "ArrowDown") { const first = curPage().blocks.find((b) => EDITABLE.has(b.t)); if (first) { event.preventDefault(); focusBlock(first.id, 0); } return; }
+  if (el.classList?.contains("cell") && (event.key === "Enter" || event.key === "Tab")) {
+    event.preventDefault();
+    const b = blockOf(curPage(), el.dataset.b), r = +el.dataset.r, c = +el.dataset.c, cols = b.rows[0].length;
+    let nr = r, nc = c;
+    if (event.key === "Enter") nr = r + 1;
+    else if (event.shiftKey) { nc = c - 1; if (nc < 0) { nc = cols - 1; nr = r - 1; } }
+    else { nc = c + 1; if (nc >= cols) { nc = 0; nr = r + 1; } }
+    if (nr < 0) return;
+    if (nr >= b.rows.length) { b.rows.push(Array(cols).fill("")); edited(); renderDoc(); }
+    return placeCaret(document.querySelector(`.cell[data-b="${b.id}"][data-r="${nr}"][data-c="${nc}"]`), null);
+  }
+  if (!el.classList?.contains("ed")) return;
+  if (event.key === "Enter" && !event.shiftKey) return enterKey(el, event);
+  if (event.key === "Backspace") return backspaceKey(el, event);
+  if (event.key === "ArrowUp" || event.key === "ArrowDown") return arrowKey(el, event);
+  if ((event.metaKey || event.ctrlKey) && ["b", "i"].includes(event.key.toLowerCase())) { event.preventDefault(); document.execCommand(event.key.toLowerCase() === "b" ? "bold" : "italic"); syncBlock(el); edited(); }
+});
+// A selection inside one block brings the small bar: bold, italic, code, Ask Zirma.
+document.addEventListener("selectionchange", () => {
+  const F = S.float;
+  if (F && !["selbar"].includes(F.kind)) return;
+  const sel = selectionInBlock();
+  if (!sel) { if (F?.kind === "selbar") closeFloat(); return; }
+  S.float = { kind: "selbar", rect: sel.rect, sel };
+  renderFloat();
+});
+document.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (event.target.id === "capture") {
+    const text = $("cap").value.trim();
+    if (!text) return;
+    const cut = /^[^。！？.!?\n]{1,24}/.exec(text)?.[0].trim() ?? "";
+    const made = newPage("quick", cut || `${TODAY} ${new Date().toTimeString().slice(0, 5).replace(":", "-")}`, { open: false });
+    made.blocks.push(B("p", esc(text)));
+    S.fresh = made.id;
+    renderAll();
+    setTimeout(() => { if (S.fresh === made.id) { S.fresh = null; renderDoc(); } }, 2600);
+    $("cap")?.focus();
+    zLog({ why: t(`你记了《${made.title}》`, `You wrote “${made.title}”`), lines: [{ k: "add", z: "z:index", text: t("随手记多了 1 页", "One more page in Quick Notes") }] });
+    return say(t("记进了随手记", "Saved to Quick Notes"), () => { S.pages = S.pages.filter((p) => p !== made); });
+  }
+  if (event.target.id === "ask-form") { const q = $("ask-q").value.trim(); if (q) askTyped(q); }
+});
+
+/* ── Dragging: a page onto a page moves it; a block's handle moves the block ── */
+let drag = null;
+const clearDrop = () => document.querySelectorAll(".drop, .drop-before, .drop-after").forEach((el) => el.classList.remove("drop", "drop-before", "drop-after"));
+document.addEventListener("mousedown", (event) => {
+  const grip = event.target.closest?.("[data-grip]");
+  if (grip) grip.closest(".blk").setAttribute("draggable", "true");
+});
+document.addEventListener("dragstart", (event) => {
+  const grip = event.target.closest?.(".blk[draggable]"), pg = event.target.closest?.("[data-dragp]");
+  if (grip) drag = { block: grip.dataset.id };
+  else if (pg) drag = { page: pg.dataset.dragp };
+  else return;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", drag.block ?? drag.page);
+  (grip ?? pg).setAttribute("data-dragging", "");
+});
+document.addEventListener("dragover", (event) => {
+  if (!drag) return;
+  if (drag.block) {
+    const blk = event.target.closest?.(".blk");
+    if (!blk || blk.dataset.id === drag.block) return;
+    event.preventDefault();
+    const r = blk.getBoundingClientRect(), after = event.clientY > r.top + r.height / 2;
+    clearDrop(); blk.classList.add(after ? "drop-after" : "drop-before");
+    return;
+  }
+  const target = event.target.closest?.("[data-drop]");
+  if (!target) return;
+  const to = target.dataset.drop, page = pageOf(drag.page);
+  if (!page || page.parent === to || under(page.id).has(to)) return;
+  event.preventDefault();
+  if (!target.classList.contains("drop")) { clearDrop(); target.classList.add("drop"); }
+});
+document.addEventListener("drop", (event) => {
+  if (!drag) return;
+  event.preventDefault();
+  const was = drag; drag = null;
+  if (was.block) {
+    const blk = document.querySelector(".blk.drop-before, .blk.drop-after");
+    const page = curPage();
+    if (blk && page) {
+      const moving = blockOf(page, was.block), after = blk.classList.contains("drop-after");
+      page.blocks.splice(page.blocks.indexOf(moving), 1);
+      const i = page.blocks.findIndex((b) => b.id === blk.dataset.id);
+      page.blocks.splice(after ? i + 1 : i, 0, moving);
+      edited(page); renderDoc();
+    }
+    return clearDrop();
+  }
+  const target = event.target.closest?.("[data-drop]");
+  clearDrop();
+  if (target) movePage(was.page, target.dataset.drop);
+});
+document.addEventListener("dragend", () => { drag = null; clearDrop(); document.querySelectorAll("[data-dragging]").forEach((el) => el.removeAttribute("data-dragging")); document.querySelectorAll(".blk[draggable]").forEach((el) => el.removeAttribute("draggable")); });
+// Paste as plain text: the block keeps its own look.
+document.addEventListener("paste", (event) => {
+  const ed = event.target.closest?.(".ed, #title, .cell");
+  if (!ed) return;
+  event.preventDefault();
+  document.execCommand("insertText", false, event.clipboardData.getData("text/plain").replace(/\n+/g, " "));
+});
+
+if (matchMedia("(prefers-color-scheme: dark)").matches) document.documentElement.dataset.scheme = "dark";
+seed();
+S.at = params.get("page") && (pageOf(params.get("page")) || zHas(params.get("page"))) ? params.get("page") : "home";
+renderAll();
+</script>
+</body>
+</html>

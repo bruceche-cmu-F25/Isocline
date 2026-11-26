@@ -8,6 +8,7 @@
 import type { CalendarOp, CalendarSnapshot } from "@zirma/module-calendar/types";
 import type { LinkOp, LinksSnapshot } from "@zirma/module-links/types";
 import type { MailOp, MailSnapshot } from "@zirma/module-mail/types";
+import type { NoteOp, NotesSnapshot } from "@zirma/module-notes/types";
 import type { TodoOp, TodoSnapshot } from "@zirma/module-todo/types";
 
 export interface ModuleSnapshots {
@@ -15,11 +16,12 @@ export interface ModuleSnapshots {
   calendar: CalendarSnapshot;
   mail: MailSnapshot;
   link: LinksSnapshot;
+  note: NotesSnapshot;
 }
 export type ModuleId = keyof ModuleSnapshots;
 
 /** An operation a device may ask of a module (POST /api/ops/<name>). */
-export type OpName = TodoOp | CalendarOp | MailOp | LinkOp;
+export type OpName = TodoOp | CalendarOp | MailOp | LinkOp | NoteOp;
 
 /** A module's snapshot as the state holds it; undefined when this home node has no such module, or has not sent it. */
 export function snapshotOf<K extends ModuleId>(state: { modules: Record<string, unknown> } | null | undefined, id: K): ModuleSnapshots[K] | undefined {

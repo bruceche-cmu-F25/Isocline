@@ -1,6 +1,6 @@
 import { areaName, describeAreas, lastChangesOf, localDate, userLocale, type World, defineModule, defineOp, defineTool, Type } from "@zirma/module-kit";
 import {
-  acceptTodo, addTodo, sameTodo, todosForProposedEvents, completeTodo, deleteTodo, formatTodo, getTodoSettings, listTodos, MIGRATIONS, moveTodosOutOfArea, resolveTodo, setTodoSettings, suggestTodo, todoRevision,
+  acceptTodo, addFromNote, addTodo, sameTodo, todosForProposedEvents, completeTodo, deleteTodo, formatTodo, getTodoSettings, listTodos, MIGRATIONS, moveTodosOutOfArea, resolveTodo, setTodoSettings, suggestTodo, todoRevision,
   updateTodo, type Todo,
 } from "./domain.ts";
 import type { TodoSnapshot } from "./types.ts";
@@ -115,8 +115,10 @@ export const todoModule = defineModule({
         title: Type.String({ minLength: 1, maxLength: 500 }),
         due: Type.Optional(Type.String()), at: Type.Optional(Type.String()), startDate: Type.Optional(Type.String()),
         plannedOn: Type.Optional(Type.String()), url: Type.Optional(Type.String()), area: Type.Optional(Type.String()),
+        // A to-do from one of the user's notes, put on the list from the note (never twice).
+        source: Type.Optional(Type.Object({ kind: Type.Literal("note"), ref: Type.String({ minLength: 1, maxLength: 1200 }), label: Type.String({ maxLength: 300 }) }, { additionalProperties: false })),
       }),
-      run: (world, input) => addTodo(world, input).todo,
+      run: (world, { source, ...input }) => (source ? addFromNote(world, { title: input.title, source }).todo : addTodo(world, input).todo),
     }),
     defineOp({
       name: "todo.update",

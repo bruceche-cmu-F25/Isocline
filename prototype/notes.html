@@ -1,28 +1,28 @@
 <!doctype html>
 <!--
-  Alfred: Notes. A prototype for docs/design/notes.md: no build step, sample notes, and scripts in place of the disk,
-  the file watcher and the model.
-  The question it asks: what is a note in Alfred when the truth is a Markdown file in a folder?
-    List     three ways in: recent, the folder new notes land in (随手记 / Quick Notes), and folders as one flat list.
-             In Quick Notes, Alfred's guess at where a note belongs is a dashed chip; a click moves the file.
-    Read     a note takes the whole page (a note is long; the pop-up card is for short things, and is still used
-             here to confirm a delete). Double links open the other note; a link to a note that does not exist is
-             dashed and makes it. An address that was saved in Links shows as that clip. Under the note: who links
-             here, and addresses not saved yet.
-    Write    the Markdown source, coloured, saved a moment after you stop. Typing [[ offers note names. (The app
-             will use CodeMirror 6; here it is a textarea over a coloured copy of the same text.)
-    Elsewhere  "changed elsewhere" in the strip plays another app writing the same file. While reading, the note
-             just changes. While writing, your text is not saved over it: keep theirs, or save yours as a copy.
-    Alfred   while reading, the line at the bottom carries the note: say what to change and Alfred proposes it in
-             place (dashed, old line struck through). Yes / change / no. A proposal goes stale if the file changes.
-  The line at the bottom on the list: a few words and return makes a note in Quick Notes; the same words also
-  search what the notes say.
+  Zirma: Notes (v5, 2026-11-26). A prototype for docs/design/notes.md and docs/design/notes-two-layers.md. No build
+  step; the pages are made up, and scripts stand in for the disk and the model.
+  v5 keeps only the core, and every piece is general:
+    Page     the one kind of thing. A page has an icon you pick (stored by name, `icon: cup`), a title (= file name),
+             blocks and sub-pages. No system pages: no Quick Notes folder, no Check-up, no Updates page. A new page
+             lands at the top of yours and shows first in Recent.
+    Layers   yours, and Kept by Zirma (`zirma_notes/`). A Zirma page is an ordinary page whose every line names its
+             sources (the small numbers); click one to go back to your words. You can remove a line (Zirma won't add
+             it back) or make the page yours. "About you" is just one such page.
+    Suggest  the only way Zirma changes your words: a change shown in place, Yes or No. Conflicts and check-up
+             findings arrive this way, on the page they concern. Recent counts what waits.
+    History  every page has one: who changed what, when; an entry can be undone while the page still matches it.
+    Ask      one line at the bottom: type to find pages, Enter asks Zirma, and the answer cites your lines.
+  What Zirma does here is a stand-in for the model: a Zirma page watches a few words; when a line of yours mentions
+  one, Zirma adds it there (or updates the line it already took from it). When two of your lines link the same
+  missing [[page]], Zirma starts a page for it. Both are logged and undoable.
+  v4 (fixed system pages, Quick Notes) is kept as notes-v4.html; v2 (folders) as notes-folders.html.
 -->
 <html lang="zh-CN" data-theme="paper">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Alfred：笔记</title>
+<title>Zirma：笔记</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="tokens.css">
 <style>
@@ -30,927 +30,940 @@
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
   --ease: cubic-bezier(.23, 1, .32, 1);
+  --side: color-mix(in oklch, var(--wash) 55%, var(--bg));
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
-body { height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
-button, input, select, textarea { font: inherit; color: inherit; }
+body { height: 100dvh; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font: 15px/1.6 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
-h1, h2, h3, h4, p, ul, ol, pre, blockquote { margin: 0; padding: 0; }
+button:disabled { cursor: default; }
+h1, h3, p, ul, ol { margin: 0; padding: 0; }
 ul, ol { list-style: none; }
-a { color: inherit; }
 svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 :focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
-.grow { flex: 1; min-width: 0; }
 
 /* ── The prototype's own strip ── */
-.proto { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; }
+.proto { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
 .proto b { flex: none; padding: 0 6px; }
 .proto .lab { flex: none; padding: 0 4px 0 10px; opacity: .6; }
-.proto button, .proto a { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; text-decoration: none; }
-.proto button:hover, .proto a:hover { opacity: 1; }
+.proto button { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; }
+.proto button:hover { opacity: 1; }
 .proto button[aria-pressed="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
 .proto .what { flex: 1; min-width: 0; padding: 0 10px; opacity: .7; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 1100px) { .proto .what { display: none; } }
-@media (max-width: 620px) { .proto .lab, .proto b { display: none; } }
 
-/* ── The page ── */
-.page { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; container: page / inline-size; }
-.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 0 170px; }
-.page[data-view="edit"] .scroll { padding-bottom: 60px; }
-.col { max-width: 860px; margin: 0 auto; padding: 0 28px; }
-.page[data-view="read"] .col, .page[data-view="edit"] .col { max-width: 740px; }
-.page-head { padding: 22px 0 6px; }
-.page-head h1 { display: flex; align-items: center; gap: 10px; font-size: 1.625rem; line-height: 1.25; font-weight: 650; letter-spacing: -.01em; }
-.page-head h1 svg { width: 24px; height: 24px; color: var(--k-solid); }
-.page-head p { margin-top: 4px; color: var(--muted); font-size: .875rem; }
-
-.tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 16px 0 10px; }
-.chip { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .8125rem; white-space: nowrap; }
-.chip:hover { color: var(--ink); }
-.chip[aria-pressed="true"] { background: var(--pick); color: var(--on-pick); box-shadow: none; }
-.chip .n { font-size: .75rem; opacity: .7; }
-
-/* A note in a list: its name, how it starts, where it is, when it changed. */
-.rows { display: flex; flex-direction: column; }
-.row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 14px; padding: 2px 10px; margin: 0 -10px; border-radius: 12px; transition: background 200ms var(--ease); }
-.row + .row::before { content: ""; position: absolute; left: 10px; right: 10px; top: 0; height: 1px; background: var(--line-soft); }
-.row:hover { background: var(--wash); }
-.row:hover::before, .row:hover + .row::before, .row[data-fresh]::before, .row[data-fresh] + .row::before { display: none; }
-.row[data-fresh] { background: var(--alf-soft); }
-.row-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 9px 0; border-radius: 8px; }
-.rt { font-weight: 550; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.rs { color: var(--muted); font-size: .8125rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.rs:empty::before { content: "\00a0"; }
-.rm { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .75rem; white-space: nowrap; }
-.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 6px; background: var(--k-fill, var(--wash)); color: var(--k-text, var(--copy)); font-size: .75rem; font-weight: 500; white-space: nowrap; }
-.sug { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px dashed var(--k-line); background: var(--k-fill); color: var(--k-text); font-size: .75rem; white-space: nowrap; }
-.sug:hover { border-style: solid; }
-.when { min-width: 3.2em; text-align: right; }
-.empty { padding: 36px 0; color: var(--muted); font-size: .875rem; }
-.empty b { display: block; margin-bottom: 4px; color: var(--ink); font-size: 1rem; font-weight: 600; }
-.path { font: .75rem/1.6 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
-
-/* Folders: one flat list, a line each. */
-.folders li + li { box-shadow: 0 -1px 0 var(--line-soft); }
-.folders button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 10px; margin: 0 -10px; width: calc(100% + 20px); border-radius: 12px; }
-.folders button:hover { background: var(--wash); }
-.folders svg { color: var(--muted); }
-.folders .n { color: var(--muted); font-size: .75rem; }
-.folders .mark { color: var(--muted); font-size: .75rem; }
-.crumb { display: flex; align-items: center; gap: 6px; padding: 0 0 6px; color: var(--muted); font-size: .8125rem; }
-.crumb button { color: var(--copy); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
-.crumb b { color: var(--ink); font-weight: 600; }
-.lib { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 22px; padding-top: 14px; box-shadow: 0 -1px 0 var(--line-soft); color: var(--muted); font-size: .8125rem; }
-
-.btn { min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .8125rem; white-space: nowrap; text-decoration: none; }
-.btn:hover { color: var(--ink); }
-.btn.solid { background: var(--alf-solid); color: var(--on-alf); box-shadow: none; }
-.btn.danger { background: var(--now); color: var(--on-alf); box-shadow: none; }
-.btn:disabled { opacity: .45; cursor: default; }
-.btn svg.i { width: 15px; height: 15px; }
-.ib { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 50%; color: var(--copy); }
+/* ── Frame ── */
+.stage { flex: 1; min-height: 0; display: flex; justify-content: center; }
+.app { position: relative; flex: 1; min-width: 0; display: flex; background: var(--bg); container: app / inline-size; }
+.stage[data-narrow] .app { max-width: 390px; box-shadow: 0 0 0 1px var(--line); }
+.ib { flex: none; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); }
 .ib:hover { background: var(--wash); color: var(--ink); }
-.move { height: 30px; padding: 0 10px; border: 0; border-radius: 999px; background: none; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .8125rem; max-width: 150px; }
+.ib svg { width: 17px; height: 17px; }
+.btn { flex: none; height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: 8px; font-size: .8125rem; background: var(--raise); box-shadow: 0 0 0 1px var(--line); white-space: nowrap; }
+.btn:hover { background: var(--wash); }
+.btn svg { width: 15px; height: 15px; }
+.btn.pri { background: var(--alf-solid); color: var(--on-alf); box-shadow: none; }
+.btn.pri:hover { filter: brightness(1.06); }
+.tag { flex: none; padding: 0 6px; border-radius: 5px; background: var(--alf-soft); color: var(--alf); font-size: .6875rem; font-weight: 600; line-height: 18px; }
+.zm { color: var(--alf); }
 
-/* ── One note, the whole page ── */
-.bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 12px 0 10px; background: var(--bg); }
-.back { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 10px 0 4px; margin-left: -4px; border-radius: 999px; color: var(--copy); font-size: .875rem; }
-.back:hover { background: var(--wash); color: var(--ink); }
-.status { color: var(--muted); font-size: .8125rem; }
-.note > h1 { padding-top: 8px; font-size: 1.625rem; line-height: 1.3; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
-.props { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; color: var(--muted); font-size: .8125rem; }
-.props .sep { opacity: .5; }
+/* ── Side: Recent and the two trees ── */
+.side { flex: none; width: 248px; display: flex; flex-direction: column; background: var(--side); border-right: 1px solid var(--line-soft); }
+.side-head { flex: none; display: flex; align-items: center; gap: 2px; height: 48px; padding: 0 8px 0 16px; }
+.side-head b { flex: 1; min-width: 0; font-size: .875rem; font-weight: 600; }
+.side-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 16px; }
+.lab { display: flex; align-items: center; gap: 6px; height: 34px; padding: 14px 8px 0; color: var(--muted); font-size: .75rem; }
+.lab svg { width: 13px; height: 13px; }
+.node { position: relative; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 calc(4px + var(--d, 0) * 14px); border-radius: 8px; color: var(--copy); font-size: .875rem; cursor: pointer; user-select: none; }
+.node:hover { background: var(--wash); color: var(--ink); }
+.node[aria-current="true"] { background: var(--wash); color: var(--ink); font-weight: 600; }
+.node .tw { flex: none; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; color: var(--muted); }
+.node .tw:hover { background: var(--line-soft); }
+.node .tw svg { width: 12px; height: 12px; transition: transform 160ms var(--ease); }
+.node .tw[data-open] svg { transform: rotate(90deg); }
+.node .tw.none { visibility: hidden; }
+.ic { flex: none; width: 18px; height: 18px; display: grid; place-items: center; color: var(--muted); }
+.ic svg { width: 16px; height: 16px; }
+.node .nm { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.node .n { flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--alf-solid); color: var(--on-alf); font-size: .6875rem; font-weight: 600; line-height: 18px; text-align: center; }
+.node .dot { flex: none; width: 6px; height: 6px; margin: 0 6px; border-radius: 50%; background: var(--alf); }
+.node .add { flex: none; display: none; width: 22px; height: 22px; place-items: center; border-radius: 6px; color: var(--muted); }
+.node:hover .add { display: grid; }
+.node:hover .dot { display: none; }
+.node .add:hover { background: var(--line-soft); color: var(--ink); }
+.node .add svg { width: 14px; height: 14px; }
+.zempty { padding: 2px 8px 0 28px; color: var(--muted); font-size: .8125rem; line-height: 1.5; }
+.scrim { display: none; }
 
-.md { padding-top: 14px; color: var(--copy); overflow-wrap: anywhere; }
-.md > * + * { margin-top: .8em; }
-.md h2 { margin-top: 1.5em; color: var(--ink); font-size: 1.1875rem; font-weight: 650; }
-.md h3 { margin-top: 1.3em; color: var(--ink); font-size: 1.0625rem; font-weight: 600; }
-.md h4 { margin-top: 1.2em; color: var(--ink); font-size: .9375rem; font-weight: 600; }
-.md ul { list-style: disc; padding-left: 1.3em; }
-.md ol { list-style: decimal; padding-left: 1.5em; }
-.md li + li { margin-top: .25em; }
-.md li::marker { color: var(--muted); }
-.md li.task { list-style: none; margin-left: -1.3em; display: flex; gap: 9px; }
-.md li.plain { list-style: none; margin-left: -1.3em; }
-.md ol li.plain { margin-left: -1.5em; }
-.md [data-fresh] { background: var(--alf-soft); border-radius: 6px; box-shadow: 0 0 0 4px var(--alf-soft); }
-.box { flex: none; width: 16px; height: 16px; margin-top: .3em; display: grid; place-items: center; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--line); }
-.box[aria-checked="true"] { background: var(--alf-solid); box-shadow: none; }
-.box[aria-checked="true"]::after { content: ""; width: 8px; height: 4px; margin-top: -2px; border-left: 1.8px solid var(--on-alf); border-bottom: 1.8px solid var(--on-alf); transform: rotate(-45deg); }
-.box[aria-checked="true"] + span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
-.md strong { color: var(--ink); font-weight: 600; }
-.md code { padding: 1px 5px; border-radius: 5px; background: var(--wash); font: .8125rem var(--mono); }
-.md pre.code { padding: 12px 14px; border-radius: 10px; background: var(--wash); overflow-x: auto; }
-.md pre.code code { padding: 0; background: none; white-space: pre; }
-.md blockquote { padding: 2px 0 2px 14px; box-shadow: inset 2px 0 0 var(--line); color: var(--muted); }
-.wl { color: var(--alf); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--alf) 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
-.wl.missing { text-decoration-style: dashed; text-decoration-color: var(--alf); opacity: .8; }
-.ext { color: var(--alf); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--alf) 35%, transparent); text-underline-offset: 3px; }
-/* An address that is already in Links shows as that clip. */
-.clip { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; height: 26px; padding: 0 9px 0 3px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line); vertical-align: middle; text-decoration: none; color: var(--copy); font-size: .8125rem; }
-.clip:hover { color: var(--ink); background: var(--wash); }
-.clip .tile { flex: none; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: var(--k-fill); color: var(--k-text); font: 600 .625rem/1 var(--sans); }
-.clip .ct { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.clip .cs { flex: none; color: var(--muted); font-size: .75rem; }
-.embed { display: flex; align-items: center; gap: 10px; padding: 18px 14px; border-radius: 10px; background: var(--wash); color: var(--muted); font-size: .8125rem; }
+/* ── Main ── */
+.main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.top { flex: none; display: flex; align-items: center; gap: 2px; height: 48px; padding: 0 10px; }
+.crumbs { flex: 1; min-width: 0; display: flex; align-items: center; overflow: hidden; color: var(--muted); font-size: .875rem; white-space: nowrap; }
+.crumbs button { min-width: 0; display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 6px; border-radius: 6px; }
+.crumbs button:hover { background: var(--wash); color: var(--ink); }
+.crumbs button:last-child { color: var(--ink); }
+.crumbs button span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.crumbs .sl { flex: none; padding: 0 1px; color: var(--line); }
+.crumbs .ic svg { width: 14px; height: 14px; }
+.only-narrow { display: none !important; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.doc { max-width: 740px; margin: 0 auto; padding: 36px 56px 180px; }
 
-/* Alfred's change, where it would land: dashed, with what it replaces struck through. */
-.prop { margin: 4px 0; padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--k-line); background: var(--k-fill); }
-.prop .was { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
-.prop .will { color: var(--ink); min-height: 1.6em; }
-.prop .stale { color: var(--muted); font-size: .875rem; }
-.prop .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
-.prop .who { color: var(--k-text); font-size: .75rem; }
+/* page head */
+.head { position: relative; margin-bottom: 18px; }
+.picon { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 0 8px -6px; border-radius: 12px; color: var(--ink); }
+.picon:not(:disabled):hover { background: var(--wash); }
+.picon svg { width: 38px; height: 38px; stroke-width: 1.3; }
+.addicon { display: inline-flex; align-items: center; gap: 4px; height: 26px; margin: 0 0 6px -6px; padding: 0 8px; border-radius: 6px; color: var(--muted); font-size: .8125rem; opacity: 0; transition: opacity 120ms; }
+.head:hover .addicon, .addicon:focus-visible { opacity: 1; }
+@media (hover: none) { .addicon { opacity: 1; } }
+.addicon svg { width: 14px; height: 14px; }
+.ttl { font-size: 2rem; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; outline: none; word-break: break-word; }
+.ttl:empty::before { content: attr(data-ph); color: var(--line); }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 10px; color: var(--muted); font-size: .8125rem; }
+.meta .zm { width: 15px; height: 15px; }
+.meta > span { min-width: 0; }
 
-.under { margin-top: 30px; padding-top: 14px; box-shadow: 0 -1px 0 var(--line-soft); }
-.under h2 { margin-bottom: 6px; color: var(--muted); font-size: .8125rem; font-weight: 500; }
-.under li { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; min-width: 0; font-size: .875rem; }
-.under .bt { flex: none; max-width: 45%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.under .bs { min-width: 0; flex: 1; color: var(--muted); font-size: .8125rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* blocks */
+.blk { position: relative; padding: 2px 0; border-radius: 6px; }
+.blk .row { display: flex; align-items: flex-start; gap: 8px; }
+.ed { flex: 1; min-width: 0; min-height: 1.6em; outline: none; white-space: pre-wrap; word-break: break-word; }
+.ed[contenteditable]:empty::before { content: attr(data-ph); color: var(--line); }
+.ed[contenteditable]:not(:focus):empty::before { content: ""; }
+.blk.h { margin-top: 18px; }
+.blk.h .ed { font-size: 1.25rem; font-weight: 650; line-height: 1.4; }
+.bul { flex: none; width: 18px; height: 1.6em; display: grid; place-items: center; }
+.bul::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.ck { flex: none; width: 16px; height: 16px; margin: calc(.8em - 8px) 1px 0; display: grid; place-items: center; border-radius: 4px; box-shadow: inset 0 0 0 1.5px var(--muted); color: var(--on-alf); }
+.ck[aria-checked="true"] { background: var(--alf-solid); box-shadow: none; }
+.ck svg { width: 12px; height: 12px; stroke-width: 2.2; }
+.blk.todo.done .ed { color: var(--muted); text-decoration: line-through; }
+.wl { color: var(--alf); text-decoration: none; border-bottom: 1px solid color-mix(in oklch, var(--alf) 35%, transparent); cursor: pointer; }
+.wl.missing { color: var(--copy); border-bottom: 1px dashed var(--line); }
+.end { min-height: 96px; cursor: text; }
 
-/* ── Writing ── */
-.conflict { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: 10px; background: var(--k-fill); color: var(--k-text); font-size: .8125rem; }
-.title-in { width: 100%; margin-top: 8px; padding: 0; border: 0; outline: none; background: none; font-size: 1.625rem; line-height: 1.3; font-weight: 650; letter-spacing: -.01em; }
-.ed { position: relative; margin-top: 14px; min-height: 46vh; }
-.ed .hl, .ed textarea, .ed .mirror { font: .9375rem/1.75 var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; tab-size: 2; letter-spacing: 0; }
-.ed .hl { color: var(--copy); pointer-events: none; min-height: 46vh; }
-.ed .hl .hd { color: var(--ink); }
-.ed .hl .dim { color: var(--muted); }
-.ed .hl .lk { color: var(--alf); }
-.ed textarea { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; outline: none; resize: none; overflow: hidden; background: none; color: transparent; caret-color: var(--ink); }
-.ed textarea::selection { background: color-mix(in oklch, var(--alf) 22%, transparent); }
-.ed .mirror { position: absolute; inset: 0 0 auto 0; visibility: hidden; pointer-events: none; }
-.ac { position: absolute; z-index: 3; width: 240px; max-width: 100%; padding: 4px; border-radius: 12px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); font-size: .875rem; }
-.ac button { width: 100%; display: flex; align-items: baseline; gap: 8px; padding: 6px 9px; border-radius: 8px; min-width: 0; }
-.ac button[aria-selected="true"] { background: var(--wash); }
-.ac .at { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.ac small { flex: none; color: var(--muted); font-size: .75rem; }
-.ac .none { padding: 6px 9px; color: var(--muted); font-size: .8125rem; }
-.edhint { margin-top: 14px; color: var(--muted); font-size: .75rem; }
-.edhint code { font: .75rem var(--mono); }
+/* a suggestion in place */
+.blk.sug .ed del { margin-right: 4px; color: var(--muted); text-decoration-color: var(--now); }
+.blk.sug .ed ins { padding: 0 1px; border-radius: 3px; background: var(--alf-soft); color: var(--ink); text-decoration: none; }
+.why { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 4px 26px; padding: 8px 8px 8px 10px; border-radius: 10px; background: var(--alf-soft); color: var(--copy); font-size: .8125rem; line-height: 1.5; }
+.blk.p .why, .blk.h .why { margin-left: 0; }
+.why > .zm { width: 15px; height: 15px; }
+.why .go { flex: 1 1 14em; min-width: 0; }
+.why .acts { display: flex; gap: 6px; margin-left: auto; }
 
-@container page (max-width: 560px) {
-  .col { padding: 0 16px; }
-  .row { grid-template-columns: minmax(0, 1fr); padding-bottom: 9px; }
-  .row-main { padding-bottom: 2px; }
-  .rm { flex-wrap: wrap; }
-  .when { min-width: 0; text-align: left; }
-  .under .bt { max-width: 60%; }
-  .bar { flex-wrap: nowrap; }
-  .back { padding: 0 4px; }
-  .back span { display: none; }
-  .move { max-width: 100px; }
-}
+/* Zirma's lines and their sources */
+.zls { display: flex; flex-direction: column; }
+.zl { position: relative; display: flex; align-items: flex-start; gap: 8px; padding: 2px 30px 2px 0; border-radius: 6px; }
+.zl .tx { flex: 1; min-width: 0; word-break: break-word; }
+.zl .x { position: absolute; top: 3px; right: 2px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); opacity: 0; }
+.zl:hover .x, .zl .x:focus-visible { opacity: 1; }
+@media (hover: none) { .zl .x { opacity: .55; } }
+.zl .x:hover { background: var(--wash); color: var(--ink); }
+.zl .x svg { width: 14px; height: 14px; }
+.s { display: inline-block; min-width: 17px; height: 17px; margin-left: 4px; padding: 0 4px; border-radius: 5px; background: var(--alf-soft); color: var(--alf); font-size: .6875rem; font-weight: 650; line-height: 17px; text-align: center; vertical-align: 1px; }
+.s:hover { background: var(--alf-solid); color: var(--on-alf); }
+.s + .s { margin-left: 2px; }
+@keyframes flash { from { background: var(--alf-soft); box-shadow: 0 0 0 4px var(--alf-soft); } to { background: transparent; box-shadow: 0 0 0 4px transparent; } }
+.flash { animation: flash 1.8s var(--ease); }
 
-/* ── The line at the bottom ── */
-.line-wrap { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 16px 16px; pointer-events: none; background: linear-gradient(to top, var(--bg) 62%, transparent); }
-.page[data-view="edit"] .line-wrap { display: none; }
-.line-col { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
-#toast:empty, #above:empty, #tries:empty { display: none; }
-.toast { width: fit-content; margin: 0 auto; display: flex; align-items: center; gap: 10px; max-width: 100%; padding: 6px 8px 6px 14px; border-radius: 999px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); color: var(--copy); font-size: .8125rem; }
+/* rows: sub-pages, sources, backlinks, recent */
+.sec { margin-top: 36px; }
+.sec h3 { margin-bottom: 4px; color: var(--muted); font-size: .75rem; font-weight: 500; }
+.pr { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 4px 8px; border-radius: 8px; color: var(--copy); font-size: .875rem; }
+.sec > .pr { width: calc(100% + 16px); margin-left: -8px; }
+.pr:hover { background: var(--wash); color: var(--ink); }
+.pr .nm { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pr .num { flex: none; width: 18px; color: var(--alf); font-size: .75rem; font-weight: 650; text-align: center; }
+.pend { width: 100%; display: flex; align-items: center; gap: 10px; margin: 18px 0 6px; padding: 10px 12px; border-radius: 12px; background: var(--alf-soft); color: var(--ink); font-size: .875rem; }
+.pend span { flex: 1; min-width: 0; }
+.pend svg { width: 16px; height: 16px; color: var(--alf); }
+.rec { margin-top: 18px; }
+.rr { width: calc(100% + 16px); display: flex; align-items: center; gap: 12px; padding: 10px 8px; margin-left: -8px; border-radius: 10px; }
+.rr:hover { background: var(--wash); }
+.rr .rt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rr .rt b, .rr .rt span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rr .rt b { font-weight: 600; font-size: .9375rem; }
+.rr .rt span { color: var(--muted); font-size: .8125rem; }
+.rr .rm { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.rr .ic { width: 22px; height: 22px; }
+.rr .ic svg { width: 18px; height: 18px; }
+.empty { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 24px; color: var(--muted); }
+
+/* ── Ask: one line at the bottom ── */
+.ask { position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 16px 14px; pointer-events: none; }
+.ask > * { pointer-events: auto; width: min(640px, 100%); }
+.askbox { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 14px; border-radius: 14px; background: var(--raise); box-shadow: var(--shadow), 0 0 0 1px var(--line); }
+.askbox .ic { color: var(--muted); }
+.askbox input { flex: 1; min-width: 0; border: 0; outline: none; background: none; }
+.askbox input::placeholder { color: var(--muted); }
+.askbox kbd { flex: none; padding: 0 6px; border-radius: 5px; box-shadow: 0 0 0 1px var(--line); color: var(--muted); font: .6875rem/18px var(--sans); }
+@container app (max-width: 720px) { .askbox kbd { display: none; } }
+.askout { max-height: min(50vh, 420px); overflow-y: auto; padding: 8px; border-radius: 14px; background: var(--raise); box-shadow: var(--shadow), 0 0 0 1px var(--line); }
+.askout .ah { display: flex; align-items: center; gap: 6px; padding: 6px 8px 2px; color: var(--muted); font-size: .75rem; }
+.askout .ah svg { width: 13px; height: 13px; }
+.ans { padding: 4px 6px 6px; }
+.aq { display: flex; align-items: flex-start; gap: 8px; }
+.aq b { flex: 1; min-width: 0; padding-top: 3px; word-break: break-word; }
+.al { margin: 6px 0 4px; color: var(--copy); font-size: .875rem; }
+.ans .zl { padding-right: 0; font-size: .9375rem; }
+.ans .sec { margin-top: 10px; }
+
+/* ── History ── */
+.hist { position: absolute; top: 0; right: 0; bottom: 0; z-index: 20; width: 340px; display: flex; flex-direction: column; background: var(--raise); border-left: 1px solid var(--line); box-shadow: var(--shadow); }
+.hh { flex: none; display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--line-soft); }
+.hh b { flex: 1; min-width: 0; font-size: .875rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hs { flex: 1; min-height: 0; overflow-y: auto; }
+.he { padding: 12px 16px 14px; border-bottom: 1px solid var(--line-soft); }
+.he.undone .hsay, .he.undone .lines { opacity: .5; }
+.hw { display: flex; align-items: center; gap: 8px; font-size: .75rem; color: var(--muted); }
+.who { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); font-weight: 600; }
+.who svg { width: 13px; height: 13px; }
+.hw .tm { margin-left: auto; }
+.hsay { margin: 4px 0 6px; font-size: .875rem; }
+.lines { margin-bottom: 8px; padding: 6px 8px; border-radius: 8px; background: var(--paper); font-size: .8125rem; line-height: 1.5; }
+.ln { word-break: break-word; }
+.ln.add { color: var(--ok); }
+.ln.del { color: var(--muted); text-decoration: line-through; }
+.ln::before { display: inline-block; width: 14px; font-family: var(--mono); }
+.ln.add::before { content: "+"; }
+.ln.del::before { content: "-"; }
+.hist .none { padding: 16px; color: var(--muted); font-size: .875rem; }
+
+/* ── Menus, sheet, toast ── */
+.pop { position: fixed; z-index: 50; min-width: 200px; padding: 6px; border-radius: 12px; background: var(--raise); box-shadow: var(--shadow), 0 0 0 1px var(--line); }
+.mi { width: 100%; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; font-size: .875rem; white-space: nowrap; }
+.mi:hover { background: var(--wash); }
+.mi svg { width: 16px; height: 16px; color: var(--muted); }
+.mi.bad { color: var(--now); }
+.mi.bad svg { color: currentColor; }
+.icons { display: grid; grid-template-columns: repeat(6, 34px); gap: 4px; padding: 4px; }
+.icons button { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; color: var(--ink); }
+.icons button:hover, .icons button[aria-pressed="true"] { background: var(--wash); }
+.pop .sep { height: 1px; margin: 6px 4px; background: var(--line-soft); }
+.modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: oklch(0 0 0 / .28); }
+.sheet { width: min(640px, 100%); max-height: 82vh; display: flex; flex-direction: column; border-radius: 16px; background: var(--raise); box-shadow: var(--shadow); }
+.sheet .hh code { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font: .75rem var(--mono); }
+.sheet pre { margin: 0; padding: 16px; overflow: auto; font: .8125rem/1.6 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.toast { position: absolute; left: 50%; bottom: 78px; z-index: 40; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; width: max-content; max-width: calc(100% - 32px); padding: 6px 6px 6px 14px; border-radius: 12px; background: var(--ink); color: var(--bg); font-size: .8125rem; box-shadow: var(--shadow); }
 .toast span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.toast button { flex: none; height: 24px; padding: 0 10px; border-radius: 999px; color: var(--alf); }
-.toast button:hover { background: var(--alf-soft); }
-.above { border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); overflow: hidden; }
-.will-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line-soft); font-size: .875rem; min-width: 0; }
-.will-row:first-child { border-top: 0; }
-.will-row b { flex: none; font-weight: 600; white-space: nowrap; }
-.will-row .u { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: .8125rem; }
-.will-row kbd { flex: none; padding: 1px 6px; border-radius: 5px; background: var(--wash); color: var(--muted); font: .6875rem var(--mono); }
-.hit { display: block; width: 100%; padding: 9px 14px; border-top: 1px solid var(--line-soft); min-width: 0; }
-.hit:first-child { border-top: 0; }
-.hit:hover { background: var(--wash); }
-.hit .ht { display: flex; align-items: baseline; gap: 8px; font-size: .875rem; }
-.hit .ht span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.hit .ht small { flex: none; color: var(--muted); font-size: .75rem; }
-.hit .hs { display: block; color: var(--muted); font-size: .8125rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-mark { background: var(--alf-soft); color: var(--ink); border-radius: 3px; }
-.tries { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
-.tries::-webkit-scrollbar { display: none; }
-.tries button { flex: none; height: 28px; padding: 0 11px; border-radius: 999px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .8125rem; white-space: nowrap; }
-.line { display: flex; align-items: center; gap: 8px; height: 50px; padding: 0 8px 0 16px; border-radius: 16px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); }
-.line:focus-within { box-shadow: inset 0 0 0 1.5px var(--alf), var(--shadow); }
-.line input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; outline: none; }
-.line input::placeholder { color: var(--muted); }
-#hang { flex: none; max-width: 42%; min-width: 0; display: flex; }
-#hang:empty { display: none; }
-.hang { max-width: 100%; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: var(--alf-soft); color: var(--alf); font-size: .8125rem; }
-.hang span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.line .mic { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: var(--copy); }
-.line .mic:hover { background: var(--wash); }
-.line .mic[aria-pressed="true"] { background: var(--alf-soft); color: var(--alf); }
-.line .go { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--alf-solid); color: var(--on-alf); }
-.line .go:disabled { background: var(--wash); color: var(--muted); cursor: default; }
-.pulse { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--alf); animation: pulse 1.2s ease-in-out infinite; }
-@keyframes pulse { 0%, 100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+.toast span:last-child { padding-right: 8px; }
+.toast button { flex: none; padding: 4px 8px; border-radius: 7px; font-weight: 600; opacity: .8; }
+.toast button:hover { opacity: 1; background: color-mix(in oklch, var(--bg) 14%, transparent); }
 
-/* ── A small thing to confirm: a card over the blurred page ── */
-.pop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: color-mix(in oklch, var(--bg) 40%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: fade 160ms var(--ease); }
-.pop-card { width: min(380px, 100%); padding: 20px; border-radius: 18px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft), 0 2px 6px oklch(0 0 0 / .08), 0 24px 70px oklch(0 0 0 / .22); }
-.pop-card h2 { font-size: 1.0625rem; font-weight: 650; overflow-wrap: anywhere; }
-.pop-card p { margin-top: 6px; color: var(--copy); font-size: .875rem; }
-.pop-card .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-@keyframes fade { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .pulse, .pop { animation: none; } }
+/* ── Narrow: the side becomes a drawer, history covers the page ── */
+@container app (max-width: 720px) {
+  .side { position: absolute; z-index: 30; inset: 0 auto 0 0; width: min(290px, 86%); box-shadow: var(--shadow); display: none; }
+  .app[data-drawer] .side { display: flex; }
+  .app[data-drawer] .scrim { display: block; position: absolute; inset: 0; z-index: 29; background: oklch(0 0 0 / .25); }
+  .only-narrow { display: grid !important; }
+  .doc { padding: 20px 20px 180px; }
+  .ttl { font-size: 1.625rem; }
+  .hist { width: 100%; border-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .flash { animation: none; background: var(--alf-soft); } .node .tw svg { transition: none; } }
 </style>
 </head>
 <body>
 <div class="proto" id="proto"></div>
-<main class="page" id="main" data-k="yellow" data-view="list">
-  <div class="scroll" id="scroll"><div class="col" id="page"></div></div>
-  <div class="line-wrap"><div class="line-col">
-    <div id="toast"></div>
-    <div id="above"></div>
-    <div id="tries"></div>
-    <form class="line" id="lineform">
-      <span id="hang"></span>
-      <input id="draft" autocomplete="off" spellcheck="false">
-      <button type="button" class="mic" id="mic" data-a="mic"><svg class="i" viewBox="0 0 20 20"><rect x="7.5" y="3" width="5" height="9" rx="2.5"/><path d="M5 10a5 5 0 0010 0M10 15v2.5"/></svg></button>
-      <button type="submit" class="go" id="go"><svg class="i" viewBox="0 0 20 20"><path d="M4 10h11M11 5l5 5-5 5"/></svg></button>
-    </form>
-  </div></div>
-</main>
-<div id="pop"></div>
-
-<script type="module">
-/* ── State ── */
+<div class="stage" id="stage">
+  <div class="app" id="app">
+    <aside class="side">
+      <div class="side-head"><b id="sideName"></b><button type="button" class="ib" data-a="new" id="newBtn"></button></div>
+      <nav class="side-scroll" id="tree"></nav>
+    </aside>
+    <div class="scrim" data-a="drawer"></div>
+    <main class="main">
+      <div class="top">
+        <button type="button" class="ib only-narrow" data-a="drawer" id="drawerBtn"></button>
+        <div class="crumbs" id="crumbs"></div>
+        <button type="button" class="ib" data-a="hist" id="histBtn"></button>
+        <button type="button" class="ib" data-a="more" id="moreBtn"></button>
+      </div>
+      <div class="scroll" id="scroll"><div class="doc" id="doc"></div></div>
+      <div class="ask">
+        <div class="askout" id="askout" hidden></div>
+        <label class="askbox"><span class="ic" id="askIcon"></span><input id="ask" autocomplete="off" spellcheck="false"><kbd>⌘K</kbd></label>
+      </div>
+      <aside class="hist" id="hist" hidden></aside>
+      <div class="toast" id="toast" hidden></div>
+    </main>
+  </div>
+</div>
+<div class="pop" id="pop" hidden></div>
+<div class="modal" id="modal" hidden></div>
+<script>
+const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
-const S = {
-  lang: params.get("lang") === "en" ? "en" : "zh",
-  view: "list",         // list | read | edit
-  tab: "recent",        // recent | quick | folders
-  folder: "",           // the opened folder on the folders tab
-  open: null,           // the opened note's id
-  edit: null,           // { base, draft, title, status, conflict } while writing
-  ac: null,             // the [[ menu
-  proposal: null,       // { note, find, to, typed, stale }
-  revising: false,
-  thinking: false,
-  listening: false,
-  fresh: new Set(),
-  freshLine: null,
-  toast: null,
-  pop: null,
-  empty: false,
-  notes: [],
-  clips: [],
+const MIN = 6e4, HOUR = 36e5, DAY = 864e5;
+const NOW = new Date(2026, 10, 26, 15, 0).getTime();
+let S = { lang: params.get("lang") === "en" ? "en" : "zh" };
+const t = (zh, en) => (S.lang === "zh" ? zh : en);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const clone = (o) => JSON.parse(JSON.stringify(o));
+let uid = 0;
+const nid = (p) => `${p}_${(++uid).toString(36)}`;
+const tick = () => (S.clock += MIN);
+
+/* ── Icons: line drawings, one stroke; a page stores its icon by name ── */
+const svg = (d) => `<svg class="i" viewBox="0 0 20 20">${d}</svg>`;
+const ICON = {
+  doc: svg(`<path d="M5.5 3.5h6l3 3v10h-9z"/><path d="M11.5 3.5v3h3M8 10.5h4M8 13.5h4"/>`),
+  recent: svg(`<circle cx="10" cy="10" r="6.5"/><path d="M10 6.5V10l2.5 1.5"/>`),
+  search: svg(`<circle cx="9" cy="9" r="5"/><path d="M13 13l3.5 3.5"/>`),
+  plus: svg(`<path d="M10 5v10M5 10h10"/>`),
+  more: svg(`<circle cx="5" cy="10" r=".9" fill="currentColor"/><circle cx="10" cy="10" r=".9" fill="currentColor"/><circle cx="15" cy="10" r=".9" fill="currentColor"/>`),
+  tw: svg(`<path d="M8 5l5 5-5 5"/>`),
+  side: svg(`<rect x="3" y="4" width="14" height="12" rx="2.5"/><path d="M8 4v12"/>`),
+  hist: svg(`<path d="M3.5 10a6.5 6.5 0 102-4.7M3.5 4v3.5H7"/><path d="M10 7v3.2l2.2 1.3"/>`),
+  md: svg(`<rect x="2.5" y="5" width="15" height="10" rx="2"/><path d="M5.5 12.5v-5l2 2.5 2-2.5v5M13.5 7.5v5M12 11l1.5 1.5L15 11"/>`),
+  trash: svg(`<path d="M4.5 6h11M8 6V4.5h4V6M6 6l.7 10h6.6L14 6"/>`),
+  check: svg(`<path d="M5 10.5l3 3 7-7"/>`),
+  x: svg(`<path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/>`),
+  arrow: svg(`<path d="M4 10h11M11 5l5 5-5 5"/>`),
+  sub: svg(`<path d="M5.5 3.5h6l3 3v10h-9z"/><path d="M10 9.5v5M7.5 12h5"/>`),
+  // Zirma's mark: a small four-point star, drawn, not a character.
+  zirma: `<svg class="i zm" viewBox="0 0 20 20"><path d="M10 3.5c.5 3.4 3.1 6 6.5 6.5-3.4.5-6 3.1-6.5 6.5-.5-3.4-3.1-6-6.5-6.5 3.4-.5 6-3.1 6.5-6.5z" fill="currentColor" stroke="none"/></svg>`,
 };
-const L = () => (S.lang === "en" ? 1 : 0);
-const t = (zh, en) => (S.lang === "en" ? en : zh);
-const pick = (pair) => (Array.isArray(pair) ? pair[L()] : pair);
-const esc = (text) => String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-const $ = (id) => document.getElementById(id);
-const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const TODAY = "2026-11-20";
+const PAGE_ICON = {
+  doc: ICON.doc,
+  book: svg(`<path d="M4 4.5h4.5A1.5 1.5 0 0110 6v10a1.5 1.5 0 00-1.5-1.5H4zM16 4.5h-4.5A1.5 1.5 0 0010 6v10a1.5 1.5 0 011.5-1.5H16z"/>`),
+  cup: svg(`<path d="M4.5 7.5h9v4a4 4 0 01-4 4h-1a4 4 0 01-4-4zM13.5 8.5h1a2 2 0 010 4h-1M7 3.5v2M10 3.5v2"/>`),
+  map: svg(`<path d="M3.5 5.5l4-1.5 5 1.5 4-1.5v10.5l-4 1.5-5-1.5-4 1.5zM7.5 4v10.5M12.5 5.5V16"/>`),
+  calendar: svg(`<rect x="3.5" y="4.5" width="13" height="12" rx="2"/><path d="M3.5 8.5h13M7 3v3M13 3v3"/>`),
+  person: svg(`<circle cx="10" cy="7" r="3"/><path d="M4.5 16.5a5.5 5.5 0 0111 0"/>`),
+  star: svg(`<path d="M10 3.5l2 4.1 4.5.6-3.3 3.1.8 4.5-4-2.2-4 2.2.8-4.5-3.3-3.1 4.5-.6z"/>`),
+  flag: svg(`<path d="M5 16.5v-13M5 4h9l-2 3 2 3H5"/>`),
+  bulb: svg(`<path d="M7.5 13.5h5M8 16h4M10 3.5a4.5 4.5 0 00-2.6 8.2c.4.3.6.8.6 1.3h4c0-.5.2-1 .6-1.3A4.5 4.5 0 0010 3.5z"/>`),
+  leaf: svg(`<path d="M5 15c0-6 3.5-9.5 10.5-10.5C15 11 11.5 15 5 15z"/><path d="M5 15l5-5"/>`),
+  flask: svg(`<path d="M8 3.5h4M8.5 3.5v4.5l-4 6.5a1 1 0 00.9 1.5h9.2a1 1 0 00.9-1.5l-4-6.5V3.5M6.5 12h7"/>`),
+  code: svg(`<path d="M7 6l-4 4 4 4M13 6l4 4-4 4"/>`),
+  home: svg(`<path d="M3.5 9.5L10 4l6.5 5.5M5.5 8v8h9V8"/>`),
+  heart: svg(`<path d="M10 16s-6-3.6-6-8a3.5 3.5 0 016-2.4A3.5 3.5 0 0116 8c0 4.4-6 8-6 8z"/>`),
+  compass: svg(`<circle cx="10" cy="10" r="6.5"/><path d="M12.5 7.5l-1.5 3.5-3.5 1.5 1.5-3.5z"/>`),
+  palette: svg(`<path d="M10 3.5a6.5 6.5 0 100 13c1 0 1.3-.8.9-1.6-.5-.9 0-1.9 1-1.9h1.6a3 3 0 003-3c0-3.6-2.9-6.5-6.5-6.5z"/><path d="M6.5 9.5h.01M8.5 6.5h.01M12 6.5h.01"/>`),
+  music: svg(`<path d="M8 14.5V5l8-1.5v9.5"/><circle cx="6" cy="14.5" r="2"/><circle cx="14" cy="13" r="2"/>`),
+  chat: svg(`<path d="M4 5.5h12v8H9l-3.5 3v-3H4z"/>`),
+};
+const pIcon = (p) => PAGE_ICON[p?.icon] ?? ICON.doc;
 
-/* ── Sample library: ~/Documents/Alfred Notes ── */
-const FOLDERS = [
-  { id: "quick", name: ["随手记", "Quick Notes"] }, { id: "tech", name: ["技术", "Tech"] },
-  { id: "proj", name: ["项目", "Projects"] }, { id: "life", name: ["生活", "Life"] },
-];
-const md = (...lines) => lines.join("\n");
-function seed() {
-  const n = (id, folder, days, title, zh, en, more = {}) => ({ id, folder, days, title: [...title], text: [zh, en], ...more });
-  S.clips = [
-    { url: "https://www.pinecone.io/learn/chunking-strategies/", site: "pinecone.io", mark: "P", k: "violet", title: ["五种分块策略的比较", "Five chunking strategies compared"] },
-    { url: "https://www.bilibili.com/video/BV1coffee", site: "Bilibili", mark: "B", k: "teal", title: ["V60 冲煮", "Brewing with a V60"] },
-    { url: "https://example.org/density", site: "example.org", mark: "E", k: "blue", title: ["信息密度", "Information density"] },
-  ];
-  S.notes = [
-    n("q1", "quick", 0, ["周末想试的豆子", "Beans for the weekend"],
-      "埃塞俄比亚水洗，浅烘。按 [[V60 参数]] 冲，水温调高一点。",
-      "Washed Ethiopian, light roast. Brew by [[V60 numbers]], a little hotter.", { suggest: "life" }),
-    n("q2", "quick", 0, ["2026-11-20 14-32", "2026-11-20 14-32"],
-      md("---", "created: 2026-11-20", "---", "系统设计面试先问清规模：多少用户、读多还是写多，再画图。"),
-      md("---", "created: 2026-11-20", "---", "In a system design interview, ask about scale first: how many users, read-heavy or write-heavy. Then draw."), { suggest: "tech" }),
-    n("n3", "proj", 0, ["Alfred 的搜索", "Search in Alfred"],
-      md("先做全文，向量以后再说。", "", "- [x] 确认 FTS5 能搜中文", "- [ ] 笔记和链接用同一套索引", "- [ ] 搜索结果给出命中的那一句", "",
-        "```sql", "create virtual table note_fts using fts5(title, body, tokenize='trigram');", "```", "",
-        "依据是 [[混合检索]] 和 [[RAG 分块笔记]]。", "", "还没看完：https://sqlite.org/fts5.html"),
-      md("Full text first; vectors can wait.", "", "- [x] Check that FTS5 finds Chinese", "- [ ] One index for notes and links", "- [ ] Results show the sentence that matched", "",
-        "```sql", "create virtual table note_fts using fts5(title, body, tokenize='trigram');", "```", "",
-        "It rests on [[Hybrid retrieval]] and [[RAG chunking notes]].", "", "Still reading: https://sqlite.org/fts5.html")),
-    n("n1", "tech", 1, ["RAG 分块笔记", "RAG chunking notes"],
-      md("分块大小先看问题长什么样，不是越小越好。", "", "## 试过的", "- 按标题分块：技术文档上最好", "- 固定长度：聊天记录上最好", "- 重叠 10–15% 就够，多了只是费钱", "",
-        "## 接着看", "检索那一步记在 [[混合检索]]，排序想放到最后做，见 [[重排]]。", "", "对照的那篇：https://www.pinecone.io/learn/chunking-strategies/"),
-      md("Pick the chunk size from the questions people ask, not the smallest one.", "", "## Tried", "- By heading: best on technical docs", "- Fixed length: best on chat logs", "- 10–15% overlap is enough; more only costs", "",
-        "## Next", "Retrieval is in [[Hybrid retrieval]]; ranking comes last, see [[Reranking]].", "", "Compared against: https://www.pinecone.io/learn/chunking-strategies/")),
-    n("q3", "quick", 1, ["信息密度", "Information density"],
-      md("---", "created: 2026-11-19", "source: https://example.org/density", "---", "密度不是把东西挤在一起，是每一块都在回答一个问题。", "", "想对照着看 Alfred 的待办页。"),
-      md("---", "created: 2026-11-19", "source: https://example.org/density", "---", "Density is not packing things in. It is every block answering one question.", "", "Check Alfred's todo page against this."), { suggest: "proj" }),
-    n("n2", "tech", 3, ["混合检索", "Hybrid retrieval"],
-      md("关键词和向量各取前 20，再合并。", "", "- 关键词用 SQLite 的 FTS5，中文要用 `trigram` 分词", "- 两个字的词搜不到，要退回普通的包含匹配", "- 合并用倒数排名相加，不用调权重", "", "分块怎么切见 [[RAG 分块笔记]]。"),
-      md("Take the top 20 from keywords and from vectors, then merge.", "", "- Keywords use SQLite FTS5; Chinese needs the `trigram` tokenizer", "- Two-character words are missed and fall back to a plain contains match", "- Merge by reciprocal rank; no weights to tune", "", "How to cut chunks: [[RAG chunking notes]].")),
-    n("n5", "life", 7, ["京都三天", "Three days in Kyoto"],
-      md("1. 第一天东山", "2. 第二天岚山，早上七点前到", "3. 第三天留给伏见", "", "咖啡馆另记在 [[京都的咖啡馆]]。"),
-      md("1. Higashiyama on day one", "2. Arashiyama on day two, before 7 am", "3. Day three is for Fushimi", "", "Cafés are in [[Kyoto cafés]].")),
-    n("n4", "life", 8, ["V60 参数", "V60 numbers"],
-      md("---", "created: 2026-11-12", "source: https://www.bilibili.com/video/BV1coffee", "---", "想试这个参数。", "", "- 粉 15 克，水 250 克", "- 水温 92 度", "- 闷蒸 30 秒，水量是粉的两倍", "- 分三段注水，总时间两分半", "", "![[v60-分段.jpg]]", "", "> 水流细了会过萃，发苦。"),
-      md("---", "created: 2026-11-12", "source: https://www.bilibili.com/video/BV1coffee", "---", "Want to try these numbers.", "", "- 15 g coffee, 250 g water", "- Water at 92°C", "- Bloom 30 s with twice the coffee's weight in water", "- Three pours, two and a half minutes in total", "", "![[v60-pours.jpg]]", "", "> Too thin a stream over-extracts and turns bitter.")),
-    n("n6", "tech", 12, ["OKLCH 为什么好用", "Why OKLCH works"],
-      md("同样的亮度数字，看起来真的一样亮。HSL 的黄和蓝，同亮度看着差很多。", "", "**用法**：先定亮度和色度，只换色相，一组颜色就齐了。"),
-      md("Equal lightness numbers actually look equally light. In HSL, yellow and blue at one lightness look far apart.", "", "**How**: fix lightness and chroma, change only the hue, and a set of colours lines up.")),
-  ];
-  Object.assign(S, { view: "list", tab: "recent", folder: "", open: null, edit: null, ac: null, proposal: null, revising: false, thinking: false, listening: false,
-    fresh: new Set(), freshLine: null, toast: null, pop: null, empty: false });
-  $("draft").value = "";
-}
-// What Alfred proposes for one note when asked; any other note gets the user's own words as a new line.
-const SCRIPT = {
-  n4: { find: ["- 水温 92 度", "- Water at 92°C"], to: ["- 水温 90–93 度，浅烘用高的", "- Water at 90–93°C, hotter for light roasts"],
-        again: ["- 水温 90–93 度：浅烘 93，深烘 90", "- Water at 90–93°C: 93 for light roasts, 90 for dark"] },
+/* ── Sample pages (made up). One set per language; switching language starts over. ── */
+const SAMPLE = {
+  zh: {
+    you: [
+      ["p1", "手冲", "cup", null, 30 * HOUR, [["p", "周末在家冲咖啡的记录。"], ["li", "[[耶加雪菲]]：花香明显，适合浅烘"], ["li", "哥伦比亚：坚果味，配牛奶好"]]],
+      ["p2", "V60 参数", "doc", "p1", 26 * HOUR, [["h", "比例"], ["p", "粉水比 1:15，研磨中细。"], ["h", "水温"], ["p", "水温 92 度，焖蒸 30 秒。", { sug: { to: "水温 94 度，焖蒸 30 秒。", why: "你后来在《周末想试的》里写，94 度更出花香。", src: ["p4b1"] } }]]],
+      ["p3", "京都三天", "map", null, 3 * DAY, [["li", "第一天：伏见稻荷，早去人少"], ["li", "第二天：岚山，下午找一家手冲咖啡馆"], ["li", "第三天：锦市场，买点茶叶带回去"]]],
+      ["p4", "周末想试的", "star", null, 2 * HOUR, [["p", "新买的浅烘豆，水温 94 度更出花香。"], ["todo", "买一个手冲壶温度计"]]],
+      ["p5", "周会 11-24", "calendar", null, 46 * HOUR, [["li", "[[林晓]]：倾向块编辑，担心许可证"], ["todo", "周五前给 [[林晓]] 发许可证对比"], ["li", "下次周会改到周四"]]],
+    ],
+    zirma: [
+      ["z1", "咖啡", "leaf", ["咖啡", "手冲", "豆", "V60", "水温"], 7 * HOUR, [["常用 V60：粉水比 1:15，研磨中细", ["p2b2"]], ["水温写过 92 度，也写过 94 度", ["p2b4", "p4b1"]], ["喜欢浅烘、花香明显的豆", ["p1b2", "p4b1"]], ["京都第二天想找一家手冲咖啡馆", ["p3b2"]]]],
+      ["z2", "林晓", "person", ["林晓"], 45 * HOUR, [["在挑笔记编辑器：倾向块编辑，担心许可证", ["p5b1"]], ["你答应周五前发许可证对比", ["p5b2"]]]],
+      ["z3", "关于你", "heart", [], 45 * HOUR, [["周末常在家手冲咖啡", ["p1b1", "p4b1"]], ["计划去京都三天", ["p3b1"]]]],
+    ],
+    made: "开了这一页，整理了 3 行", took: "因为《京都三天》，加了一行",
+    hint: "示例是编的。试试：在任何一页写一句带「咖啡」的话；或在另一页再写一次 [[耶加雪菲]]；或在底下问「水温多少」。",
+  },
+  en: {
+    you: [
+      ["p1", "Pour-over", "cup", null, 30 * HOUR, [["p", "Notes from brewing at home on weekends."], ["li", "[[Yirgacheffe]]: floral, best as a light roast"], ["li", "Colombia: nutty, good with milk"]]],
+      ["p2", "V60 recipe", "doc", "p1", 26 * HOUR, [["h", "Ratio"], ["p", "1:15 coffee to water, medium-fine grind."], ["h", "Water"], ["p", "Water at 92°C, bloom 30 seconds.", { sug: { to: "Water at 94°C, bloom 30 seconds.", why: "Later, in “To try this weekend”, you wrote that 94°C brings out the florals.", src: ["p4b1"] } }]]],
+      ["p3", "Kyoto, three days", "map", null, 3 * DAY, [["li", "Day one: Fushimi Inari, go early"], ["li", "Day two: Arashiyama, find a pour-over café in the afternoon"], ["li", "Day three: Nishiki Market, bring back some tea"]]],
+      ["p4", "To try this weekend", "star", null, 2 * HOUR, [["p", "New light-roast beans: 94°C brings out the florals."], ["todo", "Buy a thermometer for the kettle"]]],
+      ["p5", "Weekly sync 11-24", "calendar", null, 46 * HOUR, [["li", "[[Lin Xiao]]: prefers block editing, worried about licences"], ["todo", "Send [[Lin Xiao]] the licence comparison by Friday"], ["li", "Next sync moves to Thursday"]]],
+    ],
+    zirma: [
+      ["z1", "Coffee", "leaf", ["coffee", "pour-over", "beans", "V60", "°C"], 7 * HOUR, [["Usual V60: 1:15, medium-fine grind", ["p2b2"]], ["Water written as 92°C and as 94°C", ["p2b4", "p4b1"]], ["Likes light roasts with florals", ["p1b2", "p4b1"]], ["Wants a pour-over café on day two in Kyoto", ["p3b2"]]]],
+      ["z2", "Lin Xiao", "person", ["Lin Xiao"], 45 * HOUR, [["Choosing a notes editor: prefers blocks, worried about licences", ["p5b1"]], ["You promised the licence comparison by Friday", ["p5b2"]]]],
+      ["z3", "About you", "heart", [], 45 * HOUR, [["Brews pour-over at home on weekends", ["p1b1", "p4b1"]], ["Planning three days in Kyoto", ["p3b1"]]]],
+    ],
+    made: "Started this page with 3 lines", took: "Added a line, from “Kyoto, three days”",
+    hint: "Sample data is made up. Try: write a line mentioning “coffee” on any page; or write [[Yirgacheffe]] on another page; or ask “water temperature” below.",
+  },
 };
 
-/* ── A note is its text: properties on top, Markdown under them ── */
-const byId = (id) => S.notes.find((note) => note.id === id);
-const body = (note) => note.text[L()];
-const titleOf = (note) => note.title[L()];
-const folderOf = (id) => FOLDERS.find((folder) => folder.id === id);
-const byTitle = (name) => S.notes.find((note) => titleOf(note).toLowerCase() === name.trim().toLowerCase());
-const clipOf = (url) => S.clips.find((clip) => clip.url === url);
-function touch(note) { note.days = 0; note.just = true; S.notes = [note, ...S.notes.filter((other) => other !== note)]; }
-function setBody(note, text) { note.text[L()] = text; touch(note); }
-function flash(id) { S.fresh.add(id); setTimeout(() => { S.fresh.delete(id); if (S.view === "list") renderPage(); }, 2600); }
-function parts(text) {
-  const lines = text.split("\n"), props = {};
-  let start = 0;
-  if (lines[0] === "---") {
-    const end = lines.indexOf("---", 1);
-    if (end > 0) { for (const line of lines.slice(1, end)) { const m = /^([\w-]+):\s*(.*)$/.exec(line); if (m) props[m[1]] = m[2]; } start = end + 1; }
+function seed(kind) {
+  S = { lang: S.lang, kind, narrow: S.narrow, pages: {}, hist: [], at: "recent", open: new Set(["p1"]), notMake: [], clock: NOW, histOpen: false, drawer: false, answer: null };
+  if (kind === "empty") return;
+  const D = SAMPLE[S.lang];
+  for (const [id, title, icon, parent, ago, blocks] of D.you) {
+    S.pages[id] = { id, title, icon, owner: "you", parent, t: NOW - ago, blocks: blocks.map(([k, text, extra], i) => ({ id: `${id}b${i + 1}`, k, text, ...(k === "todo" ? { done: false } : {}), ...extra })) };
   }
-  return { lines, start, props };
-}
-const MARKER = /^(#{1,3} |> |- \[[ x]\] |- |\d+\. )/;
-const plain = (line) => line.replace(MARKER, "").replace(/!\[\[[^\]]*\]\]/g, "").replace(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/g, (m, a, b) => b || a).replace(/[`*]/g, "").trim();
-function firstLine(note) {
-  const { lines, start } = parts(body(note));
-  let fence = false;
-  for (const line of lines.slice(start)) {
-    if (/^```/.test(line)) { fence = !fence; continue; }
-    if (!fence && plain(line)) return plain(line);
+  for (const [id, title, icon, watch, ago, lines] of D.zirma) {
+    S.pages[id] = { id, title, icon, owner: "z", parent: null, watch, not: [], t: NOW - ago, blocks: lines.map(([text, src], i) => ({ id: `${id}b${i + 1}`, k: "li", text, src })) };
   }
-  return "";
-}
-const WIKI = /(?<!!)\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g;
-const URLS = /https?:\/\/[^\s<>)）]+/g;
-function backlinks(note) {
-  const out = [];
-  for (const other of S.notes) {
-    if (other === note) continue;
-    const line = body(other).split("\n").find((candidate) => [...candidate.matchAll(WIKI)].some((m) => byTitle(m[1]) === note));
-    if (line) out.push({ note: other, line: plain(line) });
-  }
-  return out;
+  const z1 = S.pages.z1;
+  S.hist.push(
+    { id: "e2", page: "z1", who: "z", at: NOW - 7 * HOUR, say: D.took, lines: [{ k: "add", text: z1.blocks[3].text }], ops: [{ k: "add", page: "z1", blk: clone(z1.blocks[3]), at: 3 }], undone: false },
+    { id: "e1", page: "z1", who: "z", at: NOW - 30 * HOUR, say: D.made, lines: z1.blocks.slice(0, 3).map((b) => ({ k: "add", text: b.text })), ops: [], undone: false },
+  );
 }
 
-/* ── Markdown, the small subset a note needs here ── */
-function inline(source) {
-  const pattern = /(`[^`]+`)|!\[\[([^\]\n]+)\]\]|\[\[([^\]\n]+)\]\]|\*\*([^*]+)\*\*|\[([^\]\n]+)\]\((https?:[^)\s]+)\)|(https?:\/\/[^\s<>)）]+)/g;
-  let html = "", last = 0;
-  for (const m of source.matchAll(pattern)) {
-    html += esc(source.slice(last, m.index));
-    last = m.index + m[0].length;
-    if (m[1]) html += `<code>${esc(m[1].slice(1, -1))}</code>`;
-    else if (m[2]) html += `<span class="embed">${ICON.image}${esc(m[2])}</span>`;
-    else if (m[3]) {
-      const [target, alias] = m[3].split("|");
-      const note = byTitle(target);
-      html += note ? `<a class="wl" data-a="wl" data-id="${note.id}">${esc(alias || target)}</a>`
-        : `<a class="wl missing" data-a="new" data-title="${esc(target)}" title="${t("还没有这篇，点了就建", "No such note yet; click to make it")}">${esc(alias || target)}</a>`;
-    }
-    else if (m[4]) html += `<strong>${esc(m[4])}</strong>`;
-    else if (m[5]) html += `<a class="ext" href="#" data-a="noop">${esc(m[5])}</a>`;
-    else html += address(m[7]);
+/* ── Reading the model ── */
+const all = () => Object.values(S.pages);
+const yours = () => all().filter((p) => p.owner === "you");
+const kids = (id) => all().filter((p) => p.parent === id);
+const cur = () => S.pages[S.at];
+const nameOf = (p) => p?.title || t("无标题", "Untitled");
+const byTitle = (x) => all().find((p) => p.title && p.title.toLowerCase() === x.toLowerCase());
+const blockAt = (bid) => { for (const p of all()) { const b = p.blocks.find((x) => x.id === bid); if (b) return [p, b]; } return []; };
+const LINK = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+const plain = (s) => s.replace(LINK, (m, a, b) => b || a);
+const linksIn = (s) => [...s.matchAll(LINK)].map((m) => m[1].trim());
+const pending = () => yours().flatMap((p) => p.blocks.filter((b) => b.sug).map((b) => [p, b]));
+const srcPages = (z) => [...new Set(z.blocks.flatMap((b) => b.src ?? []).map((r) => blockAt(r)[0]?.id).filter(Boolean))];
+const snippet = (p) => plain(p.blocks.find((b) => b.text.trim())?.text ?? "");
+const inline = (s) => esc(s).replace(LINK, (m, a, b) => `<a class="wl${byTitle(a.trim()) ? "" : " missing"}" data-a="link" data-t="${a.trim()}">${b || a}</a>`);
+const two = (n) => String(n).padStart(2, "0");
+function when(ms) {
+  const d = new Date(ms), n = new Date(S.clock), hm = `${two(d.getHours())}:${two(d.getMinutes())}`;
+  const days = Math.round((new Date(n.getFullYear(), n.getMonth(), n.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / DAY);
+  if (S.clock - ms < 2 * MIN) return t("刚刚", "just now");
+  if (days === 0) return t(`今天 ${hm}`, `today ${hm}`);
+  if (days === 1) return t(`昨天 ${hm}`, `yesterday ${hm}`);
+  return `${d.getMonth() + 1}-${d.getDate()}`;
+}
+const stamp = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`; };
+function pathOf(p) {
+  if (p.owner === "z") return `notes/zirma_notes/${nameOf(p)}.md`;
+  const chain = [];
+  for (let q = p; q; q = S.pages[q.parent]) chain.unshift(nameOf(q));
+  return `notes/${chain.join("/")}.md`;
+}
+const srcTail = (b) => {
+  const ts = [...new Set((b.src ?? []).map((r) => blockAt(r)[0]).filter(Boolean).map((p) => `[[${p.title}]]`))];
+  return ts.length ? t(`（${ts.join("、")}）`, ` (${ts.join(", ")})`) : "";
+};
+
+/* ── History: every change is an entry of small steps that can run backwards ── */
+function log(page, who, say, ops, lines = []) {
+  const e = { id: nid("e"), page, who, at: S.clock, say, ops, lines, undone: false };
+  S.hist.unshift(e);
+  return e;
+}
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+function run(op, back) {
+  const pg = S.pages[op.page];
+  if (op.k === "set") {
+    const b = pg?.blocks.find((x) => x.id === op.b);
+    if (!b || b.text !== (back ? op.to : op.from)) return false;
+    b.text = back ? op.from : op.to;
+    return true;
   }
-  return html + esc(source.slice(last));
+  if (op.k === "add" || op.k === "del") {
+    const adding = (op.k === "add") === !back;
+    if (!pg) return false;
+    const i = pg.blocks.findIndex((x) => x.id === op.blk.id);
+    if (adding ? i >= 0 : i < 0) return false;
+    adding ? pg.blocks.splice(Math.min(op.at, pg.blocks.length), 0, clone(op.blk)) : pg.blocks.splice(i, 1);
+    return true;
+  }
+  if (op.k === "page") { // whole pages: made, deleted, made yours
+    const want = back ? op.after : op.before, put = back ? op.before : op.after;
+    if (!want.every((w) => same(S.pages[w.id], w.data))) return false;
+    for (const w of put) w.data ? (S.pages[w.id] = clone(w.data)) : delete S.pages[w.id];
+    return true;
+  }
+  return false;
 }
-function address(url) {
-  const clip = clipOf(url);
-  if (!clip) return `<a class="ext" href="#" data-a="noop">${esc(url.replace(/^https?:\/\/(www\.)?/, ""))}</a>`;
-  return `<a class="clip" href="#" data-a="noop" title="${t("在链接里看", "See it in Links")}"><span class="tile" data-k="${clip.k}">${clip.mark}</span><span class="ct">${esc(pick(clip.title))}</span><span class="cs">${esc(clip.site)}</span></a>`;
+function flip(e) {
+  const back = !e.undone, ops = back ? [...e.ops].reverse() : e.ops;
+  // An entry undoes whole or not at all.
+  const trial = clone(S.pages);
+  if (!ops.every((op) => run(op, back))) { S.pages = trial; toast(t("这一页后来又改过，撤不回了", "The page changed since; can’t undo this")); return; }
+  e.undone = back;
+  if (!S.pages[S.at]) S.at = "recent";
+  render();
 }
-function proposalBlock(P, old) {
-  const text = P.to.replace(/^(- |\d+\. )/, "");
-  return `<div class="prop" data-k="alfred">
-    ${old === null ? "" : `<div class="was">${inline(old)}</div>`}
-    ${P.stale ? `<div class="stale">${t("这篇变了 · 提议过期", "The note changed · proposal expired")}</div>
-      <div class="acts"><button type="button" class="btn" data-a="p-again">${t("再提一次", "Propose again")}</button><button type="button" class="btn" data-a="p-no">${t("不", "No")}</button></div>`
-    : `<div class="will" ${P.typed ? "" : "data-typing"}>${inline(text)}</div>
-      <div class="acts"><span class="who">${old === null ? t("Alfred 想加这一句", "Alfred would add this") : t("Alfred 想改这一处", "Alfred would change this")}</span><span class="grow"></span>
-        <button type="button" class="btn solid" data-a="p-yes">${t("好", "Yes")}</button><button type="button" class="btn" data-a="p-edit">${t("改", "Change")}</button><button type="button" class="btn" data-a="p-no">${t("不", "No")}</button></div>`}
-  </div>`;
-}
-function renderBody(note) {
-  const { lines, start } = parts(body(note));
-  const P = S.proposal?.note === note.id ? S.proposal : null;
-  const hit = (raw) => P && P.find !== null && raw === P.find && !placed;
-  const fresh = (raw) => (S.freshLine !== null && raw === S.freshLine ? " data-fresh" : "");
-  let html = "", i = start, placed = false;
-  while (i < lines.length) {
-    const line = lines[i];
-    if (!line.trim()) { i++; continue; }
-    if (/^```/.test(line)) {
-      const code = [];
-      for (i++; i < lines.length && !/^```/.test(lines[i]); i++) code.push(lines[i]);
-      i++;
-      html += `<pre class="code"><code>${esc(code.join("\n"))}</code></pre>`;
-      continue;
-    }
-    const heading = /^(#{1,3}) (.*)$/.exec(line);
-    if (heading) { const tag = `h${heading[1].length + 1}`; html += `<${tag}>${inline(heading[2])}</${tag}>`; i++; continue; }
-    if (/^> /.test(line)) {
-      const quote = [];
-      for (; i < lines.length && /^> /.test(lines[i]); i++) quote.push(inline(lines[i].slice(2)));
-      html += `<blockquote>${quote.join("<br>")}</blockquote>`;
-      continue;
-    }
-    if (/^(- |\d+\. )/.test(line)) {
-      const ordered = /^\d/.test(line), same = ordered ? /^\d+\. / : /^- /, items = [];
-      for (; i < lines.length && same.test(lines[i]); i++) {
-        const raw = lines[i], text = raw.replace(/^(- |\d+\. )/, "");
-        const task = /^- \[( |x)\] (.*)$/.exec(raw);
-        if (hit(raw)) { placed = true; items.push(`<li class="plain">${proposalBlock(P, text)}</li>`); }
-        else if (task) items.push(`<li class="task"><button type="button" class="box" role="checkbox" aria-checked="${task[1] === "x"}" aria-label="${esc(task[2])}" data-a="task" data-line="${i}"></button><span>${inline(task[2])}</span></li>`);
-        else items.push(`<li><span${fresh(raw)}>${inline(text)}</span></li>`);
+
+/* ── Zirma (a stand-in for the model) ── */
+function zWatch(pg, b) {
+  if (pg.owner !== "you") return;
+  setTimeout(() => {
+    const [p] = blockAt(b.id);
+    if (!p || p.owner !== "you") return;
+    const text = b.text.trim();
+    if (!text) return;
+    const low = plain(text).toLowerCase(), done = [];
+    for (const z of all().filter((x) => x.owner === "z")) {
+      if (!z.watch?.length || z.not.includes(b.id) || !z.watch.some((w) => low.includes(w.toLowerCase()))) continue;
+      const own = z.blocks.find((l) => l.src.length === 1 && l.src[0] === b.id);
+      if (own && own.text !== text) {
+        const from = own.text; own.text = text; z.t = tick();
+        done.push([z, log(z.id, "z", t(`因为《${nameOf(p)}》改了，更新了一行`, `Updated a line, because “${nameOf(p)}” changed`), [{ k: "set", page: z.id, b: own.id, from, to: text }], [{ k: "del", text: from }, { k: "add", text }])]);
+      } else if (!z.blocks.some((l) => l.src.includes(b.id))) {
+        const blk = { id: nid(`${z.id}b`), k: "li", text, src: [b.id] };
+        z.blocks.push(blk); z.t = tick();
+        done.push([z, log(z.id, "z", t(`因为《${nameOf(p)}》，加了一行`, `Added a line, from “${nameOf(p)}”`), [{ k: "add", page: z.id, blk: clone(blk), at: z.blocks.length - 1 }], [{ k: "add", text }])]);
       }
-      html += ordered ? `<ol>${items.join("")}</ol>` : `<ul>${items.join("")}</ul>`;
-      continue;
     }
-    const para = [];
-    for (; i < lines.length && lines[i].trim() && !/^(```|#{1,3} |> |- |\d+\. )/.test(lines[i]); i++) para.push(lines[i]);
-    if (para.length === 1 && hit(para[0])) { placed = true; html += proposalBlock(P, para[0]); }
-    else html += `<p><span${para.length === 1 ? fresh(para[0]) : ""}>${para.map(inline).join("<br>")}</span></p>`;
-  }
-  if (P && !placed) html += proposalBlock(P, null);
-  return html;
-}
-// The same text, coloured, behind the textarea. Colour only: weight or another font would move the letters.
-function highlight(text) {
-  const lines = text.split("\n");
-  let props = lines[0] === "---", fence = false;
-  return lines.map((line, i) => {
-    if (props) { if (i > 0 && line === "---") props = false; return `<span class="dim">${esc(line)}</span>`; }
-    if (/^```/.test(line)) { fence = !fence; return `<span class="dim">${esc(line)}</span>`; }
-    if (fence) return `<span class="dim">${esc(line)}</span>`;
-    if (/^#{1,3} /.test(line)) return `<span class="hd">${esc(line)}</span>`;
-    return esc(line)
-      .replace(/(!?\[\[[^\]\n]*\]\])/g, `<span class="lk">$1</span>`)
-      .replace(/(https?:\/\/[^\s<>)）]+)/g, `<span class="lk">$1</span>`)
-      .replace(/(`[^`]+`)/g, `<span class="dim">$1</span>`)
-      .replace(/^((?:- \[[ x]\]|-|\d+\.|&gt;)) /, `<span class="dim">$1</span> `);
-  }).join("\n") + "\n";
-}
-
-/* ── Finding: by what a note says ── */
-function search(query) {
-  const q = query.trim().toLowerCase();
-  if (q.length < 2) return [];
-  const words = (q.match(/[a-z0-9]+/g) ?? []).filter((word) => word.length > 1);
-  const han = q.replace(/[^一-鿿]/g, "");
-  const grams = [...new Set(han.length > 1 ? Array.from({ length: han.length - 1 }, (_, i) => han.slice(i, i + 2)) : [])];
-  const terms = [...words, ...grams];
-  if (!terms.length) return [];
-  const count = (text) => terms.filter((term) => text.toLowerCase().includes(term)).length;
-  return S.notes.map((note) => {
-    const { lines, start } = parts(body(note));
-    const candidates = lines.slice(start).map(plain).filter(Boolean);
-    const best = candidates.reduce((top, line) => (count(line) > count(top) ? line : top), "");
-    const score = count(titleOf(note)) * 2 + count(candidates.join(" "));
-    // Show the matched words even when they sit far into a long line.
-    const at = count(best) ? Math.min(...terms.map((term) => best.toLowerCase().indexOf(term)).filter((index) => index >= 0)) : 0;
-    return { note, score, line: count(best) ? (at > 16 ? `…${best.slice(at - 8)}` : best) : candidates[0] ?? "" };
-  }).filter((found) => found.score > (terms.length > 1 ? 1 : 0)).sort((a, b) => b.score - a.score).slice(0, 4).map((found) => ({ ...found, terms }));
-}
-function marked(text, terms) {
-  const pattern = new RegExp(`(${[...terms].sort((a, b) => b.length - a.length).map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "gi");
-  return esc(text).replace(pattern, "<mark>$1</mark>");
+    for (const name of linksIn(text)) {
+      if (byTitle(name) || S.notMake.includes(name.toLowerCase())) continue;
+      const refs = yours().flatMap((q) => q.blocks.filter((x) => linksIn(x.text).some((n) => n.toLowerCase() === name.toLowerCase())));
+      if (refs.length < 2) continue;
+      const id = nid("z");
+      const zp = { id, title: name, icon: "doc", owner: "z", parent: null, watch: [name], not: [], t: tick(), blocks: refs.map((r) => ({ id: nid(`${id}b`), k: "li", text: r.text, src: [r.id] })) };
+      S.pages[id] = zp;
+      done.push([zp, log(id, "z", t(`你在 ${refs.length} 处提到「${name}」，开了这一页`, `You mention “${name}” in ${refs.length} places, so Zirma started this page`), [{ k: "page", page: id, before: [{ id, data: null }], after: [{ id, data: clone(zp) }] }], refs.map((r) => ({ k: "add", text: r.text })))]);
+    }
+    if (!done.length) return;
+    renderTree();
+    if (S.at === "recent" || cur()?.owner === "z") renderMain();
+    const [z] = done[0];
+    toast(done.length > 1 ? t(`Zirma 更新了 ${done.length} 页`, `Zirma updated ${done.length} pages`) : t(`Zirma 更新了《${nameOf(z)}》`, `Zirma updated “${nameOf(z)}”`),
+      [[t("看看", "View"), () => go(z.id)], [t("撤回", "Undo"), () => done.slice().reverse().forEach(([, e]) => flip(e))]]);
+  }, 900);
 }
 
 /* ── Drawing ── */
-const ICON = {
-  note: `<svg class="i" viewBox="0 0 20 20"><path d="M5.5 3.5h6l3 3v10h-9z"/><path d="M11.5 3.5v3h3M8 10.5h4M8 13.5h4"/></svg>`,
-  back: `<svg class="i" viewBox="0 0 20 20"><path d="M12 5l-5 5 5 5"/></svg>`,
-  edit: `<svg class="i" viewBox="0 0 20 20"><path d="M4.5 15.5l.8-3.2 7.9-7.9a1.4 1.4 0 012 0l.4.4a1.4 1.4 0 010 2l-7.9 7.9z"/></svg>`,
-  out: `<svg class="i" viewBox="0 0 20 20"><path d="M8 5h7v7M15 5l-9 9"/></svg>`,
-  trash: `<svg class="i" viewBox="0 0 20 20"><path d="M4.5 6h11M8 6V4.5h4V6M6 6l.7 10h6.6L14 6"/></svg>`,
-  folder: `<svg class="i" viewBox="0 0 20 20"><path d="M3.5 6.5a1 1 0 011-1h3.2l1.5 1.5h6.3a1 1 0 011 1v6.5a1 1 0 01-1 1h-11a1 1 0 01-1-1z"/></svg>`,
-  next: `<svg class="i" viewBox="0 0 20 20" style="width:15px;height:15px"><path d="M8 5l5 5-5 5"/></svg>`,
-  image: `<svg class="i" viewBox="0 0 20 20"><rect x="3.5" y="4.5" width="13" height="11" rx="2"/><path d="M3.5 13l3.5-3.5 3 3 2-2 4.5 4.5"/></svg>`,
-};
-const ago = (note) => (note.just ? t("刚刚", "just now") : note.days === 0 ? t("今天", "today") : note.days === 1 ? t("昨天", "yesterday") : t(`${note.days} 天前`, `${note.days} days ago`));
-
-function row(note, { tag = true, suggest = false } = {}) {
-  const to = suggest && note.folder === "quick" && note.suggest ? folderOf(note.suggest) : null;
-  return `<li class="row" ${S.fresh.has(note.id) ? "data-fresh" : ""}>
-    <button type="button" class="row-main" data-a="note" data-id="${note.id}"><span class="rt">${esc(titleOf(note))}</span><span class="rs">${esc(firstLine(note))}</span></button>
-    <span class="rm">
-      ${to ? `<button type="button" class="sug" data-k="alfred" data-a="suggest" data-id="${note.id}" title="${t("Alfred 猜的", "Alfred's guess")}">${t(`放到 ${pick(to.name)}`, `Move to ${pick(to.name)}`)}</button>` : ""}
-      ${tag ? `<span class="tag" data-k="gray">${esc(pick(folderOf(note.folder).name))}</span>` : ""}
-      <span class="when">${ago(note)}</span>
-    </span></li>`;
+function render() { renderProto(); renderTree(); renderMain(); }
+function renderProto() {
+  const on = (x) => `aria-pressed="${x}"`;
+  const dark = document.documentElement.dataset.scheme === "dark";
+  $("#proto").innerHTML = `<b>Notes v5</b>
+    <span class="lab">${t("数据", "Data")}</span><button type="button" data-p="sample" ${on(S.kind !== "empty")}>${t("示例", "Sample")}</button><button type="button" data-p="empty" ${on(S.kind === "empty")}>${t("空库", "Empty")}</button>
+    <span class="lab">${t("语言", "Language")}</span><button type="button" data-p="zh" ${on(S.lang === "zh")}>中文</button><button type="button" data-p="en" ${on(S.lang === "en")}>EN</button>
+    <span class="lab">${t("外观", "Look")}</span><button type="button" data-p="light" ${on(!dark)}>${t("浅", "Light")}</button><button type="button" data-p="dark" ${on(dark)}>${t("深", "Dark")}</button>
+    <span class="lab">${t("宽度", "Width")}</span><button type="button" data-p="wide" ${on(!S.narrow)}>${t("宽", "Wide")}</button><button type="button" data-p="narrow" ${on(!!S.narrow)}>${t("手机", "Phone")}</button>
+    <span class="what">${esc(S.kind === "empty" ? t("空库：每一页都由你建；你写多了，Zirma 才开它的页。", "Empty: you make every page; Zirma starts its pages only as you write.") : SAMPLE[S.lang].hint)}</span>`;
+  document.documentElement.lang = S.lang === "zh" ? "zh-CN" : "en";
+  document.title = t("Zirma：笔记", "Zirma: Notes");
+  $("#stage").toggleAttribute("data-narrow", !!S.narrow);
 }
-function listView() {
-  const notes = S.notes, quick = notes.filter((note) => note.folder === "quick");
-  const tabs = [["recent", t("最近", "Recent"), null], ["quick", pick(FOLDERS[0].name), quick.length], ["folders", t("文件夹", "Folders"), null]];
-  let content;
-  if (!notes.length) content = `<div class="empty"><b>${t("还没有笔记", "No notes yet")}</b>${t("在下面记一条，它会放进随手记", "Write one below; it lands in Quick Notes")}<p class="path" style="margin-top:14px">~/Documents/Alfred Notes</p></div>`;
-  else if (S.tab === "recent") content = `<ul class="rows">${notes.map((note) => row(note)).join("")}</ul>`;
-  else if (S.tab === "quick") content = quick.length ? `<ul class="rows">${quick.map((note) => row(note, { tag: false, suggest: true })).join("")}</ul>`
-    : `<p class="empty">${t("都归位了", "All filed")}</p>`;
-  else if (S.folder) {
-    const inside = notes.filter((note) => note.folder === S.folder);
-    content = `<p class="crumb"><button type="button" data-a="folder" data-id="">${t("文件夹", "Folders")}</button><span>/</span><b>${esc(pick(folderOf(S.folder).name))}</b></p>
-      ${inside.length ? `<ul class="rows">${inside.map((note) => row(note, { tag: false, suggest: true })).join("")}</ul>` : `<p class="empty">${t("空的", "Empty")}</p>`}`;
-  } else content = `<ul class="folders">${FOLDERS.map((folder) => `<li><button type="button" data-a="folder" data-id="${folder.id}">${ICON.folder}<span class="grow">${esc(pick(folder.name))}${folder.id === "quick" ? ` <span class="mark">· ${t("新笔记在这", "new notes land here")}</span>` : ""}</span><span class="n">${notes.filter((note) => note.folder === folder.id).length}</span>${ICON.next}</button></li>`).join("")}</ul>
-      <p class="lib"><span>${t("库", "Library")}</span><span class="path">~/Documents/Alfred Notes</span><span class="grow"></span><button type="button" class="btn" data-a="noop">${t("换", "Change")}</button></p>`;
-  return `<header class="page-head"><h1>${ICON.note}${t("笔记", "Notes")}</h1><p>${t(`${notes.length} 篇 · 随手记 ${quick.length}`, `${notes.length} notes · ${quick.length} in Quick Notes`)}</p></header>
-    <div class="tabs" role="group" aria-label="${t("怎么看", "View")}">${tabs.map(([id, name, count]) => `<button type="button" class="chip" data-a="tab" data-id="${id}" aria-pressed="${S.tab === id}">${esc(name)}${count ? `<span class="n">${count}</span>` : ""}</button>`).join("")}</div>
-    ${content}`;
+function renderTree() {
+  const node = (p, d) => {
+    const ch = kids(p.id), open = S.open.has(p.id), dot = p.blocks.some((b) => b.sug);
+    return `<div class="node" style="--d:${d}" role="button" tabindex="0" data-a="go" data-id="${p.id}" ${S.at === p.id ? 'aria-current="true"' : ""}>
+      <button type="button" class="tw${ch.length ? "" : " none"}" data-a="tw" data-id="${p.id}" ${open ? "data-open" : ""} ${ch.length ? "" : 'tabindex="-1"'} aria-label="${t("展开", "Expand")}">${ICON.tw}</button>
+      <span class="ic">${pIcon(p)}</span><span class="nm">${esc(nameOf(p))}</span>${dot ? `<span class="dot" title="${t("有建议", "Has a suggestion")}"></span>` : ""}
+      ${p.owner === "you" ? `<button type="button" class="add" data-a="new" data-parent="${p.id}" aria-label="${t("新子页面", "New sub-page")}">${ICON.plus}</button>` : ""}
+    </div>${open ? ch.map((c) => node(c, d + 1)).join("") : ""}`;
+  };
+  const top = (o) => all().filter((p) => p.owner === o && !p.parent);
+  const n = pending().length;
+  $("#sideName").textContent = t("笔记", "Notes");
+  $("#newBtn").innerHTML = ICON.plus;
+  $("#newBtn").setAttribute("aria-label", t("新页面", "New page"));
+  $("#newBtn").title = t("新页面", "New page");
+  $("#tree").innerHTML = `
+    <div class="node" role="button" tabindex="0" data-a="recent" ${S.at === "recent" ? 'aria-current="true"' : ""}><span class="tw none"></span><span class="ic">${ICON.recent}</span><span class="nm">${t("最近", "Recent")}</span>${n ? `<span class="n" title="${t("等你看的建议", "Suggestions waiting")}">${n}</span>` : ""}</div>
+    <div class="lab">${t("你的", "Yours")}</div>
+    ${top("you").map((p) => node(p, 0)).join("") || `<p class="zempty">${t("还没有页面", "No pages yet")}</p>`}
+    <div class="lab">${ICON.zirma}${t("Zirma 整理的", "Kept by Zirma")}</div>
+    ${top("z").map((p) => node(p, 0)).join("") || `<p class="zempty">${t("你写多了，Zirma 会把同一件事整理成一页。", "As you write, Zirma gathers each subject onto a page.")}</p>`}`;
 }
-function readView(note) {
-  const { props } = parts(body(note));
-  const source = props.source ? clipOf(props.source) : null;
-  const back = backlinks(note);
-  const loose = [...new Set(body(note).match(URLS) ?? [])].filter((url) => !clipOf(url));
-  return `<div class="bar">
-      <button type="button" class="back" data-a="back" aria-label="${t("回到笔记", "Back to notes")}">${ICON.back}<span>${t("笔记", "Notes")}</span></button><span class="grow"></span>
-      <select class="move" id="move" aria-label="${t("文件夹", "Folder")}">${FOLDERS.map((folder) => `<option value="${folder.id}" ${folder.id === note.folder ? "selected" : ""}>${esc(pick(folder.name))}</option>`).join("")}</select>
-      <button type="button" class="btn" data-a="edit">${ICON.edit}${t("编辑", "Edit")}</button>
-      <button type="button" class="ib" data-a="noop" aria-label="${t("用默认 App 打开", "Open in the default app")}" title="${t("用默认 App 打开", "Open in the default app")}">${ICON.out}</button>
-      <button type="button" class="ib" data-a="del" aria-label="${t("删掉", "Delete")}" title="${t("删掉", "Delete")}">${ICON.trash}</button>
-    </div>
-    <article class="note">
-      <h1>${esc(titleOf(note))}</h1>
-      <p class="props"><span>${note.elsewhere ? t("别处刚改过", "Just changed elsewhere") : t(`${ago(note)}改的`, `Changed ${ago(note)}`)}</span>
-        ${props.created ? `<span class="sep">·</span><span>${t(`建于 ${props.created}`, `Made ${props.created}`)}</span>` : ""}
-        ${source ? `<span class="sep">·</span><span>${t("来自", "From")}</span>${address(source.url)}` : ""}</p>
-      <div class="md">${renderBody(note)}</div>
-      ${back.length ? `<section class="under"><h2>${t(`被 ${back.length} 篇提到`, `Linked from ${back.length}`)}</h2><ul>${back.map((link) => `<li><a class="wl bt" data-a="wl" data-id="${link.note.id}">${esc(titleOf(link.note))}</a><span class="bs">${esc(link.line)}</span></li>`).join("")}</ul></section>` : ""}
-      ${loose.length ? `<section class="under"><h2>${t(`${loose.length} 个没收的网址`, `${loose.length} ${loose.length === 1 ? "address" : "addresses"} not in Links`)}</h2><ul>${loose.map((url) => `<li><span class="bs" style="color:var(--copy)">${esc(url.replace(/^https?:\/\/(www\.)?/, ""))}</span><button type="button" class="btn" data-a="save-url" data-url="${esc(url)}">${t("收下", "Save")}</button></li>`).join("")}</ul></section>` : ""}
-    </article>`;
-}
-function editView(note) {
-  return `<div class="bar"><span class="status" id="status"></span><span class="grow"></span><button type="button" class="btn solid" id="done" data-a="done">${t("完成", "Done")}</button></div>
-    <div class="conflict" id="conflict" data-k="warm" hidden><span>${t("这篇在别处改过，你的没有存上去", "This note changed elsewhere; yours was not saved over it")}</span><span class="grow"></span>
-      <button type="button" class="btn" data-a="theirs">${t("换成那一份", "Take theirs")}</button><button type="button" class="btn" data-a="fork">${t("把我的另存一篇", "Save mine as a copy")}</button></div>
-    <article class="note">
-      <input class="title-in" id="title" value="${esc(S.edit.title)}" aria-label="${t("名字", "Name")}" autocomplete="off" spellcheck="false">
-      <div class="ed" id="ed"><pre class="hl" id="hl" aria-hidden="true"></pre><div class="mirror" id="mirror" aria-hidden="true"></div>
-        <textarea id="src" spellcheck="false" aria-label="${t("正文", "Text")}"></textarea><div class="ac" id="ac" hidden></div></div>
-      <p class="edhint">${t("打", "Type")} <code>[[</code> ${t("连到另一篇", "to link another note")}</p>
-    </article>`;
-}
-
-function renderStrip() {
-  document.documentElement.lang = S.lang === "en" ? "en" : "zh-CN";
-  document.title = t("Alfred：笔记", "Alfred: Notes");
-  $("proto").innerHTML = `<b>Notes</b>`
-    + `<span class="what">${t("笔记是 Alfred Notes 文件夹里的 Markdown 文件。打开一篇，在底下说怎么改；或点「别处改了」看另一个 App 动了同一个文件会怎样。", "A note is a Markdown file in the Alfred Notes folder. Open one and say what to change below; or press “Changed elsewhere” to see another app touch the same file.")}</span>`
-    + `<span class="lab">${t("演", "Play")}</span><button type="button" data-a="ext">${t("别处改了", "Changed elsewhere")}</button><button type="button" data-a="fromlink">${t("从链接记一篇", "Note from a link")}</button>`
-    + `<button type="button" data-a="empty" aria-pressed="${S.empty}">${t("空库", "Empty")}</button>`
-    + `<a href="links.html">${t("链接", "Links")}</a><button type="button" data-a="reset">${t("重来", "Reset")}</button><button type="button" data-a="lang">${S.lang === "en" ? "中文" : "EN"}</button><button type="button" data-a="scheme" aria-label="${t("深浅", "Light or dark")}">◐</button>`;
-}
-function renderPage() {
-  const note = byId(S.open);
-  $("main").dataset.view = S.view;
-  $("page").innerHTML = S.view === "list" || !note ? listView() : S.view === "read" ? readView(note) : editView(note);
-  if (S.view === "edit") { $("src").value = S.edit.draft; paintEditor(); paintStatus(); paintConflict(); }
-  if (S.view === "read") typeOut();
-}
-function renderLine() {
-  const draft = $("draft"), text = draft.value, note = S.view === "read" ? byId(S.open) : null;
-  $("mic").hidden = Boolean(note);
-  $("mic").setAttribute("aria-pressed", String(S.listening));
-  $("mic").setAttribute("aria-label", t("说一条", "Say a note"));
-  $("go").disabled = !text.trim() || S.thinking;
-  $("go").setAttribute("aria-label", t("好", "Go"));
-  $("hang").innerHTML = note ? `<span class="hang"><span>${esc(S.revising ? t("这条提议", "This proposal") : titleOf(note))}</span></span>` : "";
-  draft.placeholder = S.listening ? t("在听…", "Listening…") : note ? (S.revising ? t("说怎么改这条提议", "Say how to change the proposal") : t("说怎么改这篇", "Say what to change")) : t("记一条，或者找一篇", "Write a note, or find one");
-  draft.setAttribute("aria-label", draft.placeholder);
-  $("toast").innerHTML = S.toast ? `<div class="toast"><span>${esc(S.toast.text)}</span>${S.toast.undo ? `<button type="button" data-a="undo">${t("撤销", "Undo")}</button>` : ""}</div>` : "";
-  let above = "", tries = "";
-  if (S.thinking) above = `<div class="above"><div class="will-row"><span class="pulse"></span><span class="u">${t("Alfred 在看这篇", "Alfred is reading the note")}</span></div></div>`;
-  else if (note) {
-    if (!text && !S.proposal) tries = [SCRIPT[note.id] ? t("把水温改成一个范围", "Make the water temperature a range") : t("补一句：周末再试一次", "Add: try again this weekend")];
-  } else if (text.trim()) {
-    const hits = search(text);
-    above = `<div class="above">${hits.map((found) => `<button type="button" class="hit" data-a="hit" data-id="${found.note.id}">
-        <span class="ht"><span>${marked(titleOf(found.note), found.terms)}</span><small>${esc(pick(folderOf(found.note.folder).name))}</small></span><span class="hs">${marked(found.line, found.terms)}</span></button>`).join("")}
-      <div class="will-row"><b>${t("记成一篇", "Make it a note")}</b><span class="u">${esc(pick(FOLDERS[0].name))}</span><kbd>↵</kbd></div></div>`;
-  } else if (!S.listening) tries = [t("周末试试 V60 的新参数", "Try the new V60 numbers this weekend"), t("找：分块", "Find: chunking"), t("找：水温", "Find: water temperature")];
-  $("above").innerHTML = above;
-  $("tries").innerHTML = tries ? `<div class="tries">${tries.map((text) => `<button type="button" data-a="fill" data-text="${esc(text.replace(/^(找：|Find: )/, ""))}">${esc(text)}</button>`).join("")}</div>` : "";
-}
-function renderPop() {
-  const note = byId(S.open);
-  $("pop").innerHTML = S.pop === "del" && note ? `<div class="pop" data-a="pop-close"><div class="pop-card" role="dialog" aria-modal="true" aria-labelledby="pop-h">
-      <h2 id="pop-h">${t(`删掉《${titleOf(note)}》`, `Delete “${titleOf(note)}”`)}</h2>
-      <p>${t("挪进库里的 .trash，还能拿回来", "It moves to .trash in the library and can be brought back")}</p>
-      <div class="acts"><button type="button" class="btn" data-a="pop-close">${t("不删", "Keep")}</button><button type="button" class="btn danger" data-a="del-yes">${t("删掉", "Delete")}</button></div></div></div>` : "";
-}
-function renderAll() { renderStrip(); renderPage(); renderLine(); renderPop(); }
-function say(text, undo) {
-  const toast = { text, undo };
-  S.toast = toast;
-  renderLine();
-  setTimeout(() => { if (S.toast === toast) { S.toast = null; renderLine(); } }, 5000);
-}
-// Alfred writes where you can see it: the new line types out. A click, or reduced motion, gives it at once.
-function typeOut() {
-  const el = document.querySelector("[data-typing]"), P = S.proposal;
-  if (!el || !P || P.typed) return;
-  P.typed = true;
-  if (still) return;
-  const full = el.innerHTML, text = el.textContent, step = Math.max(1, Math.round(text.length / 36));
-  let shown = 0;
-  el.textContent = "";
-  const timer = setInterval(() => {
-    shown += step;
-    if (shown >= text.length || !el.isConnected) { clearInterval(timer); if (el.isConnected) el.innerHTML = full; }
-    else el.textContent = text.slice(0, shown);
-  }, 32);
-  el.addEventListener("click", () => { clearInterval(timer); el.innerHTML = full; }, { once: true });
-}
-
-/* ── Writing ── */
-let saveTimer = 0;
-function enterEdit(id) {
-  const note = byId(id);
-  Object.assign(S, { view: "edit", open: id, ac: null, edit: { base: body(note), draft: body(note), title: titleOf(note), status: "saved", conflict: false } });
-  renderAll();
-  $("scroll").scrollTop = 0;
-  const area = $("src");
-  area.focus();
-  area.setSelectionRange(area.value.length, area.value.length);
-}
-function paintEditor() { $("hl").innerHTML = highlight($("src").value); }
-function paintStatus() {
-  const E = S.edit;
-  $("status").textContent = E.conflict ? t("没存", "Not saved") : E.status === "saving" ? t("在存…", "Saving…") : t("已存", "Saved");
-  $("done").disabled = E.conflict;
-}
-function paintConflict() { $("conflict").hidden = !S.edit.conflict; }
-function onEdit() {
-  const E = S.edit;
-  E.draft = $("src").value;
-  E.status = "saving";
-  paintEditor(); paintStatus(); paintAc();
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveDraft, 900);
-}
-// Saving carries what the file was when it was opened. If the file is no longer that, nothing is written over it.
-function saveDraft() {
-  const E = S.edit, note = byId(S.open);
-  if (!E || !note || E.conflict) return;
-  clearTimeout(saveTimer);
-  if (body(note) !== E.base) { E.conflict = true; paintStatus(); paintConflict(); return; }
-  if (E.draft !== E.base) { setBody(note, E.draft); E.base = E.draft; note.elsewhere = false; }
-  E.status = "saved";
-  paintStatus();
-}
-function finishEdit() {
-  const E = S.edit, note = byId(S.open);
-  if (!E || E.conflict) return;
-  saveDraft();
-  const old = titleOf(note), name = $("title").value.trim();
-  let moved = 0;
-  if (name && name !== old && !byTitle(name)) {
-    // Renaming here also rewrites the double links that pointed at the old name.
-    const pattern = new RegExp(`\\[\\[${old.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\|[^\\]\\n]*)?\\]\\]`, "g");
-    for (const other of S.notes) {
-      const before = other.text[L()], after = before.replace(pattern, (m, alias) => { moved++; return `[[${name}${alias ?? ""}]]`; });
-      if (after !== before) other.text[L()] = after;
-    }
-    note.title[L()] = name;
-    touch(note);
+function renderCrumbs() {
+  const pg = cur(), out = [];
+  if (!pg) out.push(`<button type="button" data-a="recent"><span class="ic">${ICON.recent}</span><span>${t("最近", "Recent")}</span></button>`);
+  else {
+    const chain = [];
+    for (let q = pg; q; q = S.pages[q.parent]) chain.unshift(q);
+    if (pg.owner === "z") out.push(`<button type="button" data-a="recent"><span class="ic">${ICON.zirma}</span><span>${t("Zirma 整理的", "Kept by Zirma")}</span></button>`);
+    chain.forEach((q) => out.push(`<button type="button" data-a="go" data-id="${q.id}"><span class="ic">${pIcon(q)}</span><span>${esc(nameOf(q))}</span></button>`));
   }
-  Object.assign(S, { view: "read", edit: null, ac: null });
-  renderAll();
-  if (name && name !== old && titleOf(note) === name) say(moved ? t(`改了名 · ${moved} 处双链跟着改了`, `Renamed · ${moved} ${moved === 1 ? "link" : "links"} updated`) : t("改了名", "Renamed"));
+  $("#crumbs").innerHTML = out.join(`<span class="sl">/</span>`);
 }
-// The [[ menu sits at the caret: a hidden copy of the text up to the caret says where that is.
-function paintAc() {
-  const area = $("src"), menu = $("ac");
-  if (!area) return;
-  const head = area.value.slice(0, area.selectionStart);
-  const open = area.selectionStart === area.selectionEnd ? /\[\[([^\[\]\n|]*)$/.exec(head) : null;
-  if (!open) { S.ac = null; menu.hidden = true; return; }
-  const items = S.notes.filter((note) => note.id !== S.open && titleOf(note).toLowerCase().includes(open[1].toLowerCase())).slice(0, 5);
-  S.ac = { from: head.length - open[1].length, q: open[1], items, index: Math.min(S.ac?.index ?? 0, Math.max(items.length - 1, 0)) };
-  const mirror = $("mirror");
-  mirror.innerHTML = `${esc(head)}<span>​</span>`;
-  const at = mirror.lastElementChild;
-  menu.style.top = `${at.offsetTop + at.offsetHeight + 4}px`;
-  menu.style.left = `${Math.max(0, Math.min(at.offsetLeft, $("ed").clientWidth - 240))}px`;
-  menu.innerHTML = items.length
-    ? items.map((note, i) => `<button type="button" data-a="ac" data-i="${i}" aria-selected="${i === S.ac.index}"><span class="at">${esc(titleOf(note))}</span><small>${esc(pick(folderOf(note.folder).name))}</small></button>`).join("")
-    : `<div class="none">${t("没有这篇 · 照样能连", "No such note · link it anyway")}</div>`;
-  menu.hidden = false;
+function renderMain() {
+  if (S.at !== "recent" && !cur()) S.at = "recent";
+  const pg = cur();
+  renderCrumbs();
+  $("#drawerBtn").innerHTML = ICON.side; $("#drawerBtn").setAttribute("aria-label", t("页面", "Pages"));
+  $("#histBtn").innerHTML = ICON.hist; $("#histBtn").setAttribute("aria-label", t("历史", "History")); $("#histBtn").title = t("历史", "History");
+  $("#moreBtn").innerHTML = ICON.more; $("#moreBtn").setAttribute("aria-label", t("更多", "More"));
+  $("#histBtn").hidden = $("#moreBtn").hidden = !pg;
+  S.rendering = true;
+  $("#doc").innerHTML = pg ? pageView(pg) : recentView();
+  S.rendering = false;
+  $("#askIcon").innerHTML = ICON.search;
+  $("#ask").placeholder = t("搜索，或问 Zirma", "Search, or ask Zirma");
+  $("#app").toggleAttribute("data-drawer", S.drawer);
+  renderHist();
 }
-function pickAc(index) {
-  const area = $("src"), { from, q, items } = S.ac, name = titleOf(items[index]), text = area.value, end = from + q.length;
-  area.value = text.slice(0, from) + name + (text.slice(end).startsWith("]]") ? "" : "]]") + text.slice(end);
-  const caret = from + name.length + 2;
-  area.focus();
-  area.setSelectionRange(caret, caret);
-  onEdit();
+const pageRow = (p, extra = "") => `<button type="button" class="pr" data-a="go" data-id="${p.id}">${extra}<span class="ic">${pIcon(p)}</span><span class="nm">${esc(nameOf(p))}</span>${p.owner === "z" ? `<span class="tag">Zirma</span>` : ""}</button>`;
+function recentView() {
+  const rows = all().sort((a, b) => b.t - a.t), pend = pending();
+  return `<h1 class="ttl">${t("最近", "Recent")}</h1>
+    ${pend.length ? `<button type="button" class="pend" data-a="go" data-id="${pend[0][0].id}" data-flash="${pend[0][1].id}">${ICON.zirma}<span>${t(`Zirma 有 ${pend.length} 条建议等你看`, `Zirma has ${pend.length} suggestion${pend.length > 1 ? "s" : ""} for you`)}</span>${ICON.arrow}</button>` : ""}
+    ${rows.length ? `<div class="rec">${rows.map((p) => `<button type="button" class="rr" data-a="go" data-id="${p.id}"><span class="ic">${pIcon(p)}</span><span class="rt"><b>${esc(nameOf(p))}</b><span>${esc(snippet(p)) || "&nbsp;"}</span></span><span class="rm">${p.owner === "z" ? `<span class="tag">Zirma</span>` : ""}<span>${when(p.t)}</span></span></button>`).join("")}</div>`
+      : `<div class="empty"><p>${t("还没有页面。", "No pages yet.")}</p><button type="button" class="btn pri" data-a="new">${ICON.plus}${t("新页面", "New page")}</button></div>`}`;
+}
+function pageView(pg) {
+  const z = pg.owner === "z";
+  const icon = pg.icon ? `<button type="button" class="picon" data-a="icon" ${z ? "disabled" : ""} aria-label="${t("换图标", "Change icon")}">${PAGE_ICON[pg.icon] ?? ICON.doc}</button>`
+    : z ? "" : `<button type="button" class="addicon" data-a="icon">${ICON.plus}${t("加图标", "Add icon")}</button>`;
+  let html = `<div class="head">${icon}<h1 class="ttl" id="ttl" ${z ? "" : 'contenteditable="true"'} data-ph="${t("无标题", "Untitled")}" spellcheck="false">${esc(pg.title)}</h1>`;
+  if (z) {
+    const n = srcPages(pg).length;
+    html += `<div class="meta">${ICON.zirma}<span>${t(`Zirma 整理 · 来自 ${n} 页 · ${when(pg.t)} 更新`, `Kept by Zirma · from ${n} page${n === 1 ? "" : "s"} · updated ${when(pg.t)}`)}</span><button type="button" class="btn" data-a="own" title="${t("变成你的页，Zirma 不再改它", "It becomes your page; Zirma stops changing it")}">${t("收下", "Make it mine")}</button></div>`;
+  }
+  html += `</div>`;
+  if (z) {
+    const order = srcPages(pg);
+    html += `<ul class="zls">${pg.blocks.map((b) => zLine(b, order, true)).join("")}</ul>`;
+    if (order.length) html += `<div class="sec"><h3>${t("出处", "Sources")}</h3>${order.map((id, i) => pageRow(S.pages[id], `<span class="num">${i + 1}</span>`)).join("")}</div>`;
+  } else {
+    html += pg.blocks.map(blockView).join("") + `<div class="end" data-a="end"></div>`;
+    const ch = kids(pg.id);
+    if (ch.length) html += `<div class="sec"><h3>${t("子页面", "Sub-pages")}</h3>${ch.map((c) => pageRow(c)).join("")}</div>`;
+    const ids = new Set(pg.blocks.map((b) => b.id));
+    const back = all().filter((q) => q.id !== pg.id && (q.owner === "z" ? q.blocks.some((b) => b.src.some((r) => ids.has(r))) : pg.title && q.blocks.some((b) => linksIn(b.text).some((n) => n.toLowerCase() === pg.title.toLowerCase()))));
+    if (back.length) html += `<div class="sec"><h3>${t("提到这页的", "Mentioned in")}</h3>${back.map((q) => pageRow(q)).join("")}</div>`;
+  }
+  return html;
+}
+function srcBtns(src, order) {
+  return src.map((r) => { const [p] = blockAt(r); return p ? `<button type="button" class="s" data-a="src" data-b="${r}" title="${esc(nameOf(p))}">${order.indexOf(p.id) + 1}</button>` : ""; }).join("");
+}
+function zLine(b, order, removable) {
+  return `<li class="zl" data-b="${b.id}"><span class="bul"></span><span class="tx">${inline(b.text)}${srcBtns(b.src, order)}</span>${removable ? `<button type="button" class="x" data-a="xline" data-b="${b.id}" aria-label="${t("不对，删掉这行", "Wrong: remove this line")}" title="${t("不对，删掉这行", "Wrong: remove this line")}">${ICON.x}</button>` : ""}</li>`;
+}
+function diffMid(a, b) {
+  let p = 0; while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  let s = 0; while (s < a.length - p && s < b.length - p && a[a.length - 1 - s] === b[b.length - 1 - s]) s++;
+  // Mark whole words and numbers, not single characters ("92" → "94", not "9 2→4").
+  const w = /[\p{L}\p{N}]/u, cjk = /\p{Script=Han}/u;
+  while (p > 0 && w.test(a[p - 1]) && !cjk.test(a[p - 1])) p--;
+  while (s > 0 && w.test(a[a.length - s]) && !cjk.test(a[a.length - s])) s--;
+  return [a.slice(0, p), a.slice(p, a.length - s), b.slice(p, b.length - s), a.slice(a.length - s)];
+}
+function blockView(b) {
+  const pre = b.k === "li" ? `<span class="bul"></span>` : b.k === "todo" ? `<button type="button" class="ck" data-a="todo" data-b="${b.id}" role="checkbox" aria-checked="${!!b.done}" aria-label="${t("完成", "Done")}">${b.done ? ICON.check : ""}</button>` : "";
+  const cls = `blk ${b.k}${b.done ? " done" : ""}${b.sug ? " sug" : ""}`;
+  if (b.sug) {
+    const [a, d, i, z] = diffMid(b.text, b.sug.to);
+    const order = [...new Set(b.sug.src.map((r) => blockAt(r)[0]?.id).filter(Boolean))];
+    return `<div class="${cls}" data-b="${b.id}"><div class="row">${pre}<div class="ed">${esc(a)}<del>${esc(d)}</del><ins>${esc(i)}</ins>${esc(z)}</div></div>
+      <div class="why">${ICON.zirma}<span class="go">${esc(b.sug.why)}${srcBtns(b.sug.src, order)}</span><span class="acts"><button type="button" class="btn" data-a="sugno" data-b="${b.id}">${t("不要", "No")}</button><button type="button" class="btn pri" data-a="sugok" data-b="${b.id}">${t("好", "Yes")}</button></span></div></div>`;
+  }
+  return `<div class="${cls}" data-b="${b.id}"><div class="row">${pre}<div class="ed" contenteditable="true" data-b="${b.id}" data-ph="${b.k === "h" ? t("标题", "Heading") : t("写点什么；[[ 链接一页", "Write; [[ links a page")}" spellcheck="false">${inline(b.text)}</div></div></div>`;
+}
+function renderHist() {
+  const el = $("#hist"), pg = cur();
+  if (!S.histOpen || !pg) { el.hidden = true; return; }
+  el.hidden = false;
+  const es = S.hist.filter((e) => e.page === pg.id);
+  el.innerHTML = `<div class="hh"><b>${t(`历史：${nameOf(pg)}`, `History: ${nameOf(pg)}`)}</b><button type="button" class="ib" data-a="hist" aria-label="${t("关闭", "Close")}">${ICON.x}</button></div>
+    <div class="hs">${es.length ? es.map((e) => `<div class="he${e.undone ? " undone" : ""}">
+      <div class="hw"><span class="who">${e.who === "z" ? `${ICON.zirma}Zirma` : t("你", "You")}</span><span class="tm">${when(e.at)}${e.undone ? ` · ${t("已撤回", "undone")}` : ""}</span></div>
+      <p class="hsay">${esc(e.say)}</p>
+      ${e.lines.length ? `<div class="lines">${e.lines.map((l) => `<div class="ln ${l.k}">${esc(plain(l.text))}</div>`).join("")}</div>` : ""}
+      ${e.ops.length ? `<button type="button" class="btn" data-a="undo" data-e="${e.id}">${e.undone ? t("恢复", "Redo") : t("撤回", "Undo")}</button>` : ""}
+    </div>`).join("") : `<p class="none">${t("还没有改动。", "No changes yet.")}</p>`}</div>`;
 }
 
-/* ── Acting ── */
-function openNote(id) {
-  Object.assign(S, { view: "read", open: id, revising: false });
-  if (S.proposal && S.proposal.note !== id) S.proposal = null;
-  $("draft").value = "";
-  renderAll();
-  $("scroll").scrollTop = 0;
-}
-function newNote(title, text, folder = "quick", more = {}) {
-  const note = { id: `x${Date.now()}`, folder, days: 0, just: true, title: [title, title], text: [text, text], ...more };
-  S.notes.unshift(note);
-  S.empty = false;
-  return note;
-}
-function capture(text) {
-  const clean = text.trim();
-  const cut = /^[^。！？.!?\n]{1,24}/.exec(clean)?.[0].trim() ?? "";
-  const name = cut && !byTitle(cut) ? cut : `${TODAY} ${new Date().toTimeString().slice(0, 5).replace(":", "-")}`;
-  const note = newNote(name, md("---", `created: ${TODAY}`, "---", clean));
-  $("draft").value = "";
-  if (S.tab === "folders") S.tab = "quick";
-  flash(note.id);
-  renderAll();
-  $("scroll").scrollTo({ top: 0, behavior: still ? "auto" : "smooth" });
-  say(t("记进了随手记", "Saved to Quick Notes"), () => { S.notes = S.notes.filter((other) => other !== note); });
-}
-async function propose(text) {
-  const note = byId(S.open), script = SCRIPT[note.id];
-  const again = S.revising && S.proposal;
-  S.thinking = true;
-  $("draft").value = "";
-  renderLine();
-  await sleep(still ? 0 : 900);
-  S.thinking = false;
-  const said = text.replace(/^(补一句|加一句|Add)[:：]\s*/i, "").trim();
-  if (script && body(note).split("\n").includes(script.find[L()])) S.proposal = { note: note.id, find: script.find[L()], to: (again ? script.again : script.to)[L()], typed: false, stale: false };
-  else S.proposal = { note: note.id, find: null, to: said, typed: false, stale: false };
-  S.revising = false;
-  renderAll();
-  document.querySelector(".prop")?.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
-}
-function accept() {
-  const P = S.proposal, note = byId(P.note), before = body(note), lines = before.split("\n");
-  if (P.find !== null) lines[lines.indexOf(P.find)] = P.to;
-  setBody(note, P.find !== null ? lines.join("\n") : `${before.replace(/\n+$/, "")}\n\n${P.to}`);
-  Object.assign(S, { proposal: null, revising: false, freshLine: P.to });
-  renderAll();
-  say(P.find !== null ? t("Alfred 改了一处", "Alfred changed one line") : t("Alfred 加了一句", "Alfred added a line"), () => { note.text[L()] = before; });
-  setTimeout(() => { S.freshLine = null; if (S.view === "read") renderPage(); }, 2600);
-}
-// Another app writes the same file. Reading: the note just changes. Writing: your text is not saved over it.
-function elsewhere() {
-  const note = byId(S.open);
-  if (S.view === "list" || !note) {
-    const made = newNote(t("重排", "Reranking"), t("重排是最便宜的提升，放在最后做。", "Reranking is the cheapest gain; do it last."), "tech");
-    S.tab = "recent";
-    flash(made.id);
-    renderAll();
-    return say(t("别处新建了一篇", "A note was made elsewhere"));
+/* ── Doing things ── */
+function go(id, flash) {
+  S.at = id; S.drawer = false; S.answer = null;
+  $("#askout").hidden = true;
+  for (let q = S.pages[id]; q?.parent; q = S.pages[q.parent]) S.open.add(q.parent);
+  render();
+  $("#scroll").scrollTop = 0;
+  if (flash) {
+    const el = document.querySelector(`.blk[data-b="${flash}"], .zl[data-b="${flash}"]`);
+    if (el) { el.scrollIntoView({ block: "center" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
   }
-  note.text[L()] = `${body(note).replace(/\n+$/, "")}\n\n${t("- （在别处加的一行）", "- (a line added elsewhere)")}`;
-  note.elsewhere = true;
-  if (S.proposal?.note === note.id) S.proposal.stale = true;
-  if (S.view === "edit") {
-    const E = S.edit;
-    if (E.draft === E.base) { E.base = E.draft = body(note); $("src").value = E.draft; paintEditor(); }
-    else { clearTimeout(saveTimer); E.conflict = true; paintStatus(); paintConflict(); }
-    return;
-  }
-  renderPage();
 }
-function fromLink() {
-  const clip = { url: "https://www.youtube.com/watch?v=ragfromscratch", site: "YouTube", mark: "▶", k: "now", title: ["从零搭一个 RAG", "RAG from scratch"] };
-  if (!clipOf(clip.url)) S.clips.push(clip);
-  const name = pick(clip.title);
-  const note = byTitle(name) ?? newNote(name, md("---", `created: ${TODAY}`, `source: ${clip.url}`, "---", t("想对照着改 Alfred 的搜索。", "To compare with Alfred's search.")), "quick", { suggest: "tech" });
-  S.tab = "quick";
-  openNote(note.id);
+function newPage(parent = null, title = "") {
+  const id = nid("p");
+  const p = { id, title, icon: null, owner: "you", parent, t: tick(), blocks: [{ id: nid(`${id}b`), k: "p", text: "" }] };
+  S.pages[id] = p;
+  if (parent) S.open.add(parent);
+  log(id, "you", t("新建了这一页", "Created this page"), [{ k: "page", page: id, before: [{ id, data: null }], after: [{ id, data: clone(p) }] }]);
+  go(id);
+  focusEl(title ? document.querySelector(`.ed[data-b="${p.blocks[0].id}"]`) : $("#ttl"));
 }
-async function listen() {
-  if (S.listening) return;
-  const draft = $("draft"), text = t("面试前把系统设计的套路过一遍", "Go over the system design steps before the interview");
-  S.listening = true;
-  draft.value = "";
-  renderLine();
-  await sleep(still ? 0 : 900);
-  for (let i = 1; i <= text.length && !still; i += 2) { draft.value = text.slice(0, i); await sleep(40); }
-  draft.value = text;
-  S.listening = false;
-  renderLine();
-  draft.focus();
+function dropPage(id) {
+  const ids = [];
+  const walk = (x) => { ids.push(x); kids(x).forEach((c) => walk(c.id)); };
+  walk(id);
+  const p = S.pages[id], before = ids.map((x) => ({ id: x, data: clone(S.pages[x]) }));
+  ids.forEach((x) => delete S.pages[x]);
+  if (p.owner === "z") S.notMake.push(p.title.toLowerCase());
+  const e = log(id, "you", t("删掉了这一页", "Deleted this page"), [{ k: "page", page: id, before, after: ids.map((x) => ({ id: x, data: null })) }]);
+  S.at = "recent"; S.histOpen = false;
+  render();
+  toast(t(`删掉了《${nameOf(p)}》，在废纸篓里`, `Deleted “${nameOf(p)}”; it’s in the trash`), [[t("撤回", "Undo"), () => flip(e)]]);
 }
-
-document.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-a]");
+function makeMine(z) {
+  const before = clone(z);
+  const mine = { id: z.id, title: z.title, icon: z.icon, owner: "you", parent: null, t: tick(), blocks: z.blocks.map((b) => ({ id: b.id, k: "li", text: b.text + srcTail(b) })) };
+  S.pages[z.id] = mine;
+  S.notMake.push(z.title.toLowerCase());
+  const e = log(z.id, "you", t("收下了这一页：它现在是你的，Zirma 不再改它", "Made it yours: Zirma no longer changes it"), [{ k: "page", page: z.id, before: [{ id: z.id, data: before }], after: [{ id: z.id, data: clone(mine) }] }]);
+  render();
+  toast(t("收下了，现在是你的页", "It’s your page now"), [[t("撤回", "Undo"), () => flip(e)]]);
+}
+function setText(pg, b, text) {
+  if (text === b.text) return;
+  const from = b.text;
+  b.text = text; pg.t = tick();
+  log(pg.id, "you", t("改了一处", "Edited a line"), [{ k: "set", page: pg.id, b: b.id, from, to: text }], [from && { k: "del", text: from }, text && { k: "add", text }].filter(Boolean));
+  renderTree();
+  zWatch(pg, b);
+}
+function setTitle(pg, text) {
+  text = text.trim();
+  if (text === pg.title) return;
+  const old = pg.title, other = text && byTitle(text);
+  if (other && other !== pg) { toast(t("已经有一页叫这个名字", "A page already has that name")); $("#ttl").textContent = old; return; }
+  pg.title = text; pg.t = tick();
+  // A title is the file name: links to the old name follow it.
+  if (old) for (const q of yours()) for (const b of q.blocks) b.text = b.text.replace(LINK, (m, a, al) => (a.trim().toLowerCase() === old.toLowerCase() ? `[[${text}${al ? `|${al}` : ""}]]` : m));
+  log(pg.id, "you", old ? t(`改名：${old} → ${nameOf(pg)}`, `Renamed: ${old} → ${nameOf(pg)}`) : t(`起名：${nameOf(pg)}`, `Named it: ${nameOf(pg)}`), []);
+  renderTree();
+  renderCrumbs();
+}
+function followLink(title) {
+  const p = byTitle(title);
+  if (p) go(p.id); else newPage(null, title);
+}
+function focusEl(el, atStart) {
   if (!el) return;
-  const d = el.dataset, note = byId(S.open);
-  switch (d.a) {
-    case "noop": event.preventDefault(); return;
-    case "lang": if (S.view === "edit") finishEdit(); S.lang = S.lang === "en" ? "zh" : "en"; S.proposal = null; return renderAll();
-    case "scheme": { const root = document.documentElement; root.dataset.scheme = root.dataset.scheme === "dark" ? "light" : "dark"; return; }
-    case "reset": seed(); return renderAll();
-    case "empty": { const was = S.empty; seed(); if (!was) { S.notes = []; S.empty = true; } return renderAll(); }
-    case "ext": return elsewhere();
-    case "fromlink": if (S.view === "edit") finishEdit(); return fromLink();
-    case "tab": S.tab = d.id; S.folder = ""; return renderPage();
-    case "folder": S.folder = d.id; return renderPage();
-    case "note": case "hit": case "wl": return openNote(d.id);
-    case "new": { const made = newNote(d.title, ""); return enterEdit(made.id); }
-    case "suggest": {
-      const moving = byId(d.id), from = moving.folder;
-      moving.folder = moving.suggest;
-      renderPage();
-      return say(t(`挪到了 ${pick(folderOf(moving.folder).name)}`, `Moved to ${pick(folderOf(moving.folder).name)}`), () => { moving.folder = from; });
+  el.focus();
+  const r = document.createRange(); r.selectNodeContents(el); r.collapse(!!atStart);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+}
+function caretOffset(el) {
+  const s = getSelection(); if (!s.rangeCount) return el.textContent.length;
+  const r = s.getRangeAt(0), pre = document.createRange();
+  pre.selectNodeContents(el); pre.setEnd(r.endContainer, r.endOffset);
+  return pre.toString().length;
+}
+function redrawDoc(focusId, atStart) {
+  S.rendering = true;
+  $("#doc").innerHTML = pageView(cur());
+  S.rendering = false;
+  if (focusId) focusEl(document.querySelector(`.ed[data-b="${focusId}"]`), atStart);
+}
+
+/* ── Ask: find pages as you type; Enter asks Zirma, and the answer cites your lines ── */
+function terms(q) {
+  const out = new Set();
+  for (const w of q.toLowerCase().split(/[\s,，。.?？!！:：]+/)) {
+    if (!w) continue;
+    if (/[一-鿿]/.test(w)) {
+      for (const part of w.replace(/什么|怎么|多少|哪里|哪些|是不是|我的|我|的|了|吗|呢|是|在|有|几/g, " ").split(/\s+/)) {
+        if (part.length <= 2) { if (part) out.add(part); } else for (let i = 0; i < part.length - 1; i++) out.add(part.slice(i, i + 2));
+      }
+    } else if (w.length > 2 && !/^(the|and|what|how|was|did|does|for|with|about|my)$/.test(w)) out.add(w.replace(/s$/, ""));
+  }
+  return [...out];
+}
+function askLive() {
+  const q = $("#ask").value.trim(), out = $("#askout");
+  if (!q) { out.hidden = !S.answer; if (S.answer) out.innerHTML = S.answer; return; }
+  const ps = all().filter((p) => nameOf(p).toLowerCase().includes(q.toLowerCase())).slice(0, 5);
+  out.hidden = false;
+  out.innerHTML = ps.map((p) => pageRow(p)).join("") + `<div class="ah">${ICON.zirma}${t("按 Enter 问 Zirma", "Press Enter to ask Zirma")}</div>`;
+}
+function answer(q) {
+  const ts = terms(q), hits = [];
+  for (const p of yours()) for (const b of p.blocks) {
+    const low = plain(b.text).toLowerCase(), sc = ts.filter((w) => low.includes(w)).length;
+    if (sc && b.text.trim() && b.k !== "h") hits.push([sc, p, b]);
+  }
+  hits.sort((a, b) => b[0] - a[0]);
+  const top = hits.slice(0, 4), order = [...new Set(top.map((h) => h[1].id))];
+  S.answer = `<div class="ans"><div class="aq"><b>${esc(q)}</b><button type="button" class="ib" data-a="ansclose" aria-label="${t("关闭", "Close")}">${ICON.x}</button></div>
+    ${top.length ? `<p class="al">${t(`你的笔记里有 ${top.length} 处：`, `${top.length} place${top.length > 1 ? "s" : ""} in your notes:`)}</p>
+      <ul class="zls">${top.map(([, , b]) => zLine({ id: b.id, text: b.text, src: [b.id] }, order, false)).join("")}</ul>
+      <div class="sec"><h3>${t("出处", "Sources")}</h3>${order.map((id, i) => pageRow(S.pages[id], `<span class="num">${i + 1}</span>`)).join("")}</div>`
+    : `<p class="al">${t("你的笔记里还没写过这个。", "Your notes don’t mention this yet.")}</p>`}</div>`;
+  $("#ask").value = ""; $("#toast").hidden = true;
+  $("#askout").innerHTML = S.answer; $("#askout").hidden = false;
+}
+
+/* ── Menus, sheet, toast ── */
+function openPop(anchor, html) {
+  const pop = $("#pop");
+  pop.innerHTML = html; pop.hidden = false;
+  const r = anchor.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+  pop.style.left = `${Math.max(8, Math.min(r.left, innerWidth - w - 8))}px`;
+  pop.style.top = `${r.bottom + h + 6 > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6}px`;
+}
+const closePop = () => { $("#pop").hidden = true; };
+function toMd(p) {
+  if (p.owner === "z") {
+    return ["---", "zirma: maintained", `icon: ${p.icon}`, `updated: ${stamp(p.t)}`, `from: [${srcPages(p).map((id) => `"[[${S.pages[id].title}]]"`).join(", ")}]`, "---", "",
+      ...p.blocks.map((b) => `- ${b.text}${srcTail(b)}`)].join("\n");
+  }
+  const out = p.icon ? ["---", `icon: ${p.icon}`, "---", ""] : [];
+  p.blocks.forEach((b, i) => {
+    const prev = p.blocks[i - 1], list = (x) => x && (x.k === "li" || x.k === "todo");
+    if (i && !(list(prev) && list(b))) out.push("");
+    out.push(b.k === "h" ? `## ${b.text}` : b.k === "li" ? `- ${b.text}` : b.k === "todo" ? `- [${b.done ? "x" : " "}] ${b.text}` : b.text);
+  });
+  return out.join("\n");
+}
+function showMd(p) {
+  const m = $("#modal");
+  m.innerHTML = `<div class="sheet" role="dialog" aria-label="Markdown"><div class="hh"><code>${esc(pathOf(p))}</code><button type="button" class="ib" data-a="mdclose" aria-label="${t("关闭", "Close")}">${ICON.x}</button></div><pre>${esc(toMd(p))}</pre></div>`;
+  m.hidden = false;
+}
+let toastTimer, toastActs = [];
+function toast(msg, acts = []) {
+  const el = $("#toast");
+  toastActs = acts;
+  el.innerHTML = `<span>${esc(msg)}</span>${acts.map(([label], i) => `<button type="button" data-a="toast" data-i="${i}">${esc(label)}</button>`).join("")}`;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.hidden = true), 6000);
+}
+
+/* ── Events ── */
+document.addEventListener("click", (e) => {
+  const p = e.target.closest("[data-p]");
+  if (p) {
+    const v = p.dataset.p;
+    if (v === "sample" || v === "empty") seed(v);
+    else if (v === "zh" || v === "en") { S.lang = v; seed(S.kind); }
+    else if (v === "light" || v === "dark") document.documentElement.dataset.scheme = v;
+    else S.narrow = v === "narrow";
+    $("#askout").hidden = true; $("#toast").hidden = true;
+    return render();
+  }
+  const el = e.target.closest("[data-a]");
+  if (!e.target.closest("#pop") && !(el && ["more", "icon"].includes(el.dataset.a))) closePop();
+  if (e.target === $("#modal")) { $("#modal").hidden = true; return; }
+  if (!el) { if (!e.target.closest(".ask") && !S.answer) $("#askout").hidden = true; return; }
+  const a = el.dataset.a, pg = cur();
+  switch (a) {
+    case "go": return go(el.dataset.id, el.dataset.flash);
+    case "recent": return go("recent");
+    case "tw": e.stopPropagation(); S.open.has(el.dataset.id) ? S.open.delete(el.dataset.id) : S.open.add(el.dataset.id); return renderTree();
+    case "new": e.stopPropagation(); closePop(); return newPage(el.dataset.parent || null);
+    case "drawer": S.drawer = !S.drawer; return $("#app").toggleAttribute("data-drawer", S.drawer);
+    case "hist": S.histOpen = !S.histOpen; return renderHist();
+    case "undo": { const en = S.hist.find((x) => x.id === el.dataset.e); return en && flip(en); }
+    case "link": return followLink(el.dataset.t);
+    case "src": { const [sp] = blockAt(el.dataset.b); return sp && go(sp.id, el.dataset.b); }
+    case "todo": { const [tp, b] = blockAt(el.dataset.b); b.done = !b.done; tp.t = tick(); return redrawDoc(); }
+    case "end": {
+      const last = pg.blocks[pg.blocks.length - 1];
+      if (last && !last.text && !last.sug) return focusEl(document.querySelector(`.ed[data-b="${last.id}"]`));
+      const nb = { id: nid(`${pg.id}b`), k: "p", text: "" };
+      pg.blocks.push(nb);
+      return redrawDoc(nb.id);
     }
-    case "back": Object.assign(S, { view: "list", open: null, proposal: null, revising: false }); $("draft").value = ""; return renderAll();
-    case "edit": return enterEdit(S.open);
-    case "done": return finishEdit();
-    case "del": S.pop = "del"; return renderPop();
-    case "pop-close": if (event.target === el) { S.pop = null; renderPop(); } return;
-    case "del-yes": {
-      const at = S.notes.indexOf(note);
-      S.notes.splice(at, 1);
-      Object.assign(S, { pop: null, view: "list", open: null, proposal: null });
-      renderAll();
-      return say(t("挪进了 .trash", "Moved to .trash"), () => { S.notes.splice(at, 0, note); });
+    case "sugok": {
+      const [sp, b] = blockAt(el.dataset.b), from = b.text, to = b.sug.to;
+      b.text = to; delete b.sug; sp.t = tick();
+      const en = log(sp.id, "you", t("接受了 Zirma 的建议", "Accepted Zirma’s suggestion"), [{ k: "set", page: sp.id, b: b.id, from, to }], [{ k: "del", text: from }, { k: "add", text: to }]);
+      render();
+      return toast(t("改好了", "Changed"), [[t("撤回", "Undo"), () => flip(en)]]);
     }
-    case "task": {
-      const lines = body(note).split("\n"), i = Number(d.line);
-      lines[i] = lines[i].replace(/^- \[( |x)\]/, (m, mark) => (mark === "x" ? "- [ ]" : "- [x]"));
-      setBody(note, lines.join("\n"));
-      return renderPage();
+    case "sugno": { const [, b] = blockAt(el.dataset.b); delete b.sug; render(); return toast(t("好，不改", "OK, left as it was")); }
+    case "xline": {
+      const i = pg.blocks.findIndex((x) => x.id === el.dataset.b), blk = pg.blocks[i];
+      pg.blocks.splice(i, 1); pg.not.push(...blk.src);
+      const en = log(pg.id, "you", t("删掉了一行，Zirma 不会再加回来", "Removed a line; Zirma won’t add it back"), [{ k: "del", page: pg.id, blk: clone(blk), at: i }], [{ k: "del", text: blk.text }]);
+      render();
+      return toast(t("删掉了，Zirma 不会再加回来", "Removed; Zirma won’t add it back"), [[t("撤回", "Undo"), () => flip(en)]]);
     }
-    case "save-url": S.clips.push({ url: d.url, site: d.url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0], mark: d.url.replace(/^https?:\/\/(www\.)?/, "")[0].toUpperCase(), k: "gray", title: [t("在取标题", "Fetching the title"), "Fetching the title"] });
-      renderPage(); return say(t("收进了链接", "Saved to Links"));
-    case "theirs": { const E = S.edit; E.base = E.draft = body(note); E.conflict = false; E.status = "saved"; $("src").value = E.draft; paintEditor(); paintStatus(); paintConflict(); return; }
-    case "fork": {
-      const E = S.edit, name = `${titleOf(note)} 2`;
-      newNote(name, E.draft, note.folder);
-      E.base = E.draft = body(note); E.conflict = false; E.status = "saved";
-      $("src").value = E.draft; paintEditor(); paintStatus(); paintConflict();
-      return say(t(`你的那份另存成《${name}》`, `Yours is saved as “${name}”`));
-    }
-    case "p-yes": return accept();
-    case "p-no": Object.assign(S, { proposal: null, revising: false }); return renderAll();
-    case "p-edit": S.revising = true; renderLine(); return $("draft").focus();
-    case "p-again": S.proposal = null; return void propose("");
-    case "fill": $("draft").value = d.text; renderLine(); return $("draft").focus();
-    case "undo": { const undo = S.toast?.undo; S.toast = null; undo?.(); return renderAll(); }
-    case "mic": return void listen();
-    case "ac": return pickAc(Number(d.i));
+    case "own": return makeMine(pg);
+    case "icon":
+      return openPop(el, `<div class="icons">${Object.keys(PAGE_ICON).map((n) => `<button type="button" data-a="seticon" data-n="${n}" aria-label="${n}" title="${n}" aria-pressed="${pg.icon === n}">${PAGE_ICON[n]}</button>`).join("")}</div>${pg.icon ? `<div class="sep"></div><button type="button" class="mi" data-a="seticon" data-n="">${ICON.x}${t("去掉图标", "Remove icon")}</button>` : ""}`);
+    case "seticon": pg.icon = el.dataset.n || null; closePop(); return render();
+    case "more":
+      return openPop(el, `<button type="button" class="mi" data-a="md">${ICON.md}${t("看它存成的 Markdown", "Show the Markdown file")}</button>
+        ${pg.owner === "you" ? `<button type="button" class="mi" data-a="new" data-parent="${pg.id}">${ICON.sub}${t("新子页面", "New sub-page")}</button>` : ""}
+        <div class="sep"></div><button type="button" class="mi bad" data-a="drop">${ICON.trash}${pg.owner === "z" ? t("删掉，不再整理这件事", "Delete; stop keeping this") : t("删除", "Delete")}</button>`);
+    case "md": closePop(); return showMd(pg);
+    case "mdclose": $("#modal").hidden = true; return;
+    case "drop": closePop(); return dropPage(pg.id);
+    case "ansclose": S.answer = null; $("#askout").hidden = true; return;
+    case "toast": { $("#toast").hidden = true; return toastActs[+el.dataset.i]?.[1](); }
   }
 });
-document.addEventListener("change", (event) => {
-  if (event.target.id !== "move") return;
-  const note = byId(S.open), from = note.folder;
-  note.folder = event.target.value;
-  renderPage();
-  say(t(`挪到了 ${pick(folderOf(note.folder).name)}`, `Moved to ${pick(folderOf(note.folder).name)}`), () => { note.folder = from; });
+document.addEventListener("mousedown", (e) => {
+  // A link inside a line you can edit still opens on click.
+  const l = e.target.closest(".ed[contenteditable] .wl");
+  if (l) { e.preventDefault(); followLink(l.dataset.t); }
 });
-document.addEventListener("input", (event) => {
-  if (event.target.id === "draft") renderLine();
-  else if (event.target.id === "src") onEdit();
+document.addEventListener("focusin", (e) => {
+  const el = e.target;
+  if (el.id === "ask") { if (el.value.trim()) askLive(); return; }
+  if (!el.matches?.(".ed[contenteditable]")) return;
+  const [, b] = blockAt(el.dataset.b);
+  // While you edit a line it shows as written, [[links]] included.
+  if (b && /\[\[/.test(b.text)) { el.textContent = b.text; focusEl(el); }
 });
-document.addEventListener("selectionchange", () => { if (S.view === "edit" && document.activeElement?.id === "src") paintAc(); });
-document.addEventListener("keydown", (event) => {
-  if (event.isComposing) return;
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && S.view !== "edit") { event.preventDefault(); return $("draft").focus(); }
-  if (event.key === "Escape" && S.pop) { S.pop = null; return renderPop(); }
-  if (S.view !== "edit") return;
-  const menu = S.ac;
-  if (event.target.id === "src" && menu) {
-    if (event.key === "Escape") { event.preventDefault(); S.ac = null; $("ac").hidden = true; return; }
-    if (menu.items.length && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-      event.preventDefault();
-      menu.index = (menu.index + (event.key === "ArrowDown" ? 1 : menu.items.length - 1)) % menu.items.length;
-      return paintAc();
-    }
-    if (menu.items.length && (event.key === "Enter" || event.key === "Tab")) { event.preventDefault(); return pickAc(menu.index); }
+document.addEventListener("focusout", (e) => {
+  if (S.rendering) return;
+  const el = e.target;
+  if (el.matches?.(".ed[contenteditable]")) {
+    const [bp, b] = blockAt(el.dataset.b);
+    if (!b) return;
+    setText(bp, b, el.textContent);
+    if (el.isConnected) el.innerHTML = inline(b.text);
+  } else if (el.id === "ttl" && cur()) setTitle(cur(), el.textContent);
+});
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("#ask").focus(); return; }
+  if (e.key === "Escape") {
+    if (!$("#modal").hidden) { $("#modal").hidden = true; return; }
+    if (!$("#pop").hidden) return closePop();
+    if (e.target.id === "ask") { $("#ask").value = ""; S.answer = null; $("#askout").hidden = true; return e.target.blur(); }
+    if (S.histOpen) { S.histOpen = false; return renderHist(); }
+    if (S.drawer) { S.drawer = false; return $("#app").toggleAttribute("data-drawer", false); }
+    if (e.target.matches?.(".ed, #ttl")) return e.target.blur();
   }
-  if (event.key === "Escape") finishEdit();
+  if (e.target.id === "ask" && e.key === "Enter" && !e.isComposing && e.target.value.trim()) return answer(e.target.value.trim());
+  if (e.target.matches?.(".node") && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); return e.target.click(); }
+  if (e.target.id === "ttl" && e.key === "Enter" && !e.isComposing) {
+    e.preventDefault();
+    setTitle(cur(), e.target.textContent);
+    const first = cur().blocks.find((b) => !b.sug);
+    return first ? focusEl(document.querySelector(`.ed[data-b="${first.id}"]`), true) : e.target.blur();
+  }
+  const el = e.target;
+  if (!el.matches?.(".ed[contenteditable]") || e.isComposing) return;
+  const pg = cur(), i = pg.blocks.findIndex((x) => x.id === el.dataset.b), b = pg.blocks[i];
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    const text = el.textContent, off = caretOffset(el);
+    if ((b.k === "li" || b.k === "todo") && !text) { b.k = "p"; delete b.done; return redrawDoc(b.id); }
+    setText(pg, b, text.slice(0, off));
+    const nb = { id: nid(`${pg.id}b`), k: b.k === "li" || b.k === "todo" ? b.k : "p", text: text.slice(off), ...(b.k === "todo" ? { done: false } : {}) };
+    pg.blocks.splice(i + 1, 0, nb);
+    return redrawDoc(nb.id, true);
+  }
+  if (e.key === "Backspace" && caretOffset(el) === 0 && getSelection().isCollapsed) {
+    if (b.k !== "p") { e.preventDefault(); b.k = "p"; delete b.done; b.text = el.textContent; return redrawDoc(b.id, true); }
+    const prev = pg.blocks[i - 1];
+    if (!prev || prev.sug) return;
+    e.preventDefault();
+    const joinAt = prev.text.length;
+    setText(pg, prev, prev.text + el.textContent);
+    pg.blocks.splice(i, 1);
+    redrawDoc();
+    const pe = document.querySelector(`.ed[data-b="${prev.id}"]`);
+    pe.textContent = prev.text; pe.focus();
+    const node = pe.firstChild, r = document.createRange();
+    if (node) { r.setStart(node, Math.min(joinAt, node.length)); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+  }
 });
-$("lineform").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const text = $("draft").value;
-  if (!text.trim() || S.thinking) return;
-  if (S.view === "read") void propose(text); else capture(text);
+document.addEventListener("input", (e) => {
+  if (e.target.id === "ask") return askLive();
+  const el = e.target;
+  if (!el.matches?.(".ed[contenteditable]")) return;
+  const [, b] = blockAt(el.dataset.b);
+  const m = b && b.k === "p" && el.textContent.match(/^(#{1,3} |[-*] |\[ ?\] )/);
+  if (!m) return;
+  // Markdown shortcuts at the start of a line: "# " heading, "- " list, "[] " to-do.
+  b.k = m[1][0] === "#" ? "h" : m[1][0] === "[" ? "todo" : "li";
+  if (b.k === "todo") b.done = false;
+  b.text = el.textContent.slice(m[1].length);
+  redrawDoc(b.id);
 });
 
 if (matchMedia("(prefers-color-scheme: dark)").matches) document.documentElement.dataset.scheme = "dark";
-seed();
-renderAll();
+S.narrow = params.get("w") === "phone";
+seed(params.get("data") === "empty" ? "empty" : "sample");
+if (params.get("page") && S.pages[params.get("page")]) S.at = params.get("page");
+render();
 </script>
 </body>
 </html>

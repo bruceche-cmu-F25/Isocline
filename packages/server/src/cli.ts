@@ -6,10 +6,11 @@
 import { parseArgs } from "node:util";
 import { join } from "node:path";
 import { createPiEngine } from "@zirma/engine-pi";
-import { todoModule } from "@zirma/module-todo";
+import { moveNoteSources, todoModule } from "@zirma/module-todo";
 import { calendarModule } from "@zirma/module-calendar";
 import { mailModule } from "@zirma/module-mail";
 import { linksModule } from "@zirma/module-links";
+import { createNotesModule } from "@zirma/module-notes";
 import type { ModuleServices } from "@zirma/module-kit";
 import { googleService } from "./google-service.ts";
 import { DEFAULT_PORT, defaultDataDir, defaultUiDir } from "./config.ts";
@@ -26,8 +27,10 @@ import { adoptLegacyEnv, checkStage, currentStage, recordDomainEvent } from "@zi
 import { defaultSecretStore } from "./secrets.ts";
 import { watchTodoSources } from "./todo-sources.ts";
 import { moveRenamedFolders } from "./rename.ts";
+import { defaultNotesRoot, watchNotes } from "./notes.ts";
 
-const MODULES = [todoModule, calendarModule, mailModule, linksModule];
+// The notes module needs the data directory for its default library, so the list is made once that is known.
+const baseModules = [todoModule, calendarModule, mailModule, linksModule];
 // Settings an install made before a rename still apply: ISOCLINE_X, else ALFRED_X, is read as ZIRMA_X.
 adoptLegacyEnv();
 const log = (message: string) => console.log(`[zirma] ${message}`);
@@ -43,6 +46,8 @@ const { values, positionals } = parseArgs({
 // An install from before a rename keeps its world: the old folders move to the new names (once; not for --data-dir).
 if (!values["data-dir"]) moveRenamedFolders(undefined, log);
 const dataDir = values["data-dir"] ?? defaultDataDir();
+// A note page that moves takes its todos along (the todo list knows them by page): the one place that knows both.
+const MODULES = [...baseModules, createNotesModule({ defaultRoot: defaultNotesRoot(dataDir), onMoved: (world, from, to) => { moveNoteSources(world, from, to); } })];
 // A development run never opens production's world or its keychain (core stage.ts).
 const crossing = checkStage(dataDir);
 if (crossing) {
@@ -98,6 +103,8 @@ if (command === "serve") {
   home.reach(() => push.reaches());
   // Calendar events become todos by themselves (which ones is the user's choice, on the Todos page).
   const stopTodoSources = watchTodoSources(home.world, calendarModule, log);
+  // The notes folder: another app's changes are read in a moment after they happen.
+  const stopNotes = watchNotes(home, log);
   // Speech to text for every device; the model loads when someone starts talking.
   const voice = new Transcriber({ log });
   const speaker = new Speaker({ log, secrets: defaultSecretStore(dataDir) });
@@ -123,6 +130,7 @@ if (command === "serve") {
   ingress.on("error", (error: NodeJS.ErrnoException) => log(`ingress port ${ingressPort} unavailable (${error.code ?? error.message}); other devices cannot connect`));
   const stop = async () => {
     stopTodoSources();
+    stopNotes();
     voice.close();
     speaker.close();
     google.close();
