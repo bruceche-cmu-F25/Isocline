@@ -25,6 +25,7 @@
     "desktop": "npm run build:ui && electron packages/desktop",
     "package:mac": "node scripts/package-mac.ts",
     "install:mac": "node scripts/install-mac.ts",
+    "dev:follow": "node scripts/follow-zirma.ts",
     "dev:copy-world": "node scripts/copy-world-to-dev.ts"
   },
   "devDependencies": {
