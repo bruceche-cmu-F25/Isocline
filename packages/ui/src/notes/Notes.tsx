@@ -73,13 +73,16 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   const hash = asked ? asked.indexOf("#") : -1;
   const item = asked && hash !== -1 ? asked.slice(0, hash) : asked;
   const focus = asked && hash !== -1 ? asked.slice(hash + 1) : null;
-  const at = item && pages.some((page) => page.id === item) ? item : item && !snapshot ? item : null;
+  // A page that was open stays open when it vanishes from the library (deleted or renamed elsewhere): its words may
+  // not be saved yet, and the page says what happened instead of dropping them.
+  const [detail, setDetail] = useState<PageDetail | null>(null);
+  const at = item && (pages.some((page) => page.id === item) || !snapshot || detail?.id === item) ? item : null;
+  const gone = !!(at && detail && detail.fp !== null && snapshot && !pages.some((page) => page.id === at));
   const listed = useMemo(() => new Set((todos ?? []).filter((todo) => todo.source?.kind === "note").map((todo) => todo.source!.ref)), [todos]);
   const exists = (target: string) => {
     const name = target.toLowerCase().replace(/\.md$/, "");
     return pages.some((one) => one.id.toLowerCase() === name || one.title.toLowerCase() === name);
   };
-  const [detail, setDetail] = useState<PageDetail | null>(null);
   const [save, setSave] = useState<SaveState>({ kind: "saved" });
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [drawer, setDrawer] = useState(false);
@@ -92,6 +95,10 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   const [help, setHelp] = useState(false);
   const editor = useRef<EditorHandle>(null);
   const loadedAt = useRef<number>(0);
+  /** Pages made here, and those of them touched (anything typed). Made and left untouched, a page is not kept. */
+  const made = useRef(new Set<string>());
+  const touched = useRef(new Set<string>());
+  const [choose, setChoose] = useState<{ name: string; pages: NotePage[] } | null>(null);
 
   const page = at ? pages.find((one) => one.id === at) ?? null : null;
   const yours = pages.filter((one) => !one.zirma);
@@ -122,7 +129,11 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
       for (let up = at.includes("/") ? at.slice(0, at.lastIndexOf("/")) : null; up; up = up.includes("/") ? up.slice(0, up.lastIndexOf("/")) : null) next.add(up);
       return next;
     });
-    return () => { live = false; };
+    return () => {
+      live = false;
+      // Leaving a page made here and never touched: it is not kept (the home node checks it is as it was made).
+      if (made.current.delete(at) && !touched.current.has(at)) void op("note.discard", { id: at });
+    };
   }, [at]);
 
   // Changed elsewhere (another app, an undo): taken in while nothing here is waiting to be saved.
@@ -153,10 +164,12 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     loadedAt.current = found.mtime;
   };
 
+  const madeHere = made;
   const newPage = async (parent: string | null, text?: string, name?: string) => {
     await editor.current?.flush();
     const made = await op("note.create", { parent, title: name ?? t("notes.untitled") });
     if (!made.id) { setToast({ text: made.error ?? t("notes.failed") }); return; }
+    if (!text) madeHere.current.add(made.id);
     if (text) {
       const found = await api.query<PageDetail>("note.page", { id: made.id });
       await fetch("/api/notes/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ library: found.library, id: made.id, base: found.fp, text }) });
@@ -310,10 +323,24 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
                 {detail.zirma
                   ? <h1 className="nt-title-static">{detail.title}</h1>
                   : <input className="nt-title" value={title} aria-label={t("notes.title")} placeholder={t("notes.untitled")} maxLength={120}
-                    onChange={(event) => setTitle(event.target.value)} onBlur={() => void rename()}
+                    onChange={(event) => { touched.current.add(detail.id); setTitle(event.target.value); }} onBlur={() => void rename()}
                     onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); (event.target as HTMLInputElement).blur(); } }} />}
                 {detail.zirma && <p className="nt-meta"><Icon name="alfred" />{t("notes.readonly")}</p>}
               </div>
+              {gone && save.kind !== "changed" && (
+                <div className="nt-banner" role="alert">
+                  <span>{t("notes.goneElsewhere")}</span>
+                  <button type="button" className="nt-btn nt-pri" onClick={() => void newPage(null, editor.current?.markdown(), detail.title)}>{t("notes.keepMine")}</button>
+                  <button type="button" className="nt-btn" onClick={() => void openPage(null)}>{t("notes.recent")}</button>
+                </div>
+              )}
+              {choose && (
+                <div className="nt-banner nt-choose" role="dialog" aria-label={t("notes.choose", { name: choose.name, n: choose.pages.length })}>
+                  <span>{t("notes.choose", { name: choose.name, n: choose.pages.length })}</span>
+                  {choose.pages.map((one) => <button type="button" key={one.id} className="nt-btn" onClick={() => { setChoose(null); void openPage(one.id); }}>{one.id}</button>)}
+                  <button type="button" className="nt-ib" onClick={() => setChoose(null)} aria-label={t("common.close")}><Icon name="close" /></button>
+                </div>
+              )}
               {save.kind === "changed" && (
                 <div className="nt-banner" role="alert">
                   <span>{save.current ? t("notes.changed") : t("notes.gone")}</span>
@@ -329,6 +356,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
               )}
               {save.kind === "offline" && <p className="nt-banner">{t("notes.offline")}</p>}
               <NoteEditor key={`${detail.library}:${detail.id}`} detail={detail} readOnly={detail.zirma} handle={editor} onState={setSave}
+                onEdit={() => touched.current.add(detail.id)}
                 exists={exists} focus={focus} onError={(message) => setToast({ text: message })}
                 tasks={{
                   listed,
@@ -338,10 +366,15 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
                   },
                 }}
                 onLink={(target) => {
-                  const name = target.split(/[#^]/)[0].trim().toLowerCase();
-                  const found = pages.find((one) => one.id.toLowerCase() === name) ?? pages.filter((one) => one.title.toLowerCase() === name).at(0);
-                  if (found) void openPage(found.id);
-                  else void newPage(null, undefined, target.split(/[#^]/)[0].trim());
+                  const said = target.split(/[#^]/)[0].trim(), name = said.toLowerCase();
+                  const exact = pages.find((one) => one.id.toLowerCase() === name);
+                  if (exact) { void openPage(exact.id); return; }
+                  const named = pages.filter((one) => one.title.toLowerCase() === name);
+                  // Two pages of that name: the one in this page's folder, as the index takes it; else the user picks.
+                  const here = named.filter((one) => one.parent === (detail.parent ?? null));
+                  if (named.length === 1 || here.length === 1) void openPage((named.length === 1 ? named[0] : here[0]).id);
+                  else if (named.length > 1) setChoose({ name: said, pages: named });
+                  else void newPage(null, undefined, said);
                 }} />
               {kids.length > 0 && <div className="nt-sec"><h3>{t("notes.subpages")}</h3>{kids.map((one) => (
                 <button type="button" key={one.id} className="nt-link-row" onClick={() => void openPage(one.id)}><PageGlyph name={one.icon} /><span>{one.title}</span></button>

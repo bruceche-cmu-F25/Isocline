@@ -18,6 +18,14 @@ export const schema = new Schema({
       group: "block", content: "inline*", defining: true,
       attrs: { list: { default: "bullet" }, depth: { default: 0 }, checked: { default: false }, number: { default: 1 } },
       toDOM: (node) => ["div", { class: `nt-item nt-${node.attrs.list}`, "data-depth": node.attrs.depth }, ["div", { class: "nt-item-text" }, 0]],
+      // A pasted list arrives flattened (flattenLists): one element per item, with its kind and depth.
+      parseDOM: [{
+        tag: "div[data-nt-item]",
+        getAttrs: (dom) => ({
+          list: (dom as HTMLElement).dataset.ntItem, depth: Number((dom as HTMLElement).dataset.depth ?? 0),
+          checked: (dom as HTMLElement).dataset.checked === "true", number: Number((dom as HTMLElement).dataset.number ?? 1),
+        }),
+      }, { tag: "li" }],
     },
     quote: { group: "block", content: "inline*", defining: true, parseDOM: [{ tag: "blockquote" }], toDOM: () => ["blockquote", 0] },
     code_block: {
@@ -37,6 +45,8 @@ export const schema = new Schema({
     },
     atom: {
       group: "inline", inline: true, atom: true, selectable: true, attrs: { raw: {} },
+      // A picture pasted from a page on the web: kept as `![alt](address)`.
+      parseDOM: [{ tag: "img[src]", getAttrs: (dom) => { const src = (dom as HTMLElement).getAttribute("src") ?? ""; return /^https?:/i.test(src) ? { raw: `![${((dom as HTMLElement).getAttribute("alt") ?? "").replace(/[[\]]/g, "")}](${src.replace(/[()\s]/g, encodeURIComponent)})` } : false; } }],
       toDOM: (node) => ["span", { class: "nt-atom", title: node.attrs.raw }, (node.attrs.raw as string).replace(/\r?\n/g, " ")],
     },
   },
@@ -45,7 +55,12 @@ export const schema = new Schema({
     em: { parseDOM: [{ tag: "em" }, { tag: "i" }], toDOM: () => ["em", 0] },
     strike: { parseDOM: [{ tag: "s" }, { tag: "del" }], toDOM: () => ["s", 0] },
     code: { parseDOM: [{ tag: "code" }], toDOM: () => ["code", 0], excludes: "_" },
-    link: { attrs: { href: {} }, inclusive: false, toDOM: (mark) => ["a", { href: mark.attrs.href, class: "nt-link", rel: "noopener noreferrer", target: "_blank" }, 0] },
+    link: {
+      attrs: { href: {} }, inclusive: false,
+      // Only addresses that open a page or a mail: a pasted `javascript:` link is kept as its words.
+      parseDOM: [{ tag: "a[href]", getAttrs: (dom) => { const href = (dom as HTMLElement).getAttribute("href") ?? ""; return /^(https?:|mailto:)/i.test(href) ? { href } : false; } }],
+      toDOM: (mark) => ["a", { href: mark.attrs.href, class: "nt-link", rel: "noopener noreferrer", target: "_blank" }, 0],
+    },
   },
 });
 
@@ -118,4 +133,33 @@ export function docToBlocks(doc: PmNode): Block[] {
   doc.forEach((node) => { const block = nodeToBlock(node); if (block) blocks.push(block); });
   // An empty line is space on the screen, not a block: Markdown has no empty paragraph (it would read back as nothing).
   return blocks.filter((block) => !((block.kind === "paragraph" || block.kind === "quote") && !block.content.some((run) => run.t !== "text" || run.text.trim())));
+}
+
+/** Pasted HTML with its lists flattened into what the editor holds: one block per item, with its kind (bullet,
+ * numbered, to-do), its depth, and, for a to-do, whether it is done. Nested lists inside an item come after it. */
+export function flattenLists(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const flatten = (list: Element, depth: number): Element[] => {
+    const ordered = list.tagName === "OL";
+    let number = Number(list.getAttribute("start") ?? 1) || 1;
+    const out: Element[] = [];
+    for (const li of [...list.children].filter((child) => child.tagName === "LI")) {
+      const box = li.querySelector(":scope > input[type=checkbox], :scope > p > input[type=checkbox]") as HTMLInputElement | null;
+      const item = doc.createElement("div");
+      item.dataset.ntItem = box ? "task" : ordered ? "ordered" : "bullet";
+      item.dataset.depth = String(depth);
+      item.dataset.number = String(number++);
+      if (box) { item.dataset.checked = String(box.checked || box.hasAttribute("checked")); box.remove(); }
+      const nested: Element[] = [];
+      for (const child of [...li.childNodes]) {
+        if (child instanceof Element && (child.tagName === "UL" || child.tagName === "OL")) nested.push(...flatten(child, depth + 1));
+        else if (child instanceof Element && child.tagName === "P") item.append(...child.childNodes, " ");
+        else item.append(child);
+      }
+      out.push(item, ...nested);
+    }
+    return out;
+  };
+  for (const list of [...doc.body.querySelectorAll("ul, ol")].filter((list) => !list.parentElement?.closest("ul, ol"))) list.replaceWith(...flatten(list, 0));
+  return doc.body.innerHTML;
 }

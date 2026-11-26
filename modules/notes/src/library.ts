@@ -237,6 +237,12 @@ export class Library {
     }
   }
 
+  /** Removes a page's file that has nothing in it worth keeping (discardPage decides), and its folder if empty. */
+  removeUntouched(id: string): void {
+    rmSync(this.file(id), { force: true });
+    try { if (!readdirSync(this.folder(id)).length) rmSync(this.folder(id), { recursive: true }); } catch { /* no folder */ }
+  }
+
   /** Moves a page and its sub-pages into `.trash/<when>/`. Returns where, for putting it back. */
   trash(id: string): string {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");

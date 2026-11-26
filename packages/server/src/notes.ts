@@ -5,7 +5,7 @@ import { readFileSync, watch, type FSWatcher } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { currentStage } from "@zirma/core";
+import { currentStage, recordDomainEvent } from "@zirma/core";
 import { savePage, type SaveAnswer } from "@zirma/module-notes";
 import type { Home } from "./home.ts";
 import { MAX_FILE_BYTES, sniff } from "./files.ts";
@@ -48,8 +48,26 @@ export async function notesRoute(home: Home, req: IncomingMessage, res: ServerRe
     if ((error as Error).name === "LibraryError") throw new HttpError(400, (error as Error).message, (error as { code?: string }).code);
     throw error;
   }
+  if (answer.ok) announce(home, body.id);
   send(res, answer.ok ? 200 : 409, answer);
   return true;
+}
+
+/** Devices learn of a change through an event (they read the state again when one comes). Autosave writes every
+ * second or so: a page's saves are told at most every two seconds, and the last of a burst is always told, so an
+ * open page on another device takes it in. The event carries the page's path only, never its words. */
+const ANNOUNCE_MS = 2000;
+const announced = new Map<string, { at: number; timer?: NodeJS.Timeout }>();
+function announce(home: Home, page: string): void {
+  const tell = () => {
+    announced.set(page, { at: Date.now() });
+    try { home.world.tx(() => recordDomainEvent(home.world, { kind: "note.saved", subject: `note:${page}`, actor: "user", payload: { page } })); } catch { /* the world is closing */ }
+  };
+  const last = announced.get(page);
+  if (!last || Date.now() - last.at >= ANNOUNCE_MS) { tell(); return; }
+  if (last.timer) return;
+  last.timer = setTimeout(tell, ANNOUNCE_MS - (Date.now() - last.at));
+  last.timer.unref();
 }
 
 /** Reads the library again a moment after a file in it changes (another app, a sync service). Follows the library
@@ -61,9 +79,19 @@ export function watchNotes(home: Home, log: (message: string) => void): () => vo
   let watcher: FSWatcher | null = null;
   let root = "";
   let timer: NodeJS.Timeout | undefined;
+  let running = false, again = false;
+  // A change during a pass gets one more pass after it: the running one may have listed the folder already.
+  const read = () => {
+    if (running) { again = true; return; }
+    running = true;
+    home.syncModule("note").catch((error: Error) => log(`notes: ${error.message}`)).finally(() => {
+      running = false;
+      if (again) { again = false; read(); }
+    });
+  };
   const pass = () => {
     clearTimeout(timer);
-    timer = setTimeout(() => void home.syncModule("note").catch((error: Error) => log(`notes: ${error.message}`)), 400);
+    timer = setTimeout(read, 400);
   };
   const follow = () => {
     let now: string;

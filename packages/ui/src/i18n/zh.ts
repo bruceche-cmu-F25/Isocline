@@ -1556,6 +1556,8 @@ export const zh = {
   "today.placed": "已放进日历",
   "today.open": "打开",
   // Notes (docs/design/notes-two-layers.md)
+  "notes.goneElsewhere": "这一页在别处被删了或改了名。你这里的字还在，可以另存一页。",
+  "notes.choose": "有 {n} 页都叫「{name}」，要打开哪一页？",
   "notes.help.open": "Markdown 写法",
   "notes.help.title": "怎么写",
   "notes.help.lines": "行首打这些，再按空格",
