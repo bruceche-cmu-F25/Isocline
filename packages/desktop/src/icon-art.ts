@@ -17,7 +17,8 @@ export function appIconPixels(size = 512): Uint8ClampedArray {
 
   // The tesseract (92 of the mark's 120 units tall, centred on 60,60) fills 78% of the square's height.
   const unit = (half * 2 * 0.78) / 92, origin = centre - 60 * unit;
-  const halfWidth = (4 * unit) / 2;
+  // Lines as thick as the home-screen icon's (FAVICON in packages/ui/scripts/favicon.ts), so both read the same.
+  const halfWidth = (8.5 * unit) / 2;
   const lines = markSegments().sort((a, b) => a[2] - b[2]).map(([a, b, near]) => ({
     ax: origin + a[0] * unit, ay: origin + a[1] * unit, bx: origin + b[0] * unit, by: origin + b[1] * unit,
     colour: mix(ink, paper, (1 - near) * 0.62),
