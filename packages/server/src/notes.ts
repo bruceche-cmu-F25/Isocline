@@ -1,7 +1,8 @@
 /** The notes on the home node (notes.md 4.11, research 3.4): where the library is by default, the one address that
  * saves a page's text (not an operation: operations keep their input, and autosave would copy the user's notes into
  * the event log), and a watcher that reads the library again whenever another app changes a file in it. */
-import { readFileSync, watch, type FSWatcher } from "node:fs";
+import { execFile } from "node:child_process";
+import { existsSync, readFileSync, watch, type FSWatcher } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -34,6 +35,7 @@ function notesOf(home: Home): NotesModuleHandle {
 export async function notesRoute(home: Home, req: IncomingMessage, res: ServerResponse, path: string, url: URL): Promise<boolean> {
   if (path === "/api/notes/attach") return attach(home, req, res, url);
   if (path === "/api/notes/file") return file(home, req, res, url);
+  if (path === "/api/notes/reveal") return reveal(home, req, res);
   if (path !== "/api/notes/save") return false;
   if (req.method !== "POST") throw new HttpError(405, "POST only");
   const body = await readJson<{ library?: unknown; id?: unknown; base?: unknown; text?: unknown }>(req, MAX_PAGE_BYTES);
@@ -160,5 +162,21 @@ function file(home: Home, req: IncomingMessage, res: ServerResponse, url: URL): 
     ...(kind?.kind === "image" ? {} : { "Content-Disposition": `${kind?.kind === "pdf" ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(name)}` }),
   });
   res.end(req.method === "HEAD" ? undefined : bytes);
+  return true;
+}
+
+/** POST /api/notes/reveal {id?}: shows the notes folder, or one page's file, in the Finder of the Mac the home node
+ * runs on. Only that Mac may ask (access.ts). */
+async function reveal(home: Home, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  if (req.method !== "POST") throw new HttpError(405, "POST only");
+  const body = await readJson<{ id?: unknown }>(req);
+  const { library } = notesOf(home).library(home.world);
+  let target = library.root;
+  if (typeof body.id === "string" && body.id) {
+    try { const file = library.file(body.id); if (existsSync(file)) target = file; } catch { /* the folder, then */ }
+  }
+  if (process.platform !== "darwin") throw new HttpError(501, "Only on a Mac");
+  execFile("/usr/bin/open", target === library.root ? [target] : ["-R", target], () => {});
+  send(res, 200, {});
   return true;
 }

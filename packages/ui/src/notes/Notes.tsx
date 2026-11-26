@@ -23,6 +23,8 @@ async function op(name: string, input: unknown): Promise<OpAnswer> {
 }
 
 const byTime = (a: NotePage, b: NotePage) => b.mtime - a.mtime;
+/** On the Mac the home node runs on, things can be shown in its Finder. */
+const onThisMac = typeof location !== "undefined" && ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
 const byName = (a: NotePage, b: NotePage) => a.title.localeCompare(b.title);
 
 function Tree({ pages, under, depth, at, open, onOpen, onToggle, onAdd }: {
@@ -88,7 +90,8 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   const [drawer, setDrawer] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [menu, setMenu] = useState<"more" | "icon" | null>(null);
+  const [menu, setMenu] = useState<"more" | "icon" | "move" | null>(null);
+  const [moveFilter, setMoveFilter] = useState("");
   const [sheet, setSheet] = useState<{ path: string; text: string } | null>(null);
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const [title, setTitle] = useState("");
@@ -226,6 +229,18 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     refreshHistory();
   };
 
+  /** Moves the page (with the pages under it) under another page, or to the top. Links that would lose it follow. */
+  const move = async (parent: string | null) => {
+    if (!detail) return;
+    setMenu(null);
+    await editor.current?.flush();
+    const moved = await op("note.move", { id: detail.id, parent });
+    if (!moved.id) { setToast({ text: moved.code === "exists" ? t("notes.renameExists") : moved.error ?? t("notes.failed") }); return; }
+    setToast({ text: parent ? t("notes.moved", { to: parent.split("/").pop()! }) : t("notes.movedTop") });
+    if (parent) setOpen((was) => new Set(was).add(parent));
+    go("note.list", moved.id);
+  };
+
   const showMarkdown = async () => {
     if (!detail) return;
     setMenu(null);
@@ -290,8 +305,23 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
               <button type="button" role="menuitem" onClick={() => void showMarkdown()}>{t("notes.markdown")}</button>
               {page && !page.zirma && <button type="button" role="menuitem" className="nt-help-item" onClick={() => { setMenu(null); setHelp(true); }}>{t("notes.help.open")}</button>}
               {page && !page.zirma && <button type="button" role="menuitem" onClick={() => { setMenu(null); void newPage(page.id); }}>{t("notes.newSub")}</button>}
+              {page && !page.zirma && <button type="button" role="menuitem" onClick={() => { setMoveFilter(""); setMenu("move"); }}>{t("notes.moveTo")}</button>}
+              {onThisMac && <button type="button" role="menuitem" onClick={() => { setMenu(null); void fetch("/api/notes/reveal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: at }) }); }}>{t("notes.reveal")}</button>}
               {page && !page.zirma && <button type="button" role="menuitem" className="nt-bad" onClick={() => void remove()}>{t("notes.delete")}</button>}
             </div>}
+            {menu === "move" && page && (
+              <div className="nt-menu nt-move" role="dialog" aria-label={t("notes.moveTo")}>
+                <input autoFocus value={moveFilter} placeholder={t("notes.moveFilter")} aria-label={t("notes.moveFilter")} onChange={(event) => setMoveFilter(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Escape") setMenu(null); }} />
+                <div className="nt-move-list">
+                  {page.parent !== null && !moveFilter && <button type="button" onClick={() => void move(null)}><Icon name="home" /><span>{t("notes.moveTop")}</span></button>}
+                  {yours.filter((one) => one.id !== page.id && !one.id.startsWith(`${page.id}/`) && one.id !== page.parent && one.id.toLowerCase().includes(moveFilter.trim().toLowerCase()))
+                    .sort((a, b) => a.id.localeCompare(b.id)).slice(0, 50).map((one) => (
+                      <button type="button" key={one.id} onClick={() => void move(one.id)}><PageGlyph name={one.icon} /><span>{one.id}</span></button>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>}
         </div>
         {snapshot?.library.error && <p className="nt-banner">{t("notes.libraryMissing", { root: snapshot.library.root })}</p>}

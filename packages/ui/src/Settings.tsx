@@ -6,6 +6,7 @@
  * looking at another tab. The tab last looked at is where the page opens next time, on this device.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { NotesFolder } from "./notes/NotesFolder.tsx";
 import type { RemoteResponse, StateResponse } from "@zirma/protocol";
 import { api, ApiError } from "./api.ts";
 import type { Zirma } from "./useZirma.ts";
@@ -98,7 +99,7 @@ export function Settings({ name, saveName, dockOptions, onEvent, state }: Genera
           </button>
         ))}
       </div>
-      {pane("general", <><General name={name} saveName={saveName} dockOptions={dockOptions} assistant={{ character: state.settings.character ?? "ana", name: state.settings.assistantName ?? null }} /><Preferences state={state} /><Areas state={state} /><PagesSetting state={state} /></>)}
+      {pane("general", <><General name={name} saveName={saveName} dockOptions={dockOptions} assistant={{ character: state.settings.character ?? "ana", name: state.settings.assistantName ?? null }} /><Preferences state={state} /><Areas state={state} /><PagesSetting state={state} /><NotesFolder state={state} local={local} /></>)}
       {pane("voice", <VoiceSettings local={local} />)}
       {pane("models", local ? <ModelSettings /> : remote === null
         ? <p className="quiet" role="status">{t("models.usage.checking")}</p>

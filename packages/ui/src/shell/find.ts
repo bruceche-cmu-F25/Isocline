@@ -11,7 +11,7 @@ import type { IconName } from "./icons.tsx";
 export interface FindCommand { id: string; label: string; icon: IconName; hint?: string; run(): void }
 export interface FindItem extends FindCommand {
   unread?: boolean;
-  kind: "page" | "command" | "conversation" | "place" | "folder" | "todo" | "event" | "mail";
+  kind: "page" | "command" | "conversation" | "place" | "folder" | "todo" | "event" | "mail" | "note";
   /** A second, quieter part of the row: a todo's day, an event's time, a letter's sender. */
   detail?: string;
 }
@@ -81,6 +81,8 @@ export function defaultPick(items: readonly FindItem[]): number {
  * line that names a todo is still something to say to Zirma. */
 export interface ContentSources {
   todo?: Pick<TodoSnapshot, "todos">;
+  /** Notes are here: they are searched on the home node. */
+  notes?: boolean;
   calendar?: Pick<CalendarSnapshot, "events">;
   mail?: Pick<MailSnapshot, "messages">;
   /** Opens a page, and one thing on it where the page can show one (a letter: `<account>|<id>`). */

@@ -74,6 +74,8 @@ export const ACCESS: readonly Rule[] = [
   rule("*", "/api/modules/:module/sync", "device"),
   // A note's text saved, a file put in a note, a file of the notes read: the user's own, from any of their devices (notes.ts).
   rule("*", "/api/notes/(save|attach|file)", "device"),
+  // Showing the notes folder in the Finder: on the Mac the home node runs on.
+  rule("*", "/api/notes/reveal", "local"),
   rule("*", "/api/notices/:id/(claim|present|acknowledge)", "device"),
   rule("*", "/api/settings", "device"),
   rule("*", "/api/areas/*", "device"),
