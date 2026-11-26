@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CORE_MIGRATIONS, openWorld, withCoreContext, type World } from "@zirma/core";
-import { addFromNote, deleteTodo, listTodos, moveNoteSources, todoModule } from "../src/index.ts";
+import { addFromNote, deleteTodo, listTodos, moveNoteSources, noteTodos, setNoteTodoDone, todoModule } from "../src/index.ts";
 
 const world = (): World => openWorld(":memory:", [...CORE_MIGRATIONS, ...todoModule.migrations]);
 const ref = (page: string, key = "0123456789abcdef", nth = 0) => `note:lib1:${page}#${key}:${nth}`;
@@ -43,5 +43,19 @@ test("when a note moves, its to-dos and those of the pages under it follow", () 
     assert.equal(byId.get(other.id)!.source!.ref, ref("旧名字"), "a page whose name only starts the same stays");
     // Asking again under the new path finds the same todo.
     assert.equal(addFromNote(w, { title: "a", source: { kind: "note", ref: ref("文件夹/新名"), label: "新名" } }).todo.id, own.id);
+  });
+});
+
+test("ticked or unticked in its note, a to-do on the list finishes or reopens; others are left alone", () => {
+  const w = world();
+  withCoreContext({ actor: "user" }, () => {
+    const todo = addFromNote(w, { title: "a", source: { kind: "note", ref: ref("周会"), label: "周会" } }).todo;
+    assert.equal(setNoteTodoDone(w, ref("周会"), true), true);
+    assert.equal(listTodos(w, { includeDone: true }).find((one) => one.id === todo.id)!.done, true);
+    assert.equal(setNoteTodoDone(w, ref("周会"), true), false, "already done");
+    assert.equal(setNoteTodoDone(w, ref("周会"), false), true);
+    assert.equal(listTodos(w).find((one) => one.id === todo.id)!.done, false);
+    assert.equal(setNoteTodoDone(w, ref("别的页"), true), false, "a to-do never put on the list: nothing");
+    assert.deepEqual(noteTodos(w).map((one) => [one.ref, one.done]), [[ref("周会"), false]]);
   });
 });

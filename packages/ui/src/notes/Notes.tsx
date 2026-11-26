@@ -55,7 +55,7 @@ function Tree({ pages, under, depth, at, open, onOpen, onToggle, onAdd }: {
 
 function historyLine(entry: HistoryEntry): string {
   switch (entry.kind) {
-    case "edit": return t("notes.kind.edit");
+    case "edit": return entry.summary === "todo.done" ? t("notes.kind.todoDone") : entry.summary === "todo.reopened" ? t("notes.kind.todoReopened") : t("notes.kind.edit");
     case "create": return t("notes.kind.create");
     case "delete": return t("notes.kind.delete");
     case "rename": return t("notes.kind.rename", { from: (entry.extra.from ?? "").split("/").pop() ?? "", to: (entry.extra.to ?? "").split("/").pop() ?? "" });

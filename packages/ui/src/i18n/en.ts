@@ -1558,6 +1558,8 @@ export const en: Record<keyof typeof zh, string> = {
   "today.open": "Open",
   // Notes (docs/design/notes-two-layers.md)
   "notes.titleCleaned": "A file name cannot hold / \\ : * ? \" < > | # ^ [ ], so they became spaces: “{title}”",
+  "notes.kind.todoDone": "Finished on the todo list: its box ticked",
+  "notes.kind.todoReopened": "Reopened on the todo list: its box unticked",
   "notes.folder": "Notes are kept in",
   "notes.reveal": "Show in Finder",
   "notes.folder.change": "Choose another folder",

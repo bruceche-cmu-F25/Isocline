@@ -8,6 +8,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync, existsSync, mkdi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CORE_MIGRATIONS, openWorld, type World } from "@zirma/core";
+import { parsePage } from "../src/markdown/index.ts";
 import { invokeOp, runQuery } from "@zirma/module-kit";
 import {
   createNotesModule, fingerprint, flipHistory, indexLibrary, Library, listHistory, pageDetail, savePage, searchPages, swapBack, ZIRMA_DIR,
@@ -392,3 +393,26 @@ test("the watcher's quick read: just the pages it saw change; anything else take
   assert.ok((indexFiles(world, library, ["乙"]) ?? 0) >= 1, "a page gone: the whole pass");
   assert.equal(world.db.prepare("SELECT count(*) AS n FROM note_pages WHERE id = '乙'").get()!.n, 0);
 });
+test("to-dos both ways: which boxes a save changed, and ticking one box from the todo list", async () => {
+  const { write, index, world, library, libraryId } = setup();
+  const { taskChanges, setTaskChecked } = await import("../src/domain.ts");
+  const { taskRef } = await import("../src/markdown/index.ts");
+  const text = "- [ ] 联系客户\n- [ ] 写周报\n- [ ] 联系客户\n";
+  write("周会", text);
+  index();
+  const blocks = readBlocksOf(text);
+  const second = taskRef(libraryId, "周会", blocks, 2)!;
+  assert.deepEqual(taskChanges(libraryId, "周会", text, "- [ ] 联系客户\n- [ ] 写周报\n- [x] 联系客户\n"), [{ ref: second, checked: true }], "the second 联系客户, not the first");
+  assert.deepEqual(taskChanges(libraryId, "周会", text, text.replace("写周报", "写月报")), [], "words changed: not a tick");
+  assert.equal(setTaskChecked(world, library, libraryId, second, true), true);
+  assert.equal(readFileSync(join(library.root, "周会.md"), "utf8"), "- [ ] 联系客户\n- [ ] 写周报\n- [x] 联系客户\n", "only that box");
+  assert.equal(setTaskChecked(world, library, libraryId, second, true), false, "already so: nothing written");
+  assert.equal(setTaskChecked(world, library, "another-library", second, false), false, "another library: nothing");
+  assert.equal(listHistory(world, "周会")[0].summary, "todo.done", "the page's history says why");
+  assert.equal(setTaskChecked(world, library, libraryId, second, false), true);
+  assert.equal(readFileSync(join(library.root, "周会.md"), "utf8"), text);
+});
+
+function readBlocksOf(text: string) {
+  return parsePage(text).blocks.map((source) => source.block);
+}
