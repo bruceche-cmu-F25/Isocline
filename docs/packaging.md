@@ -126,7 +126,7 @@ rm -rf /Applications/Zirma.app
 |---|---|---|
 | 开发者签名和公证 | 现在是临时签名，别人打开会被 macOS 拦下 | 加入 Apple Developer Program（每年 99 美元），用 Developer ID Application 证书签名（`codesign --options runtime`，并给 Electron 配上它需要的 entitlements），再用 `xcrun notarytool submit` 提交公证、`xcrun stapler staple` 把公证结果钉进包里。打包脚本第 7 步要换成这一套，证书名从环境变量读，不写死 |
 | 自动更新 | 现在装了 0.1.0 以后收不到修复 | 选一种更新方式（GitHub Releases 加 Electron 的自动更新，或者 Sparkle），需要先有正式签名 |
-| 版本号 | 现在取 `package.json` 的 `version` | 每次发布前改版本号，打 git tag，在 GitHub Releases 上附 DMG |
+| 版本号 | 已经取自 git tag（`v0.1.2` → `0.1.2`，见 WORKFLOW.md §4） | 在 GitHub Releases 上附 DMG |
 | Intel / 通用包 | 现在只有 arm64 | 在 Intel 机器上打，或者用 `lipo` 合成通用包；node-pty 和 sharp 的原生部分也要有两种架构 |
 | libvips 许可证 | sharp 带的 libvips 是 LGPL，包里要附上它的许可证（THIRD-PARTY-NOTICES 里写了） | 在第 6 步后面把许可证文本复制进包 |
 | 语音转写 | 依赖本机装了 `uv`，第一次用会下载模型 | 在设置里讲清楚，或者以后把 Python 环境一起打进包 |

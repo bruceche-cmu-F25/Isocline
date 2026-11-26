@@ -3,7 +3,7 @@
  * only its production dependencies inside, as plain files (no asar: the home node is started from these files by
  * launchd, and node-pty and sharp load native code from them).
  *
- *   npm run package:mac            → dist/mac/Zirma.app and dist/mac/Zirma-<version>-<arch>.dmg
+ *   npm run package:mac            → dist/mac/Zirma.app and dist/mac/Zirma-<version>-<arch>.dmg (version: the git tag)
  *   npm run package:mac -- --no-dmg
  *   npm run package:mac -- --allow-uncommitted   (a trial build; never the one to use every day)
  *
@@ -22,7 +22,16 @@ import { appIconPixels } from "../packages/desktop/src/icon-art.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version?: string; homepage?: string; description?: string; license?: string };
-const version = pkg.version ?? "0.0.0";
+/** The version is the release tag on this commit (docs/WORKFLOW.md §4): v0.1.2 → 0.1.2. A commit past the last tag
+ * is 0.1.2-3-gabc1234 (three commits after it); with no tag at all (a fork's first build), package.json's version.
+ * macOS's own version fields take only the numbers. */
+const described = (() => {
+  try {
+    return execFileSync("git", ["describe", "--tags", "--match", "v[0-9]*"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch { return ""; }
+})();
+const version = described ? described.replace(/^v/, "") : pkg.version ?? "0.0.0";
+const bundleVersion = /^\d+\.\d+\.\d+/.exec(version)?.[0] ?? "0.0.0";
 const name = "Zirma";
 // A bundle id from who publishes it, so a fork gets its own: github.com/<owner>/… → io.github.<owner>.zirma.
 const where = /github\.com\/([^/]+)\//.exec(pkg.homepage ?? "");
@@ -82,7 +91,7 @@ for (const helper of readdirSync(frameworks).filter((entry) => /^Electron Helper
 const info = join(contents, "Info.plist");
 for (const [key, value] of Object.entries({
   CFBundleExecutable: name, CFBundleName: name, CFBundleDisplayName: name, CFBundleIdentifier: bundleId,
-  CFBundleShortVersionString: version, CFBundleVersion: version, CFBundleIconFile: `${name}.icns`, ZirmaCommit: commit,
+  CFBundleShortVersionString: bundleVersion, CFBundleVersion: bundleVersion, CFBundleIconFile: `${name}.icns`, ZirmaCommit: commit,
   LSApplicationCategoryType: "public.app-category.productivity",
   // What macOS shows when Zirma first asks: the microphone is for dictation, and nothing else is used.
   NSMicrophoneUsageDescription: "Zirma listens only while you hold its figure, press the talk shortcut or use a microphone button, to turn what you say into text.",
