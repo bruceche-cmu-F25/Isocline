@@ -3,7 +3,7 @@
  * shows it; what the editor cannot draw is never rewritten. Every sample is a made-up note. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assignSources, findTask, taskRef, wordsKey, comparable, compose, fitDepths, parsePage, readBlocks, setProperty, writeBlocks, type Block, type EditBlock, type Inline } from "../src/markdown/index.ts";
+import { assignSources, blanksBefore, findTask, taskRef, wordsKey, comparable, compose, fitDepths, parsePage, readBlocks, setProperty, writeBlocks, type Block, type EditBlock, type Inline } from "../src/markdown/index.ts";
 
 const OBSIDIAN = `---
 icon: book
@@ -309,4 +309,21 @@ test("8. a to-do in a note is known by its words and which of the same words it 
   // Known weakness (research 3.5): a new same-worded to-do above the first shifts which one is "second".
   const added = readBlocks("- [ ] 联系客户\n- [ ] 联系客户\n- [ ] 写周报\n- [ ] 联系客户\n");
   assert.equal(findTask(added, wordsKey("联系客户"), 1), 1);
+});
+
+test("empty lines the editor shows are blank lines in the file, and come back as empty lines", () => {
+  const text = "A\n\n\n\nB\n\n- one\n\n\n- two\n";
+  const page = parsePage(text);
+  assert.deepEqual(blanksBefore(page), [0, 2, 0, 1]);
+  const as = (blanks: number[]) => page.blocks.map((source, i) => ({ ...source.block, from: i, blankBefore: blanks[i] })) as EditBlock[];
+  const same = compose(page, as([0, 2, 0, 1]));
+  assert.ok(same.ok && same.text === text, "as the file had them: byte for byte");
+  const fewer = compose(page, as([0, 0, 0, 0]));
+  assert.ok(fewer.ok && fewer.text === "A\n\nB\n\n- one\n- two\n", fewer.ok ? fewer.text : "");
+  const more = compose(page, as([0, 1, 3, 1]));
+  assert.ok(more.ok && more.text === "A\n\n\nB\n\n\n\n\n- one\n\n\n- two\n", more.ok ? more.text : "");
+  assert.deepEqual(blanksBefore(parsePage(more.ok ? more.text : "")), [0, 1, 3, 1], "read again: the same empty lines");
+  // Without a count (callers that do not know), the file's own gaps stay.
+  const unknown = compose(page, page.blocks.map((source, i) => ({ ...source.block, from: i })));
+  assert.ok(unknown.ok && unknown.text === text);
 });

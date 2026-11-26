@@ -7,7 +7,19 @@ import { sameBlock, signature, type Block } from "./model.ts";
 import { blockMarkdown, contentWidth, itemMarker } from "./serialize.ts";
 
 /** A block in the editor: `from` is the index of the block it was read from, if it was read from the file. */
-export type EditBlock = Block & { from?: number };
+/** A block in the editor: `from` is the index of the block it was read from, if it was read from the file;
+ * `blankBefore` is how many empty lines the editor shows above it beyond the usual one (undefined: as in the file). */
+export type EditBlock = Block & { from?: number; blankBefore?: number };
+
+/** Empty lines in a gap beyond the one blank line that parts two blocks: what the editor shows as empty lines. */
+export function extraBlankLines(gap: string): number {
+  return Math.max(0, (gap.match(/\n/g)?.length ?? 0) - 2);
+}
+
+/** For each block of a page, the empty lines above it beyond the usual one (none above the first). */
+export function blanksBefore(page: ParsedPage): number[] {
+  return page.blocks.map((source, i) => (i === 0 ? 0 : extraBlankLines(page.body.slice(page.blocks[i - 1].end, source.start))));
+}
 
 export type Composed = { ok: true; text: string } | { ok: false; reason: string };
 
@@ -62,14 +74,18 @@ function build(page: ParsedPage, blocks: readonly EditBlock[], rewrite: Readonly
   };
   const gap = (i: number): string => {
     const a = blocks[i - 1], b = blocks[i];
-    if (kept[i - 1] && kept[i] && b.from === a.from! + 1) return body.slice(src[a.from!].end, src[b.from!].start);
+    const want = b.blankBefore;
+    const fits = (gap: string) => want === undefined || extraBlankLines(gap) === want;
+    if (kept[i - 1] && kept[i] && b.from === a.from! + 1 && fits(body.slice(src[a.from!].end, src[b.from!].start))) return body.slice(src[a.from!].end, src[b.from!].start);
+    // Empty lines the editor shows between them: kept as blank lines in the file.
+    if (want) return toEol("\n".repeat(2 + want)) + indents[i];
     const was = originalGap(a.from, b.from);
     const sameDepth = b.from !== undefined && src[b.from].block.kind === "item" && (src[b.from].block as { depth: number }).depth === (b as { depth?: number }).depth;
     if (a.kind === "item" && b.kind === "item") {
-      if (was !== null && sameDepth && /^\s*$/.test(was) && b.from !== undefined && a.from !== undefined && b.from === a.from + 1) return was;
+      if (was !== null && sameDepth && /^\s*$/.test(was) && fits(was) && b.from !== undefined && a.from !== undefined && b.from === a.from + 1) return was;
       return toEol("\n") + indents[i];
     }
-    if (was !== null && BLANK.test(was) && /^\s*$/.test(was) && (b.kind !== "item" || sameDepth)) return was;
+    if (was !== null && BLANK.test(was) && /^\s*$/.test(was) && fits(was) && (b.kind !== "item" || sameDepth)) return was;
     return toEol("\n\n") + indents[i];
   };
 
@@ -101,9 +117,11 @@ function build(page: ParsedPage, blocks: readonly EditBlock[], rewrite: Readonly
 /** The page's new text, or why it could not be written so that it reads back as the editor shows it. */
 export function compose(page: ParsedPage, given: readonly EditBlock[]): Composed {
   const blocks = fitDepths(given);
-  const plain = blocks.map(({ from: _from, ...block }) => block as Block);
+  const plain = blocks.map(({ from: _from, blankBefore: _blank, ...block }) => block as Block);
   const changed = new Set<number>();
-  const unchanged = blocks.every((block, i) => block.from === i && page.blocks[i] && sameBlock(block, page.blocks[i].block)) && blocks.length === page.blocks.length;
+  const blanks = blanksBefore(page);
+  const unchanged = blocks.every((block, i) => block.from === i && page.blocks[i] && sameBlock(block, page.blocks[i].block) && (block.blankBefore === undefined || i === 0 || block.blankBefore === blanks[i]))
+    && blocks.length === page.blocks.length;
   if (unchanged) return { ok: true, text: (page.bom ? "﻿" : "") + page.body };
   let text = build(page, blocks, changed);
   if (sameReadBack(text, plain)) return { ok: true, text };

@@ -1556,6 +1556,7 @@ export const zh = {
   "today.placed": "已放进日历",
   "today.open": "打开",
   // Notes (docs/design/notes-two-layers.md)
+  "notes.titleCleaned": "文件名里不能有 / \\ : * ? \" < > | # ^ [ ]，这些换成了空格：「{title}」",
   "notes.folder": "笔记放在",
   "notes.reveal": "在 Finder 里显示",
   "notes.folder.change": "换一个文件夹",

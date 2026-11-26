@@ -227,3 +227,7 @@
 .nt-move-list > button:hover { background: var(--wash); }
 .nt-move-list > button span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .nt-move-list svg { width: 16px; height: 16px; color: var(--muted); }
+
+/* Recent: its heading, and a new page from right there (on a phone the tree is in a drawer). */
+.nt-recent-head { display: flex; align-items: center; gap: 12px; }
+.nt-recent-head .nt-title-static { flex: 1; min-width: 0; width: auto; }

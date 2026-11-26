@@ -3,7 +3,7 @@
  * nested list, so each item is written back on its own. What the editor cannot draw is a `raw` block, edited as its
  * source; links to pages and pieces kept as written are single inline nodes. Nothing here knows about saving. */
 import { Schema, type Mark as PmMark, type Node as PmNode } from "prosemirror-model";
-import { normalizeInline, type Block, type Inline, type Mark } from "@zirma/module-notes/markdown";
+import { normalizeInline, type Block, type EditBlock, type Inline, type Mark } from "@zirma/module-notes/markdown";
 
 export const schema = new Schema({
   nodes: {
@@ -77,20 +77,23 @@ function inlineToPm(content: readonly Inline[]): PmNode[] {
   });
 }
 
-/** The page's blocks as the editor's document. */
-export function blocksToDoc(blocks: readonly Block[]): PmNode {
-  const nodes = blocks.map((block): PmNode => {
-    switch (block.kind) {
-      case "paragraph": return schema.nodes.paragraph.create(null, inlineToPm(block.content));
-      case "heading": return schema.nodes.heading.create({ level: block.level }, inlineToPm(block.content));
-      case "item": return schema.nodes.item.create({ list: block.list, depth: block.depth, checked: !!block.checked, number: block.number ?? 1 }, inlineToPm(block.content));
-      case "quote": return schema.nodes.quote.create(null, inlineToPm(block.content));
-      case "code": return schema.nodes.code_block.create({ lang: block.lang }, block.text ? schema.text(block.text) : null);
-      case "rule": return schema.nodes.rule.create();
-      case "raw": return schema.nodes.raw.create(null, block.text ? schema.text(block.text) : null);
-    }
-  });
+/** The page's blocks as the editor's document; `blanks[i]` empty lines are shown above block i (the file's extra blank
+ * lines, as in Obsidian's source view). */
+export function blocksToDoc(blocks: readonly Block[], blanks: readonly number[] = []): PmNode {
+  const nodes = blocks.flatMap((block, i): PmNode[] => [...Array.from({ length: blanks[i] ?? 0 }, () => schema.nodes.paragraph.create()), toNode(block)]);
   return schema.nodes.doc.create(null, nodes.length ? nodes : [schema.nodes.paragraph.create()]);
+}
+
+function toNode(block: Block): PmNode {
+  switch (block.kind) {
+    case "paragraph": return schema.nodes.paragraph.create(null, inlineToPm(block.content));
+    case "heading": return schema.nodes.heading.create({ level: block.level }, inlineToPm(block.content));
+    case "item": return schema.nodes.item.create({ list: block.list, depth: block.depth, checked: !!block.checked, number: block.number ?? 1 }, inlineToPm(block.content));
+    case "quote": return schema.nodes.quote.create(null, inlineToPm(block.content));
+    case "code": return schema.nodes.code_block.create({ lang: block.lang }, block.text ? schema.text(block.text) : null);
+    case "rule": return schema.nodes.rule.create();
+    case "raw": return schema.nodes.raw.create(null, block.text ? schema.text(block.text) : null);
+  }
 }
 
 function pmToInline(node: PmNode): Inline[] {
@@ -127,12 +130,21 @@ export function nodeToBlock(node: PmNode): Block | null {
   }
 }
 
-/** The editor's document as the page's blocks. An empty document is an empty page. */
-export function docToBlocks(doc: PmNode): Block[] {
-  const blocks: Block[] = [];
-  doc.forEach((node) => { const block = nodeToBlock(node); if (block) blocks.push(block); });
-  // An empty line is space on the screen, not a block: Markdown has no empty paragraph (it would read back as nothing).
-  return blocks.filter((block) => !((block.kind === "paragraph" || block.kind === "quote") && !block.content.some((run) => run.t !== "text" || run.text.trim())));
+const isEmptyLine = (block: Block) => (block.kind === "paragraph" || block.kind === "quote") && !block.content.some((run) => run.t !== "text" || run.text.trim());
+
+/** The editor's document as the page's blocks. An empty line is not a block (Markdown has no empty paragraph): the
+ * empty lines above a block are counted on it (`blankBefore`) and written as blank lines; those at the end go. */
+export function docToBlocks(doc: PmNode): EditBlock[] {
+  const blocks: EditBlock[] = [];
+  let empty = 0;
+  doc.forEach((node) => {
+    const block = nodeToBlock(node);
+    if (!block) return;
+    if (isEmptyLine(block)) { empty++; return; }
+    blocks.push(blocks.length ? { ...block, blankBefore: empty } : block);
+    empty = 0;
+  });
+  return blocks;
 }
 
 /** Pasted HTML with its lists flattened into what the editor holds: one block per item, with its kind (bullet,

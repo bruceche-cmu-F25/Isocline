@@ -188,6 +188,9 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     await editor.current?.flush();
     const moved = await op("note.move", { id: detail.id, title: next });
     if (!moved.id) { setTitle(detail.title); setToast({ text: moved.code === "exists" ? t("notes.renameExists") : moved.error ?? t("notes.failed") }); return; }
+    // A file name cannot hold some characters: say so when the title had any, instead of changing it quietly.
+    const became = moved.id.split("/").pop()!;
+    if (became !== next) { setTitle(became); setToast({ text: t("notes.titleCleaned", { title: became }) }); }
     go("note.list", moved.id);
   };
 
@@ -328,7 +331,10 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
         <div className="nt-scroll">
           {!at && (
             <div className="nt-doc-wrap">
-              <h1 className="nt-title-static">{t("notes.recent")}</h1>
+              <div className="nt-recent-head">
+                <h1 className="nt-title-static">{t("notes.recent")}</h1>
+                {pages.length > 0 && <button type="button" className="nt-btn" onClick={() => void newPage(null)}><Icon name="plus" />{t("notes.new")}</button>}
+              </div>
               {pages.length ? <div className="nt-recent">{[...pages].filter((one) => one.file).sort(byTime).map((one) => (
                 <button type="button" key={one.id} className="nt-row" onClick={() => void openPage(one.id)}>
                   <PageGlyph name={one.icon} size={18} />

@@ -12,7 +12,7 @@ import { keymap } from "prosemirror-keymap";
 import type { Node as PmNode } from "prosemirror-model";
 import { EditorState, Plugin, TextSelection, type Command } from "prosemirror-state";
 import { EditorView, type NodeView } from "prosemirror-view";
-import { assignSources, compose, parsePage, writeBlocks, type ParsedPage } from "@zirma/module-notes/markdown";
+import { assignSources, blanksBefore, compose, parsePage, writeBlocks, type ParsedPage } from "@zirma/module-notes/markdown";
 import type { PageDetail } from "@zirma/module-notes/types";
 import { blocksToDoc, docToBlocks, flattenLists, schema } from "./schema.ts";
 import { Fragment, Slice } from "prosemirror-model";
@@ -292,7 +292,7 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
   }));
 
   const stateFor = (parsed: ParsedPage) => EditorState.create({
-    doc: blocksToDoc(parsed.blocks.map((source) => source.block)),
+    doc: blocksToDoc(parsed.blocks.map((source) => source.block), blanksBefore(parsed)),
     plugins: readOnly ? [] : [rules, keys, keymap(baseKeymap), history(), dropCursor({ color: "var(--alf)" }), trailing,
       tasksPlugin(() => ({ ...context(), put: (ref, words) => latest.current.tasks?.put(ref, words) }))],
   });

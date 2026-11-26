@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { defineModule, defineOp, defineQuery, defineTool, Type, userLocale, type World, type ZirmaModule } from "@zirma/module-kit";
 import {
-  applyEdit, createPage, discardPage, flipHistory, getPage, indexLibrary, libraryRow, listHistory, listPages, MIGRATIONS, movePage, pageDetail, pruneHistory, searchPages,
+  applyEdit, createPage, discardPage, flipHistory, indexFiles, getPage, indexLibrary, libraryRow, listHistory, listPages, MIGRATIONS, movePage, pageDetail, pruneHistory, searchPages,
   setIcon, setLibrary, trashPage,
 } from "./domain.ts";
 import { Library, LibraryError } from "./library.ts";
@@ -42,7 +42,11 @@ function refused(error: unknown): { error: string; code: string } {
   throw error;
 }
 
-export function createNotesModule(options: NotesOptions): ZirmaModule & { library(world: World): { library: Library; id: string } } {
+export function createNotesModule(options: NotesOptions): ZirmaModule & {
+  library(world: World): { library: Library; id: string };
+  /** The folder watcher's quick read: just these pages (see indexFiles). */
+  indexChanged(world: World, ids: readonly string[]): number | null;
+} {
   const open = (world: World) => {
     const row = libraryRow(world, options.defaultRoot);
     const library = new Library(row.root);
@@ -274,5 +278,8 @@ export function createNotesModule(options: NotesOptions): ZirmaModule & { librar
       },
     },
   });
-  return Object.assign(module, { library: (world: World) => { const { library, id } = ready(world); return { library, id }; } });
+  return Object.assign(module, {
+    library: (world: World) => { const { library, id } = ready(world); return { library, id }; },
+    indexChanged: (world: World, ids: readonly string[]) => indexFiles(world, ready(world).library, ids),
+  });
 }
