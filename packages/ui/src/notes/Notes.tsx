@@ -12,6 +12,7 @@ import { Icon } from "../shell/icons.tsx";
 import { when } from "../shell/Nav.tsx";
 import { NoteEditor, type EditorHandle, type SaveState } from "./NoteEditor.tsx";
 import { PageGlyph } from "./pageIcons.tsx";
+import { CheatSheet } from "./CheatSheet.tsx";
 import "./notes.css";
 
 type OpAnswer = { error?: string; code?: string; id?: string; ok?: boolean; reason?: string };
@@ -88,6 +89,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   const [sheet, setSheet] = useState<{ path: string; text: string } | null>(null);
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const [title, setTitle] = useState("");
+  const [help, setHelp] = useState(false);
   const editor = useRef<EditorHandle>(null);
   const loadedAt = useRef<number>(0);
 
@@ -273,6 +275,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
             <button type="button" className="nt-ib" onClick={() => setMenu(menu === "more" ? null : "more")} aria-label={t("notes.more")} aria-expanded={menu === "more"}><Icon name="more" /></button>
             {menu === "more" && <div className="nt-menu" role="menu">
               <button type="button" role="menuitem" onClick={() => void showMarkdown()}>{t("notes.markdown")}</button>
+              {page && !page.zirma && <button type="button" role="menuitem" className="nt-help-item" onClick={() => { setMenu(null); setHelp(true); }}>{t("notes.help.open")}</button>}
               {page && !page.zirma && <button type="button" role="menuitem" onClick={() => { setMenu(null); void newPage(page.id); }}>{t("notes.newSub")}</button>}
               {page && !page.zirma && <button type="button" role="menuitem" className="nt-bad" onClick={() => void remove()}>{t("notes.delete")}</button>}
             </div>}
@@ -364,6 +367,9 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
             </div>
           </aside>
         )}
+        {/* How to write, from a quiet corner of a page you can write in. */}
+        {page && !page.zirma && <button type="button" className="nt-help-btn" onClick={() => setHelp((was) => !was)} aria-expanded={help} aria-label={t("notes.help.open")} title={t("notes.help.open")}>?</button>}
+        {help && page && !page.zirma && <CheatSheet onClose={() => setHelp(false)} />}
         {toast && (
           <div className="nt-toast" role="status">
             <span>{toast.text}</span>
