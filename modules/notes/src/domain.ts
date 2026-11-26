@@ -2,6 +2,7 @@
  * page's history (notes.md 4.3, 4.4; notes-two-layers.md 4.2, 4.6). The files are the truth; every table here can
  * be dropped and built again from them, except the history, which is Zirma's record of who changed what. */
 import { randomBytes } from "node:crypto";
+import { statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { newId, recordDomainEvent, type Migration, type World } from "@zirma/module-kit";
 import { linkPage, parsePage, readableBlock, setProperty, type Block, type ParsedPage } from "./markdown/index.ts";
@@ -208,6 +209,31 @@ export function indexLibrary(world: World, library: Library, announce = false): 
     if (changed && announce) recordDomainEvent(world, { kind: "note.indexed", subject: "note:library", payload: { changed } });
   });
   return changed;
+}
+
+/** Reads just these pages into the index, for the folder watcher: a file written or added is read again; anything
+ * else (a file gone, a folder, a name it cannot tell) takes the whole pass, which also sees moves. Returns how many
+ * pages changed, or null when it did the whole pass. */
+export function indexFiles(world: World, library: Library, ids: readonly string[]): number | null {
+  if (!ids.length || ids.length > 50) return indexLibrary(world, library, true);
+  const files: PageFile[] = [];
+  for (const id of ids) {
+    let stats;
+    try { stats = statSync(library.file(id)); } catch { return indexLibrary(world, library, true); }
+    if (!stats.isFile()) return indexLibrary(world, library, true);
+    const known = world.db.prepare("SELECT mtime, size FROM note_pages WHERE id = ?").get(id);
+    // A new page under a folder that was not a page yet is easier for the whole pass.
+    if (!known && id.includes("/") && !world.db.prepare("SELECT 1 FROM note_pages WHERE id = ?").get(parentOf(id))) return indexLibrary(world, library, true);
+    if (known && known.mtime === stats.mtimeMs && known.size === stats.size) continue;
+    files.push({ id, title: id.split("/").pop()!, parent: id.startsWith(`${ZIRMA_DIR}/`) && !id.slice(ZIRMA_DIR.length + 1).includes("/") ? null : parentOf(id), file: true, zirma: id.startsWith(`${ZIRMA_DIR}/`), mtime: stats.mtimeMs, size: stats.size });
+  }
+  if (!files.length) return 0;
+  world.tx(() => {
+    for (const file of files) writeIndexed(world, file, library.read(file.id)?.text ?? null);
+    resolveAll(world);
+    recordDomainEvent(world, { kind: "note.indexed", subject: "note:library", payload: { changed: files.length } });
+  });
+  return files.length;
 }
 
 /** Reads one page into the index right after Zirma wrote it (the watcher would, a moment later). */

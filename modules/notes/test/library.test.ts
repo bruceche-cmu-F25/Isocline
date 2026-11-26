@@ -374,3 +374,21 @@ test("a change read from the folder is told to devices (an event); one Zirma mad
   index();
   assert.equal(events(), 1, "a pass that is not the folder watcher's tells nothing");
 });
+
+test("the watcher's quick read: just the pages it saw change; anything else takes the whole pass", async () => {
+  const { write, index, world, library } = setup();
+  const { indexFiles } = await import("../src/domain.ts");
+  write("甲", "一\n");
+  write("乙", "一\n");
+  index();
+  write("甲", "二，更长一点\n");
+  assert.equal(indexFiles(world, library, ["甲"]), 1);
+  assert.equal(searchPages(world, "更长一点").length, 1, "its words are read");
+  assert.equal(indexFiles(world, library, ["甲"]), 0, "unchanged since: nothing to do");
+  write("丙", "新的一页 [[甲]]\n");
+  assert.equal(indexFiles(world, library, ["丙"]), 1, "a new page is read");
+  assert.equal((world.db.prepare("SELECT resolved FROM note_links WHERE page = '丙'").get()!.resolved), "甲", "and its links found");
+  unlinkSync(join(library.root, "乙.md"));
+  assert.ok((indexFiles(world, library, ["乙"]) ?? 0) >= 1, "a page gone: the whole pass");
+  assert.equal(world.db.prepare("SELECT count(*) AS n FROM note_pages WHERE id = '乙'").get()!.n, 0);
+});

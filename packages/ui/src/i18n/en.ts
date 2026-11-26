@@ -1557,6 +1557,7 @@ export const en: Record<keyof typeof zh, string> = {
   "today.placed": "On the calendar",
   "today.open": "Open",
   // Notes (docs/design/notes-two-layers.md)
+  "notes.titleCleaned": "A file name cannot hold / \\ : * ? \" < > | # ^ [ ], so they became spaces: “{title}”",
   "notes.folder": "Notes are kept in",
   "notes.reveal": "Show in Finder",
   "notes.folder.change": "Choose another folder",

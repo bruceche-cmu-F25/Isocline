@@ -22,7 +22,10 @@ export function defaultNotesRoot(dataDir: string, env: NodeJS.ProcessEnv = proce
   return currentStage(env) === "production" && !env.ZIRMA_DATA_DIR ? join(homedir(), "Documents", "notes") : join(dataDir, "notes");
 }
 
-interface NotesModuleHandle { library(world: Home["world"]): { library: import("@zirma/module-notes").Library; id: string } }
+interface NotesModuleHandle {
+  library(world: Home["world"]): { library: import("@zirma/module-notes").Library; id: string };
+  indexChanged?(world: Home["world"], ids: readonly string[]): number | null;
+}
 
 function notesOf(home: Home): NotesModuleHandle {
   const module = home.modules.find((candidate) => candidate.id === "note") as unknown as NotesModuleHandle | undefined;
@@ -82,16 +85,29 @@ export function watchNotes(home: Home, log: (message: string) => void): () => vo
   let root = "";
   let timer: NodeJS.Timeout | undefined;
   let running = false, again = false;
+  /** The pages the watcher saw change since the last read; null: something it could not name (read everything). */
+  let names: Set<string> | null = new Set();
   // A change during a pass gets one more pass after it: the running one may have listed the folder already.
   const read = () => {
     if (running) { again = true; return; }
+    const changed = names;
+    names = new Set();
     running = true;
-    home.syncModule("note").catch((error: Error) => log(`notes: ${error.message}`)).finally(() => {
+    // Just the pages that changed when the watcher named them all (a save, an edit in another app); the whole
+    // folder otherwise (a move, a folder, a file it could not name).
+    const quick = changed && changed.size && module.indexChanged ? (() => { try { return module.indexChanged!(home.world, [...changed]) !== undefined; } catch { return false; } })() : false;
+    (quick ? Promise.resolve() : home.syncModule("note")).catch((error: Error) => log(`notes: ${error.message}`)).finally(() => {
       running = false;
       if (again) { again = false; read(); }
     });
   };
-  const pass = () => {
+  const pass = (name?: string | null) => {
+    if (!name) names = null;
+    else if (names) {
+      const path = String(name).split(/[\\/]/).join("/");
+      if (/\.md$/i.test(path) && !path.split("/").some((part) => part.startsWith("."))) names.add(path.replace(/\.md$/i, ""));
+      else if (!path.split("/").some((part) => part.startsWith("."))) names = null;
+    }
     clearTimeout(timer);
     timer = setTimeout(read, 400);
   };
@@ -106,13 +122,14 @@ export function watchNotes(home: Home, log: (message: string) => void): () => vo
       watcher = watch(root, { recursive: true }, (_event, name) => {
         // Saving writes a temporary file first, and versions go to the trash: neither is a page.
         if (name && /(^|\/)\.[^/]*$/.test(String(name)) && !String(name).endsWith(".md")) return;
-        pass();
+        if (name && String(name).split(/[\\/]/).some((part) => part.startsWith("."))) return;
+        pass(name ? String(name) : null);
       });
       watcher.on("error", () => { watcher?.close(); watcher = null; });
     } catch (error) {
       log(`notes: cannot watch ${root}: ${(error as Error).message}`);
     }
-    pass();
+    pass(null);
   };
   follow();
   const every = setInterval(follow, 10_000);
