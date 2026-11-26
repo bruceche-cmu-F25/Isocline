@@ -1,4 +1,6 @@
 # Typecheck and tests for every pull request into zirma and every push to it (docs/WORKFLOW.md §6).
+# A pull request that only touches docs/, prototype/ or a Markdown file at the root skips them: `check` is then
+# reported as skipped, which branch protection counts as passed, so it can be merged at once.
 name: CI
 
 on:
@@ -12,7 +14,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: Did anything besides docs change?
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # A push to zirma is always checked in full.
+          if [ "$EVENT" != "pull_request" ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          changed=$(git diff --name-only "$BASE...HEAD")
+          echo "$changed"
+          code=$(echo "$changed" | grep -Ev '^(docs/|prototype/)|^[^/]+\.md$' | grep -c . || true)
+          if [ "$code" -gt 0 ]; then echo "code=true" >> "$GITHUB_OUTPUT"; else echo "code=false" >> "$GITHUB_OUTPUT"; fi
+
   check:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-latest
     timeout-minutes: 20
     env:
