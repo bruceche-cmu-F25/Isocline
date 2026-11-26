@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import { statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { newId, recordDomainEvent, type Migration, type World } from "@zirma/module-kit";
-import { linkPage, parsePage, readableBlock, setProperty, type Block, type ParsedPage } from "./markdown/index.ts";
+import { findTask, linkPage, parsePage, readableBlock, setProperty, taskRef, type Block, type ParsedPage } from "./markdown/index.ts";
 import { fingerprint, idOf, Library, LibraryError, parentOf, safeName, ZIRMA_DIR, type PageFile, type SaveResult } from "./library.ts";
 import type { HistoryEntry, NotePage, PageDetail, SearchHit } from "./types.ts";
 
@@ -631,3 +631,49 @@ export function blocksOf(text: string): Block[] {
 
 export type { ParsedPage };
 export { idOf };
+
+/* ── To-dos and the todo list ── */
+
+/** The to-dos whose box changed between two versions of a page, by their todo ref: what the todo list mirrors. */
+export function taskChanges(libraryId: string, page: string, before: string, after: string): Array<{ ref: string; checked: boolean }> {
+  const boxes = (text: string) => {
+    const blocks = parsePage(text).blocks.map((source) => source.block);
+    const out = new Map<string, boolean>();
+    blocks.forEach((block, i) => { const ref = taskRef(libraryId, page, blocks, i); if (ref && block.kind === "item") out.set(ref, !!block.checked); });
+    return out;
+  };
+  const was = boxes(before), now = boxes(after);
+  return [...now].filter(([ref, checked]) => was.has(ref) && was.get(ref) !== checked).map(([ref, checked]) => ({ ref, checked }));
+}
+
+/** Ticks or unticks one to-do in its page because the user finished or reopened it on the todo list: only the box in
+ * that line changes, the page's history says so, and nothing is written when the box is already so, when the to-do
+ * is not found by its words, or when the page is not in this library. */
+export function setTaskChecked(world: World, library: Library, libraryId: string, ref: string, checked: boolean): boolean {
+  const found = /^note:([^:]+):(.+)#([0-9a-f]+):(\d+)$/.exec(ref);
+  if (!found || found[1] !== libraryId || inZirma(found[2])) return false;
+  const [, , page, key, nth] = found;
+  const read = library.read(page);
+  if (!read) return false;
+  const parsed = parsePage(read.text);
+  const index = findTask(parsed.blocks.map((source) => source.block), key, Number(nth));
+  if (index === -1) return false;
+  const source = parsed.blocks[index];
+  if (source.block.kind !== "item" || !!source.block.checked === checked) return false;
+  const box = /\[[ xX]\]/.exec(source.marker ?? "");
+  if (!box) return false;
+  const at = source.start + box.index;
+  const body = parsed.body.slice(0, at) + (checked ? "[x]" : "[ ]") + parsed.body.slice(at + 3);
+  const text = (parsed.bom ? "\uFEFF" : "") + body;
+  const saved = library.save(page, read.fp, text);
+  if (!saved.ok) return false;
+  world.tx(() => {
+    indexOne(world, library, page);
+    const id = newId();
+    world.db.prepare("INSERT INTO note_history (id, page, at, actor, kind, summary, before, after) VALUES (?, ?, ?, 'user', 'edit', ?, ?, ?)")
+      .run(id, page, new Date().toISOString(), checked ? "todo.done" : "todo.reopened", read.text, text);
+    recordDomainEvent(world, { kind: "note.saved", subject: `note:${page}`, actor: "user", payload: { page } });
+  });
+  return true;
+}
+

@@ -203,6 +203,25 @@ export function addFromNote(world: World, input: { title: string; source: { kind
   return { todo: insertTodo(world, { title: input.title }, "added", { source }).todo, existing: false };
 }
 
+/** A to-do ticked or unticked in its note (docs/research/notes-editor.md 3.5): the todo on the list follows, if the
+ * user put that to-do on the list. Answers whether anything changed. */
+export function setNoteTodoDone(world: World, ref: string, done: boolean): boolean {
+  const linked = world.db.prepare("SELECT todo_id FROM todo_sources WHERE ref = ? AND state = 'linked'").get(ref);
+  const row = linked?.todo_id ? world.db.prepare("SELECT payload FROM todo_items WHERE id = ?").get(linked.todo_id as string) : undefined;
+  if (!row) return false;
+  const todo = JSON.parse(row.payload as string) as Todo;
+  if (todo.done === done) return false;
+  const result = done ? completeTodo(world, { id: todo.id }) : updateTodo(world, { id: todo.id }, { done: false });
+  return !("error" in result);
+}
+
+/** The todos from notes, and whether each is done: what the home node mirrors back into the notes. */
+export function noteTodos(world: World): Array<{ id: string; ref: string; done: boolean }> {
+  return listTodos(world, { includeDone: true, includeArchived: true })
+    .filter((todo) => todo.source?.kind === "note")
+    .map((todo) => ({ id: todo.id, ref: todo.source!.ref, done: todo.done }));
+}
+
 /** A note page moved or was renamed (`from` → `to`, page paths in the library): the todos from it, and from the pages
  * under it, follow, so they still lead back to their lines. */
 export function moveNoteSources(world: World, from: string, to: string): number {

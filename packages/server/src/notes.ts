@@ -10,6 +10,7 @@ import { currentStage, recordDomainEvent } from "@zirma/core";
 import { savePage, type SaveAnswer } from "@zirma/module-notes";
 import type { Home } from "./home.ts";
 import { MAX_FILE_BYTES, sniff } from "./files.ts";
+import { mirrorNoteTicks } from "./note-todos.ts";
 import { HttpError, readBytes, readJson, send } from "./wire.ts";
 
 /** Pages larger than this are not saved through the editor. */
@@ -46,6 +47,9 @@ export async function notesRoute(home: Home, req: IncomingMessage, res: ServerRe
     throw new HttpError(400, "library, id, base and text are required");
   }
   const { library, id } = notesOf(home).library(home.world);
+  // What the page was, to see which to-dos were ticked or unticked by this save.
+  let before: string | null = null;
+  try { before = library.read(body.id)?.text ?? null; } catch { before = null; }
   let answer: SaveAnswer;
   try {
     answer = savePage(home.world, library, id, { library: body.library, id: body.id, base: body.base, text: body.text });
@@ -53,7 +57,10 @@ export async function notesRoute(home: Home, req: IncomingMessage, res: ServerRe
     if ((error as Error).name === "LibraryError") throw new HttpError(400, (error as Error).message, (error as { code?: string }).code);
     throw error;
   }
-  if (answer.ok) announce(home, body.id);
+  if (answer.ok) {
+    announce(home, body.id);
+    if (before !== null) mirrorNoteTicks(home.world, id, body.id, before, body.text);
+  }
   send(res, answer.ok ? 200 : 409, answer);
   return true;
 }
