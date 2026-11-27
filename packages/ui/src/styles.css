@@ -61,8 +61,6 @@ a:hover { text-decoration-color: var(--accent); }
 }
 .workspace[data-nav="hidden"] { --nav-col: 0px; }
 .workspace[data-alfred="closed"] { --alf-col: 0px; }
-.workspace[data-alfred="wide"] { --page-col: 0px; --alf-col: minmax(0, 1fr); }
-.workspace[data-alfred="wide"] .page { display: none; }
 body.resizing { cursor: col-resize; user-select: none; }
 
 .resizer { position: absolute; top: var(--top-h); bottom: 0; z-index: 8; width: 9px; cursor: col-resize; touch-action: none; }
@@ -156,6 +154,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .nav-item svg { color: var(--k-solid, currentColor); }
 .nav-item .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .nav-item .count { margin-left: auto; }
+.nav-item .nav-fresh { flex: none; margin-left: auto; }
+.nav-item .nav-fresh + .count { margin-left: 6px; }
 .nav-spacer { flex: 1; min-height: 12px; }
 .conv-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 2px 4px 9px; color: var(--muted); font-size: .75rem; }
 .conv-head .icon-btn { width: 24px; height: 24px; }
@@ -209,7 +209,6 @@ body.resizing { cursor: col-resize; user-select: none; }
 
 /* Zirma: the figure, a line on what it is doing, and the conversation. */
 .alfred { grid-area: alf; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--raise); border-left: 1px solid var(--line-soft); }
-.workspace[data-alfred="wide"] .alfred { grid-column: page / alf; border-left: 0; }
 /* A faint grid under Zirma's panel and conversation, the paper its wireframe figure is drawn on: it marks Zirma's
    place apart from the pages, whose ground is flat. It fades out where the words are, the middle and the composer,
    and shows at the edges. Layers, top first: the middle's fade, the bottom's fade, the lines, the ground. */

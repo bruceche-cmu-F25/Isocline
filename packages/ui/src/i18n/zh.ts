@@ -92,8 +92,7 @@ export const zh = {
   // Zirma's panel
   "panel.waiting": "在等你：{what}",
   "panel.working": "在办：{goal}",
-  "panel.wide": "展开成整页",
-  "panel.narrow": "回到并排",
+  "panel.openChats": "在对话页打开",
   "panel.close": "收起",
   "panel.closeKey": "收起（{key}）",
 

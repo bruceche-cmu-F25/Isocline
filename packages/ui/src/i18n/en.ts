@@ -93,8 +93,7 @@ export const en: Record<keyof typeof zh, string> = {
   // Zirma's panel
   "panel.waiting": "Waiting for you: {what}",
   "panel.working": "Working on: {goal}",
-  "panel.wide": "Use the whole page",
-  "panel.narrow": "Back beside the page",
+  "panel.openChats": "Open in Chats",
   "panel.close": "Close",
   "panel.closeKey": "Close ({key})",
 

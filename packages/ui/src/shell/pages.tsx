@@ -81,6 +81,8 @@ export interface PageDef<S = unknown> {
   side?: boolean;
   /** A number for the sidebar, or nothing. */
   badge?(snapshot: S, state: StateResponse): number | undefined;
+  /** A small mark beside the name: something new waits to be read there (Chats: a reply not yet read). */
+  dot?(snapshot: S, state: StateResponse): boolean;
   /** One plain line under the page title: the facts. It also tells Zirma what you were looking at when you ask. */
   summary?(snapshot: S, state: StateResponse): string;
   /** What the quiet line beside the page's name says when it is not the summary: 今天 shows the date, since its
@@ -271,6 +273,7 @@ const PAGES: PageDef[] = [
   {
     key: "core.chat", get title() { return t("page.chat"); }, icon: "chat", k: "alfred", group: "modules", bare: true, side: true,
     badge: (_, state) => dailyConversations(state).reduce((sum, conversation) => sum + conversation.attention, 0) || undefined,
+    dot: (_, state) => dailyConversations(state).some((conversation) => !!conversation.unreadReplyId),
     summary: (_, state) => t("chat.sum", { n: dailyConversations(state).length }),
     render: ({ state, chat, side }) => <Chats state={state} side={side} {...chat} />,
   },
