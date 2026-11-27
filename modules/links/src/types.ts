@@ -17,6 +17,8 @@ export interface Place {
   folderId?: string;
   /** Where it sits in the category tree. */
   topicId?: string;
+  /** Zirma put it in its category, and the user has not moved it since (links-autofile.md §4). */
+  filedByZirma?: true;
   /** Kept in the tree only, not on the top row (an imported site starts so). */
   unpinned?: true;
   /** Order within its folder or among the top-level places and folders. */
@@ -50,6 +52,8 @@ export interface Clip {
   /** Why it was saved, in the user's words. */
   note?: string;
   topicId?: string;
+  /** Zirma put it in its category, and the user has not moved it since (links-autofile.md §4). */
+  filedByZirma?: true;
   state: ClipState;
   savedAt: string;
   /** Looking the page up: waiting, done, or why it could not be. */
@@ -75,6 +79,16 @@ export interface Topic {
   area?: string;
   /** The topic it sits under; none for a topic at the top of its area. */
   parentId?: string;
+  /** Zirma made it, and the user has not renamed, moved or filed anything into it since. */
+  byZirma?: true;
+}
+
+/** Filing links on their own (docs/design/links-autofile.md): off until the user turns it on from the Links page. */
+export interface AutoFileState {
+  enabled: boolean;
+  /** How many links it filed today, of the day's allowance. */
+  today: number;
+  perDay: number;
 }
 
 export interface LinksSnapshot {
@@ -85,9 +99,10 @@ export interface LinksSnapshot {
   /** Newest first. */
   clips: Clip[];
   topics: Topic[];
+  autoFile?: AutoFileState;
 }
 
 /** The operations a device may ask of this module (POST /api/ops/<name>), as the module defines them. A test on the
  * home node checks this list against the module's own, so a device cannot name one that is not there. */
-export const LINK_OPS = ["link.save", "link.update", "link.remove", "link.refetch", "link.pin", "link.rename", "link.ungroup", "link.group", "link.move", "link.order", "link.topic", "link.place", "link.merge", "link.import", "link.import_undo"] as const;
+export const LINK_OPS = ["link.save", "link.update", "link.remove", "link.refetch", "link.pin", "link.rename", "link.ungroup", "link.group", "link.move", "link.order", "link.topic", "link.place", "link.merge", "link.import", "link.import_undo", "link.autofile"] as const;
 export type LinkOp = (typeof LINK_OPS)[number];

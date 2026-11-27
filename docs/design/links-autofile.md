@@ -86,10 +86,10 @@
 
 【建议】迁移 `link:9`（合并后不能再改，PR 要打 reviewed 标签，见 #31）：
 
-- `link_items` 加 `filed_by TEXT CHECK (filed_by IN ('user', 'zirma'))`。已有分类的条目在迁移时记成 `user`。你把条目挪回「没分类」时也记 `user`（`topic_id` 为空、`filed_by = 'user'` = 你就要它在这儿）。
-- `link_items` 加 `file_tried_at TEXT`：Zirma 试过、没归。
+- `link_items` 加 `filed_by TEXT CHECK (filed_by IN ('user', 'zirma'))`。已有分类的条目在迁移时记成 `user`。你把条目挪回「没分类」时也记 `user`（`topic_id` 为空、`filed_by = 'user'` = 你就要它在这儿）。谁归的看是谁动的手：页面上的操作和导入书签是 `user`，Zirma 的工具（对话里、后台）是 `zirma`。
+- `link_items` 加 `file_queue INTEGER`（0/1）【A1 实现时改：原来是 `file_tried_at`】：1 = 等着自动归。开关开着时新收的、没分类的条目是 1；有人归了它、Zirma 试过一次（不管归没归）、或开关关掉，都变 0。这样「打开以后新收的」「不反复试」「关了不再归」「重新打开不往回找」都是这一列，导入的条目也不会进来。「让 Zirma 归一下」（A4）不看这一列，只看 `topic_id` 和 `filed_by` 都为空。
 - `link_topics` 加 `created_by TEXT NOT NULL DEFAULT 'user' CHECK (created_by IN ('user', 'zirma'))` 和 `touched INTEGER NOT NULL DEFAULT 1`（Zirma 建的格是 0，你一动就变 1，记号跟着它）。
-- 新表 `link_fixes`：`item_id`、`title`、`site`、`from_topic`、`to_topic`、`at`。只留最近 30 条。
+- 新表 `link_fixes`：`item_id`、`title`、`site`、`from_path`、`to_path`、`at`。存的是分类的路径文字，不是 id：格子后来删了、改名了，例子照样读得懂。只留最近 30 条。只有你挪 Zirma 归的条目才记；Zirma 自己改主意不算。
 - 新表 `link_autofile`（一行）：`enabled`、`day`、`count`（今天自动归了几条）、`run`（正在跑的那次）。
 - 事件：`link.auto_filed`（带这一批）、`link.auto_file_undone`。
 
@@ -107,7 +107,7 @@
 
 每一刀能单独合：
 
-1. **A1 数据和规矩**：迁移 `link:9`、开关、谁能被碰的规则（纯函数，测试覆盖第 2 节的每一条「不碰」）、例子表。还不调模型。
+1. **A1 数据和规矩**【已实现，2026-11-27】：迁移 `link:9`、开关（操作 `link.autofile`，快照里的 `autoFile`）、谁能被碰的规则、例子表；对话里的 `link_save` 提示改成宽着分。还不调模型。代码在 `modules/links/src/autofile.ts`，测试在 `modules/links/test/autofile.test.ts`。
 2. **A2 后台任务**：`link-file` 的任务档和两个工具、攒批和上限、跑完记 `link.auto_filed`。用 `scripts/eval` 加几条真模型的场景：已有树里选对格、没合适的格时新建一个大分类（不建子分类）、拿不准时不归、标题里写着命令时不照做。
 3. **A3 界面**：页面上的「自动分类」按钮和它的卡片、条目和格子上的记号、顶上那一行和撤销、卡片里单条撤回。中英文，窄屏，深浅色。
 4. **A4 「让 Zirma 归一下」**：「没分类」的按钮，旧条目分批跑。
