@@ -17,6 +17,7 @@ import type { PageDetail } from "@zirma/module-notes/types";
 import { blocksToDoc, docToBlocks, flattenLists, schema } from "./schema.ts";
 import { Fragment, Slice } from "prosemirror-model";
 import { AtomView, fileUrl, isFileName, linkName, putFiles, showTask, tasksKey, tasksPlugin, WikiView, type PageContext } from "./embeds.ts";
+import { CalloutView, cellAt, Overlays, runSlash, slashItems, slashQuery, tableCommands } from "./blocks.tsx";
 import { t } from "../i18n/index.ts";
 
 export type SaveState =
@@ -65,6 +66,8 @@ const isTextish = (node: PmNode) => node.type === schema.nodes.code_block || nod
 const enter: Command = (state, dispatch) => {
   const { $from } = state.selection;
   const node = $from.parent;
+  // In a table: the cell below (a new row past the last).
+  if (cellAt(state)) return tableCommands.down(state, dispatch);
   if (isTextish(node)) { dispatch?.(state.tr.insertText("\n").scrollIntoView()); return true; }
   if (node.type === schema.nodes.item) {
     // An empty item ends the list.
@@ -78,6 +81,8 @@ const enter: Command = (state, dispatch) => {
 const backspace: Command = (state, dispatch) => {
   const { $from, empty } = state.selection;
   if (!empty || $from.parentOffset !== 0 || $from.parent.type === schema.nodes.paragraph) return false;
+  // At the start of a cell nothing joins across cells.
+  if ($from.parent.type === schema.nodes.table_cell) return true;
   return setBlockType(schema.nodes.paragraph)(state, dispatch);
 };
 
@@ -100,8 +105,8 @@ const keys = keymap({
   Enter: enter,
   "Shift-Enter": chainCommands(exitCode, (state, dispatch) => { dispatch?.(state.tr.insertText("\n")); return true; }),
   Backspace: backspace,
-  Tab: indent(1),
-  "Shift-Tab": indent(-1),
+  Tab: (state, dispatch) => tableCommands.move(1)(state, dispatch) || indent(1)(state, dispatch),
+  "Shift-Tab": (state, dispatch) => tableCommands.move(-1)(state, dispatch) || indent(-1)(state, dispatch),
   "Mod-b": toggleMark(schema.marks.strong),
   "Mod-i": toggleMark(schema.marks.em),
   "Mod-e": toggleMark(schema.marks.code),
@@ -206,7 +211,7 @@ class ItemView implements NodeView {
   }
 }
 
-export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, tasks, focus, onError, onEdit }: {
+export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, tasks, focus, onError, onEdit, onSubpage }: {
   detail: PageDetail;
   readOnly: boolean;
   /** A link to a page was clicked. */
@@ -223,9 +228,23 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
   onError(message: string): void;
   /** The words changed here (typed, pasted, a to-do ticked). */
   onEdit?(): void;
+  /** Makes a page under this one (from the / menu) and answers its name. */
+  onSubpage?(): Promise<string | null>;
 }) {
   const host = useRef<HTMLDivElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+  const files = useRef<HTMLInputElement>(null);
   const view = useRef<EditorView | null>(null);
+  /** Changes with every change to the editor, for what floats over it. */
+  const [tick, setTick2] = useState(0);
+  const [slashIndex, setSlashIndex] = useState(0);
+  /** The `/` that was closed with Escape: its menu stays closed until the cursor leaves it. */
+  const dismissed = useRef<number | null>(null);
+  const slashRef = useRef<{ at: { from: number; to: number; query: string } | null; index: number }>({ at: null, index: 0 });
+  const slashContext = {
+    newSubpage: () => latest.current.onSubpage?.() ?? Promise.resolve(null),
+    pickFiles: () => files.current?.click(),
+  };
   const page = useRef<{ parsed: ParsedPage; text: string; fp: string | null; busy: boolean; again: boolean; stuck: boolean }>({
     parsed: parsePage(detail.text), text: detail.text, fp: detail.fp, busy: false, again: false, stuck: false,
   });
@@ -236,8 +255,8 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
   report.current = onState;
   const linkTo = useRef(onLink);
   linkTo.current = onLink;
-  const latest = useRef({ exists, tasks, onError, onEdit });
-  latest.current = { exists, tasks, onError, onEdit };
+  const latest = useRef({ exists, tasks, onError, onEdit, onSubpage });
+  latest.current = { exists, tasks, onError, onEdit, onSubpage };
   const context = (): PageContext => ({ page: detail.id, library: detail.library, exists: (target) => latest.current.exists(target) });
 
   const flush = async (): Promise<void> => {
@@ -305,6 +324,7 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
       attributes: { class: "nt-doc", spellcheck: "false", "aria-label": t("notes.body") },
       nodeViews: {
         item: (node, v, getPos) => new ItemView(node, v, getPos, editable),
+        callout: (node, v, getPos) => new CalloutView(node, v, getPos, editable),
         wiki: (node) => new WikiView(node, context()),
         atom: (node) => new AtomView(node, context()),
       },
@@ -365,8 +385,36 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
         void putFiles(view, files, at, detail.id, (message) => latest.current.onError(message));
         return true;
       },
+      handleKeyDown(_view, event) {
+        const open = slashRef.current;
+        if (!open.at || event.isComposing) return false;
+        const items = slashItems(open.at.query);
+        if (!items.length) return false;
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          const next = (open.index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
+          slashRef.current.index = next; setSlashIndex(next);
+          return true;
+        }
+        if (event.key === "Enter" || event.key === "Tab") {
+          event.preventDefault();
+          runSlash(editor, open.at, items[Math.min(open.index, items.length - 1)], slashContext);
+          return true;
+        }
+        if (event.key === "Escape") { dismissed.current = open.at.from; slashRef.current.at = null; setTick2((n) => n + 1); return true; }
+        return false;
+      },
       dispatchTransaction(transaction) {
         editor.updateState(editor.state.apply(transaction));
+        const at = editable ? slashQuery(editor.state) : null;
+        if (at && dismissed.current !== at.from) {
+          if (slashRef.current.at?.from !== at.from || slashRef.current.at.query !== at.query) { slashRef.current.index = 0; setSlashIndex(0); }
+          slashRef.current.at = at;
+        } else {
+          slashRef.current.at = null;
+          if (!at) dismissed.current = null;
+        }
+        setTick2((n) => n + 1);
         if (transaction.docChanged && editable) {
           latest.current.onEdit?.();
           window.clearTimeout(timer.current);
@@ -400,5 +448,17 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
     if (editor && !readOnly && tasks) editor.dispatch(editor.state.tr.setMeta(tasksKey, tasks.listed).setMeta("addToHistory", false));
   }, [tasks?.listed, readOnly]);
 
-  return <div className="nt-editor" ref={host} data-readonly={readOnly || undefined} />;
+  return (
+    <div className="nt-editor-wrap" ref={wrap}>
+      <div className="nt-editor" ref={host} data-readonly={readOnly || undefined} />
+      {!readOnly && <Overlays view={view.current} host={wrap.current} tick={tick}
+        slash={slashRef.current.at ? { at: slashRef.current.at, index: slashIndex, setIndex: (n) => { slashRef.current.index = n; setSlashIndex(n); }, close: () => { slashRef.current.at = null; setTick2((n) => n + 1); } } : null}
+        context={slashContext} />}
+      <input ref={files} type="file" multiple hidden onChange={(event) => {
+        const chosen = [...(event.target.files ?? [])];
+        event.target.value = "";
+        if (view.current && chosen.length) void putFiles(view.current, chosen, view.current.state.selection.from, detail.id, (message) => latest.current.onError(message));
+      }} />
+    </div>
+  );
 }

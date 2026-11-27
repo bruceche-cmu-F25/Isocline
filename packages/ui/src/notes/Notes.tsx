@@ -393,6 +393,12 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
               {save.kind === "offline" && <p className="nt-banner">{t("notes.offline")}</p>}
               <NoteEditor key={`${detail.library}:${detail.id}`} detail={detail} readOnly={detail.zirma} handle={editor} onState={setSave}
                 onEdit={() => touched.current.add(detail.id)}
+                onSubpage={async () => {
+                  const made = await op("note.create", { parent: detail.id, title: t("notes.untitled") });
+                  if (!made.id) { setToast({ text: made.error ?? t("notes.failed") }); return null; }
+                  setOpen((was) => new Set(was).add(detail.id));
+                  return made.id;
+                }}
                 exists={exists} focus={focus} onError={(message) => setToast({ text: message })}
                 tasks={{
                   listed,
