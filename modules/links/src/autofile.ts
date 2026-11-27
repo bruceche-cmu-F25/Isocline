@@ -115,6 +115,7 @@ CREATE TABLE link_file_passes (
   item_ids TEXT NOT NULL DEFAULT '[]',
   filed TEXT NOT NULL DEFAULT '[]',
   made TEXT NOT NULL DEFAULT '[]',
+  deferred TEXT NOT NULL DEFAULT '[]',
   undone INTEGER NOT NULL DEFAULT 0 CHECK (undone IN (0, 1)),
   seen INTEGER NOT NULL DEFAULT 0 CHECK (seen IN (0, 1))
 ) STRICT;

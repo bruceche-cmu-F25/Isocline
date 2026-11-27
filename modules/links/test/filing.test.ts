@@ -85,6 +85,34 @@ test("the one tool files only this pass's links, broadly, and makes three new ca
   assert.equal(snapshot(w).filing, true);
 });
 
+test("a link that needed a fourth new category waits for the next pass, once", () => {
+  const w = world();
+  setAutoFile(w, true);
+  const ids = Array.from({ length: 5 }, (_, i) => saved(w, `d${i}`));
+  const pass = start(w);
+  for (const [i, name] of ["News", "Shopping", "Learning"].entries()) assert.match(fileOne(w, { id: ids[i], category: name, area: "life" }), /new category/);
+  assert.match(fileOne(w, { id: ids[3], category: "Games", area: "life" }), /waits for the next pass/);
+  assert.match(fileOne(w, { id: ids[4], category: "Games", area: "life" }), /waits for the next pass/);
+  assert.match(fileOne(w, { id: ids[4], skip: true }), /stays in Unfiled/, "skipped after all: not waiting any more");
+  finishFilePass(w, pass);
+  assert.deepEqual(filePassDue(w, later())?.itemIds, [ids[3]], "the next pass takes it up, with the three new categories to choose from");
+  const next = start(w);
+  assert.match(fileOne(w, { id: ids[3], category: "Games", area: "life" }), /new category/, "a new pass may make new ones");
+  finishFilePass(w, next);
+
+  // Left for the next pass once only: a second time it is filed or skipped.
+  const more = Array.from({ length: 4 }, (_, i) => saved(w, `e${i}`));
+  const third = start(w);
+  for (const [i, name] of ["A", "B", "C"].entries()) fileOne(w, { id: more[i], category: name, area: "work" });
+  assert.match(fileOne(w, { id: more[3], category: "D", area: "work" }), /waits for the next pass/);
+  finishFilePass(w, third);
+  const fourth = start(w);
+  for (const [i, name] of ["E", "F", "G"].entries()) w.db.prepare("UPDATE link_file_passes SET made = json_insert(made, '$[#]', ?) WHERE id = ?").run(`x${i}${name}`, fourth);
+  assert.match(fileOne(w, { id: more[3], category: "H", area: "work" }), /Put it in one of them/);
+  finishFilePass(w, fourth);
+  assert.equal(filePassDue(w, later()), null);
+});
+
 test("finishing a pass: what it left is not tried again, the page is told once, and the whole pass can be undone", () => {
   const w = world();
   setAutoFile(w, true);

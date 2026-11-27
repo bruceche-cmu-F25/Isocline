@@ -27,13 +27,15 @@ const NOTICE_MS = 86_400_000;
 interface Filed { id: string; to: string }
 export interface FilePass {
   id: string; runId: string | null; kind: "auto" | "sweep"; sweep: string | null; startedAt: string; endedAt: string | null;
-  itemIds: string[]; filed: Filed[]; made: string[]; undone: boolean; seen: boolean;
+  itemIds: string[]; filed: Filed[]; made: string[];
+  /** Links that needed a new category after the pass had made its three: left for the next pass, once. */
+  deferred: string[]; undone: boolean; seen: boolean;
 }
 function toPass(row: Record<string, unknown>): FilePass {
   return {
     id: row.id as string, runId: (row.run_id as string | null) ?? null, kind: row.kind as FilePass["kind"], sweep: (row.sweep as string | null) ?? null,
     startedAt: row.started_at as string, endedAt: (row.ended_at as string | null) ?? null,
-    itemIds: JSON.parse(row.item_ids as string), filed: JSON.parse(row.filed as string), made: JSON.parse(row.made as string),
+    itemIds: JSON.parse(row.item_ids as string), filed: JSON.parse(row.filed as string), made: JSON.parse(row.made as string), deferred: JSON.parse(row.deferred as string),
     undone: row.undone === 1, seen: row.seen === 1,
   };
 }
@@ -49,10 +51,12 @@ export function currentPass(world: World): FilePass | undefined {
   return id ? passRow(world, id) : undefined;
 }
 
-/** Links nobody filed whose page is there to go by: what a sweep goes through, minus what it already tried. */
+/** Links nobody filed whose page is there to go by: what a sweep goes through, minus what it already tried (a link a
+ * pass left for the next one is tried again). */
 function sweepCandidates(world: World, sweep: string, limit: number): string[] {
   return world.db.prepare(`SELECT id FROM link_items WHERE topic_id IS NULL AND filed_by IS NULL AND (kind = 'place' OR fetch != 'pending')
-    AND id NOT IN (SELECT j.value FROM link_file_passes p, json_each(p.item_ids) j WHERE p.sweep = ?)
+    AND id NOT IN (SELECT j.value FROM link_file_passes p, json_each(p.item_ids) j WHERE p.sweep = ?
+      AND j.value NOT IN (SELECT d.value FROM json_each(p.deferred) d))
     ORDER BY saved_at, rowid LIMIT ?`).all(sweep, limit).map((row) => row.id as string);
 }
 
@@ -100,14 +104,15 @@ export function attachRun(world: World, passId: string, runId: string): void {
   world.tx((db) => db.prepare("UPDATE link_file_passes SET run_id = ? WHERE id = ?").run(runId, passId));
 }
 
-/** The pass is over (its run ended, or never started): what it did not file is not tried again on its own. */
+/** The pass is over (its run ended, or never started): what it did not file is not tried again on its own, except a
+ * link it left for the next pass because its three new categories were made (links-autofile.md §9.2). */
 export function finishFilePass(world: World, passId: string, now: number = Date.now()): FilePass | undefined {
   return world.tx((db) => {
     const pass = passRow(world, passId);
     if (!pass) return undefined;
     if (!pass.endedAt) {
       const clear = db.prepare("UPDATE link_items SET file_queue = 0 WHERE id = ?");
-      for (const id of pass.itemIds) clear.run(id);
+      for (const id of pass.itemIds) if (!pass.deferred.includes(id)) clear.run(id);
       db.prepare("UPDATE link_file_passes SET ended_at = ? WHERE id = ?").run(new Date(now).toISOString(), passId);
       if (pass.filed.length || pass.made.length) {
         recordDomainEvent(world, said("auto_filed", passId, { kind: pass.kind, filed: pass.filed.length, made: pass.made.length, tried: pass.itemIds.length }));
@@ -211,7 +216,7 @@ export function filePassGoal(world: World, passId: string, locale: Locale): stri
   const tree = treeLines(world);
   const fixes = listFixes(world).slice(0, 30);
   return [
-    `File each of these ${pass.itemIds.length} links with link_file, one call per link.`,
+    `Read all ${pass.itemIds.length} links first and decide which few broad categories they need; then file each with link_file, one call per link.`,
     `The user's areas (id and name): ${describeAreas(world)}.`,
     tree.length ? `Their categories (path [area] (how many links: a few of their titles)):\n${tree.join("\n")}` : "They have no categories yet.",
     ...(fixes.length ? [`Where the user moved links you had filed (newest first): follow these:\n${fixes.map((fix) => `- “${fence(fix.title)}” (${fix.site}): from ${fix.from ?? "Unfiled"} to ${fix.to ?? "Unfiled, left there"}`).join("\n")}`] : []),
@@ -227,8 +232,10 @@ the background; nobody is watching or can answer.
 File broadly. A category is only roughly where to look for something, not an exact label.
 - Put a link in one of the user's categories that fits. Use a sub-category only when the user made one it plainly
   belongs to; otherwise the broader category.
-- When none fits, make a new BROAD category: one wide word or two, like a shelf (Learning, Tools, News, Shopping), not a
-  subject (not "Rust async tutorials"). It goes at the top of one of the user's areas: give that area's id. Never make a
+- Look over the whole batch before you file any of it. When none of the user's categories fits, make a new BROAD
+  category: one wide word or two, like a shelf (Learning, Tools, News, Shopping), not a subject (not "Rust async
+  tutorials"). A new one should hold several of these links, or more like them later: a story about a central bank is
+  News, not Finance. It goes at the top of one of the user's areas: give that area's id. Never make a
   sub-category. Name it in the language the user's categories are in (their links' language if they have none).
 - At most ${MAX_NEW_PER_PASS} new categories in one pass. Once you made them, put the rest into them or the existing ones, or skip.
 - When unsure, skip the link (skip: true). A link left in Unfiled is better than one in the wrong place.
@@ -249,14 +256,24 @@ export function fileOne(world: World, params: FileParams): string {
     const row = db.prepare("SELECT * FROM link_items WHERE id = ?").get(params.id);
     if (!row) return "That link is gone; skip it.";
     if (row.topic_id || row.filed_by) return "Someone filed that link meanwhile; leave it.";
-    if (params.skip || !params.category?.trim()) return "Skipped: it stays in Unfiled.";
+    if (params.skip || !params.category?.trim()) {
+      // Skipped on purpose: not waiting for the next pass after all.
+      db.prepare("UPDATE link_file_passes SET deferred = (SELECT json_group_array(value) FROM json_each(deferred) WHERE value != ?) WHERE id = ?").run(params.id, pass.id);
+      return "Skipped: it stays in Unfiled.";
+    }
     const said = params.category.trim();
     let topicId = findTopic(topicTree(listTopics(world)), said);
     let made = false;
     if (!topicId) {
       if (/[/›>]/.test(said)) return "A new category goes at the top of an area: one name, no path. Make a broad one, or use an existing category.";
       if (!params.area || !isArea(world, params.area)) return `No category "${said}". To make it as a new broad category, give the id of the area it goes in (${describeAreas(world)}).`;
-      if (pass.made.length >= MAX_NEW_PER_PASS) return `You made ${MAX_NEW_PER_PASS} new categories in this pass already. Put it in one of them or an existing one, or skip it.`;
+      if (pass.made.length >= MAX_NEW_PER_PASS) {
+        // Left for the next pass, which sees the new categories and can likely use one (§9.2); but only once.
+        const before = db.prepare("SELECT 1 FROM link_file_passes p, json_each(p.deferred) d WHERE d.value = ? AND p.id != ?").get(params.id, pass.id);
+        if (before) return `You made ${MAX_NEW_PER_PASS} new categories in this pass already. Put it in one of them or an existing one, or skip it.`;
+        if (!pass.deferred.includes(params.id)) db.prepare("UPDATE link_file_passes SET deferred = json_insert(deferred, '$[#]', ?) WHERE id = ?").run(params.id, pass.id);
+        return `You made ${MAX_NEW_PER_PASS} new categories in this pass already, so this link waits for the next pass, which will see them. Go on with the others.`;
+      }
       const before = new Set(listTopics(world).map((topic) => topic.id));
       const topic = ensureTopic(world, { name: said.slice(0, 40), area: params.area }, "zirma");
       if ("error" in topic) return topic.error;
