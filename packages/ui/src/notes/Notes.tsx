@@ -383,11 +383,18 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
               <button type="button" role="menuitem" onClick={() => void showMarkdown()}>{t("notes.markdown")}</button>
               {page && !page.zirma && <button type="button" role="menuitem" className="nt-help-item" onClick={() => { setMenu(null); setHelp(true); }}>{t("notes.help.open")}</button>}
               {page && !page.zirma && <button type="button" role="menuitem" onClick={() => { setMenu(null); void newPage(page.id); }}>{t("notes.newSub")}</button>}
+              {page && !page.zirma && page.file && <button type="button" role="menuitem" onClick={() => setMenu("icon")}>{detail?.icon ? t("notes.icon.change") : t("notes.icon.add")}</button>}
               {page && !page.zirma && <button type="button" role="menuitem" onClick={() => { setMoveFilter(""); setMenu("move"); }}>{t("notes.moveTo")}</button>}
               {onThisMac && <button type="button" role="menuitem" onClick={() => { setMenu(null); void fetch("/api/notes/reveal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: at }) }); }}>{t("notes.reveal")}</button>}
               {page?.zirma && page.file && <button type="button" role="menuitem" onClick={() => void adopt()}>{t("notes.kept.adopt")}</button>}
               {page?.file !== false && page && <button type="button" role="menuitem" className="nt-bad" onClick={() => void remove()}>{t("notes.delete")}</button>}
             </div>}
+            {menu === "icon" && detail && (
+              <div className="nt-menu nt-icons" role="menu" aria-label={t("notes.icon.change")}>
+                {PAGE_ICONS.map((name) => <button type="button" key={name} role="menuitemradio" aria-checked={detail.icon === name} aria-label={name} title={name} onClick={() => void setIcon(name)}><PageGlyph name={name} size={18} /></button>)}
+                {detail.icon && <button type="button" className="nt-icons-off" onClick={() => void setIcon(null)}>{t("notes.icon.remove")}</button>}
+              </div>
+            )}
             {menu === "move" && page && (
               <div className="nt-menu nt-move" role="dialog" aria-label={t("notes.moveTo")}>
                 <input autoFocus value={moveFilter} placeholder={t("notes.moveFilter")} aria-label={t("notes.moveFilter")} onChange={(event) => setMoveFilter(event.target.value)}
@@ -428,16 +435,8 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
           )}
           {at && detail && (
             <div className="nt-doc-wrap">
+              {/* The page's icon is small, beside its name in the tree and up top; it is chosen from the ⋯ menu. */}
               <div className="nt-head">
-                <div className="nt-icon-wrap">
-                  {detail.icon
-                    ? <button type="button" className="nt-picon" disabled={detail.zirma} onClick={() => setMenu(menu === "icon" ? null : "icon")} aria-label={t("notes.icon.change")}><PageGlyph name={detail.icon} size={38} /></button>
-                    : !detail.zirma && <button type="button" className="nt-addicon" onClick={() => setMenu(menu === "icon" ? null : "icon")}><Icon name="plus" />{t("notes.icon.add")}</button>}
-                  {menu === "icon" && <div className="nt-menu nt-icons" role="menu">
-                    {PAGE_ICONS.map((name) => <button type="button" key={name} role="menuitemradio" aria-checked={detail.icon === name} aria-label={name} title={name} onClick={() => void setIcon(name)}><PageGlyph name={name} size={18} /></button>)}
-                    {detail.icon && <button type="button" className="nt-icons-off" onClick={() => void setIcon(null)}>{t("notes.icon.remove")}</button>}
-                  </div>}
-                </div>
                 {detail.zirma
                   ? <h1 className="nt-title-static">{detail.title}</h1>
                   : <input className="nt-title" value={title} aria-label={t("notes.title")} placeholder={t("notes.untitled")} maxLength={120}
