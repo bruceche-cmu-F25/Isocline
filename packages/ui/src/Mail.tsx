@@ -8,6 +8,7 @@
  * user's own `mail.send`.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { Proposal, Run, StateResponse } from "@zirma/protocol";
 import type { MailCategory, MailDetail, MailMessage, MailSent, MailSnapshot, SendInput } from "@zirma/module-mail/types";
 import { api, newRequestId } from "./api.ts";
@@ -15,7 +16,8 @@ import { NewMail } from "./NewMail.tsx";
 import { outcomeText } from "./Inbox.tsx";
 import { Linked, OutLink } from "./Linked.tsx";
 import { SourceBar } from "./SourceBar.tsx";
-import { Icon } from "./shell/icons.tsx";
+import { Icon, type IconName } from "./shell/icons.tsx";
+import "./side-tree.css";
 import { Select } from "./shell/Select.tsx";
 import { PHONE, useMedia } from "./shell/layout.ts";
 import { useRowSwipe } from "./swipe.ts";
@@ -30,6 +32,9 @@ const FILTERS: Array<[Filter, Key]> = [
   ["inbox", "mail.inbox"], ["unread", "mail.unread"],
   ["favorites", "mail.favorites"], ["important", "mail.important"], ["drafts", "mail.drafts"],
 ];
+
+/** The places in the sidebar (workspace-architecture.md §6, a page's own sidebar). */
+const FILTER_ICONS: Record<Filter, IconName> = { inbox: "inbox", unread: "mail", favorites: "star", important: "flag", drafts: "write" };
 
 const CATEGORIES: Array<[CategoryFilter, Key]> = [
   ["all", "mail.allCategories"], ["primary", "mail.primary"], ["social", "mail.social"],
@@ -397,9 +402,11 @@ function Reader({ message, draft, writing, sent, canSend, favorite, archive, wat
   );
 }
 
-export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
+export function Mail({ snapshot, state, line, focus, onFocused, refresh, side }: {
   snapshot: MailSnapshot | undefined; state: StateResponse; line: PageLine;
   refresh(): void;
+  /** The app sidebar's slot while it has room (PageDef.side): the places go there, as Notes' tree does. */
+  side?: HTMLElement | null;
   /** A letter to open (`<account>|<id>`), asked for from another page. */
   focus?: string | null; onFocused?(): void;
 }) {
@@ -700,9 +707,23 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
   const needsConnection = !sources.length || sources.some((source) => source.error);
   const sourceBar = <SourceBar module="mail" mark="gmail" sources={sources} notConnected={t("src.notConnected.mail")} />;
   const chooseView = (view: Filter) => { setFilter(view); setPicked(null); };
+  // In the sidebar: a new letter on top, then the places with their counts (workspace-architecture.md §6).
+  const inSide = !!side && !phone;
+  const sideNav = inSide && createPortal(
+    <nav className="st" aria-label={t("mail.filters")}>
+      <button type="button" className="st-node" onClick={startNew}><span className="st-space" /><Icon name="plus" /><span className="st-name">{t("mail.new")}</span></button>
+      {hasViews && FILTERS.map(([id, label]) => (
+        <button type="button" key={id} className="st-node" aria-current={filter === id ? "true" : undefined} onClick={() => chooseView(id)}>
+          <span className="st-space" /><Icon name={FILTER_ICONS[id]} /><span className="st-name">{t(label)}</span><span className="st-count">{count(id) || ""}</span>
+        </button>
+      ))}
+    </nav>,
+    side,
+  );
 
   return (
-    <section className="mail" data-composing={ownCompose || undefined} aria-label={t("page.mail")}>
+    <section className="mail" data-composing={ownCompose || undefined} data-side={inSide || undefined} aria-label={t("page.mail")}>
+      {sideNav}
       {phone ? (
         <div className="mail-toolbar mail-phone-toolbar">
           <div className="mail-phone-row">
@@ -729,20 +750,20 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
           {sourceBar}
           <div className="mail-toolbar-actions">
             {hasViews && <button type="button" className="mail-compose" aria-pressed={line.about === "mail:compose"} onClick={compose}>{t("mail.compose")}</button>}
-            <button type="button" className="mail-new" onClick={startNew}><Icon name="plus" />{t("mail.new")}</button>
+            {!inSide && <button type="button" className="mail-new" onClick={startNew}><Icon name="plus" />{t("mail.new")}</button>}
           </div>
         </div>
       )}
       {hasViews && (
         <>
           {!phone && <div className="mail-filterbar">
-            <div className="mail-filters" role="group" aria-label={t("mail.filters")}>
+            {!inSide && <div className="mail-filters" role="group" aria-label={t("mail.filters")}>
               {FILTERS.map(([id, label]) => (
                 <button type="button" key={id} aria-pressed={filter === id} onClick={() => chooseView(id)}>
                   {t(label)} <span className="count">{count(id)}</span>
                 </button>
               ))}
-            </div>
+            </div>}
             {filter !== "drafts" && (
               <span className="mail-category">
                 <span aria-hidden="true">{t("mail.category")}</span>
