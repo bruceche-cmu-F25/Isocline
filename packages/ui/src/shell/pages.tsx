@@ -30,6 +30,7 @@ import { snapshotOf, type ModuleId, type ModuleSnapshots } from "../modules.ts";
 const Dev = lazyPage(() => import("../Dev.tsx").then((module) => module.Dev));
 const Settings = lazyPage(() => import("../Settings.tsx").then((module) => module.Settings));
 // The notes page brings its editor (ProseMirror); it loads when notes are first opened.
+import { Chats, dailyConversations, type ChatProps } from "../Chats.tsx";
 const Notes = lazyPage(() => import("../notes/Notes.tsx").then((module) => module.Notes));
 
 export interface PageProps<S = unknown> extends NamePreference {
@@ -53,6 +54,8 @@ export interface PageProps<S = unknown> extends NamePreference {
   onItem(): void;
   /** The Code page: its open session and what a conversation needs. */
   dev: Omit<DevProps, "state">;
+  /** The Chats page: the open conversation and what a conversation needs (docs/design/chat.md). */
+  chat: ChatProps;
   /** The bar under the page: where words about a thing picked on this page are written. */
   line: PageLine;
   /** For a page with `side`: where its own side column goes (the sidebar's place; it slides in and out of view there,
@@ -264,6 +267,12 @@ const PAGES: PageDef[] = [
     },
     suggestions: () => ["sug.auto.weekly", "sug.auto.which"],
     render: ({ state, openConversation }) => <Automations state={state} onOpenConversation={openConversation} />,
+  },
+  {
+    key: "core.chat", get title() { return t("page.chat"); }, icon: "chat", k: "alfred", group: "modules", bare: true, side: true,
+    badge: (_, state) => dailyConversations(state).reduce((sum, conversation) => sum + conversation.attention, 0) || undefined,
+    summary: (_, state) => t("chat.sum", { n: dailyConversations(state).length }),
+    render: ({ state, chat, side }) => <Chats state={state} side={side} {...chat} />,
   },
   {
     key: "core.dev", get title() { return t("page.dev"); }, icon: "code", k: "violet", group: "dev", bare: true,

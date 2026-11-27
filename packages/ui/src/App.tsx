@@ -53,6 +53,7 @@ if (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIn
 }
 
 const DEV_PAGE = "core.dev";
+const CHAT_PAGE = "core.chat";
 
 /** True while the user is looking at this window: visible and focused. In the
  * Mac app the app says so; a page alone cannot tell a hidden window apart.
@@ -309,11 +310,15 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
   /** A conversation picked from the sidebar's list: going to it. With Zirma out of sight it opens across the whole
    * page; with the panel already beside a page it only changes conversation there, so what Zirma is looking at stays.
    * Elsewhere (the inbox, an automation, the ask bar) a conversation opens beside the page it was opened from. */
+  /** A conversation opened on the Chats page: it is the page there, so Zirma's panel stays as it was. */
+  const openHere = useCallback((id: string | null) => route.go({ selected: id }), [route]);
   const selectFromList = useCallback((id: string | null) => {
+    // On the Chats page the conversation opens in the page (docs/design/chat.md §4.3).
+    if (route.page === CHAT_PAGE && !state?.conversations.find((conversation) => conversation.id === id)?.projectId) { openHere(id); return; }
     select(id);
     const development = !!id && !!state?.conversations.find((conversation) => conversation.id === id)?.projectId;
     if (!phone && !development && layout.alfred === "closed") setLayout({ alfred: "wide" });
-  }, [select, phone, layout.alfred, setLayout, state?.conversations]);
+  }, [select, phone, layout.alfred, setLayout, state?.conversations, route.page, openHere]);
 
   const showInboxItem = useCallback((item: string) => {
     route.go({ page: "core.inbox", item });
@@ -643,6 +648,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
               // The column stays the page's while the user looks at the pages list: it only slides out of view.
               go: goTo, item: route.item, onItem: clearItem, side: current.side && navVisible && !phone && alfredMode !== "wide" ? sideHost : null,
               dev: { session: route.session, newSession, onSession: openSession, refresh: alfred.refresh, highlighted, onEvent, pageTitle, automationTitle: automationOf },
+              chat: { selected, onSelect: openHere, onShowArchive: () => setShowArchive(true), onArchive: archiveConversation, highlighted, pageTitle, automationTitle: automationOf, onEvent, onView },
             })}</div>
             {/* Under the page: the page's own controls are at its top, Zirma and search at its foot. */}
             {barHere && (

@@ -1,0 +1,31 @@
+/* The Chats page (docs/design/chat.md). The conversation sits on Zirma's paper (the `.alfred` styles), as it did
+   when Zirma spread across the page; its words lean left, as the Notes page does. Laid out by the page's width. */
+.chats { flex: 1; min-height: 0; display: flex; }
+.chats .ch-open { flex: 1; min-width: 0; grid-area: auto; border-left: 0; }
+.chats .ch-open .conversation { --read-w: 760px; --lean: clamp(16px, calc((100% - 760px) / 4), 136px); }
+.chats .ch-open .turns { padding: 22px max(16px, calc(100% - 760px - var(--lean))) 12px var(--lean); }
+.chats .ch-open :is(.composer, .suggestions) { width: auto; max-width: var(--read-w); margin-left: var(--lean); margin-right: max(16px, calc(100% - 760px - var(--lean))); }
+.chats .ch-open .empty { padding-left: var(--lean); text-align: left; align-items: flex-start; }
+
+/* The list: in the app sidebar it is the sidebar's; in the page, a column of its own. */
+.ch-list .st-node { position: relative; cursor: pointer; }
+.ch-waiting { color: var(--warm); font-weight: 600; }
+.ch-more { flex: none; width: 22px; height: 22px; display: none; place-items: center; border-radius: 6px; color: var(--muted); }
+.ch-more svg { width: 15px; height: 15px; }
+.ch-more:hover { background: var(--line-soft); color: var(--ink); }
+.ch-row:hover .ch-more, .ch-row:focus-within .ch-more, .ch-more[aria-expanded="true"] { display: grid; }
+.ch-row:hover .ch-waiting, .ch-row:focus-within .ch-waiting { display: none; }
+@media (pointer: coarse) { .ch-more { display: grid; } }
+.ch-menu { position: absolute; top: calc(100% + 2px); right: 0; z-index: 30; min-width: 140px; display: flex; flex-direction: column; padding: 4px; border-radius: 10px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); font-weight: 400; cursor: default; }
+.ch-menu button { height: 30px; padding: 0 10px; border-radius: 6px; color: var(--copy); font-size: .8125rem; text-align: left; white-space: nowrap; }
+.ch-menu button:hover, .ch-menu button:focus-visible { background: var(--wash); color: var(--ink); outline: none; }
+.ch-rename { flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 0; border-radius: 6px; outline: 0; background: var(--field); box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--ink); font-size: .875rem; }
+.ch-hint { padding: 6px 8px 0 24px; color: var(--muted); font-size: .8125rem; }
+.ch-foot { margin-top: 12px; }
+.ch-error { padding: 6px 8px; }
+.chats[data-list] > .ch-list { flex: none; width: 248px; padding-top: 10px; border-right: 1px solid var(--line-soft); background: color-mix(in oklch, var(--wash) 55%, var(--bg)); }
+.chats[data-list][data-narrow] > .ch-list { flex: 1; width: auto; border-right: 0; background: none; }
+@media (pointer: coarse) { .chats[data-narrow] .ch-list .st-node { height: 44px; font-size: .9375rem; } }
+.ch-head { flex: none; display: flex; align-items: center; gap: 6px; height: 46px; padding: 0 8px; }
+.ch-head b { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
+.ch-list .st-space > .st { display: grid; place-items: center; width: 14px; height: 14px; }

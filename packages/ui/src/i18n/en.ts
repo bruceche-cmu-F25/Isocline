@@ -823,6 +823,16 @@ export const en: Record<keyof typeof zh, string> = {
 
   // W5: automations
   "page.automations": "Automations",
+  "page.chat": "Chats",
+  "chat.sum": "{n} {n|chat|chats}",
+  "chat.today": "Today",
+  "chat.week": "Previous 7 days",
+  "chat.older": "Older",
+  "chat.archived": "Archived",
+  "chat.more": "More for “{title}”",
+  "chat.rename": "Rename",
+  "chat.archive": "Archive",
+  "chat.all": "All chats",
   "auto.sum.next": "{on} on; next {when}",
   "auto.sum.off": "{n} {n|automation|automations}, all off",
   "auto.sum.empty": "No automations yet",
