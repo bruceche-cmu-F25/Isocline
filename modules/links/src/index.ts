@@ -9,6 +9,7 @@ import {
   importLinks, mergeTopic, undoImport, updatePlace,
 } from "./domain.ts";
 import { IMPORT_CHUNK } from "./bookmarks.ts";
+import { autoFileState, setAutoFile } from "./autofile.ts";
 import { topicPath, topicTree, under, type TopicTree } from "./tree.ts";
 import { getCover, largeCovers, pendingCovers, recordCover, replaceCover } from "./covers.ts";
 import { fetchCover, fetchIcon, shrinkCover, fetchPage, PageFetchError, type IconFetcher, type PageFetcher, type PageInfo } from "./fetch.ts";
@@ -18,6 +19,7 @@ export * from "./domain.ts";
 export * from "./types.ts";
 export * from "./tree.ts";
 export * from "./bookmarks.ts";
+export * from "./autofile.ts";
 export { classify, findUrl, isShortener, LinkUrlError, nameFromUrl, normalizeUrl, parseLinkPaste, tidyTitle } from "./url.ts";
 export {
   decodeEntities, fetchIcon, fetchPage, imageType, isPublicAddress, looksLikeWall, PageFetchError, readHead,
@@ -78,6 +80,7 @@ function snapshot(world: World): LinksSnapshot {
     folders: listFolders(world),
     clips: clips.map((clip) => (changes.get(`link:${clip.id}`)?.actor === "alfred" ? { ...clip, byZirma: true } : clip)),
     topics: listTopics(world),
+    autoFile: autoFileState(world),
   };
 }
 
@@ -149,7 +152,9 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
     views: [{ id: "list", title: "Links" }],
     guidance: (world) => [
       "Links: the user's places (sites they visit; pinned ones are tiles on top) and clips (things they saved from the internet: a video, an article, a post), filed in a tree of categories (topics): each area holds topics, and a topic may hold topics of its own, two levels at most.",
-      "When the user gives you an address to keep, or says to save something they are looking at, use link_save, with their reason as the note in their own words. File it under the most specific of their topics that fits (link_list with tree: true shows the tree); name a new topic, with its area or the topic to put it under, only when none fits. Leave the topic out when unsure.",
+      "When the user gives you an address to keep, or says to save something they are looking at, use link_save, with their reason as the note in their own words.",
+      // Broad first (links-autofile.md §3): a category is only where to look for something, not an exact label.
+      "File it broadly (link_list with tree: true shows the tree). Put it in one of their categories that fits; a sub-category only if they made one it plainly belongs to. When none fits, name a new BROAD category (one wide word, like a shelf, not a subject) at the top of one of their areas; do not make sub-categories unless the user asks for one: splitting is theirs. Leave the topic out when unsure.",
       "Use link_pin only for a site they want at hand every day (\"pin Canvas\"), not for something to read or watch.",
       "You have not read a saved page: its title and description are the page's own words. Do not describe what a clip says beyond them.",
       `A topic's area is one of the user's areas (id and name): ${describeAreas(world)}.`,
@@ -218,6 +223,8 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
         run: (world, input) => importLinks(world, input),
       }),
       defineOp({ name: "link.import_undo", input: Type.Object({ importId: Type.String({ maxLength: 64 }) }), run: (world, input) => undoImport(world, input.importId) }),
+      // The Auto-file button on the Links page (links-autofile.md §2).
+      defineOp({ name: "link.autofile", input: Type.Object({ enabled: Type.Boolean() }), run: (world, input) => setAutoFile(world, input.enabled) }),
     ],
 
     tools: [
@@ -286,7 +293,7 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
           const where = fileUnder(world, params);
           if (typeof where === "string") return where;
           const { under: _under, topic: _topic, ...rest } = params;
-          const result = saveClip(world, { ...rest, ...where });
+          const result = saveClip(world, { ...rest, ...where }, "zirma");
           if (failed(result)) return result.error;
           return `${result.existing ? "Already saved" : "Saved"}: ${formatClip(result.clip, listTopics(world))}`;
         },
@@ -325,14 +332,14 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
           const place = listPlaces(world).find((item) => item.id === id);
           if (place) {
             if (where.topic !== undefined) {
-              const made = ensureTopic(world, { name: where.topic, area: where.area, parentId: where.parentId });
+              const made = ensureTopic(world, { name: where.topic, area: where.area, parentId: where.parentId }, "zirma");
               if (failed(made)) return made.error;
               where.topicId = made.id;
             }
-            const result = updatePlace(world, id, { ...(where.topicId !== undefined ? { topicId: where.topicId } : {}) });
+            const result = updatePlace(world, id, { ...(where.topicId !== undefined ? { topicId: where.topicId } : {}) }, "zirma");
             return failed(result) ? result.error : `Updated: ${result.title} | ${result.topicId ? `topic: ${topicPath(topicTree(listTopics(world)), result.topicId, undefined, "/")}` : "no topic"}`;
           }
-          const result = updateClip(world, id, { ...rest, ...where, ...(newTitle !== undefined ? { title: newTitle } : {}) });
+          const result = updateClip(world, id, { ...rest, ...where, ...(newTitle !== undefined ? { title: newTitle } : {}) }, "zirma");
           return failed(result) ? result.error : `Updated: ${formatClip(result, listTopics(world))}`;
         },
       }),

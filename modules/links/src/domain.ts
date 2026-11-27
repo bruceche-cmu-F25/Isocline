@@ -11,6 +11,7 @@ import { classify, isShortener, nameFromUrl, normalizeUrl, parseShareText, tidyT
 import { COVER_MIGRATION } from "./covers.ts";
 import { MAX_TOPIC_DEPTH, topicDepth, topicPath, topicTree, under } from "./tree.ts";
 import { IMPORT_CHUNK, MAX_IMPORT, type ImportEntry } from "./bookmarks.ts";
+import { AUTO_FILE_MIGRATION, queueFlag, recordFix, type FiledBy } from "./autofile.ts";
 
 export type LinkResult<T> = T | { error: string };
 const failed = (result: object): result is { error: string } => "error" in result;
@@ -142,7 +143,7 @@ CREATE TABLE link_imports (
       if (tidy.title !== row.title) write.run(tidy.title.slice(0, 300), tidy.description?.slice(0, 600) ?? null, row.id as string);
     }
   },
-}];
+}, AUTO_FILE_MIGRATION];
 
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
@@ -154,6 +155,7 @@ function toPlace(row: Record<string, unknown>): Place {
     id: row.id as string, title: row.title as string, url: row.url as string, position: row.position as number,
     ...(row.folder_id ? { folderId: row.folder_id as string } : {}),
     ...(row.topic_id ? { topicId: row.topic_id as string } : {}),
+    ...(row.topic_id && row.filed_by === "zirma" ? { filedByZirma: true as const } : {}),
     ...(row.pinned === 0 ? { unpinned: true as const } : {}),
     ...(row.has_icon ? { icon: hostOf(row.url as string) } : {}),
   };
@@ -169,6 +171,7 @@ function toClip(row: Record<string, unknown>): Clip {
     platform: row.platform as string, type: row.type as Clip["type"], site: row.site as string,
     ...(row.author ? { author: row.author as string } : {}), ...(row.description ? { description: row.description as string } : {}),
     ...(row.note ? { note: row.note as string } : {}), ...(row.topic_id ? { topicId: row.topic_id as string } : {}),
+    ...(row.topic_id && row.filed_by === "zirma" ? { filedByZirma: true as const } : {}),
     ...(row.duration_seconds ? { durationSeconds: row.duration_seconds as number } : {}),
     ...(row.has_cover ? { cover: `cover_${row.id}` } : {}),
     state: row.state as ClipState, savedAt: row.saved_at as string, fetch: row.fetch as Clip["fetch"],
@@ -204,13 +207,34 @@ export function listTopics(world: World): Topic[] {
   return world.db.prepare("SELECT * FROM link_topics ORDER BY created_at, rowid").all().map(toTopic);
 }
 function toTopic(row: Record<string, unknown>): Topic {
-  return { id: row.id as string, name: row.name as string, ...(row.area ? { area: row.area as string } : {}), ...(row.parent_id ? { parentId: row.parent_id as string } : {}) };
+  return {
+    id: row.id as string, name: row.name as string, ...(row.area ? { area: row.area as string } : {}), ...(row.parent_id ? { parentId: row.parent_id as string } : {}),
+    ...(row.created_by === "zirma" && row.touched === 0 ? { byZirma: true as const } : {}),
+  };
 }
 
 function row(world: World, id: string, kind: "place" | "clip"): Record<string, unknown> | undefined {
   return world.db.prepare("SELECT * FROM link_items WHERE id = ? AND kind = ?").get(id, kind);
 }
 const said = (kind: string, id: string, payload: Record<string, unknown>) => ({ kind: `link.${kind}`, subject: `link:${id}`, payload });
+
+/** An item put in a category, or taken out of one (`topicId` null), by someone. Who it was is kept, it no longer waits
+ * to be filed on its own, and the user moving what Zirma filed is kept as an example (links-autofile.md §3, §4). A
+ * category Zirma made stops being marked as Zirma's once the user files something into it. */
+function fileItem(world: World, found: Record<string, unknown>, topicId: string | null, by: FiledBy): void {
+  const db = world.db;
+  db.prepare("UPDATE link_items SET topic_id = ?, filed_by = ?, file_queue = 0 WHERE id = ?").run(topicId, by, found.id as string);
+  if (by !== "user") return;
+  if (topicId) db.prepare("UPDATE link_topics SET touched = 1 WHERE id = ? AND touched = 0").run(topicId);
+  if (found.filed_by === "zirma" && found.topic_id !== topicId) {
+    const tree = currentTree(world);
+    const path = (id: unknown) => (typeof id === "string" ? topicPath(tree, id, undefined, "/") || undefined : undefined);
+    recordFix(world, {
+      itemId: found.id as string, title: clipTitle(found).title, site: (found.site as string) || hostOf(found.url as string),
+      from: path(found.topic_id), to: path(topicId),
+    });
+  }
+}
 
 // ---- topics: a tree under the areas (links.md §4.10.1) ------------------------------------------------------
 
@@ -228,7 +252,7 @@ const currentTree = (world: World) => topicTree(listTopics(world));
 
 /** The topic of that name, made if there is none. With `parentId` it is looked for (and made) under that topic;
  * with `area`, at the top of that area; with neither, anywhere (an older device names a topic by name alone). */
-export function ensureTopic(world: World, input: { name: string; area?: string; parentId?: string }): LinkResult<Topic> {
+export function ensureTopic(world: World, input: { name: string; area?: string; parentId?: string }, by: FiledBy = "user"): LinkResult<Topic> {
   const name = text(input.name, 60);
   if (!name) return { error: "A topic needs a name." };
   return world.tx((db) => {
@@ -249,7 +273,8 @@ export function ensureTopic(world: World, input: { name: string; area?: string; 
       if (found) return toTopic(found);
     }
     const id = newId();
-    db.prepare("INSERT INTO link_topics (id, name, area, parent_id, created_at) VALUES (?, ?, ?, ?, ?)").run(id, name, area, parentId, new Date().toISOString());
+    db.prepare("INSERT INTO link_topics (id, name, area, parent_id, created_at, created_by, touched) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(id, name, area, parentId, new Date().toISOString(), by, by === "user" ? 1 : 0);
     recordDomainEvent(world, { kind: "link.topic_added", subject: `link-topic:${id}`, payload: { name, ...(area ? { area } : {}), ...(parentId ? { parentId } : {}) } });
     return toTopic(topicRow(world, id)!);
   });
@@ -281,7 +306,7 @@ export function updateTopic(world: World, id: string, patch: { name?: string; ar
     const taken = sibling(world, name, parentId, area);
     if (taken && taken.id !== id) return { error: `There is already a category named "${name}" there.` };
     if (name !== found.name || area !== found.area || parentId !== found.parent_id) {
-      db.prepare("UPDATE link_topics SET name = ?, area = ?, parent_id = ? WHERE id = ?").run(name, area, parentId, id);
+      db.prepare("UPDATE link_topics SET name = ?, area = ?, parent_id = ?, touched = 1 WHERE id = ?").run(name, area, parentId, id);
       if (area !== found.area) {
         const below = [...under(tree, id)].filter((topic) => topic !== id);
         const move = db.prepare("UPDATE link_topics SET area = ? WHERE id = ?");
@@ -328,6 +353,7 @@ export function mergeTopic(world: World, id: string, into: string): LinkResult<{
     for (const topic of gone) moved += Number(move.run(into, topic).changes);
     const drop = db.prepare("DELETE FROM link_topics WHERE id = ?");
     for (const topic of [...gone].reverse()) drop.run(topic);
+    db.prepare("UPDATE link_topics SET touched = 1 WHERE id = ?").run(into);
     recordDomainEvent(world, { kind: "link.topic_merged", subject: `link-topic:${id}`, payload: { name: from.name as string, into: target.name as string, intoId: into, moved } });
     return { name: from.name as string, into: target.name as string, moved };
   });
@@ -350,7 +376,8 @@ export function pinPlace(world: World, input: { url: string; title?: string }): 
     if (found) return { place: toPlace(found), existing: true };
     const id = newId();
     const title = text(input.title, 60) || siteName(url);
-    db.prepare("INSERT INTO link_items (id, kind, url, title, title_source, position, saved_at) VALUES (?, 'place', ?, ?, 'given', ?, ?)").run(id, url, title, nextTile(world), new Date().toISOString());
+    db.prepare("INSERT INTO link_items (id, kind, url, title, title_source, position, saved_at, file_queue) VALUES (?, 'place', ?, ?, 'given', ?, ?, ?)")
+      .run(id, url, title, nextTile(world), new Date().toISOString(), queueFlag(world));
     recordDomainEvent(world, said("pinned", id, { title, url }));
     return { place: toPlace(row(world, id, "place")!), existing: false };
   });
@@ -362,7 +389,7 @@ function nextTile(world: World): number {
 }
 
 /** Files a site under a topic (empty: unfiled), or pins it to the top row or takes it off (it stays in the tree). */
-export function updatePlace(world: World, id: string, patch: { topicId?: string; pinned?: boolean }): LinkResult<Place> {
+export function updatePlace(world: World, id: string, patch: { topicId?: string; pinned?: boolean }, by: FiledBy = "user"): LinkResult<Place> {
   return world.tx((db) => {
     const found = row(world, id, "place");
     if (!found) return { error: "No such place." };
@@ -372,7 +399,7 @@ export function updatePlace(world: World, id: string, patch: { topicId?: string;
       topicId = patch.topicId || null;
     }
     if (topicId !== found.topic_id) {
-      db.prepare("UPDATE link_items SET topic_id = ? WHERE id = ?").run(topicId, id);
+      fileItem(world, found, topicId, by);
       recordDomainEvent(world, said("changed", id, { title: found.title as string, changes: ["topicId"] }));
     }
     if (patch.pinned !== undefined && patch.pinned !== (found.pinned === 1)) {
@@ -535,7 +562,7 @@ export interface SaveInput {
 
 /** Saves an address as a clip. The same address again is the same clip: nothing is added, but a note or a topic
  * given this time is put on it if it had none. The page is looked up afterwards (`fetch: pending`). */
-export function saveClip(world: World, input: SaveInput): LinkResult<{ clip: Clip; existing: boolean }> {
+export function saveClip(world: World, input: SaveInput, by: FiledBy = "user"): LinkResult<{ clip: Clip; existing: boolean }> {
   let url: string;
   try { url = normalizeUrl(input.url); } catch (error) { return { error: (error as Error).message }; }
   return world.tx((db) => {
@@ -544,7 +571,7 @@ export function saveClip(world: World, input: SaveInput): LinkResult<{ clip: Cli
       if (!db.prepare("SELECT 1 FROM link_topics WHERE id = ?").get(input.topicId)) return { error: "No such topic." };
       topicId = input.topicId;
     } else if (input.topic?.trim()) {
-      const topic = ensureTopic(world, { name: input.topic, area: input.area, parentId: input.parentId });
+      const topic = ensureTopic(world, { name: input.topic, area: input.area, parentId: input.parentId }, by);
       if (failed(topic)) return topic;
       topicId = topic.id;
     }
@@ -557,6 +584,7 @@ export function saveClip(world: World, input: SaveInput): LinkResult<{ clip: Cli
     const found = db.prepare("SELECT * FROM link_items WHERE kind = 'clip' AND url = ?").get(url);
     if (found) {
       const before = toClip(found);
+      if (topicId && !found.topic_id) fileItem(world, found, topicId, by);
       db.prepare(`UPDATE link_items SET note = COALESCE(note, ?), topic_id = COALESCE(topic_id, ?),
         shared_title = COALESCE(shared_title, ?),
         title = CASE WHEN title_source = 'url' AND ? IS NOT NULL THEN ? ELSE title END,
@@ -568,9 +596,10 @@ export function saveClip(world: World, input: SaveInput): LinkResult<{ clip: Cli
       return { clip: after, existing: true };
     }
     const id = newId();
-    db.prepare(`INSERT INTO link_items (id, kind, url, title, title_source, shared_title, platform, type, site, note, topic_id, state, saved_at, fetch)
-      VALUES (?, 'clip', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unread', ?, 'pending')`)
-      .run(id, url, given || nameFromUrl(url), given ? "given" : "url", sharedTitle, platform, type, host, note, topicId, new Date().toISOString());
+    db.prepare(`INSERT INTO link_items (id, kind, url, title, title_source, shared_title, platform, type, site, note, topic_id, state, saved_at, fetch, filed_by, file_queue)
+      VALUES (?, 'clip', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unread', ?, 'pending', ?, ?)`)
+      .run(id, url, given || nameFromUrl(url), given ? "given" : "url", sharedTitle, platform, type, host, note, topicId, new Date().toISOString(),
+        topicId ? by : null, topicId ? 0 : queueFlag(world));
     const clip = toClip(row(world, id, "clip")!);
     recordDomainEvent(world, said("saved", id, { title: clip.title, url, type, platform }));
     return { clip, existing: false };
@@ -590,7 +619,7 @@ export interface ClipPatch {
   state?: ClipState;
 }
 
-export function updateClip(world: World, id: string, patch: ClipPatch): LinkResult<Clip> {
+export function updateClip(world: World, id: string, patch: ClipPatch, by: FiledBy = "user"): LinkResult<Clip> {
   return world.tx((db) => {
     const found = row(world, id, "clip");
     if (!found) return { error: `No saved link with id "${id}".` };
@@ -603,11 +632,12 @@ export function updateClip(world: World, id: string, patch: ClipPatch): LinkResu
     } else if (patch.topic !== undefined) {
       if (!patch.topic.trim()) topicId = null;
       else {
-        const topic = ensureTopic(world, { name: patch.topic, area: patch.area, parentId: patch.parentId });
+        const topic = ensureTopic(world, { name: patch.topic, area: patch.area, parentId: patch.parentId }, by);
         if (failed(topic)) return topic;
         topicId = topic.id;
       }
     }
+    if (topicId !== found.topic_id) fileItem(world, found, topicId, by);
     const title = patch.title === undefined ? null : text(patch.title, 300);
     if (patch.title !== undefined && !title) return { error: "A title cannot be empty." };
     db.prepare(`UPDATE link_items SET title = COALESCE(?, title), title_source = CASE WHEN ? IS NULL THEN title_source ELSE 'given' END,
@@ -782,20 +812,20 @@ export function importLinks(world: World, input: { importId: string; entries: re
       const topicId = topicFor(entry);
       const found = db.prepare("SELECT id, topic_id FROM link_items WHERE url = ? ORDER BY kind = 'place' DESC LIMIT 1").get(url);
       if (found) {
-        if (topicId && !found.topic_id) { db.prepare("UPDATE link_items SET topic_id = ? WHERE id = ?").run(topicId, found.id as string); filed++; } else skipped++;
+        if (topicId && !found.topic_id) { db.prepare("UPDATE link_items SET topic_id = ?, filed_by = 'user', file_queue = 0 WHERE id = ?").run(topicId, found.id as string); filed++; } else skipped++;
         continue;
       }
       const id = newId();
       const tidy = tidyTitle(entry.title, url);
       const title = text(tidy.title, 300);
       if (entry.kind === "place") {
-        db.prepare("INSERT INTO link_items (id, kind, url, title, title_source, topic_id, pinned, position, saved_at) VALUES (?, 'place', ?, ?, 'given', ?, 0, 0, ?)")
-          .run(id, url, title || siteName(url), topicId, now);
+        db.prepare("INSERT INTO link_items (id, kind, url, title, title_source, topic_id, pinned, position, saved_at, filed_by) VALUES (?, 'place', ?, ?, 'given', ?, 0, 0, ?, ?)")
+          .run(id, url, title || siteName(url), topicId, now, topicId ? "user" : null);
       } else {
         const { platform, type, host } = classify(url);
-        db.prepare(`INSERT INTO link_items (id, kind, url, title, title_source, platform, type, site, description, topic_id, state, saved_at, fetch)
-          VALUES (?, 'clip', ?, ?, ?, ?, ?, ?, ?, ?, 'seen', ?, ?)`)
-          .run(id, url, title || nameFromUrl(url), title ? "page" : "url", platform, type, host, text(tidy.description, 600) || null, topicId, now, title ? "done" : "pending");
+        db.prepare(`INSERT INTO link_items (id, kind, url, title, title_source, platform, type, site, description, topic_id, state, saved_at, fetch, filed_by)
+          VALUES (?, 'clip', ?, ?, ?, ?, ?, ?, ?, ?, 'seen', ?, ?, ?)`)
+          .run(id, url, title || nameFromUrl(url), title ? "page" : "url", platform, type, host, text(tidy.description, 600) || null, topicId, now, title ? "done" : "pending", topicId ? "user" : null);
       }
       itemIds.push(id);
       added++;
