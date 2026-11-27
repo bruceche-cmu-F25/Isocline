@@ -203,8 +203,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
   const [sheet, setSheet] = useState<"alfred" | "nav" | null>(null);
   const revealPage = useCallback(() => {
     setSheet(null);
-    if (layout.alfred === "wide") setLayout({ alfred: "open" });
-  }, [layout.alfred, setLayout]);
+  }, []);
   const route = useRoute(revealPage);
   const [newSession, setNewSession] = useState<{ projectId: string; key: number } | null>(null);
   const selected = route.selected;
@@ -307,18 +306,21 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
     showZirma();
   }, [route, showZirma, state?.conversations, openSession]);
 
-  /** A conversation picked from the sidebar's list: going to it. With Zirma out of sight it opens across the whole
-   * page; with the panel already beside a page it only changes conversation there, so what Zirma is looking at stays.
-   * Elsewhere (the inbox, an automation, the ask bar) a conversation opens beside the page it was opened from. */
   /** A conversation opened on the Chats page: it is the page there, so Zirma's panel stays as it was. */
   const openHere = useCallback((id: string | null) => route.go({ selected: id }), [route]);
+  /** Going to a conversation, rather than asking beside a page (docs/design/chat.md §4.3): ⌘K, a new conversation, the
+   * panel's "Open in Chats". An everyday one opens on the Chats page, a development session on the Code page. */
+  const openInChats = useCallback((id: string | null) => {
+    if (id && state?.conversations.find((conversation) => conversation.id === id)?.projectId) { openSession(id); return; }
+    setSheet(null);
+    route.go({ page: CHAT_PAGE, selected: id });
+  }, [route, state?.conversations, openSession]);
+  /** A conversation picked from the phone's sidebar list (the desktop's has moved to the Chats page): beside the page,
+   * as a sheet. */
   const selectFromList = useCallback((id: string | null) => {
-    // On the Chats page the conversation opens in the page (docs/design/chat.md §4.3).
-    if (route.page === CHAT_PAGE && !state?.conversations.find((conversation) => conversation.id === id)?.projectId) { openHere(id); return; }
+    if (route.page === CHAT_PAGE && !phone) { openInChats(id); return; }
     select(id);
-    const development = !!id && !!state?.conversations.find((conversation) => conversation.id === id)?.projectId;
-    if (!phone && !development && layout.alfred === "closed") setLayout({ alfred: "wide" });
-  }, [select, phone, layout.alfred, setLayout, state?.conversations, route.page, openHere]);
+  }, [select, phone, route.page, openInChats]);
 
   const showInboxItem = useCallback((item: string) => {
     route.go({ page: "core.inbox", item });
@@ -386,7 +388,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
   const [sideHost, setSideHost] = useState<HTMLElement | null>(null);
   const [navPeek, setNavPeek] = useState(false);
   useEffect(() => setNavPeek(false), [current?.key]);
-  const pageSide = !!current?.side && navVisible && !phone && !navPeek && alfredMode !== "wide";
+  const pageSide = !!current?.side && navVisible && !phone && !navPeek;
   const toggleNav = useCallback(() => {
     // Folded for want of room: showing it puts Zirma away, which is what makes the room.
     if (layout.nav === "full" && navMode === "hidden") setLayout({ alfred: "closed" });
@@ -406,7 +408,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
     if (key) goPage(key);
   };
   // The page a question is asked from, unless Zirma spans the window and the page is out of sight.
-  const view = phone || layout.alfred !== "wide" ? pageView(current, state) : undefined;
+  const view = pageView(current, state);
   const pageTitle = (key: string) => pages.find((page) => page.key === key)?.title;
   const automationOf = (id: string) => { const found = state?.automations?.find((automation) => automation.id === id); return found ? automationTitle(found) : undefined; };
 
@@ -553,7 +555,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
 
   /** What searching can run besides going to a page or a conversation: in the ask bar, and in ⌘K's palette. */
   const commands: FindCommand[] = [
-    { id: "new", label: t("cmd.new"), icon: "plus", run: () => select(null) },
+    { id: "new", label: t("cmd.new"), icon: "plus", run: () => openInChats(null) },
     { id: "alfred", label: t(alfredMode === "closed" ? "cmd.openZirma" : "cmd.closeZirma"), icon: "panel", hint: `${MOD}.`, run: toggleZirma },
     ...(phone ? [] : [{ id: "nav", label: t(navMode === "full" ? "cmd.foldNav" : "cmd.unfoldNav"), icon: "rail" as const, hint: `${MOD}\\`, run: toggleNav }]),
     { id: "language", label: t("cmd.language"), icon: "chat", run: () => switchLanguage() },
@@ -562,7 +564,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
       : { id: "scheme", label: t("scheme.to.dark"), icon: "moon" as const, run: () => setAppearance("dark") },
   ];
   const find: FindSources = {
-    pages, commands, conversations: state.conversations, onPage: goPage, onSelect: select,
+    pages, commands, conversations: state.conversations, onPage: goPage, onSelect: openInChats,
     links: snapshotOf(state, "link"),
     onFolder: (id) => goTo("link.list", id),
     onPlace: (url) => { window.open(url, "_blank", "noopener,noreferrer"); },
@@ -587,9 +589,9 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
   );
 
   const panel = (
-    <ZirmaPanel selected={selected} figure={figure} wide={alfredMode === "wide"} phone={phone}
+    <ZirmaPanel selected={selected} figure={figure} phone={phone}
       highlighted={highlighted} view={view} pageTitle={pageTitle} automationTitle={automationOf} onEvent={onEvent} onView={onView} onStarted={onStarted}
-      onWide={() => setLayout({ alfred: layout.alfred === "wide" ? "open" : "wide" })}
+      onOpenChats={() => openInChats(selected)}
       onClose={() => (phone ? setSheet(null) : setLayout({ alfred: "closed" }))} />
   );
 
@@ -599,13 +601,13 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
       {greet && <Welcome name={name!} onDone={endOpening} />}
       {firstRun && <FirstRun state={state} name={name} saveName={saveName} place={{ phone, show: showStop }} onDone={endFirstRun} />}
       {!phone && <Topbar pageHistory={pageHistory} navOpen={navMode === "full"} onNav={toggleNav} mode={mode} onMode={hasDev ? switchMode : undefined} onLanguage={switchLanguage}
-        heading={current && alfredMode !== "wide" ? { title: current.title, icon: current.icon, k: current.k, summary: bare ? undefined : current.topline?.(state) ?? current.summary?.(state.modules[moduleOf(current)], state) } : undefined}
+        heading={current ? { title: current.title, icon: current.icon, k: current.k, summary: bare ? undefined : current.topline?.(state) ?? current.summary?.(state.modules[moduleOf(current)], state) } : undefined}
         system={pages.filter((page) => page.group === "system")} page={current?.key ?? ""} onPage={goPage} />}
       <div className="sidebar" data-visible={navVisible || undefined}>
         {navVisible && (
           <div className="side-views" data-swap={pageSide || undefined}>
             <div className="side-view side-nav" inert={pageSide || undefined}>
-              <Nav state={state} pages={listed} page={alfredMode === "wide" ? "" : navigationPage} mode={phone ? "all" : mode} selected={selected} session={bare ? route.session : null}
+              <Nav state={state} pages={listed} page={navigationPage} mode={phone ? "all" : mode} selected={selected} session={bare ? route.session : null}
                 onSession={openSession} onNewProjectSession={(projectId) => openSession(null, projectId)} connection={connection} onArchive={archiveConversation} onShowArchive={() => setShowArchive(true)}
                 onPage={(key) => { if (key === current?.key) setNavPeek(false); goPage(key); }} onSelect={(id) => { setSheet(null); selectFromList(id); }} onClose={phone ? () => setSheet(null) : undefined} onLanguage={switchLanguage} />
             </div>
@@ -646,7 +648,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
               snapshot: state.modules[moduleOf(current)], fresh, areas: state.areas ?? [], state, name, saveName,
               focus: inboxFocus, onFocused, openConversation, line, refresh: alfred.refresh,
               // The column stays the page's while the user looks at the pages list: it only slides out of view.
-              go: goTo, item: route.item, onItem: clearItem, side: current.side && navVisible && !phone && alfredMode !== "wide" ? sideHost : null,
+              go: goTo, item: route.item, onItem: clearItem, side: current.side && navVisible && !phone ? sideHost : null,
               dev: { session: route.session, newSession, onSession: openSession, refresh: alfred.refresh, highlighted, onEvent, pageTitle, automationTitle: automationOf },
               chat: { selected, onSelect: openHere, onShowArchive: () => setShowArchive(true), onArchive: archiveConversation, highlighted, pageTitle, automationTitle: automationOf, onEvent, onView },
             })}</div>

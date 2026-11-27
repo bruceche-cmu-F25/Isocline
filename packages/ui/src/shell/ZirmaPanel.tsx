@@ -23,7 +23,6 @@ export function figureState(state: StateResponse, selected: string | null, writi
 export interface ZirmaPanelProps {
   selected: string | null;
   figure: FigureState;
-  wide: boolean;
   phone: boolean;
   highlighted: ReadonlySet<string>;
   /** The page beside Zirma: what a question asked now is about. */
@@ -35,21 +34,22 @@ export interface ZirmaPanelProps {
   onEvent(listener: (event: CoreEvent) => void): () => void;
   onView(module: string, view: string): void;
   onStarted(conversationId: string): void;
-  onWide(): void;
+  /** The open conversation on the Chats page, across the whole page (docs/design/chat.md §4.3). */
+  onOpenChats(): void;
   onClose(): void;
 }
 
 /** Zirma beside the page: one row with the figure and the page it is looking at, then the open conversation. */
-export function ZirmaPanel({ selected, figure, wide, phone, highlighted, view, pageTitle, automationTitle, onEvent, onView, onStarted, onWide, onClose }: ZirmaPanelProps) {
+export function ZirmaPanel({ selected, figure, phone, highlighted, view, pageTitle, automationTitle, onEvent, onView, onStarted, onOpenChats, onClose }: ZirmaPanelProps) {
   return (
     <aside className="alfred" aria-label={getAssistant()}>
       <header className="alf-head">
         <Figure state={figure} size={28} anchor />
-        <p className="alf-name">Zirma{view && !wide && <span className="alf-looking">{t("panel.looking", { page: view.title })}</span>}</p>
+        <p className="alf-name">Zirma{view && <span className="alf-looking">{t("panel.looking", { page: view.title })}</span>}</p>
         <div className="alf-tools">
           {!phone && (
-            <button type="button" className="icon-btn" onClick={onWide} aria-label={t(wide ? "panel.narrow" : "panel.wide")} title={t(wide ? "panel.narrow" : "panel.wide")}>
-              <Icon name={wide ? "narrow" : "wide"} />
+            <button type="button" className="icon-btn" onClick={onOpenChats} aria-label={t("panel.openChats")} title={t("panel.openChats")}>
+              <Icon name="chat" />
             </button>
           )}
           <button type="button" className="icon-btn" onClick={onClose} aria-label={t("panel.close")} title={phone ? t("panel.close") : t("panel.closeKey", { key: `${MOD}.` })}>
@@ -58,7 +58,7 @@ export function ZirmaPanel({ selected, figure, wide, phone, highlighted, view, p
         </div>
       </header>
       <Conversation key={selected ?? "new"} id={selected} highlighted={highlighted} slim
-        context={wide ? undefined : view?.context} suggestions={wide ? [] : view?.suggestions ?? []} pageTitle={pageTitle} automationTitle={automationTitle}
+        context={view?.context} suggestions={view?.suggestions ?? []} pageTitle={pageTitle} automationTitle={automationTitle}
         onEvent={onEvent} onView={onView} onStarted={onStarted} />
     </aside>
   );

@@ -27,7 +27,7 @@ export interface NavProps {
   state: StateResponse;
   pages: PageDef[];
   page: string;
-  /** Daily: the workspace, modules and conversations. Dev: the Code page and its projects' sessions. All: both (phone). */
+  /** Daily: the workspace and modules. Dev: the Code page and its projects' sessions. All (phone): both, and the conversations. */
   mode: Mode | "all";
   selected: string | null;
   /** The development session open on the Code page, if any. */
@@ -67,7 +67,8 @@ function FoldedStatus({ sessions }: { sessions: Conversation[] }) {
   return <ConversationStatus conversation={{ unreadReplyId: unread?.unreadReplyId ?? null, attention, busy }} />;
 }
 
-/** The sidebar: the workspace's pages, then the conversations, like a session list; in Code, the projects' sessions. */
+/** The sidebar: the workspace's pages (conversations are on the Chats page; a phone still lists them here); in Code,
+ * the projects' sessions. */
 /** Light or dark, and 中文 / English: in the top bar, or at the foot of the phone's sidebar. */
 export function ViewButtons({ onLanguage }: { onLanguage(): void }) {
   const scheme = useScheme();
@@ -155,10 +156,12 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, on
           </div>
           {items.map((item) => {
             const count = item.badge?.(state.modules[moduleOf(item)], state);
+            const fresh = item.dot?.(state.modules[moduleOf(item)], state);
             return (
               <button type="button" key={item.key} className="nav-item" data-k={item.k} data-page={item.key} aria-current={page === item.key ? "page" : undefined}
                 onClick={() => onPage(item.key)}>
                 <Icon name={item.icon} /><span className="label">{item.title}</span>
+                {fresh && <span className="nav-fresh mark" data-k="alfred" role="img" aria-label={t("nav.unreadReply")} />}
                 {count ? <span className="count">{count}</span> : null}
               </button>
             );
@@ -200,7 +203,8 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, on
 
       <div className="nav-spacer" />
 
-      {mode !== "dev" && <>
+      {/* The conversations live on the Chats page (docs/design/chat.md); the phone's sheet keeps its list until C3. */}
+      {mode === "all" && <>
       <div className="conv-head">
         <span>{t("nav.conversations")}</span>
         {archiveMenu}

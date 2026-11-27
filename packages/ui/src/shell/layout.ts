@@ -1,12 +1,12 @@
-/** The workspace's arrangement: sidebar shown or folded away, its width, and Zirma's panel (beside the page,
- * across the whole page, or closed to a floating button). The sidebar and the widths are remembered per device in
+/** The workspace's arrangement: sidebar shown or folded away, its width, and Zirma's panel (beside the page, or
+ * closed to a floating button; across the whole page is the Chats page now, docs/design/chat.md). The sidebar and the widths are remembered per device in
  * localStorage, which may be unavailable: then they simply start from the defaults each time. Whether Zirma's panel
  * is open is not remembered: the workspace always opens with it closed.
  */
 import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 export type NavMode = "full" | "hidden";
-export type ZirmaMode = "open" | "wide" | "closed";
+export type ZirmaMode = "open" | "closed";
 export interface Layout { nav: NavMode; navW: number; alfW: number; alfred: ZirmaMode }
 
 /** min: the top bar's lead sits over the sidebar at the same width, and in the Mac app it holds the window buttons,

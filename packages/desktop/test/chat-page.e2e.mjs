@@ -1,7 +1,8 @@
 /** Run after npm run build:ui with Chrome installed: node packages/desktop/test/chat-page.e2e.mjs
  * (UI_DIST=<folder> tests a build made elsewhere; SHOTS=<folder> keeps screenshots). The Chats page
- * (docs/design/chat.md, C1): its own sidebar with a new-chat row, the conversations by Today / Previous 7 days / Older,
- * and Archived; the open conversation fills the page; without the sidebar the list sits in the page. */
+ * (docs/design/chat.md, C1 and C2): its own sidebar with a new-chat row, the conversations by Today / Previous 7 days / Older,
+ * and Archived; the open conversation fills the page; without the sidebar the list sits in the page. The main sidebar
+ * lists pages only, and the panel's button and ⌘K go to the Chats page. */
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -26,7 +27,7 @@ for (const locale of ["en", "zh"]) {
     page.setDefaultTimeout(5000);
     const zh = locale === "zh";
     const conversations = [
-      conversation("c1", zh ? "周五评审要讲什么" : "What to cover on Friday", 0),
+      conversation("c1", zh ? "周五评审要讲什么" : "What to cover on Friday", 0, { unreadReplyId: "r1" }),
       conversation("c2", zh ? "搬家清单" : "Moving checklist", 2, { attention: 2 }),
       conversation("c3", zh ? "跑步计划" : "Running plan", 12),
       conversation("c4", zh ? "一个开发会话" : "A coding session", 0, { projectId: "p1", mode: "ask" }),
@@ -58,6 +59,26 @@ for (const locale of ["en", "zh"]) {
       return route.fulfill({ path: fileURLToPath(new URL(pathname.slice(1) || "index.html", dist)) });
     });
     const shot = async (name) => { if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/chat-${name}-${locale}.png` }); };
+
+    // C2: the main sidebar lists pages only; going to a conversation goes to the Chats page.
+    await page.goto("https://zirma.test/#p=todo.list");
+    await page.locator('.side-nav [data-page="core.chat"]').waitFor();
+    assert.equal(await page.locator(".side-nav .conv-list").count(), 0, "no conversation list in the main sidebar");
+    assert.equal(await page.locator('.side-nav [data-page="core.chat"] .nav-fresh').count(), 1, "a reply not yet read marks the Chats row");
+    assert.equal((await page.locator('.side-nav [data-page="core.chat"] .count').innerText()).trim(), "2", "and it counts what waits on you");
+    await shot("main-sidebar");
+    await page.keyboard.press("Meta+Period");
+    await page.locator(".workspace > .alfred").waitFor();
+    await page.locator(".alf-head").getByRole("button", { name: zh ? "在对话页打开" : "Open in Chats" }).click();
+    await page.waitForFunction(() => location.hash.includes("p=core.chat"));
+    await page.locator(".chats .ch-open").waitFor();
+    await page.goto("https://zirma.test/#p=todo.list");
+    await page.locator('.side-nav [data-page="core.chat"]').waitFor();
+    await page.keyboard.press("Meta+k");
+    await page.keyboard.type(conversations[2].title);
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => location.hash.includes("p=core.chat") && location.hash.includes("c3"));
+    await shot("from-palette");
 
     await page.goto("https://zirma.test/#p=core.chat");
     const side = page.locator(".side-host nav.ch-list");
