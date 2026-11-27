@@ -47,7 +47,9 @@
 .nt-crumbs svg { width: 14px; height: 14px; }
 .nt-sl { flex: none; padding: 0 1px; color: var(--line); }
 .nt-status { flex: none; color: var(--muted); font-size: .75rem; padding: 0 6px; }
-.nt-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+/* The page is dotted paper: one faint dot every 24px, the same everywhere and under whatever is written, moving with
+ * the page as it scrolls. */
+.nt-scroll { flex: 1; min-height: 0; overflow-y: auto; --dot: color-mix(in oklch, var(--muted) 28%, transparent); background-image: radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 1.4px); background-size: 24px 24px; background-position: 11px 11px; background-attachment: local; }
 .nt-doc-wrap { max-width: 740px; margin: 0 auto; padding: 28px 56px 120px; }
 
 /* A page's head */
@@ -59,13 +61,9 @@
 
 /* The editor */
 .nt-editor { min-height: 160px; }
-/* Ruled like a notebook: a faint line under each line of words, drawn by the paragraph or item itself, so its words
- * always sit on its lines. A heading, a table, a picture or code is as tall as it is, with its usual spacing, and no
- * lines; the words after it start on lines of their own. */
-.nt-doc p, .nt-doc .nt-item, .nt-kept-line { --rule: color-mix(in oklch, var(--line) 70%, transparent); background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.65em - 1px), var(--rule) calc(1.65em - 1px), var(--rule) 1.65em); }
 .nt-doc { outline: none; font-size: 1rem; line-height: 1.65; color: var(--ink); white-space: pre-wrap; word-break: break-word; padding-bottom: 80px; min-height: 14em; }
 .nt-doc > * { margin: 0; }
-.nt-doc p { min-height: 1.65em; padding: 0; }
+.nt-doc p { min-height: 1.65em; padding: 2px 0; }
 .nt-doc h2, .nt-doc h3, .nt-doc h4 { margin: 18px 0 2px; font-weight: 650; line-height: 1.35; }
 .nt-doc h2 { font-size: 1.5rem; }
 .nt-doc h3 { font-size: 1.25rem; }
@@ -76,7 +74,7 @@
 .nt-doc code { padding: 0 3px; border-radius: 4px; background: var(--wash); font: .9em var(--mono, ui-monospace, Menlo, monospace); }
 .nt-doc pre code { padding: 0; background: none; font: inherit; }
 .nt-rule hr { margin: 14px 0; border: 0; border-top: 1px solid var(--line); }
-.nt-item { display: flex; align-items: flex-start; gap: 8px; padding: 0 0 0 calc(var(--depth, 0) * 24px); }
+.nt-item { display: flex; align-items: flex-start; gap: 8px; padding: 2px 0 2px calc(var(--depth, 0) * 24px); }
 .nt-item-text { flex: 1; min-width: 0; }
 .nt-marker { flex: none; min-width: 18px; height: 1.65em; display: grid; place-items: center; color: var(--copy); font-variant-numeric: tabular-nums; }
 .nt-bullet > .nt-marker::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
@@ -272,11 +270,11 @@
 .nt-kept-body h2 { margin: 22px 0 6px; font-size: 1.0625rem; font-weight: 650; }
 .nt-kept-body ul { margin: 0; padding: 0 0 0 1.25em; }
 .nt-kept-body { font-size: 1rem; line-height: 1.65; }
-.nt-kept-line { position: relative; padding: 0 28px 0 0; overflow-wrap: anywhere; }
+.nt-kept-line { position: relative; padding: 3px 28px 3px 0; overflow-wrap: anywhere; }
 .nt-kept-text { margin-right: 4px; }
 .nt-ref { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; margin: 0 2px; padding: 0 3px; border-radius: 5px; background: var(--alf-soft); color: var(--alf); font-size: .6875rem; font-weight: 600; line-height: 1; vertical-align: 2px; font-variant-numeric: tabular-nums; }
 button.nt-ref:hover { background: var(--alf); color: var(--on-alf); }
-.nt-kept-x { position: absolute; top: 1px; right: 0; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; color: var(--muted); opacity: 0; }
+.nt-kept-x { position: absolute; top: 4px; right: 0; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; color: var(--muted); opacity: 0; }
 .nt-kept-x svg { width: 13px; height: 13px; }
 .nt-kept-line:hover .nt-kept-x, .nt-kept-x:focus-visible { opacity: 1; }
 .nt-kept-x:hover { background: var(--wash); color: var(--ink); }
