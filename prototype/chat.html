@@ -1,0 +1,457 @@
+<!doctype html>
+<!--
+  Zirma: the Chats page (v0.1, 2026-11-27). A prototype for docs/design/chat.md. No build step; the conversations are
+  made up and Zirma's answers are canned.
+    Now       today's app: the main sidebar lists the conversations under the pages; picking one spreads Zirma across
+              the page ("wide").
+    Proposed  a Chats page in the modules group, with its own sidebar (new chat, Today / Previous 7 days / Older,
+              Archived). The main sidebar lists pages only. The panel beside other pages stays (⌘.); its old "spread"
+              button becomes "Open in Chats".
+  Strip on top: language, light/dark, now/proposed, desktop/phone.
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zirma：对话页</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root { --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif; --ease: cubic-bezier(.23, 1, .32, 1); }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { height: 100dvh; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font: 14px/1.55 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
+p, ul, h1, h2 { margin: 0; padding: 0; }
+ul { list-style: none; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+
+/* ── The prototype's own strip ── */
+.proto { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.proto b { flex: none; padding: 0 6px; }
+.proto .lab { flex: none; padding: 0 4px 0 10px; opacity: .6; }
+.proto button { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; }
+.proto button:hover { opacity: 1; }
+.proto button[aria-pressed="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+.proto .what { flex: 1; min-width: 0; padding: 0 10px; opacity: .7; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1100px) { .proto .what { display: none; } }
+
+/* ── Frame ── */
+.stage { flex: 1; min-height: 0; display: flex; justify-content: center; }
+.app { position: relative; flex: 1; min-width: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr) auto; grid-template-rows: 52px minmax(0, 1fr); background: var(--bg); }
+.stage[data-phone] .app { max-width: 390px; display: flex; flex-direction: column; box-shadow: 0 0 0 1px var(--line); }
+
+/* Top bar: the lead is the sidebar's width */
+.lead { display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--paper); border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+.dots { display: flex; gap: 8px; margin-right: auto; }
+.dots i { width: 12px; height: 12px; border-radius: 50%; background: var(--line); }
+.top { grid-column: 2 / -1; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--line-soft); }
+.top h1 { font-size: 17px; font-weight: 650; }
+.top .sum { color: var(--muted); font-size: 12px; }
+.top .grow { flex: 1; }
+.ib { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); }
+.ib:hover { background: var(--wash); color: var(--ink); }
+.ib[aria-pressed="true"] { background: var(--wash); color: var(--ink); }
+
+/* Sidebar */
+.side { position: relative; overflow: hidden; background: var(--paper); border-right: 1px solid var(--line-soft); }
+.side-view { position: absolute; inset: 0; overflow-y: auto; padding: 10px 8px 16px; transition: transform 220ms var(--ease), opacity 160ms ease; }
+.side-view[data-off="left"] { transform: translateX(-28px); opacity: 0; visibility: hidden; }
+.side-view[data-off="right"] { transform: translateX(28px); opacity: 0; visibility: hidden; }
+.back { display: flex; align-items: center; gap: 6px; height: 32px; margin: 0 0 2px; padding: 0 8px 0 4px; border-radius: 8px; font-weight: 600; width: 100%; }
+.back:hover { background: var(--wash); }
+.back .i { color: var(--muted); }
+/* Rows, labels: as packages/ui/src/side-tree.css */
+.row { width: 100%; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px 0 0; border-radius: 8px; color: var(--copy); font-size: 14px; text-align: left; position: relative; }
+.row:hover { background: var(--wash); color: var(--ink); }
+.row[aria-current="true"] { background: var(--wash); color: var(--ink); font-weight: 600; }
+.row .sp { flex: none; width: 18px; }
+.row > .i { color: var(--muted); }
+.row .nm { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.row .n { flex: none; min-width: 1.5em; color: var(--muted); font-size: 12px; font-weight: 400; text-align: right; font-variant-numeric: tabular-nums; }
+.row .n.att { color: var(--warm); font-weight: 600; }
+.row .time { flex: none; color: var(--muted); font-size: 11px; font-weight: 400; }
+.row .more { display: none; width: 22px; height: 22px; place-items: center; border-radius: 6px; color: var(--muted); }
+.row:hover .more, .row .more[aria-expanded="true"] { display: grid; }
+.row:hover .n:not(.att), .row:hover .time { display: none; }
+.row .more:hover { background: var(--line-soft); color: var(--ink); }
+.label { display: flex; align-items: center; gap: 6px; height: 34px; padding: 14px 8px 0; color: var(--muted); font-size: 12px; }
+.label .grow { flex: 1; }
+.label .ib { width: 22px; height: 22px; margin-top: -2px; }
+.st { flex: none; width: 18px; display: grid; place-items: center; }
+.st i { width: 7px; height: 7px; border-radius: 50%; }
+.st[data-s="busy"] i { background: var(--alf); animation: pulse 1.2s ease-in-out infinite; }
+.st[data-s="att"] i { background: var(--warm); }
+.st[data-s="unread"] i { background: var(--alf); }
+@keyframes pulse { 50% { opacity: .35; } }
+.rename { flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 0; border-radius: 6px; outline: 0; background: var(--field); box-shadow: inset 0 0 0 1.5px var(--alf); font-size: 14px; }
+.menu { position: absolute; top: calc(100% + 2px); right: 0; z-index: 30; min-width: 140px; display: flex; flex-direction: column; padding: 4px; border-radius: 10px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); font-weight: 400; }
+.menu button { height: 30px; padding: 0 10px; border-radius: 6px; color: var(--copy); font-size: 13px; }
+.menu button:hover { background: var(--wash); color: var(--ink); }
+.tag { margin-left: 4px; padding: 0 6px; border-radius: 6px; background: var(--alf-soft); color: var(--alf); font-size: 11px; font-weight: 600; }
+
+/* Page */
+.page { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.ph { flex: 1; padding: 28px 32px; }
+.ph h2 { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+.ph .bar { height: 12px; margin: 10px 0; border-radius: 6px; background: var(--wash); }
+.ph .hint { margin-top: 26px; color: var(--muted); font-size: 13px; }
+.ph .hint kbd { padding: 0 5px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--line); font: 12px var(--sans); }
+
+/* A conversation */
+.conv { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.conv-head { flex: none; display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 16px 0 20px; }
+.conv-head b { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; font-weight: 600; }
+.msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 20px 20px; }
+.msgs-in { max-width: 680px; margin: 0 auto 0 clamp(0px, calc((100% - 680px) / 4), 120px); display: flex; flex-direction: column; gap: 14px; }
+.m { max-width: 86%; line-height: 1.6; }
+.m.me { align-self: flex-end; padding: 8px 12px; border-radius: 14px; background: var(--wash); }
+.m.z { align-self: flex-start; }
+.m.z .who { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; color: var(--muted); font-size: 12px; }
+.m.typing { color: var(--muted); }
+.empty-conv { margin: 60px 0 0; color: var(--muted); }
+.compose { flex: none; padding: 0 20px 18px; }
+.compose-in { max-width: 680px; margin: 0 auto 0 clamp(0px, calc((100% - 680px) / 4), 120px); display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 14px; border-radius: 16px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line); }
+.compose textarea { flex: 1; min-width: 0; min-height: 24px; max-height: 120px; padding: 3px 0; border: 0; outline: 0; resize: none; background: none; line-height: 1.5; }
+.send { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--ink); color: var(--bg); }
+.send:disabled { opacity: .3; cursor: default; }
+
+/* Zirma beside the page */
+.panel { width: 360px; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line-soft); background: var(--bg); }
+.panel .conv-head { border-bottom: 1px solid var(--line-soft); }
+.panel .msgs-in, .panel .compose-in { margin: 0; max-width: none; }
+.panel .msgs { padding-top: 14px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 8px; color: var(--copy); font-size: 12px; font-weight: 550; white-space: nowrap; }
+.chip:hover { background: var(--wash); color: var(--ink); }
+.mark { width: 16px; height: 16px; flex: none; color: var(--alf); }
+
+/* Archived list */
+.arch { padding: 22px 28px; max-width: 760px; }
+.arch h2 { font-size: 17px; font-weight: 650; margin-bottom: 12px; }
+.arch li { display: flex; align-items: center; gap: 10px; min-height: 42px; border-bottom: 1px solid var(--line-soft); }
+.arch li span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.arch li time { color: var(--muted); font-size: 12px; }
+
+/* Phone */
+.phone-top { flex: none; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 12px; }
+.phone-top h1 { font-size: 20px; font-weight: 700; }
+.phone-top .grow { flex: 1; }
+.phone-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 96px; display: flex; flex-direction: column; }
+.phone-body .row { height: 44px; font-size: 15px; }
+.phone-body .conv { margin: 0 -12px; }
+.dock { position: absolute; left: 14px; right: 14px; bottom: 14px; display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
+.pill, .orb { pointer-events: auto; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); }
+.pill { display: flex; gap: 2px; padding: 4px; border-radius: 999px; }
+.pill button { width: 44px; height: 40px; display: grid; place-items: center; border-radius: 999px; color: var(--muted); }
+.pill button[aria-current="true"] { background: var(--wash); color: var(--ink); }
+.orb { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 50%; color: var(--alf); }
+.orb .mark { width: 24px; height: 24px; }
+.sheet { position: absolute; inset: 0; z-index: 20; display: flex; }
+.sheet .scrim { position: absolute; inset: 0; background: oklch(0 0 0 / .28); }
+.sheet nav { position: relative; width: 86%; height: 100%; overflow-y: auto; padding: 16px 8px; background: var(--paper); box-shadow: var(--shadow); }
+.sheet .row { height: 40px; font-size: 15px; }
+.phone-conv-head { display: flex; align-items: center; gap: 6px; height: 46px; padding: 0 8px; }
+.phone-conv-head b { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
+.phone-body .msgs { padding: 8px 12px 12px; }
+.phone-body .msgs-in, .phone-body .compose-in { margin: 0; }
+.phone-body .compose { padding: 0 12px 8px; }
+</style>
+</head>
+<body>
+<div class="proto" id="proto"></div>
+<div class="stage" id="stage"><div class="app" id="app"></div></div>
+<script>
+const I = {
+  chat: "M4 5.5h12v8H9l-3.5 3v-3H4z", plus: "M10 4.5v11M4.5 10h11", back: "M12 5l-5 5 5 5", more: "M4 10h.45M9.8 10h.45M15.6 10h.45",
+  inbox: "M3.5 11.5 5.5 5h9l2 6.5V15.5h-13zM3.5 11.5H8l1 2h2l1-2h4.5", cal: "M4 5.5h12v10.5H4zM4 9h12M7.5 3.5v3.5M12.5 3.5v3.5",
+  todo: "M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM7 10.2l2 2 4-4.4", mail: "M3.5 5.5h13v9.5h-13zM4 6l6 4.75L16 6",
+  link: "M8.5 11.5a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-.7.7M11.5 8.5a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l.7-.7",
+  write: "M9 4.5H4.5v11h11V11M8.4 11.8l.6-2.7 6.2-6.2 2.1 2.1-6.2 6.2-2.7.6z", clock: "M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM10 6.5V10l2.5 1.5",
+  archive: "M4 6h12M5 6v9h10V6M8 9h4", rail: "M3.5 4.5h13v11h-13zM8 4.5v11", panel: "M3.5 4.5h13v11h-13zM12 4.5v11",
+  home: "M3.5 9.2 10 3.8l6.5 5.4V16h-4.4v-4.2H7.9V16H3.5z", up: "M10 15.5v-11M5.5 9 10 4.5 14.5 9", wide: "M7 4H4v3M13 4h3v3M7 16H4v-3M13 16h3v-3",
+  open: "M11 4.5h4.5V9M15.5 4.5 9 11M8 5.5H4.5v10h10V12", close: "M6 6l8 8M14 6l-8 8", menu: "M4 6h12M4 10h12M4 14h12",
+};
+const icon = (name, size = 16) => `<svg class="i" viewBox="0 0 20 20" style="width:${size}px;height:${size}px" aria-hidden="true"><path d="${I[name]}"/></svg>`;
+const mark = `<svg class="mark" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="1"/><rect x="7" y="7" width="6" height="6"/><path d="M3 3l4 4M17 3l-4 4M3 17l4-4M17 17l-4-4"/></svg>`;
+
+const S = { lang: "zh", mode: "new", phone: false, page: "chat", sel: null, panel: false, wide: false, peek: false, archived: false,
+  phoneIn: false, sheet: false, menu: null, renaming: null, typing: null, draft: "" };
+const t = (zh, en) => (S.lang === "zh" ? zh : en);
+const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const DAY = 86_400_000;
+let next = 10;
+
+// Made-up conversations; `ago` in days.
+let C = [];
+function seed() {
+  C = [
+    { id: "c1", ago: 0, title: t("周五设计评审要讲什么", "What to cover at Friday's review"), status: "busy", att: 0,
+      msgs: [["me", t("帮我把周五评审要讲的三件事列出来。", "List the three things to cover at Friday's review.")],
+        ["z", t("从你这周的笔记看：一，搜索改版的取舍；二，手机上的键盘遮挡；三，下个版本的范围。要我按这个顺序起个提纲吗？", "From your notes this week: one, the trade-offs in the search redesign; two, the keyboard covering fields on the phone; three, the scope of the next release. Shall I draft an outline in that order?")]] },
+    { id: "c2", ago: 0, title: t("这张发票能不能报", "Can this receipt be claimed"), status: "unread", att: 0,
+      msgs: [["me", t("上周的打车发票能报吗？", "Can last week's taxi receipt be claimed?")], ["z", t("能，日期在本月，金额也没超。我放进了待办「月底报销」。", "Yes: it's dated this month and under the limit. I added it to your “Month-end claims” todo.")]] },
+    { id: "c3", ago: 2, title: t("搬家清单", "Moving checklist"), status: "att", att: 2,
+      msgs: [["me", t("下个月搬家，帮我列清单。", "I move next month; make me a checklist.")], ["z", t("列好了 14 项。有两件要你定：退押金那天约在周几，网络是迁移还是重办？", "Done, 14 items. Two need you: which day to meet for the deposit, and should the internet be moved or set up anew?")]] },
+    { id: "c4", ago: 4, title: t("读那篇 RAG 的文章", "That article on RAG"), status: "", att: 0,
+      msgs: [["me", t("那篇讲 RAG 的文章说了什么？", "What did that RAG article say?")], ["z", t("三点：切块大小比模型更要紧；检索后再排一次序；评估要用你自己的问题。", "Three points: chunk size matters more than the model; re-rank after retrieval; evaluate with your own questions.")]] },
+    { id: "c5", ago: 12, title: t("跑步计划", "Running plan"), status: "", att: 0, msgs: [["me", t("每周三次，怎么排？", "Three runs a week, how to space them?")], ["z", t("一、三、六，周六那次长一点。", "Mon, Wed, Sat, with the long one on Saturday.")]] },
+    { id: "c6", ago: 30, title: t("给房东的邮件", "Email to the landlord"), status: "", att: 0, msgs: [["me", t("帮我起草一封。", "Draft one for me.")], ["z", t("草稿放在邮件页了。", "The draft is on the Mail page.")]] },
+  ];
+  C.forEach((c) => { c.at = Date.now() - c.ago * DAY; });
+  S.archivedList = [
+    { id: "a1", title: t("旧手机怎么处理", "What to do with the old phone"), at: Date.now() - 40 * DAY, msgs: [] },
+    { id: "a2", title: t("报税材料", "Tax papers"), at: Date.now() - 70 * DAY, msgs: [] },
+  ];
+  if (!C.some((c) => c.id === S.sel)) S.sel = "c1";
+}
+
+const PAGES = () => [
+  { key: "today", g: "top", icon: "home", name: t("今天", "Today") },
+  { key: "inbox", g: "work", icon: "inbox", name: t("通知", "Inbox") },
+  { key: "cal", g: "work", icon: "cal", name: t("日历", "Calendar") },
+  { key: "todo", g: "work", icon: "todo", name: t("待办", "Todos") },
+  { key: "mail", g: "mod", icon: "mail", name: t("邮件", "Mail") },
+  { key: "link", g: "mod", icon: "link", name: t("链接", "Links") },
+  { key: "note", g: "mod", icon: "write", name: t("笔记", "Notes") },
+  { key: "auto", g: "mod", icon: "clock", name: t("自动化", "Automations") },
+  ...(S.mode === "new" ? [{ key: "chat", g: "mod", icon: "chat", name: t("对话", "Chats") }] : []),
+];
+const pageName = (key) => PAGES().find((p) => p.key === key)?.name ?? "";
+const conv = () => C.find((c) => c.id === S.sel);
+const attTotal = () => C.reduce((sum, c) => sum + c.att, 0);
+const ago = (at) => { const d = Math.floor((Date.now() - at) / DAY); return d === 0 ? t("今天", "today") : d < 7 ? t(`${d} 天前`, `${d}d ago`) : t(`${Math.floor(d / 7)} 周前`, `${Math.floor(d / 7)}w ago`); };
+
+/* ── Pieces ── */
+const status = (c) => `<span class="st" data-s="${c.att ? "att" : c.status}"><i></i></span>`;
+function convRow(c, { time = false } = {}) {
+  const current = S.sel === c.id && (S.mode === "now" ? S.wide : S.page === "chat" && !S.archived);
+  const name = S.renaming === c.id ? `<input class="rename" data-rename="${c.id}" value="${esc(c.title)}" maxlength="60">` : `<span class="nm">${esc(c.title)}</span>`;
+  const right = c.att ? `<span class="n att">${c.att}</span>` : time ? `<span class="time">${ago(c.at)}</span>` : "";
+  return `<div class="row" role="button" tabindex="0" data-conv="${c.id}" aria-current="${current}">
+    ${status(c)}${name}${right}
+    <button type="button" class="more" data-more="${c.id}" aria-label="${t("更多", "More")}" aria-expanded="${S.menu === c.id}">${icon("more", 15)}</button>
+    ${S.menu === c.id ? `<div class="menu" role="menu"><button type="button" data-act="rename" data-id="${c.id}">${t("改名", "Rename")}</button><button type="button" data-act="archive" data-id="${c.id}">${t("归档", "Archive")}</button></div>` : ""}
+  </div>`;
+}
+function pagesNav() {
+  const ps = PAGES();
+  const row = (p) => {
+    const n = p.key === "chat" ? attTotal() : p.key === "inbox" ? 3 : p.key === "mail" ? 2 : 0;
+    const current = S.page === p.key && !(S.mode === "now" && S.wide);
+    return `<button type="button" class="row" data-page="${p.key}" aria-current="${current}"><span class="sp"></span>${icon(p.icon)}<span class="nm">${p.name}</span>${n ? `<span class="n${p.key === "chat" ? " att" : ""}">${n}</span>` : ""}</button>`;
+  };
+  let html = ps.filter((p) => p.g === "top").map(row).join("");
+  html += `<div class="label">${t("工作台", "Workspace")}</div>` + ps.filter((p) => p.g === "work").map(row).join("");
+  html += `<div class="label">${t("模块", "Modules")}</div>` + ps.filter((p) => p.g === "mod").map(row).join("");
+  if (S.mode === "now") {
+    html += `<div class="label"><span class="grow">${t("对话", "Conversations")}</span><button type="button" class="ib" data-act="archived" title="${t("已归档", "Archived")}">${icon("archive", 14)}</button><button type="button" class="ib" data-act="new" title="${t("新对话", "New conversation")}">${icon("plus", 14)}</button></div>`;
+    html += [...C].sort((a, b) => b.at - a.at).map((c) => convRow(c, { time: true })).join("");
+  }
+  return html;
+}
+function chatSide({ phone = false } = {}) {
+  let html = phone ? "" : `<button type="button" class="back" data-act="peek">${icon("back")}<span>${t("对话", "Chats")}</span></button>`;
+  html += `<button type="button" class="row" data-act="new"><span class="sp"></span>${icon("plus")}<span class="nm">${t("新对话", "New chat")}</span></button>`;
+  const sorted = [...C].sort((a, b) => b.at - a.at);
+  const bands = [[t("今天", "Today"), (c) => c.ago === 0], [t("前 7 天", "Previous 7 days"), (c) => c.ago > 0 && c.ago <= 7], [t("更早", "Older"), (c) => c.ago > 7]];
+  for (const [name, test] of bands) {
+    const list = sorted.filter(test);
+    if (list.length) html += `<div class="label">${name}</div>` + list.map((c) => convRow(c)).join("");
+  }
+  html += `<div class="label"></div><button type="button" class="row" data-act="archived" aria-current="${S.archived && S.page === "chat"}"><span class="sp"></span>${icon("archive")}<span class="nm">${t("已归档", "Archived")}</span><span class="n">${S.archivedList.length}</span></button>`;
+  return html;
+}
+function conversation(c, { inPanel = false, phone = false } = {}) {
+  if (!c) return `<div class="conv"><div class="msgs"><div class="msgs-in"><p class="empty-conv">${t("新的对话。说点什么。", "A new chat. Say something.")}</p></div></div>${composer()}</div>`;
+  const msgs = c.msgs.map(([who, text]) => who === "me" ? `<p class="m me">${esc(text)}</p>` : `<div class="m z"><span class="who">${mark}Zirma</span>${esc(text)}</div>`).join("")
+    + (S.typing === c.id ? `<div class="m z typing"><span class="who">${mark}Zirma</span>…</div>` : "");
+  let head;
+  if (phone) head = `<div class="phone-conv-head"><button type="button" class="ib" data-act="phone-out" aria-label="${t("对话列表", "Chats")}">${icon("back", 18)}</button><b>${esc(c.title)}</b></div>`;
+  else if (inPanel) head = `<div class="conv-head">${mark}<b>${esc(c.title)}</b>${S.mode === "new"
+    ? `<button type="button" class="chip" data-act="to-chats" title="${t("在对话页打开", "Open in Chats")}">${icon("open", 14)}${t("在对话页打开", "Open in Chats")}</button>`
+    : `<button type="button" class="ib" data-act="wide" title="${t("铺满整页", "Spread across the page")}">${icon("wide")}</button>`}<button type="button" class="ib" data-act="panel" aria-label="${t("关上", "Close")}">${icon("close")}</button></div>`;
+  else head = `<div class="conv-head"><b>${esc(c.title)}</b>${S.mode === "now" ? `<button type="button" class="ib" data-act="wide" aria-pressed="true" title="${t("放回旁边", "Put it beside the page")}">${icon("wide")}</button>` : ""}<button type="button" class="ib" data-more-head="${c.id}" aria-label="${t("更多", "More")}">${icon("more")}</button></div>`;
+  return `<div class="conv">${head}<div class="msgs"><div class="msgs-in">${msgs}</div></div>${composer()}</div>`;
+}
+const composer = () => `<form class="compose" data-act="send"><div class="compose-in"><textarea rows="1" placeholder="${t("问 Zirma", "Ask Zirma")}" aria-label="${t("问 Zirma", "Ask Zirma")}">${esc(S.draft)}</textarea><button type="submit" class="send" aria-label="${t("发送", "Send")}" ${S.draft.trim() ? "" : "disabled"}>${icon("up")}</button></div></form>`;
+function placeholder() {
+  return `<div class="ph"><h2>${pageName(S.page)}</h2><div class="bar" style="width:70%"></div><div class="bar" style="width:55%"></div><div class="bar" style="width:62%"></div><div class="bar" style="width:40%"></div>
+    <p class="hint">${t("这一页是占位。", "This page is a stand-in.")} ${t("按", "Press")} <kbd>⌘.</kbd> ${t("或点右上角，在旁边问 Zirma。", "or the button at the top right to ask Zirma beside it.")}</p></div>`;
+}
+function archivedPage() {
+  return `<div class="arch"><h2>${t("已归档", "Archived")}</h2><ul>${S.archivedList.map((a) => `<li><span>${esc(a.title)}</span><time>${ago(a.at)}</time><button type="button" class="chip" data-act="restore" data-id="${a.id}">${t("恢复", "Restore")}</button></li>`).join("")}</ul></div>`;
+}
+
+/* ── Layouts ── */
+function desktop() {
+  const chatPage = S.mode === "new" && S.page === "chat";
+  const sideIsChat = chatPage && !S.peek;
+  const title = S.mode === "now" && S.wide ? "Zirma" : pageName(S.page);
+  const sum = S.mode === "new" && S.page === "chat" ? t(`${C.length} 段 · ${attTotal()} 件等你`, `${C.length} chats · ${attTotal()} waiting`) : "";
+  const panelOpen = S.panel && !chatPage && !(S.mode === "now" && S.wide);
+  let page;
+  if (S.mode === "now" && S.archived) page = archivedPage();
+  else if (S.mode === "now" && S.wide) page = conversation(conv());
+  else if (chatPage) page = S.archived ? archivedPage() : conversation(conv());
+  else page = placeholder();
+  return `
+    <div class="lead"><span class="dots"><i></i><i></i><i></i></span><button type="button" class="ib">${icon("rail")}</button></div>
+    <div class="top"><h1>${title}</h1><span class="sum">${sum}</span><span class="grow"></span>
+      ${!chatPage && !(S.mode === "now" && S.wide) ? `<button type="button" class="ib" data-act="panel" aria-pressed="${S.panel}" title="Zirma ⌘.">${icon("panel")}</button>` : ""}</div>
+    <aside class="side">
+      <nav class="side-view" ${sideIsChat ? 'data-off="left"' : ""} aria-label="${t("页面", "Pages")}">${pagesNav()}</nav>
+      ${S.mode === "new" ? `<nav class="side-view" ${sideIsChat ? "" : 'data-off="right"'} aria-label="${t("对话", "Chats")}">${chatSide()}</nav>` : ""}
+    </aside>
+    <main class="page">${page}</main>
+    ${panelOpen ? `<aside class="panel">${conversation(conv(), { inPanel: true })}</aside>` : ""}`;
+}
+function phone() {
+  const chatPage = S.mode === "new" && S.page === "chat";
+  let body;
+  if (chatPage && S.phoneIn) body = conversation(conv(), { phone: true });
+  else if (chatPage) body = `<div>${chatSide({ phone: true })}</div>`;
+  else if (S.mode === "now" && S.wide) body = conversation(conv(), { phone: true });
+  else body = placeholder();
+  const top = chatPage && S.phoneIn || S.mode === "now" && S.wide ? "" : `<div class="phone-top"><h1>${pageName(S.page)}</h1><span class="grow"></span></div>`;
+  const sheet = S.sheet ? `<div class="sheet"><button type="button" class="scrim" data-act="sheet" aria-label="${t("关上", "Close")}"></button><nav>${pagesNav()}</nav></div>` : "";
+  return `${top}<div class="phone-body">${body}</div>
+    <div class="dock"><div class="pill"><button type="button" data-act="sheet" aria-label="${t("页面", "Pages")}">${icon("menu", 18)}</button>
+      <button type="button" data-page="today" aria-current="${S.page === "today"}">${icon("home", 18)}</button>
+      ${S.mode === "new" ? `<button type="button" data-page="chat" aria-current="${S.page === "chat"}">${icon("chat", 18)}</button>` : ""}</div>
+      <button type="button" class="orb" data-act="orb" aria-label="Zirma">${mark}</button></div>${sheet}`;
+}
+
+function strip() {
+  const on = (v) => `aria-pressed="${v}"`;
+  const dark = document.documentElement.dataset.scheme === "dark";
+  document.getElementById("proto").innerHTML = `<b>Zirma · ${t("对话页", "Chats page")}</b>
+    <span class="lab">${t("语言", "Language")}</span><button type="button" data-p="zh" ${on(S.lang === "zh")}>中文</button><button type="button" data-p="en" ${on(S.lang === "en")}>EN</button>
+    <span class="lab">${t("外观", "Look")}</span><button type="button" data-p="light" ${on(!dark)}>${t("浅", "Light")}</button><button type="button" data-p="dark" ${on(dark)}>${t("深", "Dark")}</button>
+    <span class="lab">${t("对照", "Compare")}</span><button type="button" data-p="now" ${on(S.mode === "now")}>${t("现在", "Now")}</button><button type="button" data-p="new" ${on(S.mode === "new")}>${t("提议", "Proposed")}</button>
+    <span class="lab">${t("宽度", "Width")}</span><button type="button" data-p="desk" ${on(!S.phone)}>${t("电脑", "Desktop")}</button><button type="button" data-p="phone" ${on(S.phone)}>${t("手机", "Phone")}</button>
+    <span class="what">${S.mode === "new" ? t("对话是模块那一组里的一页，有自己的侧栏；主侧栏只列页面。", "Chats is a page in the modules group with its own sidebar; the main sidebar lists pages only.") : t("现在：对话列在主侧栏里，点一段 Zirma 铺满整页。", "Now: conversations are listed in the main sidebar; picking one spreads Zirma across the page.")}</span>`;
+  document.documentElement.lang = S.lang === "zh" ? "zh-CN" : "en";
+  document.title = t("Zirma：对话页", "Zirma: Chats page");
+}
+function render() {
+  strip();
+  const stage = document.getElementById("stage");
+  stage.toggleAttribute("data-phone", S.phone);
+  document.getElementById("app").innerHTML = S.phone ? phone() : desktop();
+  const rename = document.querySelector("[data-rename]");
+  if (rename) { rename.focus(); rename.select(); }
+  const msgs = document.querySelectorAll(".msgs");
+  msgs.forEach((m) => { m.scrollTop = m.scrollHeight; });
+}
+
+/* ── Actions ── */
+function openConv(id) {
+  S.sel = id; S.menu = null; S.archived = false;
+  const c = conv(); if (c && c.status === "unread") c.status = "";
+  if (S.mode === "now") { if (!S.panel) S.wide = true; S.archived = false; }
+  else { S.page = "chat"; S.peek = false; S.phoneIn = true; }
+}
+function newConv() {
+  const c = { id: `c${next++}`, ago: 0, at: Date.now(), title: t("新对话", "New chat"), status: "", att: 0, msgs: [] };
+  C.unshift(c); openConv(c.id); S.draft = "";
+}
+function send(text) {
+  let c = conv();
+  if (!c) { newConv(); c = conv(); }
+  if (!c.msgs.length) c.title = text.slice(0, 24);
+  c.msgs.push(["me", text]); c.at = Date.now(); c.ago = 0; S.draft = ""; S.typing = c.id; render();
+  setTimeout(() => { S.typing = null; c.msgs.push(["z", t("好的。（原型里的回答是写死的。）", "Sure. (Answers are canned in this prototype.)")]); render(); }, 700);
+}
+
+document.addEventListener("click", (event) => {
+  const el = event.target.closest("button, [data-conv]");
+  if (!el) { if (S.menu) { S.menu = null; render(); } return; }
+  const p = el.dataset.p;
+  if (p) {
+    if (p === "zh" || p === "en") { S.lang = p; seed(); }
+    else if (p === "light" || p === "dark") document.documentElement.dataset.scheme = p;
+    else if (p === "now") { S.mode = "now"; if (S.page === "chat") S.page = "mail"; S.wide = true; S.panel = false; }
+    else if (p === "new") { S.mode = "new"; S.page = "chat"; S.wide = false; S.peek = false; }
+    else if (p === "phone") { S.phone = true; S.phoneIn = false; S.sheet = false; }
+    else if (p === "desk") S.phone = false;
+    render(); return;
+  }
+  if (el.dataset.more) { event.stopPropagation(); S.menu = S.menu === el.dataset.more ? null : el.dataset.more; render(); return; }
+  if (el.dataset.moreHead) { S.menu = S.menu === el.dataset.moreHead ? null : el.dataset.moreHead; render(); return; }
+  if (el.dataset.page) {
+    S.page = el.dataset.page; S.sheet = false; S.wide = false; S.peek = false; S.archived = false; S.menu = null;
+    if (S.page === "chat") S.phoneIn = false;
+    render(); return;
+  }
+  const act = el.dataset.act;
+  if (el.dataset.conv && !act) { openConv(el.dataset.conv); render(); return; }
+  switch (act) {
+    case "new": newConv(); break;
+    case "peek": S.peek = true; break;
+    case "panel": S.panel = !S.panel; break;
+    case "wide": if (S.wide) { S.wide = false; S.panel = true; } else { S.wide = true; S.panel = false; } break;
+    case "to-chats": S.page = "chat"; S.panel = false; S.peek = false; S.archived = false; break;
+    case "archived":
+      S.archived = true; S.peek = false;
+      if (S.mode === "new") S.page = "chat"; else S.wide = false;
+      break;
+    case "restore": {
+      const a = S.archivedList.find((x) => x.id === el.dataset.id);
+      S.archivedList = S.archivedList.filter((x) => x.id !== a.id);
+      C.push({ ...a, ago: Math.floor((Date.now() - a.at) / DAY), status: "", att: 0, msgs: [["z", t("（恢复的对话）", "(A restored chat)")]] });
+      break;
+    }
+    case "rename": S.renaming = el.dataset.id; S.menu = null; break;
+    case "archive": {
+      const c = C.find((x) => x.id === el.dataset.id);
+      C = C.filter((x) => x.id !== c.id); S.archivedList.unshift(c); S.menu = null;
+      if (S.sel === c.id) S.sel = C[0]?.id ?? null;
+      break;
+    }
+    case "sheet": S.sheet = !S.sheet; break;
+    case "orb": if (S.mode === "new") { S.page = "chat"; S.phoneIn = true; } else S.wide = true; break;
+    case "phone-out": if (S.mode === "new") S.phoneIn = false; else S.wide = false; break;
+    default: return;
+  }
+  render();
+});
+document.addEventListener("dblclick", (event) => {
+  const row = event.target.closest("[data-conv]");
+  if (row) { S.renaming = row.dataset.conv; render(); }
+});
+document.addEventListener("keydown", (event) => {
+  const rename = event.target.closest?.("[data-rename]");
+  if (rename) {
+    if (event.key === "Enter" && !event.isComposing) { const c = C.find((x) => x.id === rename.dataset.rename); if (rename.value.trim()) c.title = rename.value.trim(); S.renaming = null; render(); }
+    if (event.key === "Escape") { S.renaming = null; render(); }
+    return;
+  }
+  if (event.target.matches?.("textarea") && event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault(); if (S.draft.trim()) send(S.draft.trim()); return;
+  }
+  if ((event.metaKey || event.ctrlKey) && event.key === ".") { event.preventDefault(); if (!(S.mode === "new" && S.page === "chat")) { S.panel = !S.panel; render(); } }
+  if (event.target.closest?.("[data-conv]") && event.key === "Enter") { openConv(event.target.closest("[data-conv]").dataset.conv); render(); }
+});
+document.addEventListener("input", (event) => {
+  if (!event.target.matches("textarea")) return;
+  S.draft = event.target.value;
+  const send = event.target.closest("form").querySelector(".send");
+  send.disabled = !S.draft.trim();
+});
+document.addEventListener("submit", (event) => { event.preventDefault(); if (S.draft.trim()) send(S.draft.trim()); });
+document.addEventListener("focusout", (event) => { if (event.target.matches?.("[data-rename]") && S.renaming) { S.renaming = null; render(); } });
+
+if (matchMedia("(prefers-color-scheme: dark)").matches) document.documentElement.dataset.scheme = "dark";
+const q = new URLSearchParams(location.search);
+if (q.get("lang") === "en") S.lang = "en";
+if (q.get("mode") === "now") { S.mode = "now"; S.page = "mail"; S.wide = true; }
+if (q.get("w") === "phone") S.phone = true;
+if (q.get("scheme")) document.documentElement.dataset.scheme = q.get("scheme");
+seed();
+render();
+</script>
+</body>
+</html>
