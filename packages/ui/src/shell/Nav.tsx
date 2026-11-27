@@ -1,7 +1,7 @@
 import { ConversationStatus } from "./ConversationStatus.tsx";
 import type { Conversation, StateResponse } from "@zirma/protocol";
 import { useState } from "react";
-import { api, type Connection } from "../api.ts";
+import type { Connection } from "../api.ts";
 import { getLocale, intlLocale, localeTag, nextLocale, t } from "../i18n/index.ts";
 import { origin, setAppearance, useScheme } from "../scheme.ts";
 import { Icon } from "./icons.tsx";
@@ -27,9 +27,8 @@ export interface NavProps {
   state: StateResponse;
   pages: PageDef[];
   page: string;
-  /** Daily: the workspace and modules. Dev: the Code page and its projects' sessions. All (phone): both, and the conversations. */
+  /** Daily: the workspace and modules. Dev: the Code page and its projects' sessions. All (phone): both; the conversations are on the Chats page. */
   mode: Mode | "all";
-  selected: string | null;
   /** The development session open on the Code page, if any. */
   session: string | null;
   onSession(id: string | null): void;
@@ -38,7 +37,6 @@ export interface NavProps {
   onArchive(conversation: Conversation, worktree?: "keep" | "discard", archiveRuns?: "finish" | "stop"): Promise<void>;
   onShowArchive(): void;
   onPage(key: string): void;
-  onSelect(id: string | null): void;
   /** Shown as a sheet (phone): a button closes it. */
   onClose?: () => void;
   /** Switch between Chinese and English. */
@@ -84,11 +82,7 @@ export function ViewButtons({ onLanguage }: { onLanguage(): void }) {
   );
 }
 
-export function Nav({ state, pages, page, mode, selected, session, onSession, onNewProjectSession, connection, onArchive, onShowArchive, onPage, onSelect, onClose, onLanguage }: NavProps) {
-  const rename = (conversation: Conversation) => {
-    const title = window.prompt(t("nav.rename"), conversation.title);
-    if (title && title.trim() && title.trim() !== conversation.title) api.updateConversation(conversation.id, { title }).catch(() => {});
-  };
+export function Nav({ state, pages, page, mode, session, onSession, onNewProjectSession, connection, onArchive, onShowArchive, onPage, onClose, onLanguage }: NavProps) {
   const { archive, archiving, archiveError, asking, dialogs } = useArchive(onArchive);
   const archiveMenu = (
     <details className="archive-menu" onBlur={(event) => {
@@ -108,8 +102,6 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, on
       }}><Icon name="archive" />{t("archive.title")}</button>
     </details>
   );
-  // Everyday conversations here; development sessions are listed under their projects in the Code group.
-  const daily = state.conversations.filter((conversation) => !conversation.projectId && !conversation.automationOnly);
   const groups: Array<[string, PageDef[]]> = [
     [t("nav.g.work"), mode === "dev" ? [] : pages.filter((item) => item.group === "work")],
     [t("nav.g.modules"), mode === "dev" ? [] : pages.filter((item) => item.group === "modules")],
@@ -203,32 +195,6 @@ export function Nav({ state, pages, page, mode, selected, session, onSession, on
 
       <div className="nav-spacer" />
 
-      {/* The conversations live on the Chats page (docs/design/chat.md); the phone's sheet keeps its list until C3. */}
-      {mode === "all" && <>
-      <div className="conv-head">
-        <span>{t("nav.conversations")}</span>
-        {archiveMenu}
-        <button type="button" className="icon-btn" aria-label={t("nav.newConversation")} title={t("nav.newConversation")} onClick={() => onSelect(null)}><Icon name="plus" /></button>
-      </div>
-      <ul className="conv-list">
-        {daily.length === 0 && <li className="quiet small empty-list">{t("nav.noConversations")}</li>}
-        {daily.map((conversation) => (
-          <li key={conversation.id}>
-            <button type="button" className="conv" aria-current={selected === conversation.id ? "true" : undefined}
-              onClick={() => onSelect(conversation.id)} onDoubleClick={() => rename(conversation)} title={conversation.lastGoal ?? conversation.title}>
-              <ConversationStatus conversation={conversation} />
-              <span className="ct">{conversation.title}</span>
-              {conversation.attention > 0
-                ? <span className="badge attention" aria-label={t("nav.attention", { n: conversation.attention })}>{conversation.attention}</span>
-                : <span className="time">{when(conversation.updatedAt)}</span>}
-            </button>
-            <button type="button" className="archive" disabled={archiving} aria-label={t("nav.archive", { title: conversation.title })} onClick={() => archive(conversation)}>
-              <Icon name="archive" />
-            </button>
-          </li>
-        ))}
-      </ul>
-      </>}
 
       {archiveError && !asking && <p className="problem" role="alert">{archiveError}</p>}
       <div className="nav-foot">

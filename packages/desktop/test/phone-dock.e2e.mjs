@@ -105,6 +105,7 @@ test("the phone's fourth Dock shortcut can be changed or removed in General sett
   const tabs = dock.locator(".dock-tabs");
   const pinnedPages = () => tabs.locator("[data-page]").evaluateAll((buttons) => buttons.map((button) => button.dataset.page));
   const primary = ["core.today", "core.inbox", "calendar.week"];
+  const pinned = (shortcut) => [...primary, ...(shortcut ? [shortcut] : []), "core.chat"];
   const openSettings = async () => {
     await dock.getByRole("button", { name: "Menu", exact: true }).click();
     await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -114,15 +115,15 @@ test("the phone's fourth Dock shortcut can be changed or removed in General sett
   const pick = async (name) => { await setting.click(); await page.getByRole("option", { name, exact: true }).click(); };
   await page.goto("https://alfred.test/");
   await dock.getByRole("button", { name: "Todos" }).waitFor();
-  assert.deepEqual(await pinnedPages(), [...primary, "todo.list"]);
+  assert.deepEqual(await pinnedPages(), pinned("todo.list"));
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     assert.ok(await dock.evaluate((nav) => {
       const pill = nav.querySelector(".dock-tabs").getBoundingClientRect();
       const alfred = nav.querySelector(".dock-alfred").getBoundingClientRect();
       return pill.left >= 0 && pill.right <= alfred.left && alfred.right <= window.innerWidth &&
-        [...nav.querySelectorAll(".dock-tabs button")].every((button) => button.getBoundingClientRect().right <= pill.right);
-    }), `all dock buttons fit at ${width}px`);
+        [...nav.querySelectorAll(".dock-tabs button")].every((button) => button.getBoundingClientRect().right <= pill.right && button.getBoundingClientRect().width >= 36);
+    }), `all six dock buttons fit at ${width}px, none narrower than 36px`);
   }
   await dock.getByRole("button", { name: "Todos" }).click();
   await page.getByRole("heading", { name: "Todos", exact: true, level: 1 }).waitFor();
@@ -130,7 +131,7 @@ test("the phone's fourth Dock shortcut can be changed or removed in General sett
   assert.equal(await shown(), "Todos");
   await setting.click();
   await page.getByRole("option", { name: "Links", exact: true }).waitFor();
-  for (const label of ["Today", "Inbox", "Calendar"]) assert.equal(await page.getByRole("option", { name: label, exact: true }).count(), 0);
+  for (const label of ["Today", "Inbox", "Calendar", "Chats"]) assert.equal(await page.getByRole("option", { name: label, exact: true }).count(), 0);
   await setting.press("Escape");
   await pick("Links");
   const links = dock.getByRole("button", { name: "Links", exact: true });
@@ -139,15 +140,15 @@ test("the phone's fourth Dock shortcut can be changed or removed in General sett
   assert.equal(await links.getAttribute("aria-current"), "page");
   await page.reload();
   await links.waitFor();
-  assert.deepEqual(await pinnedPages(), [...primary, "link.list"]);
+  assert.deepEqual(await pinnedPages(), pinned("link.list"));
   await openSettings();
   assert.equal(await shown(), "Links");
   await pick("None");
   await page.reload();
   await setting.waitFor();
   assert.equal(await shown(), "None");
-  assert.deepEqual(await pinnedPages(), primary);
-  assert.equal(await tabs.locator(":scope > *").count(), 1 + primary.length, "only the menu and primary pages occupy the pill");
+  assert.deepEqual(await pinnedPages(), pinned());
+  assert.equal(await tabs.locator(":scope > *").count(), 2 + primary.length, "only the menu, primary pages and Chats occupy the pill");
 
   // On a home without Calendar, Todos already belongs to the primary buttons.
   await pick("Todos");
@@ -155,7 +156,7 @@ test("the phone's fourth Dock shortcut can be changed or removed in General sett
   delete state.modules.calendar;
   await page.reload();
   await setting.waitFor();
-  assert.deepEqual(await pinnedPages(), ["core.today", "core.inbox", "todo.list"]);
+  assert.deepEqual(await pinnedPages(), ["core.today", "core.inbox", "todo.list", "core.chat"]);
 });
 
 test("the wireframe animates around the centre of the phone's Zirma button", async (t) => {
