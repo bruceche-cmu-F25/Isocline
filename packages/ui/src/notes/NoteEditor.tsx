@@ -13,9 +13,10 @@ import type { Node as PmNode } from "prosemirror-model";
 import { EditorState, Plugin, TextSelection, type Command } from "prosemirror-state";
 import { EditorView, type NodeView } from "prosemirror-view";
 import { assignSources, blanksBefore, compose, parsePage, writeBlocks, type ParsedPage } from "@zirma/module-notes/markdown";
-import type { PageDetail } from "@zirma/module-notes/types";
+import type { PageDetail, Suggestion } from "@zirma/module-notes/types";
 import { blocksToDoc, docToBlocks, flattenLists, schema } from "./schema.ts";
 import { Fragment, Slice } from "prosemirror-model";
+import { likeliestBlock, placeEdits, suggestionCard, suggestKey, suggestPlugin } from "./suggest.ts";
 import { AtomView, fileUrl, isFileName, linkName, putFiles, showTask, tasksKey, tasksPlugin, WikiView, type PageContext } from "./embeds.ts";
 import { CalloutView, cellAt, Overlays, runSlash, slashItems, slashQuery, tableCommands } from "./blocks.tsx";
 import { t } from "../i18n/index.ts";
@@ -211,7 +212,7 @@ class ItemView implements NodeView {
   }
 }
 
-export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, tasks, focus, onError, onEdit, onSubpage }: {
+export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, tasks, focus, flash, suggestions, onDecide, onError, onEdit, onSubpage }: {
   detail: PageDetail;
   readOnly: boolean;
   /** A link to a page was clicked. */
@@ -224,6 +225,11 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
   tasks?: { listed: ReadonlySet<string>; put(ref: string, words: string): void };
   /** One to-do to bring into view when the page opens: `<words key>:<which>`. */
   focus?: string | null;
+  /** Words to find and flash when the page opens (a line the assistant gathered from here). */
+  flash?: string | null;
+  /** The assistant's suggestions to change words here, shown in place. */
+  suggestions?: readonly Suggestion[];
+  onDecide?(suggestion: Suggestion, accept: boolean): void;
   /** Something the user did could not be done (a file not put in). */
   onError(message: string): void;
   /** The words changed here (typed, pasted, a to-do ticked). */
@@ -255,8 +261,9 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
   report.current = onState;
   const linkTo = useRef(onLink);
   linkTo.current = onLink;
-  const latest = useRef({ exists, tasks, onError, onEdit, onSubpage });
-  latest.current = { exists, tasks, onError, onEdit, onSubpage };
+  const latest = useRef({ exists, tasks, onError, onEdit, onSubpage, suggestions, onDecide });
+  latest.current = { exists, tasks, onError, onEdit, onSubpage, suggestions, onDecide };
+  const hooks = { list: () => latest.current.suggestions ?? [], decide: (one: Suggestion, accept: boolean) => latest.current.onDecide?.(one, accept) };
   const context = (): PageContext => ({ page: detail.id, library: detail.library, exists: (target) => latest.current.exists(target) });
 
   const flush = async (): Promise<void> => {
@@ -313,7 +320,7 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
   const stateFor = (parsed: ParsedPage) => EditorState.create({
     doc: blocksToDoc(parsed.blocks.map((source) => source.block), blanksBefore(parsed)),
     plugins: readOnly ? [] : [rules, keys, keymap(baseKeymap), history(), dropCursor({ color: "var(--alf)" }), trailing,
-      tasksPlugin(() => ({ ...context(), put: (ref, words) => latest.current.tasks?.put(ref, words) }))],
+      tasksPlugin(() => ({ ...context(), put: (ref, words) => latest.current.tasks?.put(ref, words) })), suggestPlugin(hooks)],
   });
 
   useEffect(() => {
@@ -428,6 +435,17 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
       const [key, nth] = focus.split(":");
       requestAnimationFrame(() => showTask(editor, { library: detail.library, page: detail.id }, key, Number(nth)));
     }
+    // Opened from a source number on one of the assistant's pages: the line it came from flashes.
+    if (flash) {
+      requestAnimationFrame(() => {
+        const at = likeliestBlock(editor.state.doc, flash);
+        const dom = at === -1 ? null : editor.nodeDOM(at) as HTMLElement | null;
+        if (!dom?.classList) return;
+        dom.scrollIntoView({ block: "center" });
+        dom.classList.add("nt-flash");
+        window.setTimeout(() => dom.classList.remove("nt-flash"), 2200);
+      });
+    }
     // A new page opens with the cursor in its first line.
     if (editable && !detail.text.trim()) editor.dispatch(editor.state.tr.setSelection(TextSelection.atStart(editor.state.doc)));
     const leave = () => void flush();
@@ -442,6 +460,13 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail.id, detail.library, readOnly]);
 
+  // New or answered suggestions: drawn again.
+  useEffect(() => {
+    const editor = view.current;
+    if (editor && !readOnly) editor.dispatch(editor.state.tr.setMeta(suggestKey, true).setMeta("addToHistory", false));
+  }, [suggestions, readOnly]);
+  const unplaced = view.current && suggestions?.length ? placeEdits(view.current.state.doc, suggestions).unplaced : [];
+
   // The todo list changed (a to-do was put there): the marks at the to-dos follow.
   useEffect(() => {
     const editor = view.current;
@@ -450,6 +475,12 @@ export function NoteEditor({ detail, readOnly, onLink, onState, handle, exists, 
 
   return (
     <div className="nt-editor-wrap" ref={wrap}>
+      {unplaced.map((one) => (
+        <div key={one.id} className="nt-sug-loose">
+          <p><del>{one.find}</del> → <ins>{one.replace}</ins></p>
+          <div ref={(node) => { if (node && !node.firstChild) node.append(suggestionCard(one, hooks.decide)); }} />
+        </div>
+      ))}
       <div className="nt-editor" ref={host} data-readonly={readOnly || undefined} />
       {!readOnly && <Overlays view={view.current} host={wrap.current} tick={tick}
         slash={slashRef.current.at ? { at: slashRef.current.at, index: slashIndex, setIndex: (n) => { slashRef.current.index = n; setSlashIndex(n); }, close: () => { slashRef.current.at = null; setTick2((n) => n + 1); } } : null}

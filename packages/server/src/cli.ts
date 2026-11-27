@@ -28,6 +28,7 @@ import { defaultSecretStore } from "./secrets.ts";
 import { watchTodoSources } from "./todo-sources.ts";
 import { moveRenamedFolders } from "./rename.ts";
 import { defaultNotesRoot, watchNotes } from "./notes.ts";
+import { watchNoteCompile } from "./note-compile.ts";
 import { watchNoteTodos } from "./note-todos.ts";
 
 // The notes module needs the data directory for its default library, so the list is made once that is known.
@@ -106,6 +107,8 @@ if (command === "serve") {
   const stopTodoSources = watchTodoSources(home.world, calendarModule, log);
   // The notes folder: another app's changes are read in a moment after they happen.
   const stopNotes = watchNotes(home, log);
+  // Zirma's layer of the notes: its passes through them, run in the background.
+  const stopNoteCompile = watchNoteCompile(home, log);
   // A note's to-do finished or reopened on the todo list: its box in the note follows (and the other way round on save).
   const stopNoteTodos = watchNoteTodos(home.world, home.modules.find((module) => module.id === "note") as unknown as Parameters<typeof watchNoteTodos>[1], log);
   // Speech to text for every device; the model loads when someone starts talking.
@@ -134,6 +137,7 @@ if (command === "serve") {
   const stop = async () => {
     stopTodoSources();
     stopNotes();
+    stopNoteCompile();
     stopNoteTodos();
     voice.close();
     speaker.close();

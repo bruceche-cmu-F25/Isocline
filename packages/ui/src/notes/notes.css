@@ -268,3 +268,46 @@
 .nt-callout-title { flex: 1; min-width: 0; height: 24px; border: 0; outline: none; background: none; color: var(--ink); font: inherit; font-weight: 600; }
 .nt-callout-title::placeholder { color: var(--line); font-weight: 400; }
 .nt-callout-body { min-height: 1.6em; }
+
+/* The assistant's pages (notes-two-layers.md 4.4): read only, each line with numbered sources and a quiet ×. */
+.nt-kept-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 18px; color: var(--muted); font-size: .8125rem; }
+.nt-kept-meta > span { flex: 1 1 12em; min-width: 0; }
+.nt-kept-meta svg { width: 15px; height: 15px; color: var(--alf); }
+.nt-kept-body h2 { margin: 22px 0 6px; font-size: 1.0625rem; font-weight: 650; }
+.nt-kept-body ul { margin: 0; padding: 0 0 0 1.25em; }
+.nt-kept-line { position: relative; padding: 3px 28px 3px 0; line-height: 1.65; overflow-wrap: anywhere; }
+.nt-kept-text { margin-right: 4px; }
+.nt-ref { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; margin: 0 2px; padding: 0 3px; border-radius: 5px; background: var(--alf-soft); color: var(--alf); font-size: .6875rem; font-weight: 600; line-height: 1; vertical-align: 2px; font-variant-numeric: tabular-nums; }
+button.nt-ref:hover { background: var(--alf); color: var(--on-alf); }
+.nt-kept-x { position: absolute; top: 4px; right: 0; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; color: var(--muted); opacity: 0; }
+.nt-kept-x svg { width: 13px; height: 13px; }
+.nt-kept-line:hover .nt-kept-x, .nt-kept-x:focus-visible { opacity: 1; }
+.nt-kept-x:hover { background: var(--wash); color: var(--ink); }
+@media (hover: none) { .nt-kept-x { opacity: .55; } }
+.nt-kept-sources ol { margin: 0; padding: 0; list-style: none; }
+.nt-kept-sources li { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.nt-kept-sources li .nt-link-row { flex: 1; min-width: 0; }
+.nt-kept-word { padding: 6px 8px; color: var(--muted); font-size: .875rem; overflow-wrap: anywhere; }
+
+/* Suggestions (4.5): struck words, the new words beside them, a small card with why and No / Yes. */
+.nt-sug-del { text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--warm) 80%, var(--ink)); color: var(--muted); }
+.nt-sug-ins { margin-left: 3px; padding: 0 3px; border-radius: 4px; background: var(--alf-soft); color: var(--alf); }
+.nt-sug-card { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 12px; padding: 8px 10px 8px 12px; border: 1px solid var(--line-soft); border-left: 3px solid var(--alf); border-radius: 10px; background: var(--raise); font-size: .8125rem; color: var(--ink); white-space: normal; user-select: none; }
+.nt-sug-card p { margin: 0; }
+.nt-sug-fact { flex: 1 1 100%; font-weight: 600; overflow-wrap: anywhere; }
+.nt-sug-why { flex: 1 1 14em; min-width: 0; color: var(--muted); overflow-wrap: anywhere; }
+.nt-sug-acts { display: flex; gap: 6px; margin-left: auto; }
+.nt-sug-acts .nt-btn { min-height: 28px; padding: 3px 12px; }
+.nt-sug-move { margin-top: 0; }
+.nt-sug-loose { margin: 0 0 4px; font-size: .8125rem; }
+.nt-sug-loose p { margin: 0 0 2px; color: var(--muted); overflow-wrap: anywhere; }
+.nt-sug-loose del { color: var(--muted); }
+.nt-sug-loose ins { text-decoration: none; color: var(--alf); }
+.nt-dot { flex: none; width: 6px; height: 6px; margin-left: 4px; border-radius: 50%; background: var(--alf); }
+.nt-sug-count { display: inline-flex; align-items: center; gap: 8px; margin: 12px 0 0; padding: 6px 12px; border-radius: 999px; background: var(--alf-soft); color: var(--alf); font-size: .8125rem; font-weight: 600; }
+.nt-sug-count .nt-dot { margin: 0; }
+.nt-running { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; }
+.nt-running svg { width: 14px; height: 14px; color: var(--alf); }
+.nt-flash { animation: nt-flash 2.2s ease-out; border-radius: 6px; }
+@keyframes nt-flash { 0%, 30% { background: color-mix(in oklch, var(--alf) 22%, transparent); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .nt-flash { animation: none; background: var(--alf-soft); } }

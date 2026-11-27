@@ -1,6 +1,6 @@
-/** Where the notes are kept, in Settings (notes.md 4.1): one line, the folder, and on the Mac the home node runs on, a
- * way to show it in the Finder and to choose another. Choosing another moves nothing: the old folder stays as it is,
- * and the notes are read from the new one. */
+/** The notes in Settings (notes.md 4.1, notes-two-layers.md 4.5, 4.8, 5): where they are kept (on the Mac the home
+ * node runs on, a way to show the folder and to choose another; choosing another moves nothing), and whether the
+ * assistant keeps its own pages from them, which sends their words to the model, and when its daily pass is. */
 import { useState, type FormEvent } from "react";
 import type { StateResponse } from "@zirma/protocol";
 import { api } from "../api.ts";
@@ -11,7 +11,16 @@ export function NotesFolder({ state, local }: { state: StateResponse; local: boo
   const notes = snapshotOf(state, "note");
   const [typing, setTyping] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [said, setSaid] = useState<string | null>(null);
   if (!notes) return null;
+  const compile = notes.compile ?? { enabled: true, daily: "07:30", running: false };
+  const setCompile = async (input: { enabled?: boolean; daily?: string; now?: boolean }) => {
+    setSaid(null);
+    const answer = await api.op("note.compile", input).catch((reason: Error) => ({ result: { error: reason.message } }));
+    const result = answer.result as { error?: string } | null;
+    if (result?.error) setError(result.error);
+    else if (input.now) setSaid(t("notes.compile.started"));
+  };
   const root = notes.library.root;
   const change = async (next: string) => {
     setError(null);
@@ -50,6 +59,23 @@ export function NotesFolder({ state, local }: { state: StateResponse; local: boo
           </form>
         )}
         <p className="set-note" role={error ? "alert" : undefined}>{error ?? t("notes.folder.note")}</p>
+        <div className="set-row">
+          <span className="set-name">{t("notes.compile")}</span>
+          <span className="set-end">
+            <button type="button" className="set-switch" role="switch" aria-checked={compile.enabled} aria-label={t("notes.compile")} onClick={() => void setCompile({ enabled: !compile.enabled })} />
+          </span>
+        </div>
+        {compile.enabled && (
+          <div className="set-row">
+            <label className="set-name" htmlFor="notes-daily">{t("notes.compile.daily")}</label>
+            <span className="set-end">
+              <input id="notes-daily" type="time" value={compile.daily} onChange={(event) => { if (/^\d\d:\d\d$/.test(event.target.value)) void setCompile({ daily: event.target.value }); }} />
+              <button type="button" className="set-button ghost" disabled={compile.running} onClick={() => void setCompile({ now: true })}>{t("notes.compile.now")}</button>
+            </span>
+          </div>
+        )}
+        <p className="set-note" aria-live="polite">{said ?? t("notes.compile.note")}</p>
+        {compile.enabled && <p className="set-note">{t("notes.about.note")}</p>}
       </div>
     </section>
   );
