@@ -19,6 +19,7 @@ function setup() {
   const root = mkdtempSync(join(tmpdir(), "zirma-notes-test-"));
   const module = createNotesModule({ defaultRoot: root });
   const world: World = openWorld(":memory:", [...CORE_MIGRATIONS, ...module.migrations]);
+  world.db.prepare("INSERT INTO core_settings (key, value, updated_at) VALUES ('locale', '\"en\"', '2026-01-01T00:00:00Z')").run();
   const { library, id } = module.library(world);
   const write = (path: string, text: string) => { mkdirSync(join(root, path, ".."), { recursive: true }); writeFileSync(join(root, `${path}.md`), text); };
   const index = () => indexLibrary(world, library);
@@ -47,7 +48,7 @@ test("the index lists pages in pages, folders as pages, skips hidden things, and
   index();
   const snapshot = module.snapshot!(world) as NotesSnapshot;
   const byId = new Map(snapshot.pages.map((page) => [page.id, page]));
-  assert.deepEqual([...byId.keys()].sort(), ["手冲", "手冲/V60 参数", "只有文件夹", "只有文件夹/里面", "只有文件夹/里面/一页", "项目", `${ZIRMA_DIR}/咖啡`].sort());
+  assert.deepEqual([...byId.keys()].sort(), ["手冲", "手冲/V60 参数", "只有文件夹", "只有文件夹/里面", "只有文件夹/里面/一页", "项目", `${ZIRMA_DIR}/咖啡`, `${ZIRMA_DIR}/About you`].sort());
   assert.equal(byId.get("手冲/V60 参数")!.parent, "手冲");
   assert.equal(byId.get("手冲")!.icon, "cup");
   assert.equal(byId.get("只有文件夹")!.file, false);
@@ -207,7 +208,7 @@ test("pages in pages: a new sub-page makes the folder, a move takes the sub-page
   assert.ok(existsSync(join(root, "手冲 2/手冲/V60 参数.md")));
   op("note.delete", { id: "手冲 2" });
   const ids = (module.snapshot!(world) as NotesSnapshot).pages.map((page) => page.id);
-  assert.deepEqual(ids, []);
+  assert.deepEqual(ids, [`${ZIRMA_DIR}/About you`], "only the empty page about the user is left");
   assert.ok(readdirSync(join(root, ".trash")).length >= 1);
 });
 

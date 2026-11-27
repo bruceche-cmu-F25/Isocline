@@ -16,7 +16,7 @@ import { Library, LibraryError } from "./library.ts";
 import { PAGE_ICONS, type NotesSnapshot } from "./types.ts";
 import { LAYER_MIGRATIONS } from "./layer-store.ts";
 import {
-  aboutId, adoptPage, decideSuggestion, findUserPage, keepPage, keptDetail, openSuggestions, rejectLine, rememberFromNotes, returnPage, suggestEdit,
+  aboutId, adoptPage, ensureAbout, decideSuggestion, findUserPage, keepPage, keptDetail, openSuggestions, rejectLine, rememberFromNotes, returnPage, suggestEdit,
   suggestMove, suggestRemember,
 } from "./layer.ts";
 import { askCompile, compileInstructions, compileState, setCompile } from "./compile.ts";
@@ -25,7 +25,7 @@ import type { Locale } from "./kept-format.ts";
 export * from "./types.ts";
 export * from "./domain.ts";
 export { Library, LibraryError, fingerprint, safeName, ZIRMA_DIR, TRASH_DIR, VERSIONS_DIR, type PageFile, type SaveResult } from "./library.ts";
-export { ABOUT, aboutId, keepPage, pruneSources, rejectLine, adoptPage, returnPage, keptDetail, suggestEdit, suggestMove, suggestRemember, openSuggestions, decideSuggestion, rememberFromNotes } from "./layer.ts";
+export { ABOUT, aboutId, ensureAbout, keepPage, pruneSources, rejectLine, adoptPage, returnPage, keptDetail, suggestEdit, suggestMove, suggestRemember, openSuggestions, decideSuggestion, rememberFromNotes } from "./layer.ts";
 export { compileDue, compileStarted, compileState, setCompile, askCompile, compileInstructions, type DuePass, type CompileState } from "./compile.ts";
 export { readKept, composeKept, splitSources } from "./kept-format.ts";
 
@@ -43,6 +43,11 @@ const SAY = {
 };
 const say = (world: World) => SAY[userLocale(world)];
 const localeOf = (world: World): Locale => (userLocale(world) === "zh" ? "zh" : "en");
+/** The empty page about the user, named in the user's language: not before one is saved (a node starts before the
+ * app first opens and saves the language it finds), so a Chinese user does not get "About you". */
+const aboutWhenLocale = (world: World, library: Library) => {
+  if (world.db.prepare("SELECT 1 FROM core_settings WHERE key = 'locale' AND value != 'null'").get()) ensureAbout(world, library, localeOf(world));
+};
 /** The compile task's profile (module-kit jobProfiles): `<module>-<job>`. */
 export const COMPILE_PROFILE = "note-compile";
 
@@ -68,7 +73,10 @@ export function createNotesModule(options: NotesOptions): ZirmaModule & {
   /** The library, made if it is the default one and not there yet (the first time the notes are opened). */
   const ready = (world: World) => {
     const found = open(world);
-    if (found.row.root === options.defaultRoot) found.library.ensure();
+    if (found.row.root === options.defaultRoot) {
+      found.library.ensure();
+      aboutWhenLocale(world, found.library);
+    }
     return found;
   };
 
@@ -268,6 +276,7 @@ export function createNotesModule(options: NotesOptions): ZirmaModule & {
             const library = new Library(row.root);
             library.ensure();
             indexLibrary(world, library);
+            aboutWhenLocale(world, library);
             return { id: row.library, root: row.root };
           } catch (error) { return refused(error); }
         },

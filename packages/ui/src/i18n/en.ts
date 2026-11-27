@@ -1722,6 +1722,7 @@ export const en: Record<keyof typeof zh, string> = {
   "notes.kept.adopt": "Make it mine",
   "notes.kept.adoptHint": "Move it among your pages; {assistant} won’t change it again",
   "notes.kept.reject": "Not right; remove this line",
+  "notes.kept.empty": "Nothing yet. What {assistant} learns about you goes here.",
   "notes.kept.sources": "Sources",
   "notes.kept.edited": "This page was changed elsewhere, so {assistant} is leaving it alone.",
   "notes.kept.return": "Give it back to {assistant}",

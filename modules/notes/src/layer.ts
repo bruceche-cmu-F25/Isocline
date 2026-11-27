@@ -299,6 +299,16 @@ export function keptDetail(world: World, id: string, text: string, fp: string | 
 
 /* ── Facts about the user (notes-two-layers.md 4.8) ── */
 
+/** Puts the page about the user in Zirma's layer, empty, when the library is made, so it is in the tree before the
+ * first fact. Not put back once the user deleted or took it, and not made a second time under the other language's
+ * name. Returns whether it was made. */
+export function ensureAbout(world: World, library: Library, locale: Locale): boolean {
+  if (Object.values(ABOUT).some((name) => library.read(`${ZIRMA_DIR}/${name}`) || isSkipped(world, name))) return false;
+  const text = composeKept({ icon: "person", sections: [] }, locale);
+  const why = locale === "zh" ? "放了一张空页，记下关于你的事" : "An empty page for what Zirma learns about you";
+  return writeKept(world, library, aboutId(locale), null, text, { actor: "alfred", why }, { lines: 0, unsourced: 0, removed: 0 }).ok;
+}
+
 /** A fact about the user found in their notes goes on the page about them, with the page it came from. */
 export function rememberFromNotes(world: World, library: Library, input: { fact: string; page: string }, locale: Locale): KeepAnswer | { ok: false; reason: "known"; message: string } {
   const id = aboutId(locale);

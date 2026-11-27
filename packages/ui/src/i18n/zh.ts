@@ -1721,6 +1721,7 @@ export const zh = {
   "notes.kept.adopt": "收下",
   "notes.kept.adoptHint": "挪进你的页里，{assistant} 以后不再改它",
   "notes.kept.reject": "不对，删掉这行",
+  "notes.kept.empty": "还没记下什么。{assistant} 知道了关于你的事，会写在这里。",
   "notes.kept.sources": "来源",
   "notes.kept.edited": "这一页在别处改过，{assistant} 先不动它。",
   "notes.kept.return": "还给 {assistant}",

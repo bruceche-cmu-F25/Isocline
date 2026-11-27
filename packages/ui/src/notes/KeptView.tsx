@@ -56,6 +56,7 @@ export function KeptView({ detail, onSource, onReject, onAdopt, onReturn, onDeci
           </div>
         </div>
       ))}
+      {!asks.length && !kept.sections.some((section) => section.lines.length) && <p className="nt-kept-empty">{t("notes.kept.empty")}</p>}
       <div className="nt-kept-body">
         {kept.sections.map((section, s) => (
           <section key={s}>
