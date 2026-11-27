@@ -42,7 +42,9 @@
 .nt-sl { flex: none; padding: 0 1px; color: var(--line); }
 .nt-status { flex: none; color: var(--muted); font-size: .75rem; padding: 0 6px; }
 .nt-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-.nt-doc-wrap { max-width: 740px; margin: 0 auto; padding: 28px 56px 120px; }
+/* The page leans left, towards its tree: a quarter of the spare width on its left (120px at most), the rest on its
+   right. Centred, a wide window left a wide empty band between the tree and the words. */
+.nt-doc-wrap { max-width: 740px; margin: 0 auto 0 clamp(0px, calc((100% - 740px) / 4), 120px); padding: 28px 56px 120px; }
 
 /* A page's head */
 .nt-head { margin-bottom: 14px; }
