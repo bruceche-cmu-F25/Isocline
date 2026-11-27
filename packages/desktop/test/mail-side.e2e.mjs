@@ -49,7 +49,7 @@ for (const locale of ["en", "zh"]) {
     const shot = async (name) => { if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/mail-side-${name}-${locale}.png` }); };
 
     await page.goto("https://zirma.test/#p=mail.inbox");
-    const side = page.locator(".side-host nav.st");
+    const side = page.locator(".side-host nav.st-list");
     await side.waitFor();
     // A new letter first, then the five places; none of them in the page.
     assert.equal(await side.locator(".st-node").count(), 6);
