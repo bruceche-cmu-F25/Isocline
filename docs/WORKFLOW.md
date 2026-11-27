@@ -36,6 +36,8 @@ v0.4，2026-11-25（v0.3 是 2026-11-24）。写给每一个改这个仓库的�
 4. **推之前扫一遍。** `origin` 是公开的。看一遍 `git log -p origin/zirma..HEAD`，里面不能有名字、主机、地址、密钥，也不能有别家产品的截图。然后 `git push -u origin feat/<主题>`。
 5. **开 PR，目标分支选 `zirma`。** 标题就是合并后的那条提交信息（§3）。正文写四件事：做了什么、为什么、怎么验证的、还没验证什么。有设计文档就链上。
 6. **按大小审。** 小修（一个 bug、几行、不碰数据库结构）测试和 CI 过了就合，只扫一眼有没有不该进仓库的东西。大功能、改数据库结构或迁移数据的改动，才从头到尾读一遍 diff：有没有 bug、有没有漏测，能找别的人或代理来审更好。发现真问题就在这条分支上改，再推。
+   - **加了迁移就要贴 `reviewed` 标签。** 新迁移要用 `npm run migrations:lock` 记进根目录的 `migrations.lock.json`（不记，`npm test` 不过）。PR 改了这个文件，CI 的 `check` 就不通过，直到 PR 带上 `reviewed` 标签。标签只在从头到尾读完 diff 之后贴，贴上后 CI 自己再跑一次。AI 评审（`/code-review`，或 Copilot）是帮你读，不能代替这一步；它没审成（比如额度用完）也不会挡住合并。
+   - **合进去的迁移不能改，也不能删。** 要改表就加一条新迁移。`npm test` 会对照 `migrations.lock.json` 检查；那个文件里已有的行，`npm run migrations:lock` 也不会改。
 7. **CI 绿了再合，交给 GitHub 去合。** 仓库开了自动合并（2026-11-26）：开完 PR 就 `gh pr merge <号> --auto --squash`（网页上是「Enable auto-merge」），CI 一绿它自己合，不用等人点。要从头到尾审的 PR（第 6 步）审完再开。 只改 `docs/`、`prototype/` 或根目录 Markdown 文件的 PR，CI 会跳过测试（§6），开完就能合。用 **squash merge**：`zirma` 上一个 PR 只留一条提交，以后回退也只要退一条。合完删掉远端分支，再删掉本地工作目录：`git worktree remove ../Zirma-<主题>`。
 8. **开发版自己跟上。** 在主文件夹里装一次：`cd ~/Alfred && npm run dev:follow -- --install`。之后每两分钟看一次 `origin/zirma`，有新提交就：
    - 快进 `~/Alfred`；
@@ -106,6 +108,8 @@ v0.4，2026-11-25（v0.3 是 2026-11-24）。写给每一个改这个仓库的�
 `.github/workflows/ci.yml`：每个目标是 `zirma` 的 PR、每次推到 `zirma`，都会在 macOS 上跑 `npm ci`、`npm run typecheck`、`npm test`（这一项叫 `check`）。
 
 只改了 `docs/`、`prototype/` 或根目录 Markdown 文件的 PR 不跑这些：前面一步 `changes` 先看改了哪些文件，只有文档就让 `check` 跳过。GitHub 把跳过的必需检查算作通过，所以这种 PR 不用等。推到 `zirma` 的每一次都照样全跑。
+
+改了 `migrations.lock.json`（加了迁移）的 PR，`check` 第一步就看有没有 `reviewed` 标签，没有就失败（§2 第 6 步）。贴上或撕掉标签都会让 CI 重跑一次。
 
 GitHub 上 `zirma` 应该这样保护：
 - 必须经 PR 合并，必须 CI 通过，管理员也一样。

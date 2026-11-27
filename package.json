@@ -26,7 +26,8 @@
     "package:mac": "node scripts/package-mac.ts",
     "install:mac": "node scripts/install-mac.ts",
     "dev:follow": "node scripts/follow-zirma.ts",
-    "dev:copy-world": "node scripts/copy-world-to-dev.ts"
+    "dev:copy-world": "node scripts/copy-world-to-dev.ts",
+    "migrations:lock": "node packages/server/src/migration-lock.ts"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

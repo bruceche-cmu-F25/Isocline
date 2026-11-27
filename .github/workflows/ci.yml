@@ -1,11 +1,15 @@
 # Typecheck and tests for every pull request into zirma and every push to it (docs/WORKFLOW.md §6).
 # A pull request that only touches docs/, prototype/ or a Markdown file at the root skips them: `check` is then
 # reported as skipped, which branch protection counts as passed, so it can be merged at once.
+# A pull request that changes migrations.lock.json (a new migration) fails `check` until it has the `reviewed` label,
+# which the owner adds after reading the whole diff (docs/WORKFLOW.md §2 step 6). Adding or removing a label runs CI
+# again, so the label takes effect without a new push.
 name: CI
 
 on:
   pull_request:
     branches: [zirma]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [zirma]
 
@@ -19,6 +23,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      migrations: ${{ steps.diff.outputs.migrations }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,6 +40,7 @@ jobs:
           echo "$changed"
           code=$(echo "$changed" | grep -Ev '^(docs/|prototype/)|^[^/]+\.md$' | grep -c . || true)
           if [ "$code" -gt 0 ]; then echo "code=true" >> "$GITHUB_OUTPUT"; else echo "code=false" >> "$GITHUB_OUTPUT"; fi
+          if echo "$changed" | grep -qx 'migrations.lock.json'; then echo "migrations=true" >> "$GITHUB_OUTPUT"; else echo "migrations=false" >> "$GITHUB_OUTPUT"; fi
 
   check:
     needs: changes
@@ -45,6 +51,11 @@ jobs:
       # The tests never start Electron; its binary is only needed to package the app.
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
+      - name: A new migration needs the reviewed label
+        if: github.event_name == 'pull_request' && needs.changes.outputs.migrations == 'true' && !contains(github.event.pull_request.labels.*.name, 'reviewed')
+        run: |
+          echo "::error::This pull request adds a migration (migrations.lock.json changed). Read the whole diff, then add the 'reviewed' label; CI runs again by itself."
+          exit 1
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
