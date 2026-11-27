@@ -6,8 +6,8 @@ import { EventEmitter } from "node:events";
 import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import {
-  CORE_MIGRATIONS, createRunDrain, expireProposals, interruptOutbound, ensureTemplates, fireDueAutomations, interruptOrphanedRuns, openWorld, tidyWorld,
-  type AttentionPolicy, type EngineModel, type EnginePort, type LiveUpdate, type PresenceOptions, type Run, type World,
+  CORE_MIGRATIONS, createRunDrain, defaultSecretStore, expireProposals, interruptOutbound, ensureTemplates, fireDueAutomations, interruptOrphanedRuns, openWorld, tidyWorld,
+  type AttentionPolicy, type SecretStore, type EngineModel, type EnginePort, type LiveUpdate, type PresenceOptions, type Run, type World,
 } from "@zirma/core";
 import { moduleMigrations, type ZirmaModule, type ModuleServices } from "@zirma/module-kit";
 import { syncAssistantName } from "./assistant-name.ts";
@@ -19,6 +19,7 @@ import { Processes } from "./processes.ts";
 import { Desk } from "./desk.ts";
 import { modulePasses } from "./passes.ts";
 import { AUTOMATION_PROFILE, profiles } from "./profiles.ts";
+import { WebAccess } from "./web/access.ts";
 
 /** How often the home node's clock looks for automations that are due and proposals past their time. */
 const CLOCK_MS = 30_000;
@@ -41,6 +42,8 @@ export interface HomeOptions {
   readPdf?: FileStoreOptions["readPdf"];
   /** The user's terminals in development sessions; made here unless a test brings its own. */
   terminals?: Terminals;
+  /** Where Settings → Web keeps its keys; the data directory's usual store unless a test brings its own. */
+  secrets?: SecretStore;
 }
 
 export interface Home {
@@ -68,6 +71,8 @@ export interface Home {
   worktreeDir(projectId: string, conversationKey: string): string;
   /** Requests to the Mac app (what is in its browser pane); the app comes and takes them. */
   desk: Desk;
+  /** Settings → Web: the search services, their keys, the allowed sites and the record (web/access.ts). */
+  web: WebAccess;
   /** Starts executing queued runs if it is not already. */
   kick(): void;
   /** Delivers the user's words into a running run; false if it is not running or cannot take them. */
@@ -144,10 +149,11 @@ export function openHome(options: HomeOptions): Home {
   const terminals = options.terminals ?? new Terminals({ log: options.log });
   const desk = new Desk();
   const processes = new Processes();
+  const web = new WebAccess({ dataDir: options.dataDir, secrets: options.secrets ?? defaultSecretStore(options.dataDir) });
   const archives = new SessionArchives(world, processes, terminals, options.log);
   const drain = createRunDrain(world, options.engine, {
     owner,
-    profiles: profiles(world, options.modules, { terminals, desk, processes }),
+    profiles: profiles(world, options.modules, { terminals, desk, processes, web }),
     attach: (list) => files.attach(list),
     onLive: (update) => live.emit("update", update),
     onEngineError: (run: Run, error) => options.log?.(`run ${run.id} failed in the engine: ${error instanceof Error ? error.message : String(error)}`),
@@ -202,6 +208,7 @@ export function openHome(options: HomeOptions): Home {
     archives,
     worktreeDir: (projectId, key) => join(options.dataDir, "worktrees", projectId, key),
     desk,
+    web,
     outlets,
     reach(list) {
       reaches.push(list);

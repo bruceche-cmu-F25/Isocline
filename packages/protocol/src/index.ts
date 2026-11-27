@@ -94,7 +94,8 @@ export interface RunRequest {
   /** For `permission`: exactly what would happen, such as a file's diff. */
   detail?: string;
   /** What `detail` is, when it is not a diff: a shell command, shown whole. */
-  detailKind?: "command";
+  /** `command`: the detail is a shell command; `site`: it is a web address, and "always" allows its site. */
+  detailKind?: "command" | "site";
   /** For a command: what answering `always` allows for the rest of the session (that command, also with more arguments). */
   grant?: string;
   createdAt: string;
@@ -896,6 +897,46 @@ export interface SkillSearchResult {
   added: boolean;
 }
 export interface SkillSearchResponse { results: SkillSearchResult[] }
+
+/** Settings → Web (`GET /api/web`, docs/design/web.md §4): one of the search services Zirma knows. */
+export interface WebService {
+  id: string;
+  title: string;
+  /** Its name on the Chinese page, when it has its own there ("博查" for Bocha). */
+  zhTitle?: string;
+  about: { zh: string; en: string };
+  /** `nothing`: works as it is (a key may still raise its limit); `key`: unused until a key is given; `address`: one
+   * the user runs themself, unused until its address is given. */
+  needs: "nothing" | "key" | "address";
+  /** Where the user makes a key (or, for one that needs an address, how to set one up). */
+  keyPage?: string;
+  hasKey: boolean;
+  /** The address of one the user runs themself. */
+  address?: string;
+  /** Searches it answered (or pages it read) today. */
+  today: number;
+  /** It said its limit was reached today; it is tried after the others until tomorrow. */
+  limited?: boolean;
+  /** A connector's search tool, not a service Zirma itself knows: no key, and its name is the connector's. */
+  connector?: boolean;
+}
+export interface WebRecord { at: string; kind: "search" | "open"; what: string; provider?: string }
+export interface WebResponse {
+  on: boolean;
+  /** The search services in use, by id, in the order they are tried. */
+  search: string[];
+  /** Every search service there is to use: Zirma's own, then the connectors' search tools. */
+  services: WebService[];
+  /** The reading services in use, by id, in order: tried when Zirma cannot read a page itself. */
+  read: string[];
+  readers: WebService[];
+  /** Sites whose pages open without asking. */
+  sites: string[];
+  /** The latest searches and opened pages, newest first. */
+  records: WebRecord[];
+}
+/** `POST /api/web/test/:id`: one search with one service, or for a reading service, one page read. */
+export interface WebTestResponse { results: Array<{ title: string; url: string; snippet: string; published?: string }>; ms: number; page?: { title: string | null; chars: number } }
 export interface SkillUpdatesResponse { /** Ids of the skills with a newer version. */ updates: string[]; /** Ids that could not be asked about. */ failed: string[] }
 
 /** Whether a model can write faster for a higher price, and how its provider is asked: Anthropic's fast mode

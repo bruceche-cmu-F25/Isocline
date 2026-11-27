@@ -7,6 +7,8 @@ import { askUserTool, assistantTools, jobProfiles, moduleGuidance, runTools, typ
 import { isLocalPage, type BrowserPage, type Desk } from "./desk.ts";
 import type { Processes } from "./processes.ts";
 import type { Terminals } from "./terminals.ts";
+import type { WebAccess } from "./web/access.ts";
+import { webTools } from "./web/tools.ts";
 
 export const ASSISTANT_PROFILE = "assistant";
 /** The assistant's name as the user set it (core settings), put where a text says `{assistant}`. */
@@ -220,8 +222,15 @@ function processTools(world: World, processes: Processes): RunTool[] {
   }];
 }
 
-export function profiles(world: World, modules: readonly ZirmaModule[], devices: { terminals?: Terminals; desk?: Desk; processes?: Processes } = {}): Record<string, RunProfile> {
-  const { terminals, desk, processes } = devices;
+export function profiles(world: World, modules: readonly ZirmaModule[], devices: { terminals?: Terminals; desk?: Desk; processes?: Processes; web?: WebAccess } = {}): Record<string, RunProfile> {
+  const { terminals, desk, processes, web } = devices;
+  // Read for each run: Settings → Web can switch them off, or leave no search service (docs/design/web.md §3.3).
+  const online = (): RunTool[] => {
+    const config = web?.config();
+    if (config && !config.on) return [];
+    const tools = webTools(world, { ...(web ? { web } : {}) });
+    return config && !config.search.length ? tools.filter((tool) => tool.name !== "web_search") : tools;
+  };
   // Read for each run: some modules' guidance names the user's own data (their areas).
   const guidance = () => moduleGuidance(world, modules);
   // The user's name and what they have said about how they like things (core preferences.ts), read for each run too.
@@ -229,25 +238,29 @@ export function profiles(world: World, modules: readonly ZirmaModule[], devices:
   return {
     [ASSISTANT_PROFILE]: {
       get instructions() { return named(world, [PERSONA, user(), guidance()].filter(Boolean).join("\n\n")); },
-      tools: [...runTools(world, modules), ...assistantTools(world, modules)],
+      get tools() { return [...runTools(world, modules), ...assistantTools(world, modules), ...online()]; },
     },
     [DEVELOPER_PROFILE]: {
       // A session is about its project's code, kept apart from the everyday: none of the modules' tools (todos,
-      // calendar, mail…) or their guidance, no proposals or automations, no page to open. Only asking the user.
+      // calendar, mail…) or their guidance, no proposals or automations, no page to open. Only asking the user and
+      // the web (docs/design/web.md §3.3).
       get instructions() { return named(world, [DEVELOPER, user()].filter(Boolean).join("\n\n")); },
-      tools: [
-        askUserTool(),
-        ...(terminals ? [terminalTool(world, terminals)] : []),
-        ...(desk ? [browserTool(world, desk)] : []),
-        ...(processes ? processTools(world, processes) : []),
-      ],
+      get tools() {
+        return [
+          askUserTool(),
+          ...online(),
+          ...(terminals ? [terminalTool(world, terminals)] : []),
+          ...(desk ? [browserTool(world, desk)] : []),
+          ...(processes ? processTools(world, processes) : []),
+        ];
+      },
       workspace: true,
       modes: SESSION_MODE,
     },
     [AUTOMATION_PROFILE]: {
       get instructions() { return named(world, [PERSONA, UNATTENDED, user(), guidance()].filter(Boolean).join("\n\n")); },
       // Nothing irreversible is offered at all (not even to ask about), and nothing that asks.
-      tools: [...runTools(world, modules, { askFor: [] }), ...assistantTools(world, modules).filter((tool) => !UNATTENDED_EXCLUDED.has(tool.name))],
+      get tools() { return [...runTools(world, modules, { askFor: [] }), ...assistantTools(world, modules).filter((tool) => !UNATTENDED_EXCLUDED.has(tool.name)), ...online()]; },
       unattended: true,
     },
     // The modules' own background work (the notes' compile task): only the tools the module gives it.

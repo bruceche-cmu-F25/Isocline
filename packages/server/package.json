@@ -13,6 +13,7 @@
     "./rename": "./src/rename.ts"
   },
   "dependencies": {
+    "@mozilla/readability": "0.6.0",
     "@zirma/core": "*",
     "@zirma/engine-pi": "*",
     "@zirma/module-calendar": "*",
@@ -23,10 +24,13 @@
     "@zirma/module-todo": "*",
     "@zirma/protocol": "*",
     "@zirma/ui": "*",
+    "linkedom": "0.18.15",
     "node-pty": "1.2.0-beta.15",
+    "turndown": "7.2.5",
     "web-push": "3.6.7"
   },
   "devDependencies": {
+    "@types/turndown": "5.0.6",
     "@types/web-push": "3.6.4"
   }
 }

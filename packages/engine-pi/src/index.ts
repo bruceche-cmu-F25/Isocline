@@ -9,7 +9,7 @@ import { createWorkerEngine, type WorkerEngine } from "./pool.ts";
 export { createWorkerEngine, EngineCrashedError, type WorkerEngine, type WorkerEngineOptions } from "./pool.ts";
 export { composeHistory, composePrompt, type ExternalStep, type RunJob, type ToolSpec, type ToParent, type ToWorker } from "./protocol.ts";
 export { loadZirmaMcpConfig, readMcpFile, type LoadedMcpConfig } from "./mcp-config.ts";
-export { McpConnectors, McpConnectorError, type McpConnectorsOptions } from "./connectors.ts";
+export { McpConnectors, McpConnectorError, searchToolsOf, type McpConnectorsOptions, type McpSearchTool } from "./connectors.ts";
 export { MCP_CATALOG, type McpCatalogEntry } from "./mcp-catalog.ts";
 export { createMcpVault, type McpVault } from "./mcp-store.ts";
 export { Skills, SkillError, setSkillDisabled, type SkillsOptions } from "./skills.ts";

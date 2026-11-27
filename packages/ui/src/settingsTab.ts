@@ -1,6 +1,6 @@
 /** Opening Settings on one of its tabs from anywhere (a failed turn, the Today page): kept apart from Settings.tsx,
  * which loads only when Settings is first opened. Otherwise Settings always opens on General. */
-export type SettingsTab = "general" | "voice" | "models" | "accounts" | "skills" | "connectors" | "devices";
+export type SettingsTab = "general" | "voice" | "models" | "accounts" | "skills" | "connectors" | "web" | "devices";
 
 export const SETTINGS_TAB_EVENT = "zirma:settings-tab";
 

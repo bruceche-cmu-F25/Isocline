@@ -1,5 +1,5 @@
 /** Settings, one tab per kind of thing (docs/design/settings-and-connections.md §3.7; the tabs after pi-web's
- * settings panel, github.com/agegr/pi-web, MIT): General, Models, Skills, Connectors, Voice, Accounts, Devices.
+ * settings panel, github.com/agegr/pi-web, MIT): General, Models, Skills, Connectors, Web, Voice, Accounts, Devices.
  *
  * Paired devices can view subscription usage. Credentials, skills and connectors are managed on the home node. A tab
  * that was opened stays mounted while the page is, so a sign-in that is waiting for the browser is not lost by
@@ -22,6 +22,7 @@ import { ModelSettings } from "./ModelSettings.tsx";
 import { SubscriptionUsage } from "./SubscriptionUsage.tsx";
 import { Skills } from "./Skills.tsx";
 import { VoiceSettings } from "./VoiceSettings.tsx";
+import { WebSettings } from "./WebSettings.tsx";
 import { t, useLocale, type Key } from "./i18n/index.ts";
 import { Icon, type IconName } from "./shell/icons.tsx";
 import { SETTINGS_TAB_EVENT, takeSettingsTab, type SettingsTab } from "./settingsTab.ts";
@@ -36,6 +37,7 @@ const TABS: Array<{ id: Tab; icon: IconName; home?: true }> = [
   { id: "models", icon: "model" },
   { id: "skills", icon: "layers", home: true },
   { id: "connectors", icon: "plug", home: true },
+  { id: "web", icon: "globe", home: true },
   { id: "voice", icon: "speaker" },
   { id: "accounts", icon: "person", home: true },
   { id: "devices", icon: "phone" },
@@ -108,6 +110,7 @@ export function Settings({ name, saveName, dockOptions, onEvent, state }: Genera
       {pane("accounts", <Accounts />)}
       {pane("skills", <Skills />)}
       {pane("connectors", <Connectors />)}
+      {pane("web", <WebSettings />)}
       {pane("devices", <Devices remote={device} onChange={setRemote} />)}
     </div>
   );

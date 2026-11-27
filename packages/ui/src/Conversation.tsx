@@ -146,16 +146,18 @@ export function Request({ run, request, showQuestion = true, onAnswered }: {
   };
   const permission = request.kind === "permission";
   const command = request.detailKind === "command";
+  const site = request.detailKind === "site";
+  const siteName = site && request.detail ? (() => { try { return new URL(request.detail).hostname.replace(/^www\./, ""); } catch { return ""; } })() : "";
   return (
     <div className="request" data-notice-item={`r:${run.id}`} data-kind={request.kind} role="group" aria-label={t(permission ? "req.permission" : "req.input")}>
       {showQuestion && <p className="request-question"><Linked text={request.question} /></p>}
-      {request.detail && (command ? <pre className="request-command">{request.detail}</pre> : <Diff patch={request.detail} />)}
+      {request.detail && (command || site ? <pre className="request-command">{request.detail}</pre> : <Diff patch={request.detail} />)}
       <div className="request-options">
         {permission ? (
           <>
             <button type="button" disabled={busy} onClick={() => answer("allow")}>{t("common.allow")}</button>
             {request.options.includes("always") && (
-              <button type="button" className="ghost" disabled={busy} onClick={() => answer("always")} title={command ? t("req.alwaysCommandTitle", { command: request.grant ?? "" }) : t("req.alwaysTitle")}>{t(command ? "req.alwaysCommand" : "req.always")}</button>
+              <button type="button" className="ghost" disabled={busy} onClick={() => answer("always")} title={command ? t("req.alwaysCommandTitle", { command: request.grant ?? "" }) : site ? t("req.alwaysSiteTitle", { site: siteName }) : t("req.alwaysTitle")}>{t(command ? "req.alwaysCommand" : site ? "req.alwaysSite" : "req.always")}</button>
             )}
             {request.options.includes("allow_session") && (
               <button type="button" className="ghost" disabled={busy} onClick={() => answer("allow_session")} title={t("mode.edits.hint")}>{t("mode.edits")}</button>

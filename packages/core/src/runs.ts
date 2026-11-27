@@ -47,7 +47,7 @@ export interface RunRequest {
   /** For `permission`: exactly what would happen (a diff, a command), shown with the question. */
   detail?: string;
   /** What `detail` is, when it is not a diff: a shell command. */
-  detailKind?: "command";
+  detailKind?: "command" | "site";
   /** For a command: what `always` would allow for the rest of the session. */
   grant?: string;
   createdAt: string;
@@ -392,7 +392,7 @@ export const PERMISSION_ANSWERS = ["allow", "deny", "always", "allow_session"] a
 const MAX_DETAIL = 12_000;
 
 /** The executor stops the run to ask. Only the lease holder of a running run may. */
-export function openRequest(world: World, id: string, owner: string, input: { kind: RunRequest["kind"]; question: string; options?: string[]; detail?: string; detailKind?: "command"; grant?: string; always?: boolean; allowSession?: boolean; now?: number }): RunRequest {
+export function openRequest(world: World, id: string, owner: string, input: { kind: RunRequest["kind"]; question: string; options?: string[]; detail?: string; detailKind?: "command" | "site"; grant?: string; always?: boolean; allowSession?: boolean; now?: number }): RunRequest {
   const now = input.now ?? Date.now();
   const question = input.question.trim().slice(0, MAX_QUESTION);
   if (!question) throw new Error("A request needs a question");
@@ -436,6 +436,8 @@ export function answerRequest(world: World, id: string, input: { requestId: stri
         if (answer === "always" && detailKind === "command") {
           if (!grant) throw new RunError("state", "This command has no prefix grant");
           grantCommand(world, run.conversationId, grant, input.by ?? "home", now);
+        } else if (detailKind === "site") {
+          // The tool that asked keeps the site (docs/design/web.md §5); nothing about the conversation changes.
         } else {
           // Older in-project edit prompts used "always" for the mode switch.
           updateConversation(world, run.conversationId, { mode: "edits", now });

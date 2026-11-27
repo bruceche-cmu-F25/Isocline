@@ -9,6 +9,12 @@ says what, where, and under which licence. Where code was adapted, the file it l
 | --- | --- | --- |
 | `packages/engine-pi/src/skills.ts`: switching a skill off and on by editing one frontmatter line (`setSkillDisabled`, `frontmatterBlock`) | [pi-web](https://github.com/agegr/pi-web), `lib/skill-frontmatter.ts` | MIT, © 2026 agegr |
 | `packages/engine-pi/src/usage.ts`: the request and response formats for a subscription's usage windows | [pi-web](https://github.com/agegr/pi-web), `lib/provider-usage.ts`, which follows [@narumitw/pi-usage](https://github.com/narumiruna/pi-extensions) | MIT, © 2026 agegr; MIT, © 2026 narumiruna |
+| `packages/server/src/web/providers/bocha.ts`: the request to 博查's web search, its freshness values, reading its answer, and keeping results to one site | [pi-web-access](https://github.com/nicobailon/pi-web-access) 0.48.0, `bocha.ts` (`mapFreshness`, `parseSearchResponse`, the domain filter) | MIT, © 2025 Nico Bailon |
+| `packages/server/src/web/providers/brave.ts`: the request to Brave's web search, its freshness codes, keeping results to one site, and taking Brave's marks out of titles and excerpts | [pi-web-access](https://github.com/nicobailon/pi-web-access) 0.48.0, `brave.ts` (`buildBraveQuery`, `matchesDomainFilters`, `stripHtml`) | MIT, © 2025 Nico Bailon |
+| `packages/server/src/web/providers/exa.ts`: reaching Exa's free search through its MCP endpoint, folding filters into the query, and reading its answer into results | [pi-web-access](https://github.com/nicobailon/pi-web-access) 0.48.0, `exa.ts` (`callExaMcp`, `parseMcpResults`, `buildMcpQuery`) | MIT, © 2025 Nico Bailon |
+| `packages/server/src/web/providers/jina.ts`: reading a page through Jina Reader, without its cache, and counting a page still loading as not read | [pi-web-access](https://github.com/nicobailon/pi-web-access) 0.48.0, `extract.ts` (`extractWithJinaReader`) | MIT, © 2025 Nico Bailon |
+| `packages/server/src/web/providers/searxng.ts`: cleaning up a SearXNG address, the JSON search request, and keeping results to one site | [pi-web-access](https://github.com/nicobailon/pi-web-access) 0.48.0, `searxng.ts` (`normalizeBaseUrl`, `searchWithSearXNG`, the domain filter) | MIT, © 2025 Nico Bailon |
+| `packages/server/src/web/providers/tavily.ts`: the request to Tavily's search, its time range and site filter, and reading its answer into results | [pi-web-access](https://github.com/nicobailon/pi-web-access) 0.48.0, `tavily.ts` (`searchWithTavily`, `mapDomainFilter`, `mapResults`) | MIT, © 2025 Nico Bailon |
 | `packages/ui/src/brand/svg/`: model-provider and service logos (all but the ones below) | [LobeHub Icons](https://github.com/lobehub/lobe-icons), through `@lobehub/icons-static-svg` 1.104.0 | MIT, © 2023 LobeHub |
 | `packages/ui/src/brand/svg/`: `tailscale`, `xiaomi`, `notion`, `linear`, `sentry`, `atlassian`, `github` | [Simple Icons](https://simpleicons.org) 16.38.0 | CC0-1.0 |
 | `packages/ui/src/brand/svg/`: `inworld`, `boson` | The companies' own sites: inworld.ai (its wordmark, cropped to the mark) and boson.ai (`/logo.svg`) | The owners' marks, not openly licensed; used only to name their services in Settings → Voice |
@@ -22,6 +28,7 @@ The logos are trademarks of their owners; see `packages/ui/src/brand/README.md`.
 | Used by | Library | Licence |
 | --- | --- | --- |
 | `modules/links/src/fetch.ts` (`shrinkCover`): saved covers are resized to the size they are drawn | [sharp](https://github.com/lovell/sharp) 0.35.5, with its prebuilt [libvips](https://github.com/libvips/libvips) (`@img/sharp-libvips-*`) | sharp: Apache-2.0; libvips: LGPL-3.0-or-later, linked dynamically. A packaged Zirma.app must carry libvips's licence and leave the library replaceable. |
+| `packages/server/src/web/read.ts`: a web page's article as Markdown, the way pi-web-access reads one | [linkedom](https://github.com/WebReflection/linkedom) 0.18.15, [@mozilla/readability](https://github.com/mozilla/readability) 0.6.0, [turndown](https://github.com/mixmark-io/turndown) 7.2.5 | linkedom: ISC; Readability: Apache-2.0; Turndown: MIT |
 
 ## Designs followed (no code copied)
 

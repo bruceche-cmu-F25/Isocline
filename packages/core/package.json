@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./legacy": "./src/legacy.ts",
-    "./stage": "./src/stage.ts"
+    "./stage": "./src/stage.ts",
+    "./net": "./src/net.ts"
   }
 }

@@ -30,6 +30,9 @@ export function connectorMark(server: { catalog?: string; name?: string; where?:
   return names.find((name): name is string => !!name && MARKS.has(name));
 }
 
+/** Whether there is a mark by this name. */
+export const hasMark = (name: string) => MARKS.has(name);
+
 /** The mark of the provider in a "provider/model" id. */
 export const modelMark = (model: string | null | undefined) => (model?.includes("/") ? providerMark(model.slice(0, model.indexOf("/"))) : undefined);
 

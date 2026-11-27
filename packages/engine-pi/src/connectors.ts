@@ -41,7 +41,40 @@ export interface McpConnectorsOptions {
   probe?: (entry: { name: string; config: Record<string, unknown> }) => Promise<Probe>;
 }
 
-interface Probe { state: "connected" | "needs_login" | "error"; tools?: number; readOnly?: number; error?: string; challenge?: OAuthChallenge }
+interface Probe { state: "connected" | "needs_login" | "error"; tools?: number; readOnly?: number; error?: string; challenge?: OAuthChallenge; search?: McpSearchTool[] }
+
+/** A connector's tool that searches, as Settings → Web can offer it as a search service (docs/design/web.md §4.2):
+ * its name says search and it takes the query as one text field. */
+export interface McpSearchTool {
+  server: string;
+  tool: string;
+  description: string;
+  /** The field the query goes in, and the one the number of results goes in, if it has one. */
+  query: string;
+  count?: string;
+  /** Other text fields the tool insists on (an "objective", say): the query goes in them too. */
+  also?: string[];
+}
+
+const QUERY_FIELDS = ["query", "q", "search", "search_query", "searchQuery", "keywords", "term"];
+const COUNT_FIELDS = ["numResults", "num_results", "count", "limit", "max_results", "maxResults"];
+
+/** The search tools among a server's tools. */
+export function searchToolsOf(server: string, tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>): McpSearchTool[] {
+  return tools.flatMap((tool) => {
+    if (!/search/i.test(tool.name)) return [];
+    const properties = (tool.inputSchema?.properties ?? {}) as Record<string, { type?: unknown }>;
+    const required = Array.isArray(tool.inputSchema?.required) ? (tool.inputSchema.required as unknown[]).filter((name): name is string => typeof name === "string") : [];
+    const text = (name: string) => properties[name]?.type === "string";
+    const query = QUERY_FIELDS.find((name) => text(name)) ?? (required.filter(text).length === 1 ? required.find(text) : undefined);
+    if (!query) return [];
+    // Another text field it insists on gets the query too; one of another kind Zirma would not know how to fill.
+    const also = required.filter((name) => name !== query);
+    if (also.some((name) => !text(name))) return [];
+    const count = COUNT_FIELDS.find((name) => properties[name]?.type === "number" || properties[name]?.type === "integer");
+    return [{ server, tool: tool.name, description: (tool.description ?? "").replace(/\s+/g, " ").trim().slice(0, 200), query, ...(count ? { count } : {}), ...(also.length ? { also } : {}) }];
+  });
+}
 interface Flow { state: McpSignIn; abort: AbortController; timer: NodeJS.Timeout }
 
 const PROBE_TTL_MS = 5 * 60_000;
@@ -126,7 +159,11 @@ export class McpConnectors {
       const transport = createMcpTransport({ name, config: plain }, { cwd: this.#options.dataDir, vault: this.#vault, secrets, onChallenge: (found) => { challenge = found; } });
       await client.connect(transport);
       const tools = await client.listTools();
-      return { state: "connected", tools: tools.length, readOnly: tools.filter((tool) => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint !== true).length };
+      return {
+        state: "connected", tools: tools.length,
+        readOnly: tools.filter((tool) => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint !== true).length,
+        search: searchToolsOf(name, tools),
+      };
     } catch (error) {
       if (error instanceof McpOAuthAuthorizationRequiredError) return { state: "needs_login", ...(challenge ? { challenge } : {}) };
       if (error instanceof McpAuthRequiredError) {
@@ -191,6 +228,41 @@ export class McpConnectors {
     const probe = usable ? await this.#probe(name, config, fresh) : undefined;
     const signedIn = typeof config.url === "string" ? await this.#vault.signedIn(name, config.url).catch(() => false) : false;
     return this.#describe(name, config, alfredMeta(config), probe, signedIn);
+  }
+
+  /** The search tools of the connectors that are on and connected, from what was found when each was last reached
+   * (one not reached lately is reached now; with `wait` false, in the background, and it is left out this time). */
+  async searchTools(options: { wait?: boolean } = {}): Promise<McpSearchTool[]> {
+    const file = readMcpFile(this.#options.dataDir);
+    const found = await Promise.all(Object.entries(file.servers).map(async ([name, config]) => {
+      if (mcpEntryProblem(name, config) || config.enabled === false) return [];
+      if (options.wait === false) {
+        const cached = this.#probes.get(name);
+        if (!cached || Date.now() - cached.at >= PROBE_TTL_MS) { void this.#probe(name, config); if (!cached) return []; }
+        return cached.probe.state === "connected" ? cached.probe.search ?? [] : [];
+      }
+      const probe = await this.#probe(name, config);
+      return probe.state === "connected" ? probe.search ?? [] : [];
+    }));
+    return found.flat();
+  }
+
+  /** Calls one tool of one connector and gives back its text: what a search through a connector runs. The user chose
+   * this tool in Settings as a search service; that choice is the permission. */
+  async callTool(server: string, tool: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<{ text: string; structured?: unknown; isError: boolean }> {
+    const config = this.#servers()[server];
+    if (!config || mcpEntryProblem(server, config) || config.enabled === false) throw new McpConnectorError("missing", "No such connector");
+    const { alfred: _ours, ...plain } = config;
+    const secrets = await this.#vault.secrets(server);
+    const client = new McpClient({ name: MCP_CLIENT_NAME, version: "1", requestTimeoutMs: PROBE_TIMEOUT_MS });
+    try {
+      await client.connect(createMcpTransport({ name: server, config: plain }, { cwd: this.#options.dataDir, vault: this.#vault, secrets }));
+      const result = await client.callTool(tool, args, { ...(signal ? { signal } : {}), timeoutMs: 30_000 });
+      const text = result.content.flatMap((block) => (block.type === "text" ? [block.text] : block.type === "resource" && "text" in block.resource ? [block.resource.text] : [])).join("\n\n");
+      return { text, ...(result.structuredContent !== undefined ? { structured: result.structuredContent } : {}), isError: result.isError === true };
+    } finally {
+      await client.close().catch(() => {});
+    }
   }
 
   /** Reaches one server now and says how it went. */
