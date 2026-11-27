@@ -212,7 +212,7 @@ const PAGES: PageDef[] = [
     render: ({ snapshot, fresh, areas, state, line, go }) => <Todos snapshot={snapshot!} fresh={fresh} areas={areas} automations={state.automations} calendar={snapshotOf(state, "calendar")} line={line} go={go} />,
   }),
   modulePage("mail", {
-    key: "mail.inbox", get title() { return t("page.mail"); }, icon: "mail", k: "teal", group: "modules",
+    key: "mail.inbox", get title() { return t("page.mail"); }, icon: "mail", k: "teal", group: "modules", side: true,
     badge: (snapshot) => unreadMail(snapshot).primaryUnread || undefined,
     summary: (snapshot) => {
       const mail = unreadMail(snapshot);
@@ -227,7 +227,7 @@ const PAGES: PageDef[] = [
       return mail.unread ? t("head.mail.unread", { n: mail.unread }) : t("head.mail.clear");
     },
     suggestions: (snapshot) => unreadMail(snapshot).canRead ? ["sug.mail.reply", "sug.mail.today", "sug.mail.important"] : [],
-    render: ({ snapshot, state, line, item, onItem, refresh }) => <Mail snapshot={snapshot} state={state} line={line} focus={item} onFocused={onItem} refresh={refresh} />,
+    render: ({ snapshot, state, line, item, onItem, refresh, side }) => <Mail snapshot={snapshot} state={state} line={line} focus={item} onFocused={onItem} refresh={refresh} side={side} />,
   }),
   modulePage("link", {
     key: "link.list", get title() { return t("page.links"); }, icon: "link", k: "violet", group: "modules", side: true,
