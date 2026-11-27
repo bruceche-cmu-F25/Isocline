@@ -315,13 +315,6 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
     setSheet(null);
     route.go({ page: CHAT_PAGE, selected: id });
   }, [route, state?.conversations, openSession]);
-  /** A conversation picked from the phone's sidebar list (the desktop's has moved to the Chats page): beside the page,
-   * as a sheet. */
-  const selectFromList = useCallback((id: string | null) => {
-    if (route.page === CHAT_PAGE && !phone) { openInChats(id); return; }
-    select(id);
-  }, [select, phone, route.page, openInChats]);
-
   const showInboxItem = useCallback((item: string) => {
     route.go({ page: "core.inbox", item });
     revealPage();
@@ -607,9 +600,9 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
         {navVisible && (
           <div className="side-views" data-swap={pageSide || undefined}>
             <div className="side-view side-nav" inert={pageSide || undefined}>
-              <Nav state={state} pages={listed} page={navigationPage} mode={phone ? "all" : mode} selected={selected} session={bare ? route.session : null}
+              <Nav state={state} pages={listed} page={navigationPage} mode={phone ? "all" : mode} session={bare ? route.session : null}
                 onSession={openSession} onNewProjectSession={(projectId) => openSession(null, projectId)} connection={connection} onArchive={archiveConversation} onShowArchive={() => setShowArchive(true)}
-                onPage={(key) => { if (key === current?.key) setNavPeek(false); goPage(key); }} onSelect={(id) => { setSheet(null); selectFromList(id); }} onClose={phone ? () => setSheet(null) : undefined} onLanguage={switchLanguage} />
+                onPage={(key) => { if (key === current?.key) setNavPeek(false); goPage(key); }} onClose={phone ? () => setSheet(null) : undefined} onLanguage={switchLanguage} />
             </div>
             {!phone && (
               <div className="side-view side-page" inert={!pageSide || undefined} data-k={current?.k}>

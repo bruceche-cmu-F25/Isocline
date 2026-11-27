@@ -57,7 +57,6 @@ export const zh = {
   "top.dev": "开发",
   "top.menu": "外观和语言",
   "top.allSettings": "全部设置",
-  "nav.conversations": "对话",
   "nav.menu": "菜单",
   "nav.newConversation": "新对话",
   "nav.newProjectConversation": "在「{name}」中新建对话",

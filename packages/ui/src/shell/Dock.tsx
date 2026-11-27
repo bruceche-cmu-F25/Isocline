@@ -27,8 +27,8 @@ export interface DockProps {
 const HOLD_MS = 350;
 
 /** The phone's dock, two bubbles floating over the foot of the page. At the left one pill, icons alone: three
- * lines for the sidebar's sheet (it comes in from that side, and holds the conversations and every page), then 今天
- * and the daily pages, followed by this device's optional shortcut. At the right Zirma, in a circle of its own.
+ * lines for the sidebar's sheet (it comes in from that side, and holds every page), then 今天 and the daily pages,
+ * this device's optional shortcut, and Chats beside Zirma. At the right Zirma, in a circle of its own.
  * Each button's name is its label for a screen reader; the page in view says its name at its top.
  * Tapping Zirma turns the pill into the ask bar; tapping it again opens the whole conversation. Holding it is
  * quick talk (docs/design/voice.md §1.1): it listens while held, and what was said is sent on letting go. */
@@ -37,7 +37,11 @@ export function Dock({ state, pages, page, figure, onPage, onZirma, onMenu, ask,
   const listening = talk?.state === "recording" || talk?.state === "starting";
   const shortcut = useDockShortcut();
   const tabs = dockOrder(pages, shortcut);
-  const waiting = state.conversations.reduce((sum, conversation) => sum + conversation.attention, 0);
+  // The Chats button counts the everyday conversations waiting on you; the menu counts the rest (development sessions,
+  // listed in the sheet), so nothing is counted twice or lost when Chats is hidden.
+  const chats = tabs.find((item) => item.key === "core.chat");
+  const shown = chats?.badge?.(state.modules[moduleOf(chats)], state) ?? 0;
+  const waiting = state.conversations.reduce((sum, conversation) => sum + conversation.attention, 0) - shown;
   const button = (item: PageDef) => {
     const count = item.badge?.(state.modules[moduleOf(item)], state);
     return (

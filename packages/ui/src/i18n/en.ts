@@ -58,7 +58,6 @@ export const en: Record<keyof typeof zh, string> = {
   "top.dev": "Code",
   "top.menu": "Appearance and language",
   "top.allSettings": "All settings",
-  "nav.conversations": "Conversations",
   "nav.menu": "Menu",
   "nav.newConversation": "New conversation",
   "nav.newProjectConversation": "New conversation in {name}",

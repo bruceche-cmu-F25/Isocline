@@ -141,5 +141,18 @@ for (const locale of ["en", "zh"]) {
     await shot("phone-open");
     await page.locator(".chats .ch-head .icon-btn").click();
     await page.locator(".chats > .ch-list").waitFor();
+
+    // The page pill has Chats, with the count waiting; the sheet lists pages, not conversations.
+    const chatsTab = page.locator('.dock-tabs [data-page="core.chat"]');
+    assert.equal(await chatsTab.getAttribute("aria-current"), "page");
+    assert.equal(await chatsTab.locator(".count").textContent(), "2");
+    await page.locator('.dock-tabs [data-page="core.today"]').click();
+    await page.waitForFunction(() => !location.hash.includes("core.chat"));
+    await chatsTab.click();
+    await page.locator(".chats[data-narrow] > .ch-list").waitFor();
+    await page.locator(".dock-tabs > button:not([data-page])").click();
+    await page.locator('[data-sheet="nav"] .side-nav .nav-item[data-page="core.chat"]').waitFor();
+    assert.equal(await page.locator(".side-nav .conv").count(), 0, "no conversations in the phone's sheet");
+    await shot("phone-sheet");
   });
 }

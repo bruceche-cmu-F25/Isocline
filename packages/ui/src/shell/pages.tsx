@@ -310,17 +310,21 @@ export function listedPages(state: StateResponse, pages: PageDef[] = availablePa
   return pages.filter((page) => !(hidden.has(page.key) && canHide(page)));
 }
 
-/** Keep the first three daily pages in the dock and offer the remaining pages for the extra shortcut. */
+/** Keep the first three daily pages and the Chats page in the dock (docs/design/chat.md §4.4) and offer the remaining
+ * pages for the extra shortcut. A Chats page the user has hidden stays out. */
 export function dockPages(pages: PageDef[]) {
-  const fixed = pages.filter((page) => page.group === "alfred" || page.group === "work").slice(0, 3);
-  return { fixed, options: pages.filter((page) => !fixed.includes(page)) };
+  const daily = pages.filter((page) => page.group === "alfred" || page.group === "work").slice(0, 3);
+  const chats = pages.find((page) => page.key === "core.chat");
+  const fixed = chats ? [...daily, chats] : daily;
+  return { daily, chats, fixed, options: pages.filter((page) => !fixed.includes(page)) };
 }
 
-/** The dock's pages from left to right: the fixed ones, then this device's shortcut. */
+/** The dock's pages from left to right: the daily ones, this device's shortcut, then Chats beside Zirma. In the
+ * sidebar's order, so a swipe from the edge (swipe.ts) moves through them as the sidebar lists them. */
 export function dockOrder(pages: PageDef[], shortcut: string): PageDef[] {
-  const { fixed, options } = dockPages(pages);
+  const { daily, chats, options } = dockPages(pages);
   const extra = options.find((item) => item.key === shortcut);
-  return extra ? [...fixed, extra] : fixed;
+  return [...daily, ...(extra ? [extra] : []), ...(chats ? [chats] : [])];
 }
 
 export const moduleOf = (page: PageDef) => page.key.split(".")[0];
