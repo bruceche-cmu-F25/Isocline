@@ -46,6 +46,8 @@ export interface HomeOptions {
 export interface Home {
   world: World;
   modules: readonly ZirmaModule[];
+  /** The operator's log (a no-op when none was given). */
+  log: (message: string) => void;
   presence: PresenceOptions;
   owner: string;
   /** What runs are writing right now (not recorded). Emits `update` with a LiveUpdate. */
@@ -190,6 +192,7 @@ export function openHome(options: HomeOptions): Home {
   return {
     world,
     modules: options.modules,
+    log: options.log ?? (() => {}),
     presence: options.presence ?? {},
     owner,
     live,

@@ -70,6 +70,11 @@ DROP TABLE note_history;
 ALTER TABLE note_history_2 RENAME TO note_history;
 CREATE INDEX note_history_page ON note_history(page, at);
 `,
+}, {
+  // Passes were on unless switched off; now they are off until the user switches them on (they send the notes' words
+  // to the model). A world that ran note:2 had them on without being asked, so they go off once here.
+  id: "note:3",
+  sql: "UPDATE note_compile SET enabled = 0;",
 }];
 
 const now = () => new Date().toISOString();

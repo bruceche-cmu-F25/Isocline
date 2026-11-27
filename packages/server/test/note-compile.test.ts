@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getConversation, getRun, listConversations, type EnginePort, type EngineRequest } from "@zirma/core";
-import { createNotesModule, indexLibrary, ZIRMA_DIR } from "@zirma/module-notes";
+import { createNotesModule, indexLibrary, setCompile, ZIRMA_DIR } from "@zirma/module-notes";
 import { openHome } from "../src/index.ts";
 import { tickNoteCompile } from "../src/note-compile.ts";
 
@@ -28,6 +28,9 @@ test("a pass runs under the notes' profile, out of the user's chats, and writes 
     const { library } = notes.library(home.world);
     writeFileSync(join(root, "V60 参数.md"), "粉水比 1:15\n");
     indexLibrary(home.world, library);
+    // Off until the user switches it on.
+    assert.equal(tickNoteCompile(home, Date.now(), 0), null);
+    setCompile(home.world, { enabled: true });
     const runId = tickNoteCompile(home, Date.now(), 0);
     assert.ok(runId);
     await home.idle();
