@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import webpush from "web-push";
 import { isSession, listDevices, userLocale, type DeviceScope, type Outlet, type World } from "@zirma/core";
 import { getAssistant, translate, type Key } from "@zirma/ui/i18n";
-import { inboxTarget, inboxUrl, outboundWhat } from "@zirma/ui/notice";
+import { inboxTarget, inboxUrl, outboundWhat, pageUrl, reminderPage, reminderText } from "@zirma/ui/notice";
 import { plainText } from "@zirma/ui/markdown";
 import type { Reach } from "./attention.ts";
 import type { SecretStore } from "./secrets.ts";
@@ -98,6 +98,12 @@ export function noticeMessage(notice: { id: string; kind: string; payload: Recor
   const at = conversation ? `/#c=${encodeURIComponent(conversation)}` : "/";
   const inbox = inboxUrl(inboxTarget(notice));
   const base = { tag: `notice:${notice.id}`, notice: notice.id };
+  if (notice.kind === "reminder") {
+    // An event about to start, a todo about to be due, mail from someone the user named: opening it is seeing it.
+    const { title, body } = reminderText(notice, locale);
+    const page = reminderPage(notice);
+    return { ...base, title: cut(title, 120), body: cut(body, 200), url: page ? pageUrl(page.page, page.item) : "/", ack: true };
+  }
   if (notice.kind === "proposal") {
     return { ...base, title: say("mac.proposal.title"), body: cut(String(notice.payload.title ?? ""), 200), url: inbox, ack: false };
   }

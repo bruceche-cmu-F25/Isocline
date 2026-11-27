@@ -185,7 +185,7 @@ function ServiceRow({ service, local, onChange, onError }: {
   );
 }
 
-function Chips({ value, onChange, label }: { value: boolean; onChange(next: boolean): void; label: string }) {
+export function Chips({ value, onChange, label }: { value: boolean; onChange(next: boolean): void; label: string }) {
   return (
     <span className="chips set-chips" role="radiogroup" aria-label={label}>
       {[true, false].map((on) => (

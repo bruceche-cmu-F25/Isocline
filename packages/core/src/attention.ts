@@ -75,9 +75,10 @@ export const ATTENTION: AttentionPolicy = {
   presentWithinMs: 8_000,
   pushAfterMs: 20_000,
   pushWhileFreshMs: 10 * 60_000,
-  // What needs the user reaches them wherever they are. Of the news, a run's result does (they asked, and left);
-  // "it went through" for a change they have just said yes to does not.
-  pushes: (notice) => notice.class === "needs_you" || notice.kind === "run_result",
+  // What needs the user reaches them wherever they are. Of the news, a run's result does (they asked, and left), and
+  // so does a reminder (an event about to start is no use told later); "it went through" for a change they have
+  // just said yes to does not.
+  pushes: (notice) => notice.class === "needs_you" || notice.kind === "run_result" || notice.kind === "reminder",
 };
 
 /** Whether the user can be told at this outlet right now: a window they are using, or the figure of a machine they
