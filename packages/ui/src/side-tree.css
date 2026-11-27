@@ -7,7 +7,7 @@
 :is(.nt-node, .lt-node) :is(.nt-tw, .lt-twist) svg { width: 12px; height: 12px; transition: transform 160ms cubic-bezier(.23, 1, .32, 1); }
 :is(.nt-node, .lt-node) :is(.nt-tw, .lt-twist)[data-open] svg { transform: rotate(90deg); }
 :is(.nt-tw, .lt-twist):hover { background: var(--line-soft); }
-:is(.nt-label, .lt-label) { display: flex; align-items: center; gap: 6px; height: 34px; padding: 14px 8px 0; color: var(--muted); font-size: .75rem; }
+:is(.nt-label, .lt-label, .st-label) { display: flex; align-items: center; gap: 6px; height: 34px; padding: 14px 8px 0; color: var(--muted); font-size: .75rem; }
 :is(.nt-name, .lt-name, .st-name) { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 @media (prefers-reduced-motion: reduce) { :is(.nt-node, .lt-node) :is(.nt-tw, .lt-twist) svg { transition: none; } }
 

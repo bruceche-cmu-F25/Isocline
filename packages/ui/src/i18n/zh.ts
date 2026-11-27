@@ -822,6 +822,16 @@ export const zh = {
 
   // W5: automations
   "page.automations": "自动任务",
+  "page.chat": "对话",
+  "chat.sum": "{n} 段",
+  "chat.today": "今天",
+  "chat.week": "前 7 天",
+  "chat.older": "更早",
+  "chat.archived": "已归档",
+  "chat.more": "「{title}」的更多操作",
+  "chat.rename": "改名",
+  "chat.archive": "归档",
+  "chat.all": "所有对话",
   "auto.sum.next": "{on} 条开着，下一次{when}",
   "auto.sum.off": "{n} 条，都关着",
   "auto.sum.empty": "还没有自动任务",
