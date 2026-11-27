@@ -1,6 +1,7 @@
 # 联网：让 Zirma 能搜、能读网页（草案）
 
-> 状态：v0.1（2026-11-27），**草案，待看**。没有代码。
+> 状态：v0.2（2026-11-27），**草案，待看**。没有代码。
+> v0.2 的改动：读过 pi-web-access 0.48.0 的代码以后，定了不把它默认装上，改成借它的代码（§4.5）；§4.3 和 §4.4 写上每一块从它哪里来。
 > 起因：你 2026-11-27 发现项目里的 agent 上不了网。日常对话、自动任务和后台整理里的 Zirma 都没有搜索工具，也没有读网页的工具。开发会话里的 Zirma 只能自己 `curl`，每次都要你点允许。你问别人是怎么做的。看完以后你定了一条：**各种搜索服务都要能接进来，在设置里配。**
 > 依据：`packages/engine-pi/src/worker.ts`（工具闸门 `gate`、`alfredTools`、附件「当材料读，不当指令」）、`packages/server/src/profiles.ts`（四种 agent 各拿哪些工具）、`packages/engine-pi/src/mcp-catalog.ts`、`packages/ui/src/Connectors.tsx`、`modules/links/src/fetch.ts`（取网页的安全做法）、[settings-and-connections.md](settings-and-connections.md) §3.7、[browser.md](browser.md)（先存着）、[ARCHITECTURE.md](../ARCHITECTURE.md) §1 和 §9.1。各家的文档列在 §2 的表下面。
 > 标记：**【事实】** 读代码或读文档核实过；**【未实测】** 文档说的，没有真的调过；**【建议】** 本方案的提案；**【待定】** 写在 §8，等你定。
@@ -152,20 +153,22 @@ interface SearchProvider {
 
 读网页的服务用另一个接口 `ReaderProvider`，形状类似。**以后加一家，就是加一个这样的文件，再在目录里加一行**；别的地方都不用动。
 
-| 服务 | 搜 | 读 | 要什么 | 擅长 | 第一批 |
-|---|---|---|---|---|---|
-| Exa | 有 | 有 | 不用 key（有限流）；填 key 额度更多 | 默认，英文和技术内容 | 是 |
-| 博查 | 有 | 无 | key | 中文网页 | 是 |
-| Tavily | 有 | 有 | key；每月 1,000 次免费，不用绑卡 | 专门给 agent 用 | 是 |
-| Brave | 有 | 无 | key；每月 $5 免费额度，要绑卡 | 自己的索引，不靠 Google 或 Bing | 是 |
-| SearXNG | 有 | 无 | 你自己架的地址；它默认只回 HTML，要在 `settings.yml` 打开 `json` | 免费，查询不经过第三方 | 是 |
-| Jina | 有 | 有 | Reader 不用 key（每分钟 20 次）；搜索要 key | 读要跑 JS 的页面 | 是（读网页） |
-| Firecrawl | 有 | 有 | key | 读难读的页面，能爬整站 | 第二批 |
-| Perplexity Search | 有 | 无 | key | 带新鲜度的结果 | 第二批 |
-| Serper | 有 | 无 | key | Google 的结果 | 第二批 |
-| Kimi 联网搜索 | 有 | 无 | Kimi 的 key | 中文 | 第二批（它的旧接法 `$web_search` 文档说要废弃，等新接口定下来再接） |
+每家的接法都从 pi-web-access 借（§4.5）：照它的文件改，不从头写。最后一列是它里面对应的文件和行数【事实】。
 
-额度和价格都是【未实测】的文档数字，写进卡片之前要再核一遍。
+| 服务 | 搜 | 读 | 要什么 | 擅长 | 第一批 | 从 pi-web-access 借 |
+|---|---|---|---|---|---|---|
+| Exa | 有 | 有 | 不用 key（有限流）；填 key 额度更多 | 默认，英文和技术内容 | 是 | `exa.ts`（614 行；没有 key 走 `mcp.exa.ai/mcp`，有 key 走 `api.exa.ai`） |
+| 博查 | 有 | 无 | key | 中文网页 | 是 | `bocha.ts`（203 行） |
+| Tavily | 有 | 有 | key；每月 1,000 次免费，不用绑卡 | 专门给 agent 用 | 是 | `tavily.ts`（255 行） |
+| Brave | 有 | 无 | key；每月 $5 免费额度，要绑卡 | 自己的索引，不靠 Google 或 Bing | 是 | `brave.ts`（247 行），限流在 `brave-rate-limit.ts` |
+| SearXNG | 有 | 无 | 你自己架的地址；它默认只回 HTML，要在 `settings.yml` 打开 `json` | 免费，查询不经过第三方 | 是 | `searxng.ts`（236 行） |
+| Jina | 有 | 有 | Reader 不用 key（每分钟 20 次）；搜索要 key | 读要跑 JS 的页面 | 是（读网页） | `jina-search.ts`（275 行） |
+| Firecrawl | 有 | 有 | key | 读难读的页面，能爬整站 | 第二批 | `firecrawl.ts`（454 行） |
+| Perplexity Search | 有 | 无 | key | 带新鲜度的结果 | 第二批 | `perplexity.ts`（245 行） |
+| Serper | 有 | 无 | key | Google 的结果 | 第二批 | `serper.ts`（190 行） |
+| Kimi 联网搜索 | 有 | 无 | Kimi 的 key | 中文 | 第二批（它的旧接法 `$web_search` 文档说要废弃，等新接口定下来再接） | `kimi-search.ts`（209 行），先看它接的是新接口还是旧接口 |
+
+额度和价格都是【未实测】的文档数字，写进卡片之前要再核一遍。pi-web-access 里还有四十来家（Kagi、You.com、Linkup、Parallel、DuckDuckGo 等），以后谁要，照同样的办法借一个文件。
 
 ### 4.4 Zirma 自己读网页
 
@@ -173,10 +176,28 @@ interface SearchProvider {
 
 - 收的类型从只有 HTML，加上纯文本、Markdown、JSON；PDF 先不读，留到第二批；
 - 大小上限从「够取标题」改成「够取正文」，准确数字在代码里定；
-- 正文提取和转 Markdown 用现成的库（候选 `@mozilla/readability` 加 `turndown`，许可证是 Apache-2.0 和 MIT，进 `THIRD-PARTY-NOTICES.md`），选库时再核实；
+- 正文提取和转 Markdown 用 pi-web-access 用的那几个库，按它 `extract.ts` 的顺序：先用 `defuddle` 取正文，取不好再用 `@mozilla/readability`；网页先交给 `linkedom` 解析，最后由 `turndown` 转成 Markdown。第二批读 PDF 用 `unpdf`，照它的 `pdf-extract.ts`。这几个库的许可证【事实】：defuddle MIT、readability Apache-2.0、linkedom ISC、turndown MIT、unpdf MIT。每个都进 `THIRD-PARTY-NOTICES.md`。
+- 连哪里、怎么连，还是用 Links 的那一套，不换成它的 `ssrf-protection.ts`。它那份 602 行，为代理和假 IP 网段多做了一些处理；Links 的那份已经在用、有测试。两份对一遍，Links 漏掉的情况补进来。
 - 取下来没有正文（JS 页面），或者被拒（登录墙、412），才交给「读网页」里排第一的服务。都没有就照实告诉模型：「这一页要跑脚本或要登录，Zirma 读不到。」
 
-### 4.5 模型自带的搜索（第二批）
+### 4.5 为什么借 pi-web-access 的代码，不直接装它
+
+pi-web-access 是 Pi 的一个扩展，作者 Nico Bailon，MIT 许可证。0.48.0 版对的是我们用的同一个 Pi（`@earendil-works/pi-coding-agent`），技术上能直接加进 worker。它也接了五十来家搜索服务，还能取正文、读 PDF，§4.3 和 §4.4 要做的事它差不多都有。但把它装成默认的，有四处和 Zirma 合不上【事实，读 0.48.0 的源码】：
+
+| | pi-web-access | Zirma 要的 |
+|---|---|---|
+| 设置放在哪 | `~/.pi/agent/web-search.json` 或 `~/.pi/web-search.json`；key 用明文写在这个文件里。只有环境变量 `PI_CODING_AGENT_DIR` 能改这个位置，Zirma 的 worker 没有设它 | 设置里的「联网」，key 存在钥匙串。worker 只用 Zirma 自己的文件夹，不读用户的 Pi 设置；不然这台 Mac 上配过 Pi 的用户，Zirma 会悄悄用上那份配置 |
+| 要不要问你 | 它的工具没有标「只读」，Zirma 的闸门每次搜都要问你；放行的话，§5 管网址的规则就都不起作用了 | 两个固定的工具，闸门对它们按 §5 的规则办 |
+| 有多大 | 105 个文件、约 37,500 行，还是 0.x 版本，2026-11-15 刚发过一版，在 worker 里拿到完整权限。里面有读 Chrome cookie 的代码（默认关）、把 GitHub 仓库克隆到磁盘的代码、开一个本机网页服务再弹浏览器窗口的代码 | 开源产品，人人都装；默认带上的东西要少，每一行都要说得清楚 |
+| 界面 | 有一部分是给终端里的 Pi 做的，比如弹窗口挑结果的 curator | Zirma 的 worker 没有终端界面 |
+
+所以【建议】：**借，不装。**
+
+- 一家服务一个文件，照它的文件改。要改的是它读配置和读 key 的那几行（`web-search.json`、`credential-source.ts`），换成 Zirma 的设置和钥匙串；它的活动监视和结果格式化，换成 `web_search` 的格式。
+- 每个借来的文件，开头写上来源（pi-web-access 0.48.0，哪个文件）和 MIT 许可证；`THIRD-PARTY-NOTICES.md` 里加一行 pi-web-access。
+- 它以后更新了，不跟着自动更新。有一家服务的接口变了，再去看它那一个文件是怎么改的。
+
+### 4.6 模型自带的搜索（第二批）
 
 Claude、OpenAI、Gemini 的 API 都有自带搜索，质量往往最好。但这有两个问题：
 
@@ -225,7 +246,7 @@ Claude、OpenAI、Gemini 的 API 都有自带搜索，质量往往最好。但�
 | W1 | 两个工具；只接 Exa；Zirma 自己读网页；§5 的规则 | 日常对话里问「今天有什么 AI 新闻」能搜到，并附上来源；打开模型自己拼的网址会先问你 |
 | W2 | 设置里的「联网」：列表、顺序、换下一家、key、「试一下」、放行的网站、记录 | 新手不填任何东西就能搜；填了博查的 key 并排到第一，中文结果就从博查来 |
 | W3 | 第一批其他服务：博查、Tavily、Brave、SearXNG、Jina Reader；「用连接器里的」 | 每家「试一下」都通过；SearXNG 没开 JSON 时，卡片里写清楚怎么开 |
-| W4 | 第二批：Firecrawl、Perplexity、Serper、Kimi，读 PDF，模型自带的搜索 | 看 §4.5 的条款结论再定 |
+| W4 | 第二批：Firecrawl、Perplexity、Serper、Kimi，读 PDF，模型自带的搜索 | 看 §4.6 的条款结论再定 |
 
 每一刀都要通过 `npm test` 和 `npm run typecheck`。每家服务的接法都配一个测试：用录下来的假响应，不打真接口。设置页要在中文和英文、窄屏下都看一遍。W1 之后要用真模型跑一遍：在 `scripts/eval` 里加几个要上网的场景。
 
