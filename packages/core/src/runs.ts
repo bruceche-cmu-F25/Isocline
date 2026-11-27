@@ -18,7 +18,7 @@ import { createNotice } from "./notices.ts";
 import { resultDestination, retirePreviousEditions } from "./result-delivery.ts";
 import { TEMPLATE_TEXT, type AutomationTemplate } from "./automation-templates.ts";
 import { localeOf } from "./settings.ts";
-import { RUN_STATES } from "./schema.ts";
+import { RUN_STATES, UNFINISHED_RUN_STATES } from "./schema.ts";
 import { grantCommand } from "./shell.ts";
 import type { World } from "./world.ts";
 
@@ -476,6 +476,12 @@ function detailRun(db: DatabaseSync, id: string): Run {
     if (row) { run.outcome.reply = String(row.reply); delete run.outcome.replyTruncated; }
   }
   return run;
+}
+
+/** Whether a run is there and not yet ended (UNFINISHED_RUN_STATES). */
+export function isRunUnfinished(world: World, id: string): boolean {
+  const row = world.db.prepare("SELECT state FROM core_runs WHERE id = ?").get(id);
+  return !!row && (UNFINISHED_RUN_STATES as readonly string[]).includes(row.state as string);
 }
 
 export function getRun(world: World, id: string): { run: Run; events: CoreEvent[] } {

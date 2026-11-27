@@ -10,9 +10,12 @@ import { noteTodos, setNoteTodoDone } from "@zirma/module-todo";
 interface NotesHandle { library(world: World): { library: Library; id: string } }
 
 /** A page was saved from the editor: its ticked and unticked to-dos finish or reopen their todos. */
-export function mirrorNoteTicks(world: World, libraryId: string, page: string, before: string, after: string): void {
+export function mirrorNoteTicks(world: World, libraryId: string, page: string, before: string, after: string, log: (message: string) => void): void {
   for (const change of taskChanges(libraryId, page, before, after)) {
-    try { withCoreContext({ actor: "user" }, () => setNoteTodoDone(world, change.ref, change.checked)); } catch { /* the todo went meanwhile */ }
+    // A todo that went meanwhile answers false; a throw is something else, and the list now disagrees with the note.
+    try { withCoreContext({ actor: "user" }, () => setNoteTodoDone(world, change.ref, change.checked)); } catch (error) {
+      log(`notes: a to-do ticked in "${page}" could not follow on the todo list: ${(error as Error).message}`);
+    }
   }
 }
 

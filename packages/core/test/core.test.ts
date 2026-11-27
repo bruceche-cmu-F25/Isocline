@@ -6,7 +6,7 @@ import { test } from "node:test";
 import {
   acknowledgeNotice, answerRequest, claimNextRun, claimNotice, CommandConflictError, conversationRuns, CORE_MIGRATIONS, createNotice, createRunDrain, executeNextRun, finishRun, getRun,
   interruptOrphanedRuns, listEvents, listNotices, listRuns, NoticeStateError, onEvents, openRequest, openWorld, presentNotice, recordDomainEvent,
-  requestCancel, resumeRun, runCommand, RunError, RunLeaseLostError, submitRun, withCoreContext,
+  isRunUnfinished, requestCancel, resumeRun, runCommand, RunError, RunLeaseLostError, submitRun, withCoreContext,
   undeliveredNotices, type EnginePort, type RunProfile, type World,
 } from "../src/index.ts";
 
@@ -336,4 +336,13 @@ test("upgrading closes legacy interruption notices for completed runs and supers
   assert.ok(open.some((n) => n.kind === "run_result" && n.payload.runId === complete.id));
   assert.deepEqual(listNotices(w, { states: ["acknowledged"] }).filter((n) => n.kind === "run_interrupted")
     .map((n) => [n.id, n.claimedBy, n.claimUntil]), [[finishedNotice.id, null, null], [first.id, null, null]]);
+});
+
+test("a run is unfinished while queued or cancelling, finished once cancelled, and an unknown id is not a run", () => {
+  const w = world();
+  const { run } = submitRun(w, { requestId: "u1", goal: "add a toy", profile: "tasks" });
+  assert.equal(isRunUnfinished(w, run.id), true);
+  assert.equal(requestCancel(w, run.id).state, "cancelled");
+  assert.equal(isRunUnfinished(w, run.id), false);
+  assert.equal(isRunUnfinished(w, "nope"), false);
 });

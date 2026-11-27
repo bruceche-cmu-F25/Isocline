@@ -3,7 +3,7 @@
  * HTTP, pages, engines or any particular module.
  */
 export { openWorld, type Migration, type World } from "./world.ts";
-export { CORE_MIGRATIONS, ACTORS, RUN_STATES, NOTICE_STATES, PROPOSAL_STATES } from "./schema.ts";
+export { CORE_MIGRATIONS, ACTORS, RUN_STATES, UNFINISHED_RUN_STATES, NOTICE_STATES, PROPOSAL_STATES } from "./schema.ts";
 export { withCoreContext, withDefaultActor, coreContext, type Actor, type CoreContext } from "./context.ts";
 export { newId } from "./ids.ts";
 export {
@@ -20,7 +20,7 @@ export {
 } from "./events.ts";
 export {
   submitRun, claimNextRun, heartbeatRun, finishRun, requestCancel, resumeRun, sweepRuns, interruptOrphanedRuns,
-  getRun, listRuns, conversationRuns, listAutomationRuns, conversationBefore, RunError, RUN_LEASE_MS, openRequest, answerRequest, runAnswers, PERMISSION_ANSWERS,
+  getRun, isRunUnfinished, listRuns, conversationRuns, listAutomationRuns, conversationBefore, RunError, RUN_LEASE_MS, openRequest, answerRequest, runAnswers, PERMISSION_ANSWERS,
   type Run, type RunOutcome, type RunRequest, type RunState, type SubmitRunInput, type ViewContext, viewContext,
 } from "./runs.ts";
 export {

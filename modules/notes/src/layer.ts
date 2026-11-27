@@ -68,7 +68,13 @@ export interface KeepInput {
 
 export type KeepAnswer =
   | { ok: true; id: string; created: boolean; unchanged: boolean; lines: number; unsourced: number; removed: number; entry: string | null }
-  | { ok: false; reason: "bad_name" | "name_taken" | "skipped" | "edited" | "empty"; message: string };
+  | { ok: false; reason: "bad_name" | "name_taken" | "skipped" | "edited" | "empty" | "reserved"; message: string };
+
+/** Whether a title names the page about the user, in either language: only note_remember (and the user) write it. */
+export function isAboutTitle(title: string): boolean {
+  const key = safeName(title).replace(/^[.\s]+/, "").toLowerCase();
+  return Object.values(ABOUT).some((name) => name.toLowerCase() === key);
+}
 
 /**
  * Writes one of Zirma's pages, whole. Each line keeps only sources that are pages of the user's; a line left with
@@ -77,6 +83,15 @@ export type KeepAnswer =
  * when the user deleted or took a page of that name, and when the file was changed outside Zirma.
  */
 export function keepPage(world: World, library: Library, input: KeepInput, locale: Locale): KeepAnswer {
+  // The page about the user goes into every run's instructions (index.ts guidance), so a pass may only add a fact to
+  // it, one at a time, through note_remember: never write it whole, which could drop or rewrite what is there.
+  if (isAboutTitle(input.title)) {
+    return { ok: false, reason: "reserved", message: `“${ABOUT[locale]}” is written only with note_remember, one fact at a time.` };
+  }
+  return writePage(world, library, input, locale);
+}
+
+function writePage(world: World, library: Library, input: KeepInput, locale: Locale): KeepAnswer {
   // A name is a file in Zirma's folder and nothing else: no dots or spaces in front ("../x" is "x").
   const title = safeName(input.title).replace(/^[.\s]+/, "");
   if (!title) return { ok: false, reason: "bad_name", message: "Give the page a name." };
@@ -296,7 +311,7 @@ export function rememberFromNotes(world: World, library: Library, input: { fact:
   }));
   if (!sections.length) sections.push({ heading: null, lines: [] });
   sections[sections.length - 1].lines.push({ text: input.fact, sources: [input.page] });
-  return keepPage(world, library, { title: ABOUT[locale], icon: page?.props.icon || "person", sections, why: locale === "zh" ? "记下了一条关于你的事" : "Noted a fact about you" }, locale);
+  return writePage(world, library, { title: ABOUT[locale], icon: page?.props.icon || "person", sections, why: locale === "zh" ? "记下了一条关于你的事" : "Noted a fact about you" }, locale);
 }
 
 /* ── Suggestions on the user's pages ── */

@@ -6,7 +6,7 @@
  * Each pass is a conversation of its own, archived from the start: it is not one of the user's chats and never
  * waits on them, but it is kept, so what Zirma read and wrote in a pass can be looked at afterwards (in the archived
  * conversations). Before a pass, sources that are gone are taken out of Zirma's pages, which needs no model. */
-import { submitRun, updateConversation, userLocale } from "@zirma/core";
+import { isRunUnfinished, submitRun, updateConversation, userLocale } from "@zirma/core";
 import { COMPILE_PROFILE, compileDue, compileStarted, compileState, pruneSources, type Library } from "@zirma/module-notes";
 import type { Home } from "./home.ts";
 
@@ -26,7 +26,7 @@ export function tickNoteCompile(home: Pick<Home, "world" | "modules" | "kick">, 
   if (!module?.jobs?.compile) return null;
   const { world } = home;
   const state = compileState(world);
-  const running = !!state.run && !!world.db.prepare("SELECT 1 FROM core_runs WHERE id = ? AND state IN ('queued', 'running', 'cancelling', 'waiting_input', 'waiting_permission')").get(state.run);
+  const running = !!state.run && isRunUnfinished(world, state.run);
   const locale = userLocale(world) === "zh" ? "zh" : "en";
   const pass = compileDue(world, { now, quietMs: quiet, running, locale });
   if (!pass) return null;

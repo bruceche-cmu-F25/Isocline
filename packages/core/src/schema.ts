@@ -10,6 +10,9 @@ export const RUN_STATES = [
   "queued", "running", "waiting_permission", "waiting_input",
   "cancelling", "completed", "failed", "cancelled", "interrupted",
 ] as const;
+/** States a run can still move on from by itself, or after the user answers: not yet ended. `interrupted` is not one
+ * of them (it waits for the user to start it again). Code outside the core asks `isRunUnfinished`, not the table. */
+export const UNFINISHED_RUN_STATES = ["queued", "running", "waiting_permission", "waiting_input", "cancelling"] as const satisfies readonly (typeof RUN_STATES)[number][];
 export const NOTICE_STATES = ["pending", "claimed", "presented", "acknowledged", "expired"] as const;
 export const ACTORS = ["user", "alfred", "system"] as const;
 export const PROPOSAL_STATES = ["open", "executed", "declined", "stale", "failed", "superseded", "expired"] as const;
