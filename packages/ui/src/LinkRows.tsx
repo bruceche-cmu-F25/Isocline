@@ -11,6 +11,7 @@ import { SiteIcon, linkFileUrl, useOp } from "./linkControls.tsx";
 import { LinkDeleteDialog, onDeleteKey } from "./LinkDeleteDialog.tsx";
 import { playbackTime } from "./clipSections.ts";
 import { OutLink } from "./Linked.tsx";
+import { FiledByZirma, ZirmaMark } from "./LinkAutoFile.tsx";
 import { Pop } from "./shell/Pop.tsx";
 import { Icon } from "./shell/icons.tsx";
 import { t, type Key } from "./i18n/index.ts";
@@ -37,6 +38,9 @@ export function sourceOf(item: Item, platformName: (id: string) => string | unde
   return [platform, clip.author ?? site, clip.durationSeconds ? playbackTime(clip.durationSeconds) : undefined].filter(Boolean).join(" · ");
 }
 
+/** Zirma put it in its category, and the user has not moved it since. */
+const filedByZirma = (item: Item) => (item.kind === "clip" ? item.clip.filedByZirma : item.place.filedByZirma) === true;
+
 export function Row({ item, sub, k, fresh, platformName, onOpen }: {
   item: Item; sub?: string; k?: string; fresh?: boolean; platformName(id: string): string | undefined; onOpen(): void;
 }) {
@@ -54,6 +58,7 @@ export function Row({ item, sub, k, fresh, platformName, onOpen }: {
           <span className="lr-title">{item.title}</span>
           <span className="lr-sub">{sub ?? sourceOf(item, platformName)}</span>
         </span>
+        {filedByZirma(item) && <ZirmaMark />}
         {state && <span className="lr-state" data-s={state} title={t(`links.state.${state}` as Key)} />}
       </button>
       <OutLink className="lr-go" href={item.url} label={t("links.open")}>↗</OutLink>
@@ -83,6 +88,7 @@ export function Tile({ item, sub, k, fresh, platformName, onOpen }: {
             <span className="lg-title">{item.title}</span>
             <span className="lr-sub">{sub ?? sourceOf(item, platformName)}</span>
           </span>
+          {filedByZirma(item) && <ZirmaMark />}
           {state && <span className="lr-state" data-s={state} title={t(`links.state.${state}` as Key)} />}
         </span>
       </button>
@@ -116,6 +122,7 @@ export function PlaceCard({ place, tree, areas, pathText, onClose, onError }: {
           <span>{t("links.tree.category")}</span>
           <button type="button" className="lk-btn" aria-expanded={filing} onClick={() => setFiling(!filing)}>{pathText(place.topicId) || t("links.tree.none")}<Icon name="down" /></button>
         </div>
+        {place.filedByZirma && <FiledByZirma path={pathText(place.topicId)} busy={busy} onPutBack={() => void run("link.place", { id: place.id, topicId: "" })} />}
         {filing && <TopicList tree={tree} areaName={areaName} value={place.topicId} onPick={(topicId) => { setFiling(false); void run("link.place", { id: place.id, topicId: topicId === place.topicId ? "" : topicId }); }} />}
         <div className="lr-foot">
           <OutLink className="lk-btn solid" href={place.url}>{t("links.open")} ↗</OutLink>
