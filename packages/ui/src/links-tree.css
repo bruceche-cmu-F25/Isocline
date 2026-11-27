@@ -10,18 +10,17 @@
 
 /* ── Tree ── */
 .lt { flex: none; width: 236px; overflow-y: auto; padding: 10px 10px 40px 0; border-right: 1px solid var(--line-soft); }
-.lt-node { position: relative; display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 4px 0 calc(2px + var(--d, 0) * 14px); border-radius: 8px; color: var(--copy); font-size: .8125rem; cursor: pointer; user-select: none; }
-.lt-node:hover { background: var(--wash); color: var(--ink); }
-.lt-node[aria-selected="true"] { background: var(--wash); color: var(--ink); font-weight: 600; }
-.lt-node[data-strong] { color: var(--ink); font-weight: 600; }
+/* Rows, twists and names are side-tree.css, shared with Notes; what follows is only Links' own. */
+.lt-node { position: relative; gap: 6px; padding: 0 4px 0 calc(var(--d, 0) * 14px); cursor: pointer; user-select: none; }
+.lt-node > svg { flex: none; width: 16px; height: 16px; color: var(--muted); }
+/* An area: a quiet label with its dot, as Notes' "Yours" is, but one you can open, drop on, and add under. */
+.lt-node.lt-area { height: 28px; margin-top: 12px; padding-left: 8px; color: var(--muted); font-size: .75rem; }
+.lt-node.lt-area:hover, .lt-node.lt-area[aria-selected="true"] { color: var(--ink); }
+.lt-node.lt-area:not([aria-selected="true"]):not([data-over]):hover { background: none; }
 .lt-node[data-over] { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .lt-node:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.lt-twist { flex: none; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; color: var(--muted); transition: transform 160ms var(--ease); }
-.lt-twist svg { width: 11px; height: 11px; }
 .lt-twist:disabled { visibility: hidden; }
-.lt-twist[data-open] { transform: rotate(90deg); }
-.lt-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--k-solid); }
-.lt-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.lt-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--k-solid); }
 .lt-count { flex: none; min-width: 1.5em; color: var(--muted); font-size: .75rem; font-weight: 400; text-align: right; font-variant-numeric: tabular-nums; }
 .lt-more { flex: none; width: 22px; height: 22px; display: none; place-items: center; border-radius: 6px; color: var(--muted); }
 .lt-more svg { width: 15px; height: 15px; }
@@ -29,17 +28,15 @@
 .lt-node:hover .lt-more, .lt-node:focus-within .lt-more, .lt-more[aria-expanded="true"] { display: grid; }
 .lt-node:hover .lt-count, .lt-node:focus-within .lt-count { display: none; }
 @media (pointer: coarse) { .lt-more { display: grid; } .lt-count { display: none; } }
-.lt-sep { height: 1px; margin: 6px 4px; background: var(--line-soft); }
 .lt-input { flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 0; border-radius: 6px; outline: 0; background: var(--field); box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--ink); font-size: .8125rem; font-weight: 400; }
 .lt-menu { position: absolute; top: calc(100% + 2px); right: 0; z-index: 30; min-width: 164px; display: flex; flex-direction: column; padding: 4px; border-radius: 10px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); cursor: default; font-weight: 400; }
 .lt-menu button { height: 30px; padding: 0 10px; border-radius: 6px; color: var(--copy); font-size: .8125rem; text-align: left; white-space: nowrap; }
 .lt-menu button:hover, .lt-menu button:focus-visible { background: var(--wash); color: var(--ink); outline: none; }
 .lt-menu button.danger { color: var(--bad); }
 .lt-empty { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 2px 0; }
-.lt-add { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--muted); font-size: .75rem; }
-.lt-add:hover { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
-.lt-add svg { width: 11px; height: 11px; }
 .lt-empty .lt-node { width: 100%; }
+/* In the app sidebar (links.md §4.10.8): the sidebar's own width and type size, as Notes' page tree is there. */
+.lt.lt-in-app { flex: 1; width: auto; min-height: 0; padding: 2px 8px 16px; border-right: 0; }
 /* Choosing a category: every one, indented under its area. */
 .lt-options { max-height: min(50vh, 360px); overflow-y: auto; display: flex; flex-direction: column; padding: 4px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line-soft); }
 .lt-option { min-height: 30px; padding: 0 8px 0 calc(8px + (var(--d, 1) - 1) * 14px); border-radius: 6px; color: var(--copy); font-size: .8125rem; text-align: left; }
@@ -217,9 +214,9 @@
 .lg-cover + .lg-body { padding-top: 8px; }
 
 /* ── Tree foot and the import card's areas to pick ── */
-.lt-add { display: flex; width: 100%; height: 30px; margin-top: 10px; padding: 0 8px; border-radius: 8px; box-shadow: none; }
-.lt-add:hover { background: var(--wash); box-shadow: none; }
-.lt-new { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 0 2px; }
+/* The new row on top, as Notes' "New page" is. */
+.lt-add { width: 100%; text-align: left; }
+.lt-new { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 2px; }
 .lt-new-area { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .75rem; white-space: nowrap; }
 .li-node[data-need] .li-area { color: var(--warm); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warm) 45%, transparent); }
 

@@ -3,24 +3,16 @@
 .notes svg, .nt-side svg { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .nt-glyph { color: var(--muted); }
 
-/* The side: Recent, the user's pages, the assistant's pages */
+/* The side: Recent, the user's pages, the assistant's pages. Rows, twists and labels are side-tree.css (shared with Links). */
 .nt-side { flex: none; width: 248px; display: flex; flex-direction: column; background: color-mix(in oklch, var(--wash) 55%, var(--bg)); border-right: 1px solid var(--line-soft); }
 .nt-side-head { flex: none; display: flex; align-items: center; gap: 4px; height: 48px; padding: 0 8px 0 16px; }
 .nt-side-head b { flex: 1; min-width: 0; font-size: .875rem; font-weight: 600; }
 .nt-side-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 16px; }
-.nt-label { display: flex; align-items: center; gap: 6px; height: 34px; padding: 14px 8px 0; color: var(--muted); font-size: .75rem; }
 .nt-label svg { width: 13px; height: 13px; }
+.nt-node { gap: 2px; padding: 0 2px 0 calc(var(--d, 0) * 14px); }
 .nt-hint { margin: 0; padding: 2px 8px 0 28px; color: var(--muted); font-size: .8125rem; line-height: 1.5; }
-.nt-node { display: flex; align-items: center; gap: 2px; height: 30px; padding: 0 2px 0 calc(var(--d, 0) * 14px); border-radius: 8px; color: var(--copy); font-size: .875rem; }
-.nt-node:hover { background: var(--wash); color: var(--ink); }
-.nt-node[data-current] { background: var(--wash); color: var(--ink); font-weight: 600; }
-.nt-tw, .nt-tw-space { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; color: var(--muted); }
-.nt-tw svg { width: 12px; height: 12px; transition: transform 160ms cubic-bezier(.23, 1, .32, 1); }
-.nt-tw[data-open] svg { transform: rotate(90deg); }
-.nt-tw:hover { background: var(--line-soft); }
 .nt-node-main { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 7px; padding: 0 4px; text-align: left; }
 .nt-node-main svg { width: 16px; height: 16px; color: var(--muted); }
-.nt-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .nt-add { flex: none; width: 22px; height: 22px; display: none; place-items: center; border-radius: 6px; color: var(--muted); }
 .nt-add svg { width: 14px; height: 14px; }
 .nt-node:hover .nt-add, .nt-add:focus-visible { display: grid; }
@@ -167,7 +159,6 @@
   .nt-title, .nt-title-static { font-size: 1.625rem; }
   .nt-history { width: 100%; border-left: 0; }
 }
-@media (prefers-reduced-motion: reduce) { .nt-tw svg { transition: none; } }
 
 /* Pictures and files in a page, links, to-dos onto the todo list */
 .nt-embed { display: inline-block; max-width: 100%; margin: 4px 0; vertical-align: top; line-height: 0; }
