@@ -14,6 +14,7 @@ import { NoteEditor, type EditorHandle, type SaveState } from "./NoteEditor.tsx"
 import { PageGlyph } from "./pageIcons.tsx";
 import { CheatSheet } from "./CheatSheet.tsx";
 import { KeptView } from "./KeptView.tsx";
+import "../side-tree.css";
 import "./notes.css";
 
 type OpAnswer = { error?: string; code?: string; id?: string; ok?: boolean; reason?: string; entry?: string | null };

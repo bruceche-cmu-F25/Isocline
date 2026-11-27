@@ -230,7 +230,7 @@ const PAGES: PageDef[] = [
     render: ({ snapshot, state, line, item, onItem, refresh }) => <Mail snapshot={snapshot} state={state} line={line} focus={item} onFocused={onItem} refresh={refresh} />,
   }),
   modulePage("link", {
-    key: "link.list", get title() { return t("page.links"); }, icon: "link", k: "violet", group: "modules",
+    key: "link.list", get title() { return t("page.links"); }, icon: "link", k: "violet", group: "modules", side: true,
     summary: (snapshot) => {
       const clips = snapshot?.clips ?? [];
       return clips.length ? t("links.sum", { n: clips.length, unread: clips.filter((clip) => clip.state === "unread").length }) : t("links.sum.none");
@@ -240,7 +240,7 @@ const PAGES: PageDef[] = [
       const unread = clips.filter((clip) => clip.state === "unread").length;
       return unread ? t("head.links.unread", { n: unread }) : t("head.links.clear");
     },
-    render: ({ snapshot, fresh, areas, item, onItem }) => <Links snapshot={snapshot} fresh={fresh} areas={areas} focus={item} onFocused={onItem} />,
+    render: ({ snapshot, fresh, areas, item, onItem, side }) => <Links snapshot={snapshot} fresh={fresh} areas={areas} focus={item} onFocused={onItem} side={side} />,
   }),
   modulePage("note", {
     key: "note.list", get title() { return t("page.notes"); }, icon: "write", k: "warm", group: "modules", bare: true, side: true,
