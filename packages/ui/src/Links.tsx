@@ -5,6 +5,7 @@
  * L1: a saved page is looked up for its title; it is not read or summarised yet, and the card does not pretend so.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { Area } from "@zirma/protocol";
 import type { Clip, ClipState, LinksSnapshot, LinkType, Topic } from "@zirma/module-links/types";
 import { classify, parseLinkPaste } from "@zirma/module-links/url";
@@ -224,7 +225,9 @@ const store = (key: string, value: unknown) => { try { localStorage.setItem(key,
 /** Below this width the tree folds into the page: areas first, then category after category, tapped into. */
 const NARROW = 720;
 
-export function Links({ snapshot, fresh, areas, focus, onFocused }: { snapshot: LinksSnapshot | undefined; fresh: ReadonlySet<string>; areas: Area[]; focus?: string | null; onFocused?(): void }) {
+/** `side`: the app sidebar's slot while it has room (PageDef.side). The category tree goes there, as Notes' page tree
+ * does (links.md §4.10.8); without it the tree stays inside the page. */
+export function Links({ snapshot, fresh, areas, focus, onFocused, side }: { snapshot: LinksSnapshot | undefined; fresh: ReadonlySet<string>; areas: Area[]; focus?: string | null; onFocused?(): void; side?: HTMLElement | null }) {
   const { places = [], folders = [], clips: rawClips = [], topics = [] } = snapshot ?? {};
   const clips = useMemo(() => snapshot?.sharedTitles ? rawClips : rawClips.map(legacyShareClip), [rawClips, snapshot?.sharedTitles]);
   const [draft, setDraft] = useState("");
@@ -420,9 +423,9 @@ export function Links({ snapshot, fresh, areas, focus, onFocused }: { snapshot: 
     const kids = tree.children.get(node) ?? [];
     return <>
       {filters(all)}
-      {narrow && kids.length > 0 && <ul className="lc-grid">{kids.map((kid) => categoryCard(kid.id, kid.name, kOf(kid.id)))}</ul>}
+      {drill && kids.length > 0 && <ul className="lc-grid">{kids.map((kid) => categoryCard(kid.id, kid.name, kOf(kid.id)))}</ul>}
       {direct.length > 0 && <section className="lk-group">{draw(direct)}</section>}
-      {!narrow && kids.map((kid) => {
+      {!drill && kids.map((kid) => {
         const inside = filtered(inNode(tree, kid.id, items).sort(byNewest));
         if (!inside.length && (type !== "all" || only !== "all")) return null;
         return (
@@ -455,7 +458,11 @@ export function Links({ snapshot, fresh, areas, focus, onFocused }: { snapshot: 
   const crumbNodes = node.startsWith("area:") || !tree.byId.has(node) ? [node] : [`area:${topicChain(tree, node)[0]?.area ?? ""}`, ...topicChain(tree, node).map((topic) => topic.id)];
   const back = node === "all" ? null : crumbNodes.length > 1 ? crumbNodes[crumbNodes.length - 2] : "all";
   const openedItem = items.find((item) => item.id === opened);
-  const showTree = !narrow && !treeHidden;
+  const showTree = !side && !narrow && !treeHidden;
+  // With the tree in the sidebar a narrow page needs no tapping in: it lays out as a wide one does.
+  const drill = narrow && !side;
+  const treeNav = (inApp: boolean) => <TreeNav tree={tree} areas={areas} counts={treeCounts} node={node} open={open} searching={searching} inApp={inApp}
+    onPick={go} onToggle={toggle} onDropLink={fileTo} onError={setError} onSaid={(text) => setSaid({ text })} />;
 
   return (
     <section className="links" ref={page} aria-label={t("page.links")} data-narrow={narrow || undefined} data-tree={showTree || undefined}>
@@ -485,13 +492,12 @@ export function Links({ snapshot, fresh, areas, focus, onFocused }: { snapshot: 
         {!searching && <Places places={places.filter((place) => !place.unpinned)} folders={folders} focus={focus} onFocused={onFocused} onError={setError} />}
 
         <div className="lk-body">
-          {showTree && <TreeNav tree={tree} areas={areas} counts={treeCounts} node={node} open={open} searching={searching}
-            onPick={go} onToggle={toggle} onDropLink={fileTo} onError={setError} onSaid={(text) => setSaid({ text })} />}
+          {showTree && treeNav(false)}
           <div className="lk-col">
             <div className="lk-head">
-              {narrow && back && !searching && <button type="button" className="lk-back" onClick={() => go(back)} aria-label={t("links.back")}><Icon name="back" /></button>}
+              {drill && back && !searching && <button type="button" className="lk-back" onClick={() => go(back)} aria-label={t("links.back")}><Icon name="back" /></button>}
               <h2 className="lk-crumbs">
-                {searching ? <span>{t("links.search.title")}</span> : narrow ? <span>{crumbs[crumbs.length - 1]}</span> : crumbs.map((name, index) => index < crumbs.length - 1 && crumbNodes[index]
+                {searching ? <span>{t("links.search.title")}</span> : drill ? <span>{crumbs[crumbs.length - 1]}</span> : crumbs.map((name, index) => index < crumbs.length - 1 && crumbNodes[index]
                   ? <span key={index}><button type="button" onClick={() => go(crumbNodes[index])}>{name}</button><span className="sep">›</span></span>
                   : <span key={index}>{name}</span>)}
                 {!searching && <span className="count">{node === "all" ? items.length : node === "recent" ? treeCounts.get("recent") : inNode(tree, node, items).length}</span>}
@@ -504,7 +510,7 @@ export function Links({ snapshot, fresh, areas, focus, onFocused }: { snapshot: 
                 <button type="button" className="lk-icon-btn" aria-label={t("links.more")} title={t("links.more")} aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="more" /></button>
                 {menu && <Menu onClose={() => setMenu(false)}>
                   <button type="button" role="menuitem" onClick={() => { setMenu(false); setImporting(true); }}>{t("links.import.title")}…</button>
-                  {!narrow && <button type="button" role="menuitem" onClick={() => { setMenu(false); setTreeHidden(showTree); store("zirma.links.treeHidden", showTree); }}>{t(showTree ? "links.tree.hide" : "links.tree.show")}</button>}
+                  {!narrow && !side && <button type="button" role="menuitem" onClick={() => { setMenu(false); setTreeHidden(showTree); store("zirma.links.treeHidden", showTree); }}>{t(showTree ? "links.tree.hide" : "links.tree.show")}</button>}
                 </Menu>}
               </span>
             </div>
@@ -513,6 +519,7 @@ export function Links({ snapshot, fresh, areas, focus, onFocused }: { snapshot: 
         </div>
       </div>
 
+      {side && createPortal(treeNav(true), side)}
       {openedItem?.kind === "place" && <PlaceCard place={openedItem.place} tree={tree} areas={areas} pathText={pathText} onClose={() => setOpened(null)} onError={setError} />}
       {openedItem?.kind === "clip" && (
         <Pop onClose={() => setOpened(null)}>

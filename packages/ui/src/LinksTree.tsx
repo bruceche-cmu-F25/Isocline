@@ -1,5 +1,6 @@
-/** The category tree beside the Links page (docs/design/links.md §4.10.1): the areas, the topics under them two levels
- * deep, a count on each. Pick a node to see what is in it; drag a link onto one to file it there, or a category onto
+/** The category tree beside the Links page (docs/design/links.md §4.10.1), in the app sidebar when it has room
+ * (§4.10.8), laid out as Notes' page tree is: a new row on top, the fixed rows with their icons, then each area as a
+ * quiet label with its categories under it two levels deep, a count on each. Pick a node to see what is in it; drag a link onto one to file it there, or a category onto
  * another to put it under (holding ⌥, to merge them). A category's ⋯ adds one under it, renames, merges or removes it. */
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import type { Area } from "@zirma/protocol";
@@ -7,15 +8,16 @@ import { MAX_TOPIC_DEPTH, topicDepth } from "@zirma/module-links/tree";
 import type { Tree } from "./linkTree.ts";
 import { useOp } from "./linkControls.tsx";
 import { Pop } from "./shell/Pop.tsx";
-import { Icon } from "./shell/icons.tsx";
+import { Icon, type IconName } from "./shell/icons.tsx";
 import { Select } from "./shell/Select.tsx";
 import { t } from "./i18n/index.ts";
+import "./side-tree.css";
 
 export const DRAG_LINK = "application/x-zirma-link";
 const DRAG_TOPIC = "application/x-zirma-topic";
 
-export function TreeNav({ tree, areas, counts, node, open, searching, onPick, onToggle, onDropLink, onError, onSaid }: {
-  tree: Tree; areas: Area[]; counts: Map<string, number>; node: string; open: ReadonlySet<string>; searching: boolean;
+export function TreeNav({ tree, areas, counts, node, open, searching, inApp, onPick, onToggle, onDropLink, onError, onSaid }: {
+  tree: Tree; areas: Area[]; counts: Map<string, number>; node: string; open: ReadonlySet<string>; searching: boolean; inApp?: boolean;
   onPick(node: string): void; onToggle(node: string): void; onDropLink(id: string, node: string): void; onError(message: string | null): void; onSaid(message: string): void;
 }) {
   const { busy, run } = useOp(onError);
@@ -45,18 +47,19 @@ export function TreeNav({ tree, areas, counts, node, open, searching, onPick, on
     if (over !== target) setOver(target);
   };
 
-  const row = (key: string, depth: number, label: ReactNode, opts: { dot?: string; kids?: boolean; topic?: string; strong?: boolean } = {}) => {
+  const row = (key: string, depth: number, label: ReactNode, opts: { dot?: string; kids?: boolean; topic?: string; icon?: IconName; area?: boolean } = {}) => {
     const count = counts.get(key) ?? 0;
     const isOpen = searching || open.has(key);
     return (
-      <div key={key} className="lt-node" role="treeitem" aria-selected={node === key} aria-expanded={opts.kids ? isOpen : undefined} data-strong={opts.strong || undefined}
+      <div key={key} className={opts.area ? "lt-node lt-area" : "lt-node"} role="treeitem" aria-selected={node === key} aria-expanded={opts.kids ? isOpen : undefined}
         data-over={over === key || undefined} style={{ "--d": depth } as CSSProperties} data-k={opts.dot}
         draggable={!!opts.topic && naming?.node !== key} tabIndex={node === key ? 0 : -1}
         onClick={() => onPick(key)} onKeyDown={(event) => { if (event.key === "Enter") onPick(key); if (opts.kids && (event.key === "ArrowRight" || event.key === "ArrowLeft")) onToggle(key); }}
         onDragStart={(event) => { if (!opts.topic) return; event.dataTransfer.setData(DRAG_TOPIC, opts.topic); event.dataTransfer.effectAllowed = "move"; }}
         onDragOver={(event) => accepts(event, key)} onDragLeave={() => over === key && setOver(null)} onDrop={(event) => drop(event, key)}>
-        <button type="button" className="lt-twist" tabIndex={-1} aria-hidden={!opts.kids} data-open={isOpen || undefined} disabled={!opts.kids}
-          onClick={(event) => { event.stopPropagation(); onToggle(key); }}><Icon name="forward" /></button>
+        {!opts.area && <button type="button" className="lt-twist" tabIndex={-1} aria-hidden={!opts.kids} data-open={isOpen || undefined} disabled={!opts.kids}
+          onClick={(event) => { event.stopPropagation(); onToggle(key); }}><Icon name="forward" /></button>}
+        {opts.icon && <Icon name={opts.icon} />}
         {opts.dot && <span className="lt-dot" />}
         {naming?.node === key && naming.mode === "rename"
           ? <NameInput initial={typeof label === "string" ? label : ""} onDone={(name) => { setNaming(null); if (name) void run("link.topic", { id: key, name }); }} />
@@ -108,23 +111,22 @@ export function TreeNav({ tree, areas, counts, node, open, searching, onPick, on
   );
 
   return (
-    <nav className="lt" aria-label={t("links.tree.label")}>
+    <nav className={inApp ? "lt lt-in-app" : "lt"} aria-label={t("links.tree.label")}>
       <div role="tree" aria-label={t("links.tree.label")}>
-        {row("all", 0, t("links.tree.all"), { strong: true })}
-        {!searching && row("recent", 0, t("links.recent"))}
-        <div className="lt-sep" />
+        {!searching && <NewCategory areas={areas} onAdd={(area, name) => void run("link.topic", { name, area })} />}
+        {row("all", 0, t("links.tree.all"), { icon: "grid" })}
+        {!searching && row("recent", 0, t("links.recent"), { icon: "clock" })}
+        {(counts.get("none") ?? 0) > 0 && row("none", 0, t("links.tree.none"), { icon: "inbox" })}
+        {/* An area is a label, as Notes' "Yours" is, and always open: its categories are the tree. */}
         {tree.roots.map((root) => {
           if (searching && !counts.get(root)) return null;
           const k = root === "area:" ? "gray" : area(root.slice(5))?.k ?? "gray";
-          const kids = (tree.children.get(root) ?? []).length > 0;
           return [
-            row(root, 0, areaName(root), { dot: k, kids, strong: true }),
-            ...((searching || open.has(root)) ? branch(root, 1) : []),
-            ...(naming?.node === root && naming.mode === "child" ? [newRow(root, 1)] : []),
+            row(root, 0, areaName(root), { dot: k, area: true }),
+            ...branch(root, 0),
+            ...(naming?.node === root && naming.mode === "child" ? [newRow(root, 0)] : []),
           ];
         })}
-        {!searching && <NewCategory areas={areas} onAdd={(area, name) => void run("link.topic", { name, area }, () => { if (!open.has(`area:${area}`)) onToggle(`area:${area}`); })} />}
-        {(counts.get("none") ?? 0) > 0 && <><div className="lt-sep" />{row("none", 0, t("links.tree.none"))}</>}
       </div>
       {merging && <MergePick tree={tree} areaName={areaName} from={merging} onClose={() => setMerging(null)}
         onPick={(into) => { const from = merging; setMerging(null); void run("link.merge", { id: from, into }, () => { if (node === from) onPick(into); onSaid(t("links.tree.merged", { name: tree.byId.get(from)?.name ?? "", into: tree.byId.get(into)?.name ?? "" })); }); }} />}
@@ -149,7 +151,8 @@ function NameInput({ initial, placeholder, onDone }: { initial: string; placehol
 /** A category in any area, from the foot of the tree: the area first (our own menu), then its name. */
 function NewCategory({ areas, onAdd }: { areas: Area[]; onAdd(area: string, name: string): void }) {
   const [area, setArea] = useState<string | null>(null);
-  if (area === null) return <button type="button" className="lt-add" onClick={() => setArea(areas[0]?.id ?? "")}><Icon name="plus" />{t("links.tree.newTop")}</button>;
+  if (area === null) return <button type="button" className="lt-node lt-add" onClick={() => setArea(areas[0]?.id ?? "")}>
+    <span className="lt-twist" aria-hidden="true" /><Icon name="plus" /><span className="lt-name">{t("links.tree.newTop")}</span></button>;
   const k = areas.find((candidate) => candidate.id === area)?.k ?? "gray";
   return <div className="lt-new" data-k={k}>
     <Select className="lt-new-area" label={t("links.tree.newArea")} value={area} options={areas.map((candidate) => ({ value: candidate.id, label: candidate.name }))} onChange={setArea}>
