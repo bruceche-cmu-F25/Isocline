@@ -33,7 +33,9 @@
 .nt-in-app .nt-new-row { margin: 0 8px; color: var(--copy); }
 
 /* The main column */
-.nt-main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+/* The page is dotted paper: one faint dot every 24px across the whole column, the bar at its top included; the words
+ * scroll over it. */
+.nt-main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; --dot: color-mix(in oklch, var(--muted) 28%, transparent); background-image: radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 1.4px); background-size: 24px 24px; background-position: 11px 11px; }
 .nt-top { flex: none; display: flex; align-items: center; gap: 2px; height: 48px; padding: 0 10px; }
 .nt-ib { flex: none; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); }
 .nt-ib:hover, .nt-ib[aria-pressed="true"] { background: var(--wash); color: var(--ink); }
@@ -47,9 +49,7 @@
 .nt-crumbs svg { width: 14px; height: 14px; }
 .nt-sl { flex: none; padding: 0 1px; color: var(--line); }
 .nt-status { flex: none; color: var(--muted); font-size: .75rem; padding: 0 6px; }
-/* The page is dotted paper: one faint dot every 24px, the same everywhere and under whatever is written, moving with
- * the page as it scrolls. */
-.nt-scroll { flex: 1; min-height: 0; overflow-y: auto; --dot: color-mix(in oklch, var(--muted) 28%, transparent); background-image: radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 1.4px); background-size: 24px 24px; background-position: 11px 11px; background-attachment: local; }
+.nt-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .nt-doc-wrap { max-width: 740px; margin: 0 auto; padding: 28px 56px 120px; }
 
 /* A page's head */
