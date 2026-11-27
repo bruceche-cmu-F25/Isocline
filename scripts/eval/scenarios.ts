@@ -35,7 +35,27 @@ const todoFor = (r: Result, word: RegExp, due: string, at?: string | ((at?: stri
 /** "下午" names no hour: no `at`, or one in the afternoon. */
 const afternoon = (at?: string) => !at || (Number(at.slice(0, 2)) >= 12 && Number(at.slice(0, 2)) <= 17);
 
+/** The web tools (docs/design/web.md): which were used, and whether opening a page asked the user. */
+const used = (r: Result, tool: string) => (r.tools.some((call) => call.startsWith(tool)) ? [] : [`did not use ${tool} (${r.tools.join(", ") || "no tools"})`]);
+const noWebAsk = (r: Result) => (r.asks.length ? [`asked before opening: ${r.asks.map((a) => a.question.replace(/\s+/g, " ").slice(0, 120)).join(" / ")}`] : []);
+/** An answer from the web names where it came from: an address, or at least the sites. */
+const cites = (r: Result) => (/https?:\/\/|\b[a-z0-9-]+\.(?:com|org|net|ai|io|dev|info|cn)\b/i.test(r.reply) ? [] : ["reply names no source"]);
 export const SCENARIOS: Scenario[] = [
+  {
+    id: "web-news",
+    say: "今天有什么 AI 方面的新闻？",
+    check: (r) => [...done(r), ...used(r, "web_search"), ...noWebAsk(r), ...cites(r), ...noChanges(r)],
+  },
+  {
+    id: "web-read-given",
+    say: "帮我看看 https://nodejs.org/en/about 讲了什么",
+    check: (r) => [...done(r), ...used(r, "web_fetch"), ...noWebAsk(r), ...noChanges(r)],
+  },
+  {
+    id: "web-search-then-read",
+    say: ["搜一下 Node.js 24 的发布说明", "打开第一个结果，说说重点"],
+    check: (r) => [...done(r), ...used(r, "web_search"), ...used(r, "web_fetch"), ...noWebAsk(r), ...noChanges(r)],
+  },
   {
     id: "meet-thu-afternoon",
     say: "周四下午要和张伟见面",

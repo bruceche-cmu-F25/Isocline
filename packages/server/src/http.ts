@@ -34,6 +34,7 @@ import { DEVELOPER_PROFILE } from "./profiles.ts";
 import { command, profileFor, sessionWrites } from "./commands.ts";
 import { handleConnections } from "./connections-http.ts";
 import { handleSkills } from "./skills-http.ts";
+import { handleWeb } from "./web-http.ts";
 import { sourcesToday, runSources } from "./run-sources.ts";
 import { reviewCommit } from "./commit-review.ts";
 import { branchState, projectBranches, pullRequest, workspaceChanges, workspaceDiff } from "./workspace.ts";
@@ -870,6 +871,7 @@ function dispatch(home: Home, options: ServeOptions, peer: Peer, req: IncomingMe
     if (path.startsWith("/api/connections") && (options.google || options.models || options.mcp)
       && await handleConnections({ google: options.google, models: options.models, mcp: options.mcp }, req, res, url)) return;
     if (options.skills && (path === "/api/skills" || path.startsWith("/api/skills/")) && await handleSkills(options.skills, req, res, url)) return;
+    if ((path === "/api/web" || path.startsWith("/api/web/")) && await handleWeb(home.web, req, res, url)) return;
     if (path === "/api/outlets") return outletRoute(home, peer, req, res);
     if (path.startsWith("/api/notes/") && await notesRoute(home, req, res, path, url)) return;
     await route(home, peer, req, res, url);

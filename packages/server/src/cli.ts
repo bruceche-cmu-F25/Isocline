@@ -89,6 +89,8 @@ if (command === "serve") {
     dataDir, secrets: defaultSecretStore(dataDir), log,
     onChange: (kind, name) => home.world.tx(() => recordDomainEvent(home.world, { kind: `connector.${kind}`, subject: `connector:${name}`, actor: "user", payload: { name } })),
   });
+  // A connector's search tool can be one of the search services in Settings → Web.
+  home.web.connectors = mcp;
   // Skills: the folders in <data>/skills/, listed, switched, and added from this Mac or from skills.sh.
   const skills = new Skills({
     dataDir, log,

@@ -134,7 +134,7 @@ export async function runScenario(scenario: Scenario, options: { root: string; m
   const result: Result = { id: scenario.id, goal: [scenario.say].flat().join(" ⏎ "), state: "", reply: "", tools: [], asks: [], proposals: [], calendar: [], todosAdded: [], todosChanged: [], todosGone: [], ms: 0 };
   try {
     withCoreContext({ actor: "user" }, () => updateSettings(world, {
-      locale: options.locale ?? "zh", preferredName: "Bruce", model: options.model ?? "deepseek/deepseek-flash", thinking: options.thinking ?? "low",
+      locale: options.locale ?? "zh", preferredName: "Sam", model: options.model ?? null, thinking: options.thinking ?? null,
     }));
     seedTodos(world, scenario.seed ?? BASE_SEED);
     await home.syncModule("calendar");

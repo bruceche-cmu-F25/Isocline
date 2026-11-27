@@ -103,7 +103,7 @@ async function run(scenario: Scenario, options: { root: string; model?: string; 
   const world = home.world;
   const started = Date.now();
   try {
-    withCoreContext({ actor: "user" }, () => updateSettings(world, { locale: "zh", preferredName: "Bruce", model: options.model ?? "deepseek/deepseek-flash", thinking: options.thinking ?? "low" }));
+    withCoreContext({ actor: "user" }, () => updateSettings(world, { locale: "zh", preferredName: "Sam", model: options.model ?? null, thinking: options.thinking ?? null }));
     const areas = listAreas(world);
     const topic = (spec: string) => {
       const [index, path] = spec.includes(":") ? [Number(spec.split(":")[0]), spec.split(":").slice(1).join(":")] : [0, spec];

@@ -108,6 +108,8 @@ export const ACCESS: readonly Rule[] = [
   rule("*", "/api/connections/*", "local"),
   // Skills are files on this machine, and adding one reads its other folders.
   rule("*", "/api/skills/*", "local"),
+  // Settings → Web holds search services' keys.
+  rule("*", "/api/web/*", "local"),
 ];
 
 /** The level an address needs, or null for an address Zirma does not have. */

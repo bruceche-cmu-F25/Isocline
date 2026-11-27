@@ -25,7 +25,7 @@ import type { World } from "./world.ts";
 /** What a tool may ask of the run it is part of. */
 export interface RunToolContext {
   /** Stops the run until the user answers; resolves with the answer. */
-  ask(request: { kind?: RunRequest["kind"]; question: string; options?: string[] }): Promise<string>;
+  ask(request: { kind?: RunRequest["kind"]; question: string; options?: string[]; detail?: string; detailKind?: "command" | "site"; grant?: string; always?: boolean }): Promise<string>;
   /** Records a moment in the run that is not a change to the world (e.g. `view`). */
   note(kind: string, payload: Record<string, unknown>): void;
   /** Checks a background command using the same live session policy as the engine's shell. */
@@ -236,7 +236,7 @@ async function drive(world: World, run: Run, engine: EnginePort, options: Execut
     } catch { /* a note is not worth failing the run */ }
   };
   const ask = (
-    request: Parameters<RunToolContext["ask"]>[0] & { detail?: string; detailKind?: "command"; grant?: string; always?: boolean; allowSession?: boolean },
+    request: Parameters<RunToolContext["ask"]>[0] & { allowSession?: boolean },
     currentDecision?: () => "allow" | "deny" | undefined,
   ): Promise<string> => {
     // Unattended: a question would wait for no one. The profile offers no tool that asks; this is the backstop.
