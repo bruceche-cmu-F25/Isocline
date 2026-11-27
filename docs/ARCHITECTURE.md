@@ -494,6 +494,8 @@ docs/
 
 还没有的（2026-11-26）：实时通话的语音层（第 4 步）、`world-mcp/`（接 ACP 引擎时）。
 
+模块自己的后台、模块之间的接线现在写在 `packages/server` 里，改法见 `docs/design/module-host.md`（草稿）。
+
 【已实现】（2026-11-23）打包：`npm run package:mac` 打出 `Zirma.app`，`npm run install:mac -- <tag>` 从一个版本 tag 装进 `/Applications`，生产只从 tag 装。见 `docs/packaging.md` 和 `docs/WORKFLOW.md` 第 5 节。
 
 个人模块在另一个私有仓库，结构和 `modules/` 相同。

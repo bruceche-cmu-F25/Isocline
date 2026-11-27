@@ -291,6 +291,8 @@ interface ReaderProps {
   canSend: boolean;
   favorite: FavoriteProps;
   archive: ArchiveProps;
+  /** Whether new mail from this sender is told (Settings → Reminders), and how to change that. */
+  watch: WatchProps;
   line: PageLine;
   acts: Acts;
   /** The draft has just come from Zirma, and has not been written out yet. */
@@ -311,7 +313,16 @@ function MailBack({ onBack }: { onBack: () => void }) {
   );
 }
 
-function Reader({ message, draft, writing, sent, canSend, favorite, archive, line, acts, written, onWritten, onDraft, onOwn, onBack }: ReaderProps) {
+interface WatchProps { watching: boolean; pending: boolean; onChange(on: boolean): void }
+
+/** "Remind me when they write": the sender joins the reminders' list (docs/design/reminders.md §5). */
+function WatchButton({ watching, pending, onChange }: WatchProps) {
+  return watching
+    ? <button type="button" className="ghost small mail-watch" aria-pressed="true" disabled={pending} title={t("rem.mail.unwatch")} onClick={() => onChange(false)}><Icon name="check" />{t("rem.mail.watching")}</button>
+    : <button type="button" className="ghost small mail-watch" aria-pressed="false" disabled={pending} onClick={() => onChange(true)}>{t("rem.mail.watch")}</button>;
+}
+
+function Reader({ message, draft, writing, sent, canSend, favorite, archive, watch, line, acts, written, onWritten, onDraft, onOwn, onBack }: ReaderProps) {
   const [detail, setDetail] = useState<MailDetail | "loading" | "gone">("loading");
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -352,6 +363,7 @@ function Reader({ message, draft, writing, sent, canSend, favorite, archive, lin
       <div className="mail-message-actions">
         <FavoriteButton {...favorite} />
         <ArchiveButton {...archive} />
+        <WatchButton {...watch} />
         {message.localSaved && !message.starred && favorite.canModify &&
           <button type="button" className="ghost small" disabled={favorite.pending} onClick={() => favorite.onChange(message, true)}>{t("mail.favorite.sync")}</button>}
         {!favorite.canModify && <a className="small" href="#p=core.settings">{t("mail.favorite.enable")}</a>}
@@ -545,6 +557,22 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
   const archiveProps = (message: MailMessage): ArchiveProps => ({
     message, canModify: canModify(message), pending: archiving.includes(messageKey(message)), onArchive: archive,
   });
+  // Reminders of new mail from a sender: the list lives in the settings, so every device shows the same.
+  const [watchPending, setWatchPending] = useState(false);
+  const watchProps = (message: MailMessage): WatchProps => {
+    const senders = state.settings.reminders?.mail.senders ?? [];
+    const address = message.fromEmail.toLowerCase();
+    return {
+      watching: senders.includes(address), pending: watchPending,
+      onChange: (on) => {
+        setWatchPending(true);
+        setActionError(null);
+        api.settings({ reminders: { mail: { senders: on ? [...senders, address] : senders.filter((known) => known !== address) } } })
+          .catch((reason: Error) => setActionError(reason.message))
+          .finally(() => setWatchPending(false));
+      },
+    };
+  };
 
   const thingOf = (draft: Draft) => answers(draft) ?? COMPOSE;
   const pickedFor = (draft: Draft): Picked => {
@@ -647,7 +675,7 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh }: {
   const replied = new Set(sentMail.filter((sent) => sent.replyTo && sent.state === "done").map((sent) => `${sent.account}|${sent.replyTo}`));
   const pane = open ? (
     <Reader key={picked} message={open} draft={draftFor(messageKey(open))} writing={isWriting(messageKey(open), open.id)}
-      favorite={favoriteProps(open)} archive={archiveProps(open)}
+      favorite={favoriteProps(open)} archive={archiveProps(open)} watch={watchProps(open)}
       sent={sentMail.filter((sent) => sent.replyTo === open.id && sent.account === open.account)}
       canSend={sources.find((source) => source.account === open.account)?.canSend ?? false}
       line={line} acts={acts} {...shownWritten(draftFor(messageKey(open)))} onDraft={draftReply(open)} onOwn={ownReply(open)} onBack={() => setPicked(null)} />

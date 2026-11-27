@@ -19,7 +19,8 @@ export interface CompileState {
   run: string | null;
 }
 
-const DEFAULT: CompileState = { enabled: true, daily: "07:30", lastAt: null, lastDaily: null, asked: [], run: null };
+/** Off until the user switches it on: a pass sends the notes' words to the model, which is theirs to allow. */
+const DEFAULT: CompileState = { enabled: false, daily: "07:30", lastAt: null, lastDaily: null, asked: [], run: null };
 
 export function compileState(world: World): CompileState {
   const row = world.db.prepare("SELECT * FROM note_compile WHERE one = 1").get();

@@ -92,7 +92,9 @@ export const WELCOME_HOLDER = "welcome";
  * a world transaction, next to the welcome. Returns how many there were. */
 export function tellInWelcome(db: DatabaseSync, now: number): number {
   expire(db, now);
-  const waiting = db.prepare("SELECT id, kind FROM core_notices WHERE state IN ('pending', 'claimed') AND kind != 'welcome' ORDER BY created_at, rowid").all() as { id: string; kind: string }[];
+  // A reminder is not something that waited: still in time, it is told on its own (an event in five minutes must
+  // not slip by inside "welcome back"); out of time, it has already lapsed (docs/design/reminders.md §3).
+  const waiting = db.prepare("SELECT id, kind FROM core_notices WHERE state IN ('pending', 'claimed') AND kind NOT IN ('welcome', 'reminder') ORDER BY created_at, rowid").all() as { id: string; kind: string }[];
   for (const notice of waiting) {
     db.prepare("UPDATE core_notices SET state = 'presented', claimed_by = ?, claim_until = NULL, updated_at = ? WHERE id = ?").run(WELCOME_HOLDER, iso(now), notice.id);
     appendEvent(db, { kind: "notice.presented", subject: `notice:${notice.id}`, actor: "system", runId: null, now, payload: { noticeId: notice.id, kind: notice.kind, by: WELCOME_HOLDER } });

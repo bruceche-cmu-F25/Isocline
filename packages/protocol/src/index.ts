@@ -367,6 +367,32 @@ export interface UserSettings {
   character: "ana" | "kata";
   /** What the assistant is called; null: the character's own name. */
   assistantName: string | null;
+  /** What Zirma reminds the user of, and how early (docs/design/reminders.md §5). Absent from an older home node. */
+  reminders?: ReminderSettings;
+}
+export interface ReminderSettings {
+  /** Events with a time: minutes before they start (5, 10, 15, 30, 60). */
+  events: { on: boolean; beforeMin: number };
+  /** Todos with an hour: minutes before it (15, 30, 60, 120, 180). */
+  todos: { on: boolean; beforeMin: number };
+  /** New mail from these addresses, and what Gmail marks important when `important` is on; `since` is the node's. */
+  mail: { senders: string[]; important: boolean; since: string | null };
+}
+/** A reminder as a notice carries it (kind `reminder`): one or more things about to happen, told together. */
+export interface ReminderItem {
+  source: "event" | "todo" | "mail";
+  /** The event's, todo's or message's id. */
+  id: string;
+  title: string;
+  /** When it happens (an event's start, a todo's hour), or when the mail came. ISO. */
+  at: string;
+  location?: string;
+  meeting?: boolean;
+  /** A message's sender, and the mailbox it came to. */
+  from?: string;
+  account?: string;
+  /** A todo's area (an area id). */
+  area?: string;
 }
 export interface VoiceSettings {
   /** The Mac's figure reads out what it says. Replies to quick talk are always read out, unless muted. */
@@ -380,7 +406,13 @@ export interface VoiceSettings {
   /** Words given to the speech model with every recording (at most 40). */
   words: string[];
 }
-export interface SettingsRequest { requestId: string; patch: Omit<Partial<UserSettings>, "voice"> & { voice?: Partial<VoiceSettings> } }
+export interface SettingsRequest {
+  requestId: string;
+  patch: Omit<Partial<UserSettings>, "voice" | "reminders"> & {
+    voice?: Partial<VoiceSettings>;
+    reminders?: { events?: Partial<ReminderSettings["events"]>; todos?: Partial<ReminderSettings["todos"]>; mail?: Partial<Omit<ReminderSettings["mail"], "since">> };
+  };
+}
 
 /** A voice Zirma can speak in (`GET /api/voice`). */
 export type SpeechService = "elevenlabs" | "inworld" | "boson";

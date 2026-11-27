@@ -16,6 +16,7 @@ import { Devices } from "./Devices.tsx";
 import { General, type GeneralProps } from "./General.tsx";
 import { Areas } from "./Areas.tsx";
 import { Preferences } from "./Preferences.tsx";
+import { Reminders } from "./Reminders.tsx";
 import { PagesSetting } from "./PagesSetting.tsx";
 import { ModelSettings } from "./ModelSettings.tsx";
 import { SubscriptionUsage } from "./SubscriptionUsage.tsx";
@@ -99,7 +100,7 @@ export function Settings({ name, saveName, dockOptions, onEvent, state }: Genera
           </button>
         ))}
       </div>
-      {pane("general", <><General name={name} saveName={saveName} dockOptions={dockOptions} assistant={{ character: state.settings.character ?? "ana", name: state.settings.assistantName ?? null }} /><Preferences state={state} /><Areas state={state} /><PagesSetting state={state} /><NotesFolder state={state} local={local} /></>)}
+      {pane("general", <><General name={name} saveName={saveName} dockOptions={dockOptions} assistant={{ character: state.settings.character ?? "ana", name: state.settings.assistantName ?? null }} /><Preferences state={state} /><Reminders state={state} /><Areas state={state} /><PagesSetting state={state} /><NotesFolder state={state} local={local} /></>)}
       {pane("voice", <VoiceSettings local={local} />)}
       {pane("models", local ? <ModelSettings /> : remote === null
         ? <p className="quiet" role="status">{t("models.usage.checking")}</p>

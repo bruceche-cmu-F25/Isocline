@@ -26,6 +26,7 @@ import { createCredentialStore, McpConnectors, ModelAccounts, Skills } from "@zi
 import { adoptLegacyEnv, checkStage, currentStage, recordDomainEvent } from "@zirma/core";
 import { defaultSecretStore } from "./secrets.ts";
 import { watchTodoSources } from "./todo-sources.ts";
+import { watchReminders } from "./reminders.ts";
 import { moveRenamedFolders } from "./rename.ts";
 import { defaultNotesRoot, watchNotes } from "./notes.ts";
 import { watchNoteCompile } from "./note-compile.ts";
@@ -105,6 +106,8 @@ if (command === "serve") {
   home.reach(() => push.reaches());
   // Calendar events become todos by themselves (which ones is the user's choice, on the Todos page).
   const stopTodoSources = watchTodoSources(home.world, calendarModule, log);
+  // Events about to start, todos about to be due, mail from the people the user named: told on Zirma's own.
+  const stopReminders = watchReminders({ world: home.world, modules: home.modules, syncModule: home.syncModule }, log);
   // The notes folder: another app's changes are read in a moment after they happen.
   const stopNotes = watchNotes(home, log);
   // Zirma's layer of the notes: its passes through them, run in the background.
@@ -136,6 +139,7 @@ if (command === "serve") {
   ingress.on("error", (error: NodeJS.ErrnoException) => log(`ingress port ${ingressPort} unavailable (${error.code ?? error.message}); other devices cannot connect`));
   const stop = async () => {
     stopTodoSources();
+    stopReminders();
     stopNotes();
     stopNoteCompile();
     stopNoteTodos();

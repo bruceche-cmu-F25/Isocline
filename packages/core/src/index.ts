@@ -3,7 +3,7 @@
  * HTTP, pages, engines or any particular module.
  */
 export { openWorld, type Migration, type World } from "./world.ts";
-export { CORE_MIGRATIONS, ACTORS, RUN_STATES, NOTICE_STATES, PROPOSAL_STATES } from "./schema.ts";
+export { CORE_MIGRATIONS, ACTORS, RUN_STATES, UNFINISHED_RUN_STATES, NOTICE_STATES, PROPOSAL_STATES } from "./schema.ts";
 export { withCoreContext, withDefaultActor, coreContext, type Actor, type CoreContext } from "./context.ts";
 export { newId } from "./ids.ts";
 export {
@@ -20,7 +20,7 @@ export {
 } from "./events.ts";
 export {
   submitRun, claimNextRun, heartbeatRun, finishRun, requestCancel, resumeRun, sweepRuns, interruptOrphanedRuns,
-  getRun, listRuns, conversationRuns, listAutomationRuns, conversationBefore, RunError, RUN_LEASE_MS, openRequest, answerRequest, runAnswers, PERMISSION_ANSWERS,
+  getRun, isRunUnfinished, listRuns, conversationRuns, listAutomationRuns, conversationBefore, RunError, RUN_LEASE_MS, openRequest, answerRequest, runAnswers, PERMISSION_ANSWERS,
   type Run, type RunOutcome, type RunRequest, type RunState, type SubmitRunInput, type ViewContext, viewContext,
 } from "./runs.ts";
 export {
@@ -46,7 +46,7 @@ export {
   openProposal, getProposal, listOpenProposals, acceptProposal, declineProposal, supersedeProposal, markRevising, amendProposal, expireProposals, ProposalStateError, PROPOSAL_TTL_MS,
   type Proposal, type ProposalState, type ProposalStep,
 } from "./proposals.ts";
-export { getSettings, updateSettings, userLocale, localeOf, LOCALES, LOCALE_TAGS, localeTag, acceptLanguage, SettingsError, MAX_VOICE_WORDS, CHARACTERS, CHARACTER_NAMES, assistantNameOf, type Character, type Locale, type PageLayout, type UserSettings, type VoiceSettings } from "./settings.ts";
+export { getSettings, updateSettings, userLocale, localeOf, LOCALES, LOCALE_TAGS, localeTag, acceptLanguage, SettingsError, MAX_VOICE_WORDS, CHARACTERS, CHARACTER_NAMES, assistantNameOf, mailRemindersOn, EVENT_REMINDER_MINUTES, TODO_REMINDER_MINUTES, MAX_REMINDER_SENDERS, type ReminderSettings, type Character, type Locale, type PageLayout, type UserSettings, type VoiceSettings } from "./settings.ts";
 export {
   createAutomation, updateAutomation, deleteAutomation, getAutomation, listAutomations, fireDueAutomations, runAutomationNow, ensureTemplates,
   latestSlot, nextSlot, automationName, automationGoal, AutomationError, AUTOMATION_TEMPLATES, CATCH_UP_MS,
@@ -66,3 +66,5 @@ export {
   enqueueOutbound, claimOutbound, finishOutbound, retryOutbound, interruptOutbound, getOutbound, listOutbound, OUTBOUND_STATES, OUTBOUND_MAX_ATTEMPTS,
   type Outbound, type OutboundState,
 } from "./outbound.ts";
+export { planReminders, localInstant, eventKey, todoKey, mailKey, MAIL_FRESH_MS, type ReminderBatch, type ReminderEvent, type ReminderItem, type ReminderMail, type ReminderPlan, type ReminderTodo } from "./reminders.ts";
+export { remindersTold, tellReminders } from "./reminder-notices.ts";

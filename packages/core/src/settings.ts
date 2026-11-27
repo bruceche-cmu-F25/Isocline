@@ -42,7 +42,31 @@ export interface UserSettings {
   character: Character;
   /** What the assistant is called; null: the character's own name. The user's to change (Bruce calls his Alfred). */
   assistantName: string | null;
+  /** What Zirma reminds the user of on its own, and how early (docs/design/reminders.md §5). */
+  reminders: ReminderSettings;
 }
+/** Each kind of reminder, with its own switch (docs/design/reminders.md §5). */
+export interface ReminderSettings {
+  /** Events with a time, this many minutes before they start. */
+  events: { on: boolean; beforeMin: number };
+  /** Todos with an hour they are due by, this many minutes before it. */
+  todos: { on: boolean; beforeMin: number };
+  /** New mail from these senders (addresses), and, when `important` is on, what Gmail marks important in the main
+   * inbox. Off while both are empty. `since`: when it was last turned on (ISO), set by the node; only mail that came
+   * after it is told, so turning it on never sets off a row of old mail. */
+  mail: { senders: string[]; important: boolean; since: string | null };
+}
+/** The choices the settings offer for how early. */
+export const EVENT_REMINDER_MINUTES = [5, 10, 15, 30, 60] as const;
+export const TODO_REMINDER_MINUTES = [15, 30, 60, 120, 180] as const;
+export const MAX_REMINDER_SENDERS = 100;
+const REMINDER_DEFAULTS: ReminderSettings = {
+  events: { on: true, beforeMin: 10 },
+  todos: { on: true, beforeMin: 60 },
+  mail: { senders: [], important: false, since: null },
+};
+/** Mail reminders are on while there is something to remind of. */
+export const mailRemindersOn = (mail: ReminderSettings["mail"]): boolean => mail.important || mail.senders.length > 0;
 /** The two directions of the fourth dimension: Ana (a woman's voice) and Kata (a man's). */
 export const CHARACTERS = ["ana", "kata"] as const;
 export type Character = (typeof CHARACTERS)[number];
@@ -71,7 +95,7 @@ export class SettingsError extends Error {
   override name = "SettingsError";
 }
 
-const DEFAULTS: UserSettings = { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE_DEFAULTS, character: "ana", assistantName: null };
+const DEFAULTS: UserSettings = { locale: null, preferredName: null, model: null, thinking: null, firstRunAt: null, pages: null, voice: VOICE_DEFAULTS, character: "ana", assistantName: null, reminders: REMINDER_DEFAULTS };
 /** The Mac's voice, the local model's, or a speech service's (its own voice id). */
 const VOICE_ID = /^(system|model|elevenlabs|inworld|boson):[^\n\r]{1,120}$/;
 const PAGE_KEY = /^[a-z][a-z0-9_-]{0,31}\.[a-z][a-z0-9_-]{0,31}$/;
@@ -145,7 +169,57 @@ function pick(value: Record<string, unknown>): Partial<UserSettings> {
     out.pages = pages === null ? null : { order: [...new Set(pages.order!)], hidden: [...new Set(pages.hidden!)] };
   }
   if ("voice" in value) out.voice = voiceSettings(value.voice);
+  if ("reminders" in value) out.reminders = reminderSettings(value.reminders);
   return out;
+}
+
+const EMAIL = /^[^\s@<>]{1,64}@[^\s@<>]{1,255}$/;
+
+/** A whole or partial reminders object, each part whole or partial; what it leaves out keeps its default. */
+function reminderSettings(input: unknown): ReminderSettings {
+  const object = (value: unknown, name: string) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new SettingsError(`${name} is an object`);
+    return value as Record<string, unknown>;
+  };
+  const value = object(input, "reminders");
+  const unknown = Object.keys(value).filter((key) => !(key in REMINDER_DEFAULTS));
+  if (unknown.length) throw new SettingsError(`Unknown reminders setting: ${unknown.join(", ")}`);
+  const timed = (key: "events" | "todos", minutes: readonly number[]) => {
+    const part = { ...REMINDER_DEFAULTS[key] };
+    if (!(key in value)) return part;
+    const given = object(value[key], `reminders.${key}`);
+    if ("on" in given) {
+      if (typeof given.on !== "boolean") throw new SettingsError(`reminders.${key}.on is true or false`);
+      part.on = given.on;
+    }
+    if ("beforeMin" in given) {
+      if (!minutes.includes(given.beforeMin as number)) throw new SettingsError(`reminders.${key}.beforeMin is one of: ${minutes.join(", ")}`);
+      part.beforeMin = given.beforeMin as number;
+    }
+    return part;
+  };
+  const mail = { ...REMINDER_DEFAULTS.mail, senders: [...REMINDER_DEFAULTS.mail.senders] };
+  if ("mail" in value) {
+    const given = object(value.mail, "reminders.mail");
+    if ("senders" in given) {
+      const senders = given.senders;
+      if (!Array.isArray(senders) || !senders.every((sender) => typeof sender === "string")) throw new SettingsError("reminders.mail.senders is a list of addresses");
+      const kept = [...new Set((senders as string[]).map((sender) => sender.trim().toLowerCase()).filter(Boolean))];
+      if (kept.some((sender) => !EMAIL.test(sender))) throw new SettingsError("each of reminders.mail.senders is an email address");
+      if (kept.length > MAX_REMINDER_SENDERS) throw new SettingsError(`at most ${MAX_REMINDER_SENDERS} senders`);
+      mail.senders = kept;
+    }
+    if ("important" in given) {
+      if (typeof given.important !== "boolean") throw new SettingsError("reminders.mail.important is true or false");
+      mail.important = given.important;
+    }
+    if ("since" in given) {
+      const since = given.since;
+      if (since !== null && (typeof since !== "string" || Number.isNaN(Date.parse(since)))) throw new SettingsError("reminders.mail.since is a time, or null");
+      mail.since = since === null ? null : new Date(since as string).toISOString();
+    }
+  }
+  return { events: timed("events", EVENT_REMINDER_MINUTES), todos: timed("todos", TODO_REMINDER_MINUTES), mail };
 }
 
 /** A whole or partial voice object; what it leaves out keeps its default (updateSettings merges onto the current). */
@@ -185,8 +259,22 @@ export function updateSettings(world: World, patch: Record<string, unknown>, now
   if (unknown.length) throw new SettingsError(`Unknown setting: ${unknown.join(", ")}`);
   return world.tx((db) => {
     const before = getSettings(world);
-    // A voice patch changes only the fields it names.
-    const changes = pick(patch.voice && typeof patch.voice === "object" && !Array.isArray(patch.voice) ? { ...patch, voice: { ...before.voice, ...patch.voice } } : patch);
+    // A voice or reminders patch changes only the fields it names.
+    const part = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
+    const merged: Record<string, unknown> = { ...patch };
+    if (part(patch.voice)) merged.voice = { ...before.voice, ...patch.voice };
+    if (part(patch.reminders)) {
+      const given = patch.reminders;
+      merged.reminders = Object.fromEntries((Object.keys(before.reminders) as (keyof ReminderSettings)[]).map((key) =>
+        [key, part(given[key]) ? { ...before.reminders[key], ...given[key] } : given[key] ?? before.reminders[key]]));
+      for (const key of Object.keys(given)) if (!(key in before.reminders)) (merged.reminders as Record<string, unknown>)[key] = given[key];
+    }
+    const changes = pick(merged);
+    // When mail reminders were turned on is the node's to say: only mail after it is told.
+    if (changes.reminders) {
+      const was = mailRemindersOn(before.reminders.mail), is = mailRemindersOn(changes.reminders.mail);
+      changes.reminders.mail.since = !is ? null : was ? before.reminders.mail.since : iso(now);
+    }
     const changed: Record<string, [unknown, unknown]> = {};
     for (const [key, value] of Object.entries(changes)) {
       if (JSON.stringify(before[key as keyof UserSettings]) === JSON.stringify(value)) continue;

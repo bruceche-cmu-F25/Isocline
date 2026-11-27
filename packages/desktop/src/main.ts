@@ -16,7 +16,7 @@ import {
 import type { AwayDigest, Notice, PresenceResponse, StateResponse } from "@zirma/protocol";
 import { assistantNameFor, detectLocale, setAssistant, translate, type Key, type Locale } from "@zirma/ui/i18n";
 import { waitingCount } from "@zirma/ui/inbox";
-import { inboxTarget, inboxUrl, noticeLines } from "@zirma/ui/notice";
+import { inboxTarget, inboxUrl, noticeLines, pageUrl, reminderPage } from "@zirma/ui/notice";
 import { awayUpdate, welcomeLines } from "@zirma/ui/welcome";
 import { BrowserPane } from "./browser.ts";
 import { HomeClient } from "./client.ts";
@@ -306,8 +306,8 @@ function createPresence(): BrowserWindow {
   return window;
 }
 
-function showMain(options: { runId?: string; inbox?: string | null; composer?: boolean } = {}): void {
-  const path = options.inbox !== undefined ? inboxUrl(options.inbox) : null;
+function showMain(options: { runId?: string; inbox?: string | null; page?: { page: string; item?: string }; composer?: boolean } = {}): void {
+  const path = options.page ? pageUrl(options.page.page, options.page.item) : options.inbox !== undefined ? inboxUrl(options.inbox) : null;
   if (!main || main.isDestroyed()) main = createMain(path ?? "/");
   else if (path && main.webContents.getURL() !== client.base + path) void main.loadURL(client.base + path);
   const window = main;
@@ -379,6 +379,8 @@ function openNotice(notice: Notice): void {
     showMain({ inbox: `n:${notice.id}` });
     return;
   }
+  const reminded = reminderPage(notice);
+  if (reminded) { acknowledge(notice.id); showMain({ page: reminded }); return; }
   const item = inboxTarget(notice);
   if (item) { showMain({ inbox: item }); return; }
   if (notice.kind === "welcome" || noticeLines(notice, LOCALE).closesOnOpen) acknowledge(notice.id);

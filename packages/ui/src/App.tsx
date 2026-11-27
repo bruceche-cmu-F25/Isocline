@@ -15,7 +15,7 @@ import type { FindCommand, FindSources } from "./shell/find.ts";
 import { Dock } from "./shell/Dock.tsx";
 import { Says } from "./shell/Says.tsx";
 import type { FigureState } from "./entity/tesseract.js";
-import { inboxTarget, noticeLines } from "./noticeText.ts";
+import { inboxTarget, noticeLines, reminderPage } from "./noticeText.ts";
 import type { Outcome, Said } from "./speech/useSpeech.ts";
 import { Icon } from "./shell/icons.tsx";
 import { ALF, dragHandle, NAV, PHONE, useLayout, useMedia, useViewportWidth, widths } from "./shell/layout.ts";
@@ -131,7 +131,7 @@ function useNotices(notices: Notice[], onPresented: (notice: Notice) => void, re
 }
 
 /** How long Zirma's card about a notice stays once said (never while the pointer is on it); it stays in 通知 after. */
-const STAY_MS: Record<string, number> = { welcome: 15_000, run_result: 12_000, run_interrupted: 20_000 };
+const STAY_MS: Record<string, number> = { welcome: 15_000, run_result: 12_000, run_interrupted: 20_000, reminder: 30_000 };
 
 /** What Zirma says in the app about a notice; the button is what can be done here. */
 function noticeSaid(notice: Notice, name: string | null, inInbox: boolean): Said {
@@ -700,6 +700,13 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
         items={shown} id={(notice) => notice.id} lines={(notice) => noticeSaid(notice, name, inInbox)} stayMs={(notice) => STAY_MS[notice.kind] ?? 25_000}
         remove={unshow} onMood={setSpeaking} done={(notice, outcome: Outcome) => {
           if (outcome === "timeout") return; // left in 通知, not acknowledged
+          const reminded = reminderPage(notice);
+          if (reminded) {
+            // Said is told: a reminder is gone once it has been seen, and opening it shows what it is about.
+            acknowledge(notice);
+            if (outcome === "open") goTo(reminded.page, reminded.item);
+            return;
+          }
           const item = inboxTarget(notice);
           if (item) {
             if (outcome === "open") showInboxItem(item);

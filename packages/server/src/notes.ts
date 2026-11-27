@@ -49,7 +49,10 @@ export async function notesRoute(home: Home, req: IncomingMessage, res: ServerRe
   const { library, id } = notesOf(home).library(home.world);
   // What the page was, to see which to-dos were ticked or unticked by this save.
   let before: string | null = null;
-  try { before = library.read(body.id)?.text ?? null; } catch { before = null; }
+  try { before = library.read(body.id)?.text ?? null; } catch (error) {
+    // The save itself says what is wrong with the file; only the to-dos' mirror is lost here, so say that.
+    home.log(`notes: could not read "${body.id}" before saving; its ticked to-dos will not reach the todo list: ${(error as Error).message}`);
+  }
   let answer: SaveAnswer;
   try {
     answer = savePage(home.world, library, id, { library: body.library, id: body.id, base: body.base, text: body.text });
@@ -59,7 +62,7 @@ export async function notesRoute(home: Home, req: IncomingMessage, res: ServerRe
   }
   if (answer.ok) {
     announce(home, body.id);
-    if (before !== null) mirrorNoteTicks(home.world, id, body.id, before, body.text);
+    if (before !== null) mirrorNoteTicks(home.world, id, body.id, before, body.text, (message) => home.log(message));
   }
   send(res, answer.ok ? 200 : 409, answer);
   return true;
@@ -69,8 +72,12 @@ export async function notesRoute(home: Home, req: IncomingMessage, res: ServerRe
  * second or so: a page's saves are told at most every two seconds, and the last of a burst is always told, so an
  * open page on another device takes it in. The event carries the page's path only, never its words. */
 const ANNOUNCE_MS = 2000;
-const announced = new Map<string, { at: number; timer?: NodeJS.Timeout }>();
+/** Per home node (a test opens several in one process), and only pages told within the last window. */
+const announcers = new WeakMap<Home, Map<string, { at: number; timer?: NodeJS.Timeout }>>();
 function announce(home: Home, page: string): void {
+  let announced = announcers.get(home);
+  if (!announced) announcers.set(home, announced = new Map());
+  for (const [name, entry] of announced) if (!entry.timer && Date.now() - entry.at >= ANNOUNCE_MS) announced.delete(name);
   const tell = () => {
     announced.set(page, { at: Date.now() });
     try { home.world.tx(() => recordDomainEvent(home.world, { kind: "note.saved", subject: `note:${page}`, actor: "user", payload: { page } })); } catch { /* the world is closing */ }
