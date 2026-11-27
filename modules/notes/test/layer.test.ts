@@ -308,9 +308,38 @@ test("a pass cannot write the page about the user whole, in either language; it 
     assert.equal(answer.ok, false);
     assert.equal(answer.ok === false && answer.reason, "reserved");
   }
-  assert.ok(!existsSync(join(root, `${aboutId("zh")}.md`)));
+  assert.doesNotMatch(readFileSync(join(root, `${aboutId("zh")}.md`), "utf8"), /喜欢手冲/);
   const [remember] = runTools(world, [module]).filter((tool) => tool.name === "note_remember");
   assert.ok(remember);
+});
+
+test("the page about the user waits for a saved language, so it is named in it", () => {
+  const root = mkdtempSync(join(tmpdir(), "zirma-layer-test-"));
+  const module = createNotesModule({ defaultRoot: root });
+  const world: World = openWorld(":memory:", [...CORE_MIGRATIONS, ...module.migrations]);
+  module.library(world);
+  assert.ok(existsSync(join(root, ZIRMA_DIR)) && !readdirSync(join(root, ZIRMA_DIR)).length, "no language yet: no page");
+  world.db.prepare("INSERT INTO core_settings (key, value, updated_at) VALUES ('locale', '\"zh\"', '2026-01-01T00:00:00Z')").run();
+  module.library(world);
+  assert.deepEqual(readdirSync(join(root, ZIRMA_DIR)), ["关于你.md"]);
+});
+
+test("a new library has the page about the user, empty; deleted, it is not put back, nor made again in the other language", () => {
+  const { world, library, op, page, file, module } = setup();
+  const about = aboutId("zh");
+  assert.equal(page(about).zirma, true);
+  assert.equal(readKept(file(about)).lines.length, 0);
+  assert.match(file(about), /icon: person/);
+  // Zirma's own page, so the first fact goes in without the page counting as changed elsewhere.
+  const remember = jobProfiles(world, [module])["note-compile"].tools.find((tool) => tool.name === "note_remember")!;
+  assert.equal(remember.execute({ fact: "周末在家冲咖啡", page: "手冲" }, new AbortController().signal), "Noted.");
+  assert.equal(readKept(file(about)).lines.length, 1);
+  world.db.prepare("UPDATE core_settings SET value = '\"en\"' WHERE key = 'locale'").run();
+  module.library(world);
+  assert.ok(!existsSync(join(library.root, `${aboutId("en")}.md`)), "one page about the user, whatever the language");
+  op("note.delete", { id: about });
+  module.library(world);
+  assert.ok(!existsSync(join(library.root, `${about}.md`)) && !existsSync(join(library.root, `${aboutId("en")}.md`)));
 });
 
 test("the page about the user reaches a run fenced as data, and a closing tag in it cannot end the fence", () => {

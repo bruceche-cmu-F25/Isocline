@@ -263,6 +263,7 @@
 .nt-kept-body h2 { margin: 22px 0 6px; font-size: 1.0625rem; font-weight: 650; }
 .nt-kept-body ul { margin: 0; padding: 0 0 0 1.25em; }
 .nt-kept-body { font-size: 1rem; line-height: 1.65; }
+.nt-kept-empty { margin: 0 0 12px; color: var(--muted); font-size: .9375rem; line-height: 1.6; }
 .nt-kept-line { position: relative; padding: 3px 28px 3px 0; overflow-wrap: anywhere; }
 .nt-kept-text { margin-right: 4px; }
 .nt-ref { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; margin: 0 2px; padding: 0 3px; border-radius: 5px; background: var(--alf-soft); color: var(--alf); font-size: .6875rem; font-weight: 600; line-height: 1; vertical-align: 2px; font-variant-numeric: tabular-nums; }
