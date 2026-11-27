@@ -7,6 +7,7 @@ import type { Area } from "@zirma/protocol";
 import { MAX_TOPIC_DEPTH, topicDepth } from "@zirma/module-links/tree";
 import type { Tree } from "./linkTree.ts";
 import { useOp } from "./linkControls.tsx";
+import { ZirmaMark } from "./LinkAutoFile.tsx";
 import { Pop } from "./shell/Pop.tsx";
 import { Icon, type IconName } from "./shell/icons.tsx";
 import { Select } from "./shell/Select.tsx";
@@ -47,7 +48,7 @@ export function TreeNav({ tree, areas, counts, node, open, searching, inApp, onP
     if (over !== target) setOver(target);
   };
 
-  const row = (key: string, depth: number, label: ReactNode, opts: { dot?: string; kids?: boolean; topic?: string; icon?: IconName; area?: boolean } = {}) => {
+  const row = (key: string, depth: number, label: ReactNode, opts: { dot?: string; kids?: boolean; topic?: string; icon?: IconName; area?: boolean; zirma?: boolean } = {}) => {
     const count = counts.get(key) ?? 0;
     const isOpen = searching || open.has(key);
     return (
@@ -64,6 +65,7 @@ export function TreeNav({ tree, areas, counts, node, open, searching, inApp, onP
         {naming?.node === key && naming.mode === "rename"
           ? <NameInput initial={typeof label === "string" ? label : ""} onDone={(name) => { setNaming(null); if (name) void run("link.topic", { id: key, name }); }} />
           : <span className="lt-name">{label}</span>}
+        {opts.zirma && <ZirmaMark made />}
         <span className="lt-count">{count || ""}</span>
         {(opts.topic || key.startsWith("area:")) && (
           <button type="button" className="lt-more" aria-label={t("links.tree.more", { name: typeof label === "string" ? label : "" })} aria-expanded={menu === key}
@@ -95,7 +97,7 @@ export function TreeNav({ tree, areas, counts, node, open, searching, inApp, onP
     if (searching && !counts.get(topic.id)) return [];
     const kids = (tree.children.get(topic.id) ?? []).length > 0;
     return [
-      row(topic.id, depth, topic.name, { kids, topic: topic.id }),
+      row(topic.id, depth, topic.name, { kids, topic: topic.id, zirma: topic.byZirma }),
       ...((searching || open.has(topic.id)) ? branch(topic.id, depth + 1) : []),
       ...(naming?.node === topic.id && naming.mode === "child" ? [newRow(topic.id, depth + 1)] : []),
     ];

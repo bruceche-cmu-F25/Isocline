@@ -100,3 +100,26 @@ export function listFixes(world: World): Fix[] {
     ...(row.from_path ? { from: row.from_path as string } : {}), ...(row.to_path ? { to: row.to_path as string } : {}),
   }));
 }
+
+/** Zirma's passes through them (filing.ts): what each filed and made, so it can be undone; and the Unfiled button's sweep. */
+export const FILE_PASS_MIGRATION: Migration = {
+  id: "link:10",
+  sql: `
+CREATE TABLE link_file_passes (
+  id TEXT PRIMARY KEY NOT NULL CHECK (length(id) BETWEEN 1 AND 64),
+  run_id TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('auto', 'sweep')),
+  sweep TEXT,
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  item_ids TEXT NOT NULL DEFAULT '[]',
+  filed TEXT NOT NULL DEFAULT '[]',
+  made TEXT NOT NULL DEFAULT '[]',
+  deferred TEXT NOT NULL DEFAULT '[]',
+  undone INTEGER NOT NULL DEFAULT 0 CHECK (undone IN (0, 1)),
+  seen INTEGER NOT NULL DEFAULT 0 CHECK (seen IN (0, 1))
+) STRICT;
+CREATE INDEX link_file_passes_ended ON link_file_passes(ended_at);
+ALTER TABLE link_autofile ADD COLUMN sweep TEXT;
+`,
+};

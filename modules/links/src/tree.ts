@@ -61,3 +61,17 @@ export function topicPath(tree: TopicTree, id: string | undefined, areaName?: (a
   const area = areaName?.(chain[0].area);
   return [...(area ? [area] : []), ...chain.map((topic) => topic.name)].join(separator);
 }
+
+/** A topic named by the model: a path ("Learning/Roadmaps" or "Learning › Roadmaps", from the top of the area down)
+ * or a plain name. */
+export function findTopic(tree: TopicTree, said: string): string | undefined {
+  const parts = said.split(/\s*(?:›|\/|>)\s*/).map((part) => part.trim().toLowerCase()).filter(Boolean);
+  if (!parts.length) return undefined;
+  const all = [...tree.byId.values()];
+  const exact = all.find((topic) => topicPath(tree, topic.id, undefined, "/").toLowerCase() === parts.join("/"));
+  if (exact) return exact.id;
+  // The area may lead the path too; then only the end is a topic's.
+  const tail = all.filter((topic) => topicPath(tree, topic.id, undefined, "/").toLowerCase().endsWith(parts.slice(-2).join("/")));
+  if (parts.length > 1 && tail.length === 1) return tail[0].id;
+  return all.find((topic) => topic.name.toLowerCase() === parts[parts.length - 1])?.id;
+}

@@ -89,6 +89,14 @@ export interface AutoFileState {
   /** How many links it filed today, of the day's allowance. */
   today: number;
   perDay: number;
+  /** Links nobody has put anywhere yet (no category, not left in Unfiled on purpose): what the Unfiled button offers. */
+  unsorted?: number;
+  /** A pass is going through links now. */
+  filing?: boolean;
+  /** The Unfiled button was pressed and its passes are not done. */
+  sweeping?: boolean;
+  /** The last pass that filed something, for the line on top of the page: until the user saw or undid it, a day at most. */
+  last?: { id: string; filed: number; made: number; at: string };
 }
 
 export interface LinksSnapshot {
@@ -104,5 +112,5 @@ export interface LinksSnapshot {
 
 /** The operations a device may ask of this module (POST /api/ops/<name>), as the module defines them. A test on the
  * home node checks this list against the module's own, so a device cannot name one that is not there. */
-export const LINK_OPS = ["link.save", "link.update", "link.remove", "link.refetch", "link.pin", "link.rename", "link.ungroup", "link.group", "link.move", "link.order", "link.topic", "link.place", "link.merge", "link.import", "link.import_undo", "link.autofile"] as const;
+export const LINK_OPS = ["link.save", "link.update", "link.remove", "link.refetch", "link.pin", "link.rename", "link.ungroup", "link.group", "link.move", "link.order", "link.topic", "link.place", "link.merge", "link.import", "link.import_undo", "link.autofile", "link.autofile_undo", "link.autofile_seen", "link.autofile_sweep"] as const;
 export type LinkOp = (typeof LINK_OPS)[number];

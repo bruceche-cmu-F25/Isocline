@@ -28,7 +28,7 @@ test("links already filed when the update comes are the user's, and nothing wait
   const dir = mkdtempSync(join(tmpdir(), "zirma-links-"));
   try {
     const path = join(dir, "world.db");
-    const before = linksModule.migrations.filter((migration) => migration.id !== "link:9");
+    const before = linksModule.migrations.filter((migration) => !["link:9", "link:10"].includes(migration.id));
     let w = openWorld(path, [...CORE_MIGRATIONS, ...before]);
     w.db.exec("INSERT INTO link_topics (id, name, area, created_at) VALUES ('t1', 'Reading', 'learn', '2026-11-01T00:00:00Z')");
     w.db.exec(`INSERT INTO link_items (id, kind, url, title, topic_id, saved_at) VALUES
@@ -51,7 +51,8 @@ test("filing on its own is off until the user turns it on from the page, and tur
   assert.equal((linksModule.snapshot!(w) as LinksSnapshot).autoFile?.enabled, false);
   assert.deepEqual(waiting(w), [], "off: nothing waits");
 
-  assert.deepEqual(op(w, "link.autofile", { enabled: true }), { enabled: true, today: 0, perDay: AUTO_FILE_PER_DAY });
+  assert.deepEqual((({ enabled, today, perDay }) => ({ enabled, today, perDay }))(op(w, "link.autofile", { enabled: true }) as { enabled: boolean; today: number; perDay: number }),
+    { enabled: true, today: 0, perDay: AUTO_FILE_PER_DAY });
   assert.equal((linksModule.snapshot!(w) as LinksSnapshot).autoFile?.enabled, true);
   assert.deepEqual(waiting(w), [], "what was saved before it was on stays where it is");
 

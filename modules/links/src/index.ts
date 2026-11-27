@@ -9,8 +9,9 @@ import {
   importLinks, mergeTopic, undoImport, updatePlace,
 } from "./domain.ts";
 import { IMPORT_CHUNK } from "./bookmarks.ts";
-import { autoFileState, setAutoFile } from "./autofile.ts";
-import { topicPath, topicTree, under, type TopicTree } from "./tree.ts";
+import { setAutoFile } from "./autofile.ts";
+import { autoFileSnapshot, fileOne, FILE_INSTRUCTIONS, markPassSeen, startSweep, undoFilePass } from "./filing.ts";
+import { findTopic, topicPath, topicTree, under } from "./tree.ts";
 import { getCover, largeCovers, pendingCovers, recordCover, replaceCover } from "./covers.ts";
 import { fetchCover, fetchIcon, shrinkCover, fetchPage, PageFetchError, type IconFetcher, type PageFetcher, type PageInfo } from "./fetch.ts";
 import { CLIP_STATES, type LinksSnapshot } from "./types.ts";
@@ -20,6 +21,7 @@ export * from "./types.ts";
 export * from "./tree.ts";
 export * from "./bookmarks.ts";
 export * from "./autofile.ts";
+export * from "./filing.ts";
 export { classify, findUrl, isShortener, LinkUrlError, nameFromUrl, normalizeUrl, parseLinkPaste, tidyTitle } from "./url.ts";
 export {
   decodeEntities, fetchIcon, fetchPage, imageType, isPublicAddress, looksLikeWall, PageFetchError, readHead,
@@ -31,19 +33,6 @@ const State = Type.Union(CLIP_STATES.map((state) => Type.Literal(state)));
 const AreaField = Type.Optional(Type.String({ description: "For a NEW topic: the id of the user's area it sits in (your instructions list them)." }));
 const UnderField = Type.Optional(Type.String({ maxLength: 130, description: "For a NEW topic: an existing topic to put it under (its name or path, e.g. \"Learning/Roadmaps\"); at most two levels" }));
 
-/** A topic named by the model: a path ("Learning/Roadmaps" or "Learning › Roadmaps", from the top of the area down)
- * or a plain name. */
-function findTopic(tree: TopicTree, said: string): string | undefined {
-  const parts = said.split(/\s*(?:›|\/|>)\s*/).map((part) => part.trim().toLowerCase()).filter(Boolean);
-  if (!parts.length) return undefined;
-  const all = [...tree.byId.values()];
-  const exact = all.find((topic) => topicPath(tree, topic.id, undefined, "/").toLowerCase() === parts.join("/"));
-  if (exact) return exact.id;
-  // The area may lead the path too; then only the end is a topic's.
-  const tail = all.filter((topic) => topicPath(tree, topic.id, undefined, "/").toLowerCase().endsWith(parts.slice(-2).join("/")));
-  if (parts.length > 1 && tail.length === 1) return tail[0].id;
-  return all.find((topic) => topic.name.toLowerCase() === parts[parts.length - 1])?.id;
-}
 /** Where the model asked to file something: an existing topic by name or path, or a new one under `under` or in `area`.
  * A string answer is a problem to tell the model. */
 function fileUnder(world: World, params: { topic?: string; area?: string; under?: string }): string | { topicId?: string; topic?: string; area?: string; parentId?: string } {
@@ -80,7 +69,7 @@ function snapshot(world: World): LinksSnapshot {
     folders: listFolders(world),
     clips: clips.map((clip) => (changes.get(`link:${clip.id}`)?.actor === "alfred" ? { ...clip, byZirma: true } : clip)),
     topics: listTopics(world),
-    autoFile: autoFileState(world),
+    autoFile: autoFileSnapshot(world),
   };
 }
 
@@ -160,6 +149,24 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
       `A topic's area is one of the user's areas (id and name): ${describeAreas(world)}.`,
     ].join("\n"),
     areaRemoved: (world, id, moveTo) => { moveTopicsOutOfArea(world, id, moveTo); },
+    jobs: {
+      // Zirma's passes that file links on their own (links-autofile.md): the home node starts them (link-file.ts).
+      file: {
+        instructions: FILE_INSTRUCTIONS,
+        tools: [defineTool({
+          name: "link_file", label: "File link", level: "local",
+          description: "File one link of this pass: into one of the user's categories (its path), or a new broad category at the top of an area (its name and the area's id). Or skip it.",
+          parameters: Type.Object({
+            id: Type.String({ description: "The link's id, from the list in the request" }),
+            category: Type.Optional(Type.String({ maxLength: 130, description: "An existing category's path (e.g. \"Learning\" or \"Learning/Rust\"), or a new broad category's name" })),
+            area: Type.Optional(Type.String({ maxLength: 64, description: "Only for a new category: the id of the area it goes in" })),
+            skip: Type.Optional(Type.Boolean({ description: "Leave it in Unfiled: when unsure" })),
+          }),
+          describe: (_world, params) => params.skip ? `${params.id}: skip` : `${params.id} → ${params.category ?? ""}`,
+          execute: (world, params) => fileOne(world, params),
+        })],
+      },
+    },
     sync: { everyMs: 5 * 60_000, onEvents: ["link.saved", "link.refetch", "link.pinned", "link.imported"], run: lookUp(options.fetcher ?? ((url, signal, language) => fetchPage(url, signal, undefined, language)), options.icons ?? fetchIcon, options.covers ?? fetchCover) },
     // Both covers and site icons are served locally through module files.
     file: (world, name) => /^cover_[\w-]+$/.test(name) ? getCover(world, name.slice(6)) : getIcon(world, name),
@@ -224,7 +231,11 @@ export function createLinksModule(options: { fetcher?: PageFetcher; icons?: Icon
       }),
       defineOp({ name: "link.import_undo", input: Type.Object({ importId: Type.String({ maxLength: 64 }) }), run: (world, input) => undoImport(world, input.importId) }),
       // The Auto-file button on the Links page (links-autofile.md §2).
-      defineOp({ name: "link.autofile", input: Type.Object({ enabled: Type.Boolean() }), run: (world, input) => setAutoFile(world, input.enabled) }),
+      defineOp({ name: "link.autofile", input: Type.Object({ enabled: Type.Boolean() }), run: (world, input) => { setAutoFile(world, input.enabled); return autoFileSnapshot(world); } }),
+      defineOp({ name: "link.autofile_undo", input: Type.Object({ id: Type.String({ maxLength: 64 }) }), run: (world, input) => undoFilePass(world, input.id) }),
+      defineOp({ name: "link.autofile_seen", input: Type.Object({ id: Type.String({ maxLength: 64 }) }), run: (world, input) => markPassSeen(world, input.id) }),
+      // The Unfiled button (links-autofile.md §2): go through every link nobody filed, whether or not the switch is on.
+      defineOp({ name: "link.autofile_sweep", input: Type.Object({}), run: (world) => startSweep(world) }),
     ],
 
     tools: [

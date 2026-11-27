@@ -24,6 +24,7 @@ import { LinkDeleteDialog, onDeleteKey } from "./LinkDeleteDialog.tsx";
 import { Icon } from "./shell/icons.tsx";
 import { Select } from "./shell/Select.tsx";
 import { OutLink } from "./Linked.tsx";
+import { AutoFileButton, AutoFileLine, FiledByZirma, SweepOffer, useAutoFile } from "./LinkAutoFile.tsx";
 import { getLocale, t, type Key, type Locale } from "./i18n/index.ts";
 import { when } from "./shell/Nav.tsx";
 import "./links-page.css";
@@ -183,6 +184,7 @@ function Card({ clip, topics, areas, open, fresh, onOpen, onError }: {
       {open && (
         <div className="lk-more">
           {clip.description && <p className="lk-desc"><span>{t("links.pageSays")}</span>{clip.description}</p>}
+          {clip.filedByZirma && topic && <FiledByZirma path={topicChain(topicTree(topics), topic.id).map((step) => step.name).join(" › ")} busy={busy} onPutBack={() => update({ topicId: "" })} />}
           {untitled && !looking && (
             <div className="lk-hint">
               <span>{t(clip.fetch === "failed" ? WHY[clip.fetchError ?? ""] ?? "links.why.other" : "links.noTitle")}</span>
@@ -254,6 +256,7 @@ export function Links({ snapshot, fresh, areas, focus, onFocused, side }: { snap
   const [narrow, setNarrow] = useState(false);
   const page = useRef<HTMLElement>(null);
   const field = useRef<HTMLInputElement>(null);
+  const autoFile = useAutoFile(snapshot?.autoFile, setError, (text) => setSaid({ text }));
 
   useEffect(() => {
     const element = page.current;
@@ -415,7 +418,7 @@ export function Links({ snapshot, fresh, areas, focus, onFocused, side }: { snap
   const nodeView = () => {
     if (node === "recent" || node === "none") {
       const list = filtered(inNode(tree, node, items).sort(byNewest));
-      return <>{filters(inNode(tree, node, items))}{draw(list, { path: node === "recent" }) ?? <p className="quiet empty-list">{t("links.emptyFilter")}</p>}</>;
+      return <>{node === "none" && <SweepOffer state={snapshot?.autoFile} onError={setError} onSaid={(text) => setSaid({ text })} />}{filters(inNode(tree, node, items))}{draw(list, { path: node === "recent" }) ?? <p className="quiet empty-list">{t("links.emptyFilter")}</p>}</>;
     }
     if (node.startsWith("area:")) return areaCards(node) ?? <p className="quiet empty-list">{t("links.tree.emptyHint")}</p>;
     const all = inNode(tree, node, items);
@@ -502,6 +505,7 @@ export function Links({ snapshot, fresh, areas, focus, onFocused, side }: { snap
                   : <span key={index}>{name}</span>)}
                 {!searching && <span className="count">{node === "all" ? items.length : node === "recent" ? treeCounts.get("recent") : inNode(tree, node, items).length}</span>}
               </h2>
+              <AutoFileButton state={snapshot?.autoFile} busy={autoFile.busy} onPress={autoFile.press} />
               <div className="lk-views" role="group" aria-label={t("links.view.label")}>
                 <button type="button" aria-pressed={view === "list"} aria-label={t("links.view.list")} title={t("links.view.list")} onClick={() => setView("list")}><Icon name="list" /></button>
                 <button type="button" aria-pressed={view === "grid"} aria-label={t("links.view.grid")} title={t("links.view.grid")} onClick={() => setView("grid")}><Icon name="grid" /></button>
@@ -509,17 +513,21 @@ export function Links({ snapshot, fresh, areas, focus, onFocused, side }: { snap
               <span className="lk-more-wrap">
                 <button type="button" className="lk-icon-btn" aria-label={t("links.more")} title={t("links.more")} aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="more" /></button>
                 {menu && <Menu onClose={() => setMenu(false)}>
+                  {snapshot?.autoFile && <button type="button" role="menuitem" className="la-menu-item" onClick={() => { setMenu(false); autoFile.press(); }}>
+                    {t("links.auto.button")}{snapshot.autoFile.enabled ? ` · ${t("links.auto.onShort")}` : ""}</button>}
                   <button type="button" role="menuitem" onClick={() => { setMenu(false); setImporting(true); }}>{t("links.import.title")}…</button>
                   {!narrow && !side && <button type="button" role="menuitem" onClick={() => { setMenu(false); setTreeHidden(showTree); store("zirma.links.treeHidden", showTree); }}>{t(showTree ? "links.tree.hide" : "links.tree.show")}</button>}
                 </Menu>}
               </span>
             </div>
+            {!searching && <AutoFileLine state={snapshot?.autoFile} onError={setError} onSaid={(text) => setSaid({ text })} />}
             {searching ? results() : node === "all" ? overview() : nodeView()}
           </div>
         </div>
       </div>
 
       {side && createPortal(treeNav(true), side)}
+      {autoFile.view}
       {openedItem?.kind === "place" && <PlaceCard place={openedItem.place} tree={tree} areas={areas} pathText={pathText} onClose={() => setOpened(null)} onError={setError} />}
       {openedItem?.kind === "clip" && (
         <Pop onClose={() => setOpened(null)}>
