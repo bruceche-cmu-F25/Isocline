@@ -56,6 +56,15 @@ export function reminderData(world: World, modules: readonly ZirmaModule[]): { e
   };
 }
 
+/** How long until the look for the next thing, or null when the minute's look comes first. Never a wait longer than
+ * a minute: `setTimeout` cannot wait more than about 24 days (longer fires at once), and the calendar reaches months
+ * ahead. */
+export function nextLookIn(next: number | null, now: number): number | null {
+  if (next === null) return null;
+  const wait = Math.max(next - now, 0);
+  return wait < EVERY_MS ? wait : null;
+}
+
 /** One look: tells what is due, takes back what went out of date, and says when to look next. */
 export function remindNow(world: World, modules: readonly ZirmaModule[], now: number = Date.now()): { told: number; withdrawn: number; next: number | null } {
   const plan = planReminders({ now, settings: getSettings(world).reminders, ...reminderData(world, modules), told: remindersTold(world, now) });
@@ -76,7 +85,8 @@ export function watchReminders(home: ReminderHome, log?: (message: string) => vo
       const done = remindNow(world, home.modules);
       if (done.told || done.withdrawn) log?.(`reminders: ${done.told} told${done.withdrawn ? `, ${done.withdrawn} out of date` : ""}`);
       // The next thing's moment, unless the minute's look comes first.
-      if (done.next !== null) soon(Math.max(done.next - Date.now(), 0));
+      const wait = nextLookIn(done.next, Date.now());
+      if (wait !== null) soon(wait);
     } catch (error) {
       log?.(`reminders: ${error instanceof Error ? error.message : String(error)}`);
     } finally {

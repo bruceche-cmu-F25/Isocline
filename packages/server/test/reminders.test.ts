@@ -4,7 +4,7 @@ import { CORE_MIGRATIONS, listNotices, openWorld, updateSettings, type World } f
 import { calendarModule } from "@zirma/module-calendar";
 import { mailModule } from "@zirma/module-mail";
 import { addTodo, todoModule } from "@zirma/module-todo";
-import { remindNow } from "../src/reminders.ts";
+import { nextLookIn, remindNow } from "../src/reminders.ts";
 
 const MIN = 60_000;
 const modules = [calendarModule, todoModule, mailModule];
@@ -57,4 +57,12 @@ test("on a phone a reminder says what and when, and opens the thing's page", asy
     { source: "todo", id: "b", title: "Form", at: new Date(Date.now() + 60 * MIN + 20_000).toISOString() },
   ] } };
   assert.equal(noticeMessage(two, "en").title, "Due in 1 hr: Essay, and 1 more");
+});
+
+test("the next look waits at most a minute: a thing months away does not set off a timer at once", () => {
+  const now = Date.now();
+  assert.equal(nextLookIn(null, now), null);
+  assert.equal(nextLookIn(now + 20_000, now), 20_000);
+  assert.equal(nextLookIn(now - 5, now), 0);
+  assert.equal(nextLookIn(now + 40 * 24 * 60 * MIN, now), null);
 });
