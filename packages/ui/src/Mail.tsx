@@ -710,7 +710,7 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh, side }:
   // In the sidebar: a new letter on top, then the places with their counts (workspace-architecture.md §6).
   const inSide = !!side && !phone;
   const sideNav = inSide && createPortal(
-    <nav className="st" aria-label={t("mail.filters")}>
+    <nav className="st-list" aria-label={t("mail.filters")}>
       <button type="button" className="st-node" onClick={startNew}><span className="st-space" /><Icon name="plus" /><span className="st-name">{t("mail.new")}</span></button>
       {hasViews && FILTERS.map(([id, label]) => (
         <button type="button" key={id} className="st-node" aria-current={filter === id ? "true" : undefined} onClick={() => chooseView(id)}>

@@ -12,8 +12,8 @@
 @media (prefers-reduced-motion: reduce) { :is(.nt-node, .lt-node) :is(.nt-tw, .lt-twist) svg { transition: none; } }
 
 /* A flat list of places (Mail): the same rows, nothing to fold; a space where the twist would be keeps the names in
-   line with the trees'. */
-.st { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 8px 16px; }
+   line with the trees'. Not `.st`: that is the status dot's class (ConversationStatus, the Code page's lists). */
+.st-list { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 8px 16px; }
 .st-node { width: 100%; gap: 6px; padding: 0 6px 0 0; text-align: left; }
 .st-node > svg { flex: none; width: 16px; height: 16px; color: var(--muted); }
 .st-count { flex: none; min-width: 1.5em; color: var(--muted); font-size: .75rem; font-weight: 400; text-align: right; font-variant-numeric: tabular-nums; }
