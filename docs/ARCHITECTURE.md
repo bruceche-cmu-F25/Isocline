@@ -1,4 +1,6 @@
-# Alfred 架构草案
+# Zirma 架构草案
+
+> 产品 2026-11-24 改名为 Zirma（原名 Alfred，后来叫过 Isocline）。正文里的「Alfred」都指 Zirma，没有逐处改。
 
 > 状态：草案 v0.3（2026-11-17），**整体尚未批准**。代码已经按它建了大半（主节点、模块、引擎、Mac App、多设备；现状见 `docs/SESSION-HANDOFF.md` 第 3 节），语音层和记忆还没建。第 10 节按 2026-11-23 的仓库对过一遍。
 > 2026-11-22：Bruce 定下"不写死、能泛化、能力由用户自己创建"，写进第 1 节和 9.1 节。
@@ -353,7 +355,7 @@ Robin 现在把 harness（会话、任务、通知、界面框架）和 Bruce �
 规则：
 
 - 模块只通过 harness 提供的接口写世界（Robin 里的 `recordDomainEvent` 就是这个形状），不直接碰别的模块的表。
-- 【已实现】（2026-11-23）模块的源码只从 `@alfred/module-kit` 拿核心的东西，不直接引用 `@alfred/core`。`module-kit` 开头列出了模块能用的那几样：世界和迁移、记自己的事件、领域、用户的语言、对外改动的队列、改自己提议的步骤。`packages/server/test/module-types.test.ts` 把这条规则锁住。
+- 【已实现】（2026-11-23）模块的源码只从 `@zirma/module-kit` 拿核心的东西，不直接引用 `@zirma/core`。`module-kit` 开头列出了模块能用的那几样：世界和迁移、记自己的事件、领域、用户的语言、对外改动的队列、改自己提议的步骤。`packages/server/test/module-types.test.ts` 把这条规则锁住。
 - 【已实现】（2026-11-23）设备能调的操作名列在每个模块的 `types.ts` 里（如 `TODO_OPS`），界面的 `api.op()` 只收这些名字；同一个测试核对这份清单和模块自己的操作一致。各模块快照的类型由界面的 `packages/ui/src/modules.ts` 统一给出（`snapshotOf`），页面不再自己强转。
 - 用户亲手做的对外改动（例如邮件的星标）也走对外动作的队列：本地立刻改，外面那一步排队、重试、失败时告诉用户，和接受提议后的对外动作同一条路。
 - 模块是一方代码，跟 Alfred 一起装，拥有完整的 Node 权限。文档里如实写明：装模块就是信任这段代码，不是沙箱。
@@ -465,13 +467,15 @@ packages/
   ui/          所有设备共用的界面：壳、各页、形象、设置（React + Vite）
   desktop/     Mac App：Electron 外壳、launchd 常驻主节点、热键、通知、在场上报、浏览器窗格、Mac 设备能力
 modules/
-  todo/ calendar/ mail/ links/   通用模块（早报是自动任务模板，不是模块）
+  todo/ calendar/ mail/ links/ notes/   通用模块（早报是自动任务模板，不是模块）
 prototype/     原型，保留作交互参考
 scripts/       评测（eval）、语音对比（voice-bench）
 docs/
 ```
 
-还没有的（2026-11-23）：`voice/`（语音层，第 4 步）、`world-mcp/`（接 ACP 引擎时）、`modules/notes/`（方案已批准，见 `docs/design/notes.md`）。打包 Alfred.app 留到最后。
+还没有的（2026-11-26 对过）：`voice/`（语音层，第 4 步）、`world-mcp/`（接 ACP 引擎时）。`modules/notes/` 2026-11-26 已做（`docs/design/notes.md`、`docs/design/notes-two-layers.md`）。Mac App 已能打包（`docs/packaging.md`）。
+
+模块自己的后台、模块之间的接线现在写在 `packages/server` 里，改法见 `docs/design/module-host.md`（草稿）。
 
 个人模块在另一个私有仓库，结构和 `modules/` 相同。
 
