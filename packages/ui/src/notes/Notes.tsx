@@ -4,7 +4,7 @@
  * history, and a change in it can be taken back. A file changed elsewhere is never written over: the page asks. */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { HistoryEntry, NotePage, NotesSnapshot, PageDetail } from "@zirma/module-notes/types";
+import type { HistoryEntry, NotePage, NotesSnapshot, PageDetail, Suggestion } from "@zirma/module-notes/types";
 import { PAGE_ICONS } from "@zirma/module-notes/types";
 import { api } from "../api.ts";
 import { t } from "../i18n/index.ts";
@@ -13,9 +13,10 @@ import { when } from "../shell/Nav.tsx";
 import { NoteEditor, type EditorHandle, type SaveState } from "./NoteEditor.tsx";
 import { PageGlyph } from "./pageIcons.tsx";
 import { CheatSheet } from "./CheatSheet.tsx";
+import { KeptView } from "./KeptView.tsx";
 import "./notes.css";
 
-type OpAnswer = { error?: string; code?: string; id?: string; ok?: boolean; reason?: string };
+type OpAnswer = { error?: string; code?: string; id?: string; ok?: boolean; reason?: string; entry?: string | null };
 
 async function op(name: string, input: unknown): Promise<OpAnswer> {
   const response = await api.op(name as never, input);
@@ -27,8 +28,10 @@ const byTime = (a: NotePage, b: NotePage) => b.mtime - a.mtime;
 const onThisMac = typeof location !== "undefined" && ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
 const byName = (a: NotePage, b: NotePage) => a.title.localeCompare(b.title);
 
-function Tree({ pages, under, depth, at, open, onOpen, onToggle, onAdd }: {
+function Tree({ pages, under, depth, at, open, marked, onOpen, onToggle, onAdd }: {
   pages: NotePage[]; under: string | null; depth: number; at: string | null; open: ReadonlySet<string>;
+  /** Pages with the assistant's suggestions waiting: a small dot. */
+  marked?: ReadonlySet<string>;
   onOpen(id: string): void; onToggle(id: string): void; onAdd?(parent: string): void;
 }): ReactNode {
   const here = pages.filter((page) => page.parent === under).sort(byName);
@@ -44,19 +47,28 @@ function Tree({ pages, under, depth, at, open, onOpen, onToggle, onAdd }: {
           <button type="button" className="nt-node-main" onClick={() => onOpen(page.id)}>
             <PageGlyph name={page.icon} />
             <span className="nt-name">{page.title}</span>
+            {marked?.has(page.id) && <span className="nt-dot" aria-label={t("notes.sug.label")} />}
           </button>
           {onAdd && <button type="button" className="nt-add" onClick={() => onAdd(page.id)} aria-label={t("notes.newSub")} title={t("notes.newSub")}><Icon name="plus" /></button>}
         </div>
-        {kids && expanded && <div role="group"><Tree pages={pages} under={page.id} depth={depth + 1} at={at} open={open} onOpen={onOpen} onToggle={onToggle} onAdd={onAdd} /></div>}
+        {kids && expanded && <div role="group"><Tree pages={pages} under={page.id} depth={depth + 1} at={at} open={open} marked={marked} onOpen={onOpen} onToggle={onToggle} onAdd={onAdd} /></div>}
       </div>
     );
   });
 }
 
+const SUMMARY: Record<string, Parameters<typeof t>[0]> = {
+  "todo.done": "notes.kind.todoDone", "todo.reopened": "notes.kind.todoReopened", "line.removed": "notes.kind.lineRemoved",
+  "suggestion.accepted": "notes.kind.accepted", returned: "notes.kind.returned",
+};
+
 function historyLine(entry: HistoryEntry): string {
+  // The assistant says in its own words why it changed one of its pages.
+  const said = entry.summary && SUMMARY[entry.summary] ? t(SUMMARY[entry.summary]) : entry.actor === "alfred" ? entry.summary || entry.extra.why || "" : "";
   switch (entry.kind) {
-    case "edit": return entry.summary === "todo.done" ? t("notes.kind.todoDone") : entry.summary === "todo.reopened" ? t("notes.kind.todoReopened") : t("notes.kind.edit");
-    case "create": return t("notes.kind.create");
+    case "edit": return said || t("notes.kind.edit");
+    case "adopt": return t("notes.kind.adopt");
+    case "create": return said || t("notes.kind.create");
     case "delete": return t("notes.kind.delete");
     case "rename": return t("notes.kind.rename", { from: (entry.extra.from ?? "").split("/").pop() ?? "", to: (entry.extra.to ?? "").split("/").pop() ?? "" });
     case "links": return t("notes.kind.links", { to: (entry.extra.to ?? "").split("/").pop() ?? "" });
@@ -93,7 +105,13 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   const [menu, setMenu] = useState<"more" | "icon" | "move" | null>(null);
   const [moveFilter, setMoveFilter] = useState("");
   const [sheet, setSheet] = useState<{ path: string; text: string } | null>(null);
-  const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
+  const [toast, setToast] = useState<{ text: string; undo?: () => void; look?: () => void } | null>(null);
+  /** The words to flash in the page being opened (from a source number on one of the assistant's pages). */
+  const [flash, setFlash] = useState<{ page: string; words: string } | null>(null);
+  const suggestions = useMemo(() => snapshot?.suggestions ?? [], [snapshot]);
+  const marked = useMemo(() => new Set(suggestions.map((one) => one.page)), [suggestions]);
+  /** The assistant's last change seen here: a newer one is told once, with Look and Undo. */
+  const seenKept = useRef<string | null | undefined>(undefined);
   const [title, setTitle] = useState("");
   const [help, setHelp] = useState(false);
   const editor = useRef<EditorHandle>(null);
@@ -112,6 +130,27 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     const timer = window.setTimeout(() => setToast(null), 6000);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    const kept = snapshot?.kept;
+    if (!snapshot) return;
+    if (seenKept.current === undefined) { seenKept.current = kept?.entry ?? null; return; }
+    if (!kept || kept.entry === seenKept.current) return;
+    seenKept.current = kept.entry;
+    // Only a change of the last few minutes: an old one is in the page's history.
+    if (Date.now() - Date.parse(kept.at) > 5 * 60_000) return;
+    const name = kept.page.split("/").pop()!;
+    setToast({
+      text: t("notes.kept.updated", { title: name }),
+      look: () => void openPage(kept.page),
+      undo: async () => {
+        const answer = await op("note.undo", { entry: kept.entry });
+        if (answer.ok === false) setToast({ text: t(UNDO_WHY[answer.reason ?? "changed"] ?? "notes.undo.changed") });
+        else if (at === kept.page) await reload(kept.page).catch(() => {});
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot?.kept?.entry]);
 
   // The page's words, read when it opens.
   useEffect(() => {
@@ -153,8 +192,9 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   const refreshHistory = () => { if (at) api.query<HistoryEntry[]>("note.history", { id: at }).then(setHistory).catch(() => {}); };
   useEffect(() => { if (historyOpen) refreshHistory(); }, [historyOpen, at, page?.mtime]);
 
-  const openPage = async (id: string | null) => {
+  const openPage = async (id: string | null, words?: string) => {
     await editor.current?.flush();
+    setFlash(id && words ? { page: id, words } : null);
     setDrawer(false);
     setHistoryOpen(false);
     if (id) go("note.list", id); else go("note.list");
@@ -252,6 +292,41 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     setSheet({ path: `${snapshot?.library.root ?? ""}/${detail.id}.md`, text: found.text });
   };
 
+  /** The user's yes or no to one of the assistant's suggestions. A yes can be taken back from the toast. */
+  const decide = async (suggestion: Suggestion, accept: boolean) => {
+    await editor.current?.flush();
+    const answer = await op("note.suggestion", { id: suggestion.id, accept });
+    if (answer.ok === false) setToast({ text: t("notes.sug.stale") });
+    else if (accept) setToast({ text: t("notes.sug.done"), ...(answer.entry ? { undo: async () => { await op("note.undo", { entry: answer.entry }); if (detail) await reload(answer.id ?? detail.id).catch(() => {}); } } : {}) });
+    if (answer.ok && accept && suggestion.kind === "move" && answer.id && answer.id !== detail?.id) { go("note.list", answer.id); return; }
+    if (detail) await reload(detail.id).catch(() => {});
+  };
+
+  const rejectLine = async (index: number, words: string) => {
+    if (!detail) return;
+    const answer = await op("note.reject", { id: detail.id, index, words });
+    if (answer.ok === false) setToast({ text: t("notes.undo.changed") });
+    else setToast({ text: t("notes.kept.removed"), ...(answer.entry ? { undo: async () => { await op("note.undo", { entry: answer.entry }); await reload(detail.id).catch(() => {}); } } : {}) });
+    await reload(detail.id).catch(() => {});
+  };
+
+  const adopt = async () => {
+    if (!detail) return;
+    setMenu(null);
+    const answer = await op("note.adopt", { id: detail.id });
+    if (!answer.id) { setToast({ text: answer.error ?? t("notes.failed") }); return; }
+    setToast({ text: t("notes.kept.adopted", { title: detail.title }), ...(answer.entry ? { undo: async () => { await op("note.undo", { entry: answer.entry }); go("note.list", detail.id); } } : {}) });
+    go("note.list", answer.id);
+  };
+
+  const giveBack = async () => {
+    if (!detail) return;
+    const answer = await op("note.return", { id: detail.id });
+    if (answer.ok === false) { setToast({ text: answer.error ?? t("notes.failed") }); return; }
+    setToast({ text: t("notes.kept.returned") });
+    if (answer.id) await reload(detail.id).catch(() => {}); else go("note.list");
+  };
+
   const toggle = (id: string) => setOpen((was) => { const next = new Set(was); if (!next.delete(id)) next.add(id); return next; });
   const tree = (
     <div className="nt-side-scroll" role="tree">
@@ -260,10 +335,10 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
             <button type="button" className="nt-node-main" onClick={() => void openPage(null)}><Icon name="clock" /><span className="nt-name">{t("notes.recent")}</span></button>
           </div>
           <div className="nt-label">{t("notes.yours")}</div>
-          {yours.length ? <Tree pages={yours} under={null} depth={0} at={at} open={open} onOpen={(id) => void openPage(id)} onToggle={toggle} onAdd={(parent) => void newPage(parent)} />
+          {yours.length ? <Tree pages={yours} under={null} depth={0} at={at} open={open} marked={marked} onOpen={(id) => void openPage(id)} onToggle={toggle} onAdd={(parent) => void newPage(parent)} />
             : <p className="nt-hint">{t("notes.empty")}</p>}
           <div className="nt-label"><Icon name="alfred" />{t("notes.zirma")}</div>
-          {kept.length ? <Tree pages={kept} under={null} depth={0} at={at} open={open} onOpen={(id) => void openPage(id)} onToggle={toggle} />
+          {kept.length ? <Tree pages={kept} under={null} depth={0} at={at} open={open} marked={marked} onOpen={(id) => void openPage(id)} onToggle={toggle} />
             : <p className="nt-hint">{t("notes.zirma.empty")}</p>}
         </div>
   );
@@ -310,7 +385,8 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
               {page && !page.zirma && <button type="button" role="menuitem" onClick={() => { setMenu(null); void newPage(page.id); }}>{t("notes.newSub")}</button>}
               {page && !page.zirma && <button type="button" role="menuitem" onClick={() => { setMoveFilter(""); setMenu("move"); }}>{t("notes.moveTo")}</button>}
               {onThisMac && <button type="button" role="menuitem" onClick={() => { setMenu(null); void fetch("/api/notes/reveal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: at }) }); }}>{t("notes.reveal")}</button>}
-              {page && !page.zirma && <button type="button" role="menuitem" className="nt-bad" onClick={() => void remove()}>{t("notes.delete")}</button>}
+              {page?.zirma && page.file && <button type="button" role="menuitem" onClick={() => void adopt()}>{t("notes.kept.adopt")}</button>}
+              {page?.file !== false && page && <button type="button" role="menuitem" className="nt-bad" onClick={() => void remove()}>{t("notes.delete")}</button>}
             </div>}
             {menu === "move" && page && (
               <div className="nt-menu nt-move" role="dialog" aria-label={t("notes.moveTo")}>
@@ -335,6 +411,12 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
                 <h1 className="nt-title-static">{t("notes.recent")}</h1>
                 {pages.length > 0 && <button type="button" className="nt-btn" onClick={() => void newPage(null)}><Icon name="plus" />{t("notes.new")}</button>}
               </div>
+              {suggestions.length > 0 && (
+                <button type="button" className="nt-sug-count" onClick={() => void openPage(suggestions[0].page)}>
+                  <span className="nt-dot" />{t("notes.sug.count", { n: suggestions.length })}
+                </button>
+              )}
+              {snapshot?.compile?.running && <p className="nt-hint nt-running"><Icon name="alfred" />{t("notes.kept.running")}</p>}
               {pages.length ? <div className="nt-recent">{[...pages].filter((one) => one.file).sort(byTime).map((one) => (
                 <button type="button" key={one.id} className="nt-row" onClick={() => void openPage(one.id)}>
                   <PageGlyph name={one.icon} size={18} />
@@ -361,7 +443,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
                   : <input className="nt-title" value={title} aria-label={t("notes.title")} placeholder={t("notes.untitled")} maxLength={120}
                     onChange={(event) => { touched.current.add(detail.id); setTitle(event.target.value); }} onBlur={() => void rename()}
                     onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); (event.target as HTMLInputElement).blur(); } }} />}
-                {detail.zirma && <p className="nt-meta"><Icon name="alfred" />{t("notes.readonly")}</p>}
+                {detail.zirma && !detail.kept && <p className="nt-meta"><Icon name="alfred" />{t("notes.readonly")}</p>}
               </div>
               {gone && save.kind !== "changed" && (
                 <div className="nt-banner" role="alert">
@@ -391,7 +473,23 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
                 </div>
               )}
               {save.kind === "offline" && <p className="nt-banner">{t("notes.offline")}</p>}
-              <NoteEditor key={`${detail.library}:${detail.id}`} detail={detail} readOnly={detail.zirma} handle={editor} onState={setSave}
+              {!detail.zirma && (detail.suggestions ?? []).filter((one) => one.kind === "move").map((one) => (
+                <div key={one.id} className="nt-sug nt-sug-card nt-sug-move" role="group" aria-label={t("notes.sug.label")}>
+                  <p className="nt-sug-fact">{one.under ? t("notes.sug.move", { to: one.under.split("/").pop()! }) : t("notes.sug.moveTop")}</p>
+                  <p className="nt-sug-why">{one.reason}</p>
+                  <div className="nt-sug-acts">
+                    <button type="button" className="nt-btn" onClick={() => void decide(one, false)}>{t("notes.sug.no")}</button>
+                    <button type="button" className="nt-btn nt-pri" onClick={() => void decide(one, true)}>{t("notes.sug.yes")}</button>
+                  </div>
+                </div>
+              ))}
+              {detail.zirma && detail.kept ? (
+                <KeptView detail={detail} onSource={(id, words) => void openPage(id, words)} onReject={(index, words) => void rejectLine(index, words)}
+                  onAdopt={() => void adopt()} onReturn={() => void giveBack()} onDecide={(one, accept) => void decide(one, accept)} />
+              ) : <NoteEditor key={`${detail.library}:${detail.id}`} detail={detail} readOnly={detail.zirma} handle={editor} onState={setSave}
+                flash={flash?.page === detail.id ? flash.words : null}
+                suggestions={detail.zirma ? undefined : (detail.suggestions ?? []).filter((one) => one.kind === "edit")}
+                onDecide={(one, accept) => void decide(one, accept)}
                 onEdit={() => touched.current.add(detail.id)}
                 onSubpage={async () => {
                   const made = await op("note.create", { parent: detail.id, title: t("notes.untitled") });
@@ -417,7 +515,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
                   if (named.length === 1 || here.length === 1) void openPage((named.length === 1 ? named[0] : here[0]).id);
                   else if (named.length > 1) setChoose({ name: said, pages: named });
                   else void newPage(null, undefined, said);
-                }} />
+                }} />}
               {kids.length > 0 && <div className="nt-sec"><h3>{t("notes.subpages")}</h3>{kids.map((one) => (
                 <button type="button" key={one.id} className="nt-link-row" onClick={() => void openPage(one.id)}><PageGlyph name={one.icon} /><span>{one.title}</span></button>
               ))}</div>}
@@ -448,6 +546,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
         {toast && (
           <div className="nt-toast" role="status">
             <span>{toast.text}</span>
+            {toast.look && <button type="button" onClick={() => { const look = toast.look!; setToast(null); look(); }}>{t("notes.kept.look")}</button>}
             {toast.undo && <button type="button" onClick={() => { const undo = toast.undo!; setToast(null); undo(); }}>{t("notes.undo")}</button>}
           </div>
         )}

@@ -3,7 +3,7 @@
  * The home node hands these to the run drain; commands.ts says which profile a new run gets.
  */
 import { assistantNameOf, coreContext, describePreferences, getSettings, userLocale, type Locale, getConversation, getRun, sessionRoot, type RunProfile, type RunTool, type SessionMode, type World } from "@zirma/core";
-import { askUserTool, assistantTools, moduleGuidance, runTools, type ZirmaModule } from "@zirma/module-kit";
+import { askUserTool, assistantTools, jobProfiles, moduleGuidance, runTools, type ZirmaModule } from "@zirma/module-kit";
 import { isLocalPage, type BrowserPage, type Desk } from "./desk.ts";
 import type { Processes } from "./processes.ts";
 import type { Terminals } from "./terminals.ts";
@@ -250,5 +250,11 @@ export function profiles(world: World, modules: readonly ZirmaModule[], devices:
       tools: [...runTools(world, modules, { askFor: [] }), ...assistantTools(world, modules).filter((tool) => !UNATTENDED_EXCLUDED.has(tool.name))],
       unattended: true,
     },
+    // The modules' own background work (the notes' compile task): only the tools the module gives it.
+    ...Object.fromEntries(Object.entries(jobProfiles(world, modules)).map(([name, job]) => [name, {
+      get instructions() { return named(world, job.instructions); },
+      tools: job.tools,
+      unattended: true,
+    }])),
   };
 }

@@ -191,6 +191,15 @@ export class Library {
     return { ok: true, fp };
   }
 
+  /** Moves a page's file aside into `.trash/.versions/`, where it is kept but is not a page. Returns where, inside
+   * the library. */
+  setAside(id: string): string {
+    const to = this.versionPath(id);
+    mkdirSync(dirname(to), { recursive: true });
+    renameSync(this.file(id), to);
+    return relative(this.root, to);
+  }
+
   private versionPath(id: string): string {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     return join(this.root, VERSIONS_DIR, `${id.replace(/\//g, " ∕ ")} ${stamp} ${randomBytes(3).toString("hex")}.md`);

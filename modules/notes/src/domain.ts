@@ -8,6 +8,8 @@ import { newId, recordDomainEvent, type Migration, type World } from "@zirma/mod
 import { findTask, linkPage, parsePage, readableBlock, setProperty, taskRef, type Block, type ParsedPage } from "./markdown/index.ts";
 import { fingerprint, idOf, Library, LibraryError, parentOf, safeName, ZIRMA_DIR, type PageFile, type SaveResult } from "./library.ts";
 import type { HistoryEntry, NotePage, PageDetail, SearchHit } from "./types.ts";
+import { addReject, addSkip, keptRow, moveRejects, noteKept, removeReject, removeSkip } from "./layer-store.ts";
+import { addedLines } from "./kept-format.ts";
 
 export const MIGRATIONS: Migration[] = [{
   id: "note:1",
@@ -237,7 +239,7 @@ export function indexFiles(world: World, library: Library, ids: readonly string[
 }
 
 /** Reads one page into the index right after Zirma wrote it (the watcher would, a moment later). */
-function indexOne(world: World, library: Library, id: string): void {
+export function indexOne(world: World, library: Library, id: string): void {
   const file = library.list().find((page) => page.id === id);
   if (!file) dropIndexed(world, id);
   else writeIndexed(world, file, file.file ? library.read(id)?.text ?? null : null);
@@ -337,25 +339,28 @@ export function savePage(world: World, library: Library, libraryId: string, inpu
   return { ok: false, reason: "changed", current: saved.current ? { text: saved.current.text, fp: saved.current.fp } : null, ...(saved.kept ? { kept: saved.kept } : {}) };
 }
 
-function recordEdit(world: World, page: string, before: string, after: string, actor: "user" | "alfred", summary = ""): void {
-  if (before === after) return;
+/** One change to a page's words in its history. The user's saves close together are one change; Zirma's each stand
+ * alone, so each can be taken back by itself. Returns the entry's id. */
+export function recordEdit(world: World, page: string, before: string, after: string, actor: "user" | "alfred", summary = "", extra?: Record<string, unknown>): string | null {
+  if (before === after) return null;
   const now = new Date();
   const last = world.db.prepare("SELECT * FROM note_history WHERE page = ? ORDER BY at DESC, rowid DESC LIMIT 1").get(page);
-  if (last && last.kind === "edit" && last.actor === actor && !last.undone && last.after === before && now.getTime() - Date.parse(last.at as string) < EDIT_WINDOW_MS) {
+  if (actor === "user" && !summary && !extra && last && !last.summary && !last.extra && last.kind === "edit" && last.actor === actor && !last.undone && last.after === before && now.getTime() - Date.parse(last.at as string) < EDIT_WINDOW_MS) {
     world.db.prepare("UPDATE note_history SET after = ?, at = ? WHERE id = ?").run(after, now.toISOString(), last.id as string);
-    return;
+    return last.id as string;
   }
   const id = newId();
-  world.db.prepare("INSERT INTO note_history (id, page, at, actor, kind, summary, before, after) VALUES (?, ?, ?, ?, 'edit', ?, ?, ?)")
-    .run(id, page, now.toISOString(), actor, summary, before, after);
+  world.db.prepare("INSERT INTO note_history (id, page, at, actor, kind, summary, before, after, extra) VALUES (?, ?, ?, ?, 'edit', ?, ?, ?, ?)")
+    .run(id, page, now.toISOString(), actor, summary, before, after, extra ? JSON.stringify(extra) : null);
   recordDomainEvent(world, { kind: "note.edited", subject: `note:${page}`, actor, payload: { page } });
+  return id;
 }
 
-function recordStep(world: World, page: string, kind: "create" | "rename" | "delete" | "links", extra: Record<string, unknown>, texts: { before?: string; after?: string } = {}, actor: "user" | "alfred" = "user"): string {
+export function recordStep(world: World, page: string, kind: "create" | "rename" | "delete" | "links" | "adopt", extra: Record<string, unknown>, texts: { before?: string; after?: string } = {}, actor: "user" | "alfred" = "user"): string {
   const id = newId();
   world.db.prepare("INSERT INTO note_history (id, page, at, actor, kind, before, after, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
     .run(id, page, new Date().toISOString(), actor, kind, texts.before ?? null, texts.after ?? null, JSON.stringify(extra));
-  recordDomainEvent(world, { kind: `note.${kind === "links" ? "links_updated" : kind === "create" ? "created" : kind === "rename" ? "renamed" : "deleted"}`, subject: `note:${page}`, actor, payload: { page, ...extra } });
+  recordDomainEvent(world, { kind: `note.${kind === "links" ? "links_updated" : kind === "create" ? "created" : kind === "rename" ? "renamed" : kind === "adopt" ? "adopted" : "deleted"}`, subject: `note:${page}`, actor, payload: { page, ...extra } });
   return id;
 }
 
@@ -414,6 +419,8 @@ function relink(world: World, library: Library, from: string, to: string, pages:
     const text = (parsed.bom ? "\uFEFF" : "") + body;
     const saved = library.save(page, read.fp, text);
     if (!saved.ok) { skipped.push(page); continue; }
+    // A page of Zirma's that followed a rename is still as Zirma left it.
+    if (inZirma(page) && keptRow(world, page)?.fp === read.fp) noteKept(world, page, text, saved.fp);
     indexOne(world, library, page);
     recordStep(world, page, "links", { from, to }, { before: read.text, after: text });
     changed.push(page);
@@ -447,11 +454,12 @@ export function movePage(world: World, library: Library, input: { id: string; ti
 
 /** Moves a page and its sub-pages to the library's trash. */
 export function trashPage(world: World, library: Library, id: string): { place: string } {
-  if (inZirma(id)) throw new LibraryError("bad_name", "Zirma's pages are Zirma's");
   const place = library.trash(id);
   world.tx(() => {
     indexLibrary(world, library);
-    recordStep(world, id, "delete", { place });
+    // A page of Zirma's the user deleted: Zirma does not keep that subject again (notes-two-layers.md 4.4).
+    if (inZirma(id)) addSkip(world, id.split("/").pop()!, "deleted");
+    recordStep(world, id, "delete", { place, ...(inZirma(id) ? { skip: id.split("/").pop()! } : {}) });
   });
   return { place };
 }
@@ -504,7 +512,7 @@ export function listHistory(world: World, page: string, most = 50): HistoryEntry
     lines: row.kind === "edit" || row.kind === "links" ? changedLines((row.before as string | null) ?? "", (row.after as string | null) ?? "") : [],
     extra: row.extra ? JSON.parse(row.extra as string) : {},
     // Undo needs the texts; past the time they are kept, an entry is only a record.
-    undoable: row.kind === "edit" || row.kind === "links" || row.kind === "create" ? row.before !== null || row.after !== null : true,
+    undoable: row.kind === "edit" || row.kind === "links" || row.kind === "create" || row.kind === "adopt" ? row.before !== null || row.after !== null : true,
   }));
 }
 
@@ -555,7 +563,24 @@ export function flipHistory(world: World, library: Library, entryId: string, red
         if (next === null) return { ok: false, reason: "changed" };
         const saved = library.save(page, read.fp, next);
         if (!saved.ok) return { ok: false, reason: "changed" };
-        world.tx(() => indexOne(world, library, page));
+        world.tx(() => {
+          indexOne(world, library, page);
+          if (inZirma(page)) {
+            noteKept(world, page, next, saved.fp);
+            const store = { ...extra } as Record<string, unknown>;
+            // A line the user removed and then put back is no longer one they said no to; removed again, it is.
+            if (typeof store.words === "string") {
+              if (!redo && typeof store.reject === "number") { removeReject(world, store.reject); delete store.reject; }
+              if (redo) store.reject = addReject(world, page, store.words, (store.sources as string[] | undefined) ?? []);
+            }
+            // Zirma's change taken back: what it added is not added again (notes-two-layers.md 4.6).
+            if (row.actor === "alfred") {
+              if (!redo) store.rejects = addedLines(before, after).map((line) => addReject(world, page, line.words, line.sources));
+              else { for (const reject of (store.rejects as number[] | undefined) ?? []) removeReject(world, reject); delete store.rejects; }
+            }
+            world.db.prepare("UPDATE note_history SET extra = ? WHERE id = ?").run(JSON.stringify(store), entryId);
+          }
+        });
         mark();
         return { ok: true };
       }
@@ -568,11 +593,15 @@ export function flipHistory(world: World, library: Library, entryId: string, red
           world.tx(() => {
             world.db.prepare("UPDATE note_history SET extra = ? WHERE id = ?").run(JSON.stringify({ ...extra, place }), entryId);
             indexLibrary(world, library);
+            if (inZirma(page)) addSkip(world, page.split("/").pop()!, "deleted");
           });
         } else {
           if (!extra.place) return { ok: false, reason: "gone" };
           library.restore(page, extra.place);
-          world.tx(() => indexLibrary(world, library));
+          world.tx(() => {
+            indexLibrary(world, library);
+            if (inZirma(page)) removeSkip(world, page.split("/").pop()!);
+          });
         }
         mark();
         return { ok: true };
@@ -583,7 +612,10 @@ export function flipHistory(world: World, library: Library, entryId: string, red
           const place = library.trash(page);
           world.tx(() => world.db.prepare("UPDATE note_history SET extra = ? WHERE id = ?").run(JSON.stringify({ ...extra, place }), entryId));
         }
-        world.tx(() => indexLibrary(world, library));
+        world.tx(() => {
+          indexLibrary(world, library);
+          if (extra.skip) { if (redo) addSkip(world, extra.skip, "deleted"); else removeSkip(world, extra.skip); }
+        });
         mark();
         return { ok: true };
       }
@@ -593,6 +625,27 @@ export function flipHistory(world: World, library: Library, entryId: string, red
         world.tx(() => {
           world.db.prepare("UPDATE note_history SET page = ? || substr(page, ?) WHERE page = ? OR page LIKE ? ESCAPE '\\'")
             .run(back, now.length + 1, now, `${now.replace(/[\\%_]/g, "\\$&")}/%`);
+          indexLibrary(world, library);
+        });
+        mark();
+        return { ok: true };
+      }
+      case "adopt": {
+        // Taking a page of Zirma's back to Zirma: the file goes back to its place and its words to Zirma's, while
+        // the user's copy is still exactly as it was taken. Doing it again takes it once more.
+        const [here, there, now, back] = redo ? [extra.from, extra.to, before, after] : [extra.to, extra.from, after, before];
+        if (now === null || back === null) return { ok: false, reason: "not_undoable" };
+        const read = library.read(here);
+        if (!read) return { ok: false, reason: "gone" };
+        if (read.text !== now) return { ok: false, reason: "changed" };
+        if (library.read(there)) return { ok: false, reason: "exists" };
+        library.create(there, back);
+        library.removeUntouched(here);
+        world.tx(() => {
+          world.db.prepare("UPDATE note_history SET page = ? WHERE page = ?").run(there, here);
+          moveRejects(world, here, there);
+          if (redo) addSkip(world, extra.from.split("/").pop()!, "adopted");
+          else { noteKept(world, there, back, library.read(there)!.fp); removeSkip(world, extra.from.split("/").pop()!); }
           indexLibrary(world, library);
         });
         mark();

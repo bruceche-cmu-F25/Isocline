@@ -37,6 +37,12 @@ export type PermissionLevel = (typeof PERMISSION_LEVELS)[number];
 /** What an unattended run may do without asking. */
 export const RUN_LEVELS: readonly PermissionLevel[] = ["read", "local"];
 
+/** A module's background job (ZirmaModule.jobs). */
+export interface ModuleJob {
+  instructions: string | ((world: World) => string);
+  tools: readonly ModuleTool[];
+}
+
 /** A domain operation a device invokes directly (a click, an edit). It has no permission level: a device's own
  * command is the user's decision. Levels say what a run may do, and belong to tools. */
 export interface ModuleOp<P extends TSchema = TSchema> {
@@ -89,6 +95,10 @@ export interface ZirmaModule {
   /** How a run should use this module's tools. Appended to the run's instructions. A function for words that depend
    * on the user's own data (their areas), read again for each run. */
   guidance?: string | ((world: World) => string);
+  /** Work the module has a model do in the background, each under a profile of its own (`<module>-<job>`): what the
+   * run is told it is, and the only tools it gets. Nobody is there (unattended), so only `read` and `local` tools are
+   * bound; a job's tools are offered to no other run. Started by the module's host code, never by the model. */
+  jobs?: Readonly<Record<string, ModuleJob>>;
   /** The user removed an area: move what of this module's was in it to `moveTo`, or to no area. Runs in the same
    * transaction as the removal (`removeArea`). */
   areaRemoved?(world: World, id: string, moveTo: string | null): void;
@@ -295,7 +305,26 @@ export function runTools(
 ): RunTool[] {
   const levels = policy.levels ?? RUN_LEVELS;
   const askFor = policy.askFor ?? ["irreversible"];
-  return modules.flatMap((module) => module.tools).filter((tool) => levels.includes(tool.level) || askFor.includes(tool.level)).map((tool) => {
+  return modules.flatMap((module) => module.tools).filter((tool) => levels.includes(tool.level) || askFor.includes(tool.level)).map((tool) => bindTool(world, tool, levels));
+}
+
+/** The profiles of the modules' background jobs (ZirmaModule.jobs), by name (`<module>-<job>`). */
+export function jobProfiles(world: World, modules: readonly ZirmaModule[]): Record<string, { instructions: string; tools: RunTool[]; unattended: true }> {
+  const out: Record<string, { instructions: string; tools: RunTool[]; unattended: true }> = {};
+  for (const module of modules) {
+    for (const [name, job] of Object.entries(module.jobs ?? {})) {
+      out[`${module.id}-${name}`] = {
+        get instructions() { return typeof job.instructions === "function" ? job.instructions(world) : job.instructions; },
+        tools: job.tools.filter((tool) => RUN_LEVELS.includes(tool.level)).map((tool) => bindTool(world, tool, RUN_LEVELS)),
+        unattended: true,
+      };
+    }
+  }
+  return out;
+}
+
+function bindTool(world: World, tool: ModuleTool, levels: readonly PermissionLevel[]): RunTool {
+  {
     const parse = (params: Record<string, unknown>) => checked(tool.parameters, params, `parameters for ${tool.name}`);
     const safely = (text: () => string | undefined) => { try { return text(); } catch { return undefined; } };
     const runTool: RunTool = {
@@ -310,7 +339,7 @@ export function runTools(
       runTool.permission = (params) => safely(() => tool.confirm?.(world, parse(params))) ?? `${tool.label}？`;
     }
     return runTool;
-  });
+  }
 }
 
 /** Runs one proposal step as the device operation it is, with the same input checks as a click. Throws on failure
