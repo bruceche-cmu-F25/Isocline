@@ -9,8 +9,8 @@ import { mathFromMarkdown } from "mdast-util-math";
 import { frontmatter } from "micromark-extension-frontmatter";
 import { gfm } from "micromark-extension-gfm";
 import { math } from "micromark-extension-math";
-import type { List, ListItem, Nodes, Paragraph, PhrasingContent, RootContent } from "mdast";
-import { normalizeInline, type Block, type Inline, type ListKind, type Mark } from "./model.ts";
+import type { List, ListItem, Nodes, Paragraph, PhrasingContent, RootContent, Table } from "mdast";
+import { normalizeInline, type Align, type Block, type Inline, type ListKind, type Mark } from "./model.ts";
 import { splitWikiLink, wikiLinkFromMarkdown, wikiLinkSyntax, type WikiLinkNode } from "./wikilink.ts";
 
 /** A block as read: what it is, and where its text starts and ends in the body. */
@@ -143,6 +143,40 @@ function parseProps(raw: string): Record<string, string> {
   return props;
 }
 
+const CALLOUT = /^>[ \t]*\[!([A-Za-z][\w-]*)\]([+-]?)[ \t]*(.*)$/;
+
+/** A callout of one paragraph: its type, fold, title (the rest of its first line) and its words after that line. A
+ * callout with more than one paragraph, a list or a nested quote stays as written. */
+function callout(node: RootContent, body: string): Block | null {
+  if (node.type !== "blockquote" || node.children.length !== 1 || node.children[0].type !== "paragraph") return null;
+  const raw = body.slice(startOf(node), endOf(node));
+  const lines = raw.split(/\r?\n/);
+  const head = CALLOUT.exec(lines[0]);
+  if (!head || lines.some((line) => !/^\s*>/.test(line))) return null;
+  const runs = inlineOf(node.children[0].children, body);
+  // The first line of the paragraph is the header; the words start after its line break.
+  const content: Inline[] = [];
+  let past = false;
+  for (const run of runs) {
+    if (past) { content.push(run); continue; }
+    if (run.t !== "text") continue;
+    const at = run.text.indexOf("\n");
+    if (at === -1) continue;
+    past = true;
+    const rest = run.text.slice(at + 1);
+    if (rest) content.push({ ...run, text: rest });
+  }
+  if (!past && lines.length > 1) return null;
+  return { kind: "callout", type: head[1], fold: head[2] as "" | "+" | "-", title: head[3].trim(), content: normalizeInline(content) };
+}
+
+function table(node: Table, body: string): Block {
+  const align: Align[] = (node.align ?? []).map((one) => (one === "left" || one === "right" || one === "center" ? one : null));
+  const width = Math.max(align.length, ...node.children.map((row) => row.children.length));
+  const rows = node.children.map((row) => Array.from({ length: width }, (_, i) => (row.children[i] ? inlineOf(row.children[i].children, body) : [])));
+  return { kind: "table", align: Array.from({ length: width }, (_, i) => align[i] ?? null), rows };
+}
+
 export function parsePage(text: string): ParsedPage {
   const bom = text.startsWith("﻿");
   const body = bom ? text.slice(1) : text;
@@ -165,7 +199,10 @@ export function parsePage(text: string): ParsedPage {
         // Words after the language (`js title="a"`) would be lost if the block were written again: kept as written.
         blocks.push(node.meta ? raw() : { block: { kind: "code", lang: node.lang ?? "", text: node.value }, start, end });
         break;
+      case "table": blocks.push({ block: table(node, body), start, end }); break;
       case "blockquote": {
+        const box = callout(node, body);
+        if (box) { blocks.push({ block: box, start, end }); break; }
         const paragraph = simpleQuote(node, body);
         blocks.push(paragraph ? { block: { kind: "quote", content: inlineOf(paragraph.children, body) }, start, end } : raw());
         break;

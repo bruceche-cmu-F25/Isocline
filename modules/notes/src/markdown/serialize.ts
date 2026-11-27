@@ -138,6 +138,20 @@ export function blockMarkdown(block: Block, written?: string): string {
       return `${fence}${block.lang}\n${block.text}${block.text.endsWith("\n") || !block.text ? "" : "\n"}${fence}`;
     }
     case "rule": return "---";
+    case "table": {
+      // A pipe inside a cell is escaped, also in code: GFM reads it as a column break otherwise.
+      const cell = (content: readonly Inline[]) => inlineMarkdown(content).replace(/\n+/g, " ").replace(/(?<!\\)\|/g, "\\|").trim() || " ";
+      const width = Math.max(1, block.align.length, ...block.rows.map((row) => row.length));
+      const line = (cells: string[]) => `| ${cells.join(" | ")} |`;
+      const rows = (block.rows.length ? block.rows : [[]]).map((row) => line(Array.from({ length: width }, (_, i) => cell(row[i] ?? []))));
+      const rule = line(Array.from({ length: width }, (_, i) => ({ left: ":--", right: "--:", center: ":-:" } as Record<string, string>)[block.align[i] ?? ""] ?? "---"));
+      return [rows[0], rule, ...rows.slice(1)].join("\n");
+    }
+    case "callout": {
+      const words = inlineMarkdown(block.content);
+      const head = `> [!${block.type}]${block.fold}${block.title ? ` ${block.title.replace(/\n+/g, " ")}` : ""}`;
+      return words ? `${head}\n${words.split("\n").map((line) => `> ${line}`.trimEnd()).join("\n")}` : head;
+    }
     case "raw": return block.text;
   }
 }

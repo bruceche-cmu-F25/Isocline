@@ -33,6 +33,19 @@ export const schema = new Schema({
       parseDOM: [{ tag: "pre", preserveWhitespace: "full" }], toDOM: (node) => ["pre", { "data-lang": node.attrs.lang || undefined }, ["code", 0]],
     },
     rule: { group: "block", parseDOM: [{ tag: "hr" }], toDOM: () => ["div", { class: "nt-rule" }, ["hr"]] },
+    // A GFM table: rows of cells of words; the first row is the header. `align` per column.
+    table: {
+      group: "block", content: "table_row+", isolating: true, attrs: { align: { default: [] } },
+      parseDOM: [{ tag: "table" }],
+      toDOM: () => ["div", { class: "nt-table" }, ["table", ["tbody", 0]]],
+    },
+    table_row: { content: "table_cell+", parseDOM: [{ tag: "tr" }], toDOM: () => ["tr", 0] },
+    table_cell: { content: "inline*", isolating: true, parseDOM: [{ tag: "td" }, { tag: "th" }], toDOM: () => ["td", 0] },
+    // An Obsidian callout of one paragraph: its type and title are attributes, its words the content.
+    callout: {
+      group: "block", content: "inline*", defining: true, attrs: { type: { default: "note" }, fold: { default: "" }, title: { default: "" } },
+      toDOM: (node) => ["div", { class: "nt-callout", "data-type": node.attrs.type }, ["div", { class: "nt-callout-body" }, 0]],
+    },
     raw: {
       group: "block", content: "text*", marks: "", code: true, defining: true,
       toDOM: () => ["pre", { class: "nt-raw" }, ["code", 0]],
@@ -92,6 +105,8 @@ function toNode(block: Block): PmNode {
     case "quote": return schema.nodes.quote.create(null, inlineToPm(block.content));
     case "code": return schema.nodes.code_block.create({ lang: block.lang }, block.text ? schema.text(block.text) : null);
     case "rule": return schema.nodes.rule.create();
+    case "table": return schema.nodes.table.create({ align: block.align }, block.rows.map((row) => schema.nodes.table_row.create(null, row.map((cell) => schema.nodes.table_cell.create(null, inlineToPm(cell))))));
+    case "callout": return schema.nodes.callout.create({ type: block.type, fold: block.fold, title: block.title }, inlineToPm(block.content));
     case "raw": return schema.nodes.raw.create(null, block.text ? schema.text(block.text) : null);
   }
 }
@@ -125,6 +140,14 @@ export function nodeToBlock(node: PmNode): Block | null {
     case "quote": return { kind: "quote", content: pmToInline(node) };
     case "code_block": return { kind: "code", lang: node.attrs.lang as string, text: node.textContent };
     case "rule": return { kind: "rule" };
+    case "table": {
+      const rows: Inline[][][] = [];
+      node.forEach((row) => { const cells: Inline[][] = []; row.forEach((cell) => cells.push(pmToInline(cell))); rows.push(cells); });
+      const width = Math.max(0, ...rows.map((row) => row.length));
+      const align = (node.attrs.align as Array<"left" | "right" | "center" | null>) ?? [];
+      return { kind: "table", align: Array.from({ length: width }, (_, i) => align[i] ?? null), rows };
+    }
+    case "callout": return { kind: "callout", type: node.attrs.type as string, fold: node.attrs.fold as "" | "+" | "-", title: node.attrs.title as string, content: pmToInline(node) };
     case "raw": return { kind: "raw", text: node.textContent };
     default: return null;
   }

@@ -327,3 +327,34 @@ test("empty lines the editor shows are blank lines in the file, and come back as
   const unknown = compose(page, page.blocks.map((source, i) => ({ ...source.block, from: i })));
   assert.ok(unknown.ok && unknown.text === text);
 });
+
+test("a table is a block: its cells are words, written back as a GFM table; untouched, byte for byte", () => {
+  const text = "| 豆子 | 水温 |\n|:--|--:|\n| 耶加雪菲 | **94** |\n| 哥伦比亚 | 92 |\n";
+  const page = parsePage(text);
+  const [first] = page.blocks;
+  assert.equal(first.block.kind, "table");
+  const table = first.block as Extract<Block, { kind: "table" }>;
+  assert.deepEqual(table.align, ["left", "right"]);
+  assert.deepEqual(table.rows[1][1], [{ t: "text", text: "94", marks: ["strong"] }]);
+  assert.ok(compose(page, asEditor(text)).ok && (compose(page, asEditor(text)) as { text: string }).text === text);
+  const edited: EditBlock = { ...table, rows: [...table.rows, [[{ t: "text", text: "新豆 | 有竖线" }], [{ t: "text", text: "93", marks: ["code"] }]]], from: 0 };
+  const out = compose(page, [edited]);
+  assert.ok(out.ok, out.ok ? "" : out.reason);
+  // An edited table is laid out in one form (research 3.6); only that table.
+  assert.equal(out.text, "| 豆子 | 水温 |\n| :-- | --: |\n| 耶加雪菲 | **94** |\n| 哥伦比亚 | 92 |\n| 新豆 \\| 有竖线 | `93` |\n");
+  assertReadsBack(out.text, [edited], "a table with a pipe in a cell");
+});
+
+test("a one-paragraph callout is a block: type, title and words; longer callouts stay as written", () => {
+  const text = "> [!tip]- 小提示\n> 先**焖蒸** 30 秒。\n\n> [!note]\n> 第一段\n>\n> 第二段\n";
+  const page = parsePage(text);
+  assert.deepEqual(page.blocks[0].block, { kind: "callout", type: "tip", fold: "-", title: "小提示", content: [{ t: "text", text: "先" }, { t: "text", text: "焖蒸", marks: ["strong"] }, { t: "text", text: " 30 秒。" }] });
+  assert.equal(page.blocks[1].block.kind, "raw", "two paragraphs: kept as written");
+  const edited = { ...(page.blocks[0].block as Extract<Block, { kind: "callout" }>), title: "新标题", from: 0 } as EditBlock;
+  const out = compose(page, [edited, { ...page.blocks[1].block, from: 1 }]);
+  assert.ok(out.ok);
+  assert.equal(out.text, "> [!tip]- 新标题\n> 先**焖蒸** 30 秒。\n\n> [!note]\n> 第一段\n>\n> 第二段\n");
+  const bare = writeBlocks([{ kind: "callout", type: "warning", fold: "", title: "", content: [] }]);
+  assert.equal(bare, "> [!warning]\n");
+  assertReadsBack(bare, [{ kind: "callout", type: "warning", fold: "", title: "", content: [] }], "a callout with nothing but its type");
+});

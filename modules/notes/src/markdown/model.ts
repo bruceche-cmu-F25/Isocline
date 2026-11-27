@@ -23,9 +23,15 @@ export type Block =
   | { kind: "quote"; content: Inline[] }
   | { kind: "code"; lang: string; text: string }
   | { kind: "rule" }
-  /** What the editor cannot draw as a block (a table, HTML, math, a callout, a footnote): edited as its source text,
-   * written back exactly as shown, never generated. */
+  /** A GFM table: the first row is the header; `align` per column. */
+  | { kind: "table"; align: Align[]; rows: Inline[][][] }
+  /** An Obsidian callout of one paragraph: `> [!type]± title`, then its words. */
+  | { kind: "callout"; type: string; fold: "" | "+" | "-"; title: string; content: Inline[] }
+  /** What the editor cannot draw as a block (HTML, math, a footnote, a callout of several paragraphs): edited as its
+   * source text, written back exactly as shown, never generated. */
   | { kind: "raw"; text: string };
+
+export type Align = "left" | "right" | "center" | null;
 
 export type BlockKind = Block["kind"];
 
@@ -40,6 +46,8 @@ export function plainBlock(block: Block): string {
     case "code": return block.text;
     case "raw": return block.text;
     case "rule": return "";
+    case "table": return block.rows.map((row) => row.map(plainInline).join(" | ")).join("\n");
+    case "callout": return `${block.title}\n${plainInline(block.content)}`;
     default: return plainInline(block.content);
   }
 }
@@ -48,6 +56,9 @@ export function plainBlock(block: Block): string {
 export function readableBlock(block: Block): string {
   if (block.kind === "code" || block.kind === "raw") return block.text;
   if (block.kind === "rule") return "";
+  const words = (content: readonly Inline[]) => content.map((run) => (run.t === "text" ? run.text : run.t === "wiki" ? run.alias ?? run.target : "")).join("");
+  if (block.kind === "table") return block.rows.map((row) => row.map(words).join(" ")).join("\n");
+  if (block.kind === "callout") return [block.title, words(block.content)].filter(Boolean).join("\n");
   return block.content.map((run) => (run.t === "text" ? run.text : run.t === "wiki" ? run.alias ?? run.target : "")).join("");
 }
 
@@ -99,6 +110,15 @@ export function sameBlock(a: Block, b: Block): boolean {
     }
     case "code": return a.lang === (b as typeof a).lang && a.text === (b as typeof a).text;
     case "rule": return true;
+    case "table": {
+      const o = b as typeof a;
+      return a.align.length === o.align.length && a.align.every((x, i) => x === o.align[i]) && a.rows.length === o.rows.length
+        && a.rows.every((row, r) => row.length === o.rows[r].length && row.every((cell, c) => sameInline(cell, o.rows[r][c])));
+    }
+    case "callout": {
+      const o = b as typeof a;
+      return a.type === o.type && a.fold === o.fold && a.title === o.title && sameInline(a.content, o.content);
+    }
     case "raw": return a.text === (b as typeof a).text;
   }
 }
@@ -109,6 +129,8 @@ export function signature(block: Block): string {
     case "heading": return `heading:${block.level}|${plainBlock(block)}`;
     case "item": return `item:${block.list}:${block.depth}:${block.list === "task" ? !!block.checked : ""}|${plainBlock(block)}`;
     case "code": return `code:${block.lang}|${block.text}`;
+    case "table": return `table:${block.align.join(",")}|${plainBlock(block)}`;
+    case "callout": return `callout:${block.type.toLowerCase()}:${block.fold}|${plainBlock(block)}`;
     case "raw": return `raw|${block.text.trim()}`;
     default: return `${block.kind}|${plainBlock(block)}`;
   }
