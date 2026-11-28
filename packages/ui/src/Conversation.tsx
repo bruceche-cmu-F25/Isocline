@@ -19,6 +19,7 @@ import { SkillInput } from "./SkillInput.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { ModelPicker } from "./shell/ModelPicker.tsx";
 import { ChoicePicker } from "./shell/ChoicePicker.tsx";
+import { CopyButton } from "./shell/CopyButton.tsx";
 import { Icon } from "./shell/icons.tsx";
 import { MicButton } from "./voice/MicButton.tsx";
 import { appendDictation } from "./voice/wav.ts";
@@ -259,10 +260,15 @@ const Turn = memo(function Turn({ run, receipts, activity, files, highlighted, a
             )}
           </div>
           {(meta.length > 0 || outcome?.reply) && (
-            <p className="run-meta" title={metaTitle}>
-              {meta.map((part, index) => <span key={part}>{mark && index === 0 && <Logo name={mark} />}{part}</span>)}
-              {outcome?.reply && <ReadAloud id={`reply:${run.id}`} text={outcome.reply} />}
-            </p>
+            <div className="run-meta" title={metaTitle}>
+              {outcome?.reply && (
+                <span className="reply-tools">
+                  <CopyButton className="reply-copy" text={() => outcome.reply!} label={t("conv.copyReply")} />
+                  <ReadAloud id={`reply:${run.id}`} text={outcome.reply} />
+                </span>
+              )}
+              {meta.map((part, index) => <span key={part} className="meta-part">{mark && index === 0 && <Logo name={mark} />}{part}</span>)}
+            </div>
           )}
           {error && <p className="problem small" role="alert">{error}</p>}
         </div>
@@ -523,9 +529,22 @@ export function Conversation({ id, preferredModel, highlighted, context, suggest
   const asking = waitingOn?.request?.kind === "input" ? waitingOn : undefined;
   // Following a reply keeps its end in view. Someone else's new turn does not interrupt a reader in the past.
   const atEnd = useRef(true);
+  // Scrolled up away from the end: a button brings the reader back to the latest.
+  const [away, setAway] = useState(false);
   const onScroll = () => {
     const el = list.current;
-    if (el) atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    if (!el) return;
+    atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    const far = el.scrollHeight - el.scrollTop - el.clientHeight > el.clientHeight / 2;
+    setAway((was) => (was === far ? was : far));
+  };
+  const toLatest = () => {
+    const el = list.current;
+    if (!el) return;
+    atEnd.current = true;
+    setAway(false);
+    setAway(false);
+    el.scrollTo({ top: el.scrollHeight, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   };
   useLayoutEffect(() => {
     const el = list.current;
@@ -579,6 +598,7 @@ export function Conversation({ id, preferredModel, highlighted, context, suggest
     if (goal.length > MESSAGE_LIMIT) { setError(t("conv.quoteTooLong")); return; }
     setError(null);
     atEnd.current = true;
+    setAway(false);
     // An explanation is its own turn. The draft, its files and any pending answer belong to the composer.
     void api.submit(goal, id).catch((reason: Error) => setError(reason.message));
   };
@@ -594,6 +614,7 @@ export function Conversation({ id, preferredModel, highlighted, context, suggest
     const goal = text.trim() || (files.length ? t("attach.look") : "");
     if (!goal || attachments.busy || !store.beginSend()) return;
     atEnd.current = true;
+    setAway(false);
     setError(null);
     const submit = () => api.submit(goal, id ?? undefined, context, files).then(({ run }) => { if (!id) onStarted(run.conversationId); });
     // The target may have just finished, or the question been answered elsewhere. Keep the words as a follow-up.
@@ -650,6 +671,13 @@ export function Conversation({ id, preferredModel, highlighted, context, suggest
         </ol>
       )}
       {id && runs.length > 0 && <SelectionActions list={list} onFollowUp={followUp} onExplain={explain} />}
+      {away && id && runs.length > 0 && (
+        <div className="to-latest-wrap">
+          <button type="button" className="to-latest" onClick={toLatest} aria-label={t("conv.toLatest")} title={t("conv.toLatest")}>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v11M5 10l5 5 5-5" /></svg>
+          </button>
+        </div>
+      )}
       {offer && (
         <div className="suggestions" role="group" aria-label={t("chips.label")}>
           {suggestions.map((text) => <button type="button" key={text} className="suggestion" onClick={() => send(text)}>{text}</button>)}

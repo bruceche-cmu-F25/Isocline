@@ -235,7 +235,7 @@ body.resizing { cursor: col-resize; user-select: none; }
    bubble, Zirma's side plain text, nothing about the model. While it works, the line says what it is doing; the
    list of steps and the cost of the turn are for the Code page. */
 .conversation[data-slim] .said { padding: 6px 12px; border-radius: 14px; background: var(--wash); box-shadow: none; color: var(--copy); }
-.conversation[data-slim] :is(.turn-dot, .run-meta, .steps) { display: none; }
+.conversation[data-slim] :is(.turn-dot, .run-meta > .meta-part, .steps) { display: none; }
 .conversation[data-slim] .reply { padding: 0; border-radius: 0; background: none; box-shadow: none; }
 .conversation[data-slim] .receipts { padding: 0; border: 0; border-radius: 0; background: none; color: var(--accent); }
 .conversation[data-slim] .suggestions { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
@@ -276,7 +276,21 @@ body.resizing { cursor: col-resize; user-select: none; }
 .conv-stats .ctx[data-level="full"] circle:last-child { stroke: var(--now); }
 .said.added { opacity: .85; font-size: .875rem; }
 .run-meta { display: flex; flex-wrap: wrap; gap: 0 6px; padding-left: 4px; font: .6875rem var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); cursor: default; }
-.run-meta span + span::before { content: "·"; margin-right: 6px; opacity: .6; }
+.run-meta > span + span::before { content: "·"; margin-right: 6px; opacity: .6; }
+.run-meta .reply-tools { display: inline-flex; align-items: center; gap: 2px; margin-left: -4px; }
+.run-meta .reply-tools .read-aloud { margin-left: 0; }
+.copy-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-radius: 5px; color: var(--muted); }
+.copy-btn:hover, .copy-btn:focus-visible { color: var(--ink); background: var(--wash); }
+.copy-btn[data-done="copied"] { color: var(--ok); }
+.copy-btn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.reply-copy { width: 20px; height: 16px; opacity: .7; }
+.reply-copy:hover, .reply-copy:focus-visible, .reply-copy[data-done] { opacity: 1; background: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* Scrolled up away from the latest: a round button just above the composer brings it back. */
+.to-latest-wrap { position: relative; height: 0; z-index: 2; }
+.to-latest { position: absolute; bottom: 10px; left: 50%; translate: -50% 0; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: var(--raise); color: var(--copy); box-shadow: 0 0 0 1px var(--line-soft), 0 2px 8px oklch(0 0 0 / .12); }
+.to-latest:hover { color: var(--ink); }
+.to-latest svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .run-meta .logo { width: 11px; height: 11px; margin-right: 4px; vertical-align: -1.5px; }
 /* Read a reply aloud: a small speaker at the end of its line, quiet until wanted. */
 .read-aloud { width: 20px; height: 16px; margin-left: 2px; display: inline-grid; place-items: center; border-radius: 5px; color: var(--muted); opacity: .7; }

@@ -53,7 +53,7 @@ import { fasterPayload } from "./speed.ts";
 import { LOOKERS, look, real } from "./looking.ts";
 import { loadZirmaMcpConfig, mcpPath } from "./mcp-config.ts";
 import { createMcpTransport, createMcpVault, type McpSecrets } from "./mcp-store.ts";
-import { composePrompt, type ExternalStep, type ModelInfo, type RunJob, type ToParent, type ToWorker } from "./protocol.ts";
+import { composePrompt, titlePrompt, type ExternalStep, type ModelInfo, type RunJob, type ToParent, type ToWorker } from "./protocol.ts";
 import { Skills } from "./skills.ts";
 import { defaultSecretStore, normalizeCommand, type Attachment } from "@zirma/core";
 import { createCredentialStore } from "./credentials.ts";
@@ -530,6 +530,20 @@ async function models(): Promise<ModelInfo[]> {
   }));
 }
 
+/** One plain call, no tools and no session: a short title for a new conversation (protocol.ts titlePrompt). */
+async function title(job: { goal: string; reply: string; model: string | null }): Promise<string> {
+  const runtime = await ModelRuntime.create(modelOptions);
+  const slash = job.model?.indexOf("/") ?? -1;
+  const chosen = job.model && slash > 0 ? runtime.getModel(job.model.slice(0, slash), job.model.slice(slash + 1)) : undefined;
+  const model = chosen ?? await engineDefault(runtime, SettingsManager.create(cwd, agentDir));
+  if (!model) throw new Error("No model to name the conversation with");
+  const prompt = titlePrompt(job.goal, job.reply);
+  const answer = await runtime.completeSimple(model, { systemPrompt: prompt.system, messages: [{ role: "user", content: prompt.user, timestamp: Date.now() }] },
+    { maxTokens: 1024, signal: AbortSignal.timeout(30_000) });
+  if (answer.stopReason === "error" || answer.stopReason === "aborted") throw new Error(answer.errorMessage ?? "The model did not answer");
+  return answer.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+}
+
 async function shutdown(): Promise<never> {
   currentAbort?.();
   await Promise.all([...warm.keys()].map(close));
@@ -571,6 +585,11 @@ process.on("message", async (message: ToWorker) => {
     }
   } else if (message.type === "release") {
     void close(message.thread);
+  } else if (message.type === "title") {
+    title(message).then(
+      (text) => send({ type: "title_result", id: message.id, title: text }),
+      (error: unknown) => send({ type: "title_result", id: message.id, error: error instanceof Error ? error.message : String(error) }),
+    );
   } else if (message.type === "models") {
     models().then(
       (list) => send({ type: "models_result", id: message.id, models: list }),

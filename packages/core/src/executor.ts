@@ -162,6 +162,9 @@ export interface EnginePort {
   steer?(thread: string, text: string): Promise<boolean>;
   /** The models the user can run. */
   models?(): Promise<EngineModel[]>;
+  /** A short title for a new conversation, from its first exchange; one plain call to a model, no tools.
+   * `model`: the conversation's own (`provider/model`); null for the user's default. */
+  title?(input: { goal: string; reply: string; model: string | null }): Promise<string>;
 }
 /** Not recorded: what a device may show while a run works. */
 export interface LiveUpdate { runId: string; conversationId: string; text: string }
@@ -175,6 +178,8 @@ export interface ExecuteOptions {
   /** For the operator's log. The run itself keeps only a short code. */
   onEngineError?: (run: Run, error: unknown) => void;
   onLive?: (update: LiveUpdate) => void;
+  /** A run reached its end here (completed, failed, cancelled): for work that follows it, outside the run. */
+  onFinished?: (run: Run) => void;
 }
 
 class Stop extends Error {
@@ -443,6 +448,7 @@ export function createRunDrain(world: World, engine: EnginePort, options: Execut
         steering.delete(run.id);
         await Promise.allSettled(pending);
       })
+        .then((finished) => { if (finished && finished.state !== "interrupted") options.onFinished?.(finished); })
         .catch((error: unknown) => options.onEngineError?.(run, error))
         .finally(() => { steering.delete(run.id); active.delete(run.id); pump(); });
       active.set(run.id, job);

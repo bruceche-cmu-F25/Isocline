@@ -52,6 +52,11 @@ process.on("message", async (message: ToWorker) => {
     send({ type: "models_result", id: message.id, models: [{ id: "fake-1", provider: "fake", name: "Fake One", reasoning: true }] });
     return;
   }
+  if (message.type === "title") {
+    if (message.goal === "fail") send({ type: "title_result", id: message.id, error: "no key" });
+    else send({ type: "title_result", id: message.id, title: `「${message.goal}」 with ${message.model ?? "default"}` });
+    return;
+  }
   if (message.type === "shutdown") {
     note(`shutdown ${[...warm].join(",")}`);
     process.exit(0);

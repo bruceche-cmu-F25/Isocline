@@ -24,7 +24,7 @@ export {
   type Run, type RunOutcome, type RunRequest, type RunState, type SubmitRunInput, type ViewContext, viewContext,
 } from "./runs.ts";
 export {
-  getConversation, setArchivePlan, requireOpenSession, markConversationReplyRead, listConversations, listArchivedConversations, updateConversation, startSession, isSession, runInSession, sessionIds, sessionEvent, titleFrom, ConversationError, CONVERSATION_ID, CONVERSATION_MODEL, THINKING_LEVELS,
+  getConversation, setArchivePlan, requireOpenSession, markConversationReplyRead, listConversations, listArchivedConversations, updateConversation, startSession, isSession, runInSession, sessionIds, sessionEvent, titleFrom, untitledExchange, cleanTitle, ConversationError, CONVERSATION_ID, CONVERSATION_MODEL, THINKING_LEVELS,
   sessionRoot, recordCommit, recordPublished, SPEEDS,
   type Conversation, type ThinkingLevel, type SessionWorktree, type Speed,
 } from "./conversations.ts";
