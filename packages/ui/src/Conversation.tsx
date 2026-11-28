@@ -360,13 +360,16 @@ function SessionUsage({ sample }: { sample?: CoreEvent["payload"] }) {
   );
 }
 
-function SessionSettings({ conversation, preferredModel, onError }: { conversation: ConversationDetail["conversation"]; preferredModel?: string | null; onError(message: string | null): void }) {
+type TuningPatch = { model?: string | null; thinking?: ThinkingLevel | null; speed?: "fast" | null; mode?: SessionMode };
+/** What the row under the composer shows: a conversation's own choices, or those picked for one not started yet. */
+type Tuned = Pick<ConversationDetail["conversation"], "model" | "thinking" | "speed" | "mode" | "projectId">;
+/** Before the first message nothing has been picked: the defaults. */
+const UNTUNED: Tuned = { model: null, thinking: null, speed: null, mode: null, projectId: null };
+
+function SessionSettings({ conversation, preferredModel, onChange }: { conversation: Tuned; preferredModel?: string | null; onChange(patch: TuningPatch): void }) {
   const [expanded, setExpanded] = useState(false);
   const optionsId = useId();
-  const change = (patch: { model?: string | null; thinking?: ThinkingLevel | null; speed?: "fast" | null; mode?: SessionMode }) => {
-    onError(null);
-    api.updateConversation(conversation.id, patch).catch((reason: Error) => onError(reason.message));
-  };
+  const change = onChange;
   // Fast is offered where the chosen model can write faster; with the default model it is kept and used where it can.
   const slash = conversation.model?.indexOf("/") ?? -1;
   const canFast = !conversation.model || !!fastSpeed(conversation.model.slice(0, slash), conversation.model.slice(slash + 1));
@@ -455,11 +458,16 @@ export interface ConversationProps {
   /** In Zirma's panel beside a daily page: the words and what was done, and nothing about the model. No title and
    * usage row, no model and thinking under the composer, and suggestions only before the first question. */
   slim?: boolean;
+  /** The model, thinking and speed under the composer even when slim (the Chats page). A new conversation picks
+   * them before its first message, which carries them. */
+  tuning?: boolean;
   sessionToolbar?: SessionToolbar;
 }
 
-export function Conversation({ id, preferredModel, highlighted, context, suggestions, pageTitle, automationTitle, onEvent, onView, onStarted, slim, sessionToolbar }: ConversationProps) {
+export function Conversation({ id, preferredModel, highlighted, context, suggestions, pageTitle, automationTitle, onEvent, onView, onStarted, slim, tuning, sessionToolbar }: ConversationProps) {
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
+  // Picked for a conversation not started yet; its first message carries it.
+  const [pending, setPending] = useState<Tuned>(UNTUNED);
   const { store, text: draft, sending, attachments } = useComposer(sessionToolbar && id ? id : undefined);
   const setDraft = store.setText;
   const [error, setError] = useState<string | null>(null);
@@ -616,7 +624,9 @@ export function Conversation({ id, preferredModel, highlighted, context, suggest
     atEnd.current = true;
     setAway(false);
     setError(null);
-    const submit = () => api.submit(goal, id ?? undefined, context, files).then(({ run }) => { if (!id) onStarted(run.conversationId); });
+    const picked = !id && (pending.model || pending.thinking || pending.speed)
+      ? { model: pending.model, thinking: pending.thinking, speed: pending.speed } : undefined;
+    const submit = () => api.submit(goal, id ?? undefined, context, files, picked).then(({ run }) => { if (!id) onStarted(run.conversationId); });
     // The target may have just finished, or the question been answered elsewhere. Keep the words as a follow-up.
     const orSubmit = (reason: unknown) => {
       if (reason instanceof ApiError && reason.status === 409) return submit();
@@ -711,7 +721,10 @@ export function Conversation({ id, preferredModel, highlighted, context, suggest
           </span>
         </div>
       </form>
-      {!slim && detail && <SessionSettings conversation={detail.conversation} preferredModel={preferredModel} onError={setError} />}
+      {(!slim || tuning) && (id ? detail && <SessionSettings conversation={detail.conversation} preferredModel={preferredModel} onChange={(patch) => {
+        setError(null);
+        api.updateConversation(id, patch).catch((reason: Error) => setError(reason.message));
+      }} /> : <SessionSettings conversation={pending} preferredModel={preferredModel} onChange={(patch) => setPending((now) => ({ ...now, ...patch }))} />)}
       {error && <p className="problem small composer-error" role="alert">{error}</p>}
     </section>
   );

@@ -141,7 +141,7 @@ export function Chats({ state, side, selected, onSelect, onShowArchive, onArchiv
               <b>{open?.title ?? t("conv.new")}</b>
             </header>
           )}
-          <Conversation key={selected ?? "new"} id={selected} highlighted={highlighted} slim suggestions={[]}
+          <Conversation key={selected ?? "new"} id={selected} highlighted={highlighted} slim tuning preferredModel={state.settings?.model} suggestions={[]}
             pageTitle={pageTitle} automationTitle={automationTitle} onEvent={onEvent} onView={onView} onStarted={(id) => onSelect(id)} />
         </div>
       )}

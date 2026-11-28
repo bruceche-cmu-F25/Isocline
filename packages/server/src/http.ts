@@ -396,11 +396,14 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     const body = await readJson<SubmitRunRequest>(req);
     if (typeof body.requestId !== "string" || typeof body.goal !== "string") throw new HttpError(400, "requestId and goal are required");
     if (body.attachments !== undefined && !(Array.isArray(body.attachments) && body.attachments.every((id) => typeof id === "string"))) throw new HttpError(400, "attachments is a list of file ids");
+    for (const field of ["model", "thinking", "speed"] as const) {
+      if (body[field] != null && typeof body[field] !== "string") throw new HttpError(400, `${field} is a string or null`);
+    }
     needDev(isSession(home.world, body.conversationId));
     const profile = profileFor(home.world, body.conversationId);
     // A session is its own page: what page the user had open is not its context.
     const context = profile === DEVELOPER_PROFILE ? undefined : body.context;
-    const result = withCoreContext({ actor: "user" }, () => submitRun(home.world, { requestId: body.requestId, goal: body.goal, profile, conversationId: body.conversationId, context, attachments: body.attachments }));
+    const result = withCoreContext({ actor: "user" }, () => submitRun(home.world, { requestId: body.requestId, goal: body.goal, profile, conversationId: body.conversationId, context, attachments: body.attachments, model: body.model, thinking: body.thinking, speed: body.speed }));
     home.kick();
     return send(res, result.replayed ? 200 : 202, result);
   }

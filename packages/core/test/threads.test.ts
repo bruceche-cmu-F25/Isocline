@@ -275,6 +275,26 @@ test("a run remembers the page it was asked from and hands it to the engine; a m
   assert.deepEqual(seen.filter(Boolean), [context, { view: "core.voice", spoken: true }], "only runs asked from a page, or by voice, carry one");
 });
 
+test("a first message can carry the model, thinking level and speed its new conversation is made with", async () => {
+  const w = world();
+  updateSettings(w, { model: "anthropic/claude-sonnet-5-5", thinking: "low" });
+  const tuned = submitRun(w, { requestId: "t1", goal: "hi", profile: "tasks", model: "openai/gpt-5.4", thinking: "high", speed: "fast" });
+  const made = getConversation(w, tuned.run.conversationId);
+  assert.deepEqual([made.model, made.thinking, made.speed], ["openai/gpt-5.4", "high", "fast"]);
+  // The same request again is the same run; with another choice it is a different request.
+  assert.equal(submitRun(w, { requestId: "t1", goal: "hi", profile: "tasks", model: "openai/gpt-5.4", thinking: "high", speed: "fast" }).replayed, true);
+  assert.throws(() => submitRun(w, { requestId: "t1", goal: "hi", profile: "tasks", model: "openai/gpt-5.5" }), RunError);
+  // Only a new conversation takes them: an open one is changed with updateConversation.
+  assert.throws(() => submitRun(w, { requestId: "t2", goal: "more", profile: "tasks", conversationId: made.id, model: "openai/gpt-5.4" }), /first message only/);
+  assert.throws(() => submitRun(w, { requestId: "t3", goal: "hi", profile: "tasks", thinking: "huge" as never }), /Unknown thinking level/);
+  assert.throws(() => submitRun(w, { requestId: "t4", goal: "hi", profile: "tasks", speed: "slow" as never }), /Unknown speed/);
+  assert.throws(() => submitRun(w, { requestId: "t5", goal: "hi", profile: "tasks", model: "no slash" }), /provider\/model/);
+  assert.equal(listConversations(w).length, 1, "a refused first message makes no conversation");
+  const seen: unknown[] = [];
+  await createRunDrain(w, { submit: async (request) => { seen.push([request.model, request.thinking]); return { reply: "ok" }; } }, { owner: "home", profiles: profiles(w) }).kick();
+  assert.deepEqual(seen, [["openai/gpt-5.4", "high"]], "the picked model and level win over the defaults");
+});
+
 test("a conversation without its own model uses the user's default model and thinking level", async () => {
   const w = world();
   updateSettings(w, { model: "anthropic/claude-sonnet-5-5", thinking: "low" });

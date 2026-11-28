@@ -122,14 +122,24 @@ function toConversation(row: Record<string, unknown>): Conversation {
   };
 }
 
-/** Only inside a world transaction. */
-export function createConversation(db: DatabaseSync, input: { title: string; now: number; projectId?: string; mode?: SessionMode; base?: string | null; worktree?: SessionWorktree | null; model?: string | null }): string {
+/** The model, thinking level and speed a conversation may be given: when it is made, or later. */
+export function checkTuning(input: { model?: string | null; thinking?: string | null; speed?: string | null }): void {
   if (input.model != null && !CONVERSATION_MODEL.test(input.model)) throw new ConversationError("invalid", "A model is written provider/model");
+  if (input.thinking != null && !(THINKING_LEVELS as readonly string[]).includes(input.thinking)) throw new ConversationError("invalid", "Unknown thinking level");
+  if (input.speed != null && !(SPEEDS as readonly string[]).includes(input.speed)) throw new ConversationError("invalid", "Unknown speed");
+}
+
+/** Only inside a world transaction. */
+export function createConversation(db: DatabaseSync, input: {
+  title: string; now: number; projectId?: string; mode?: SessionMode; base?: string | null; worktree?: SessionWorktree | null;
+  model?: string | null; thinking?: ThinkingLevel | null; speed?: Speed | null;
+}): string {
+  checkTuning(input);
   const id = newId();
   const worktree = input.projectId ? input.worktree ?? null : null;
-  db.prepare("INSERT INTO core_conversations (id, title, created_at, updated_at, project_id, mode, base, worktree, branch, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+  db.prepare("INSERT INTO core_conversations (id, title, created_at, updated_at, project_id, mode, base, worktree, branch, model, thinking, speed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .run(id, input.title.slice(0, 200), iso(input.now), iso(input.now), input.projectId ?? null, input.projectId ? input.mode ?? "edits" : null, input.base ?? null,
-      worktree?.path ?? null, worktree?.branch ?? null, input.model ?? null);
+      worktree?.path ?? null, worktree?.branch ?? null, input.model ?? null, input.thinking ?? null, input.speed ?? null);
   appendEvent(db, {
     kind: "conversation.created", subject: `conversation:${id}`, runId: null, now: input.now,
     payload: { title: input.title.slice(0, 200), ...(input.projectId ? { projectId: input.projectId } : {}), ...(worktree ? { branch: worktree.branch } : {}) },
@@ -294,9 +304,7 @@ export function updateConversation(
   change: { title?: string; archived?: boolean; model?: string | null; thinking?: ThinkingLevel | null; speed?: Speed | null; mode?: SessionMode; now?: number },
 ): Conversation {
   const now = change.now ?? Date.now();
-  if (change.model !== undefined && change.model !== null && !CONVERSATION_MODEL.test(change.model)) throw new ConversationError("invalid", "A model is written provider/model");
-  if (change.thinking !== undefined && change.thinking !== null && !THINKING_LEVELS.includes(change.thinking)) throw new ConversationError("invalid", "Unknown thinking level");
-  if (change.speed !== undefined && change.speed !== null && !SPEEDS.includes(change.speed)) throw new ConversationError("invalid", "Unknown speed");
+  checkTuning(change);
   world.tx((db) => {
     const row = db.prepare("SELECT title, archived_at, archive_plan, model, thinking, speed, project_id, mode FROM core_conversations WHERE id = ?").get(id);
     if (!row) throw new ConversationError("missing");

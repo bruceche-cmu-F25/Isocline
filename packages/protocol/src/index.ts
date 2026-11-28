@@ -513,6 +513,11 @@ export interface SubmitRunRequest {
   requestId: string; goal: string; conversationId?: string; context?: ViewContext;
   /** Ids of files uploaded for this message (at most 10). */
   attachments?: string[];
+  /** Only without `conversationId`: the model (`provider/model`), thinking level and speed the new conversation is
+   * made with, picked before its first message. Later changes go through POST /api/conversations/:id. */
+  model?: string | null;
+  thinking?: ThinkingLevel | null;
+  speed?: "fast" | null;
 }
 export interface SubmitRunResponse { run: Run; replayed: boolean }
 /** Sources consulted during this edition. Null means there is no attributable successful read of that source.
