@@ -896,6 +896,7 @@ export const en: Record<keyof typeof zh, string> = {
   "auto.label": "Automations",
   "auto.note": "Nobody watches an automation's run: it only reads or makes changes you can undo. Anything else becomes a proposal that waits in your inbox.",
   "auto.new": "New",
+  "auto.what": "What it does",
   "auto.newTitle": "New automation",
   "auto.name": "Name",
   "auto.namePlaceholder": "e.g. Monday todo sweep",
