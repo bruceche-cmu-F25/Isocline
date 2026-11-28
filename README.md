@@ -1,70 +1,80 @@
 # Zirma
 
-An open-source personal agent. One home node on your computer holds your world: what you asked for, what got done, and the proof that it got done. Every device you use is a window onto that same home node. The design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+An open-source personal agent for your tasks, calendar, mail, notes and code. It runs on a computer you control and shares one workspace with you: you both see the same todos, the same calendar and the same pages, and what it would change outside Zirma, such as a calendar event or a reply, waits for your yes.
 
-**Status: step 2 of 5, plus conversations and general tools.** Zirma has a home node, a todo module, conversations (each with its own warm agent session, model choice, and the ability to add to a run while it works), MCP servers and skills behind a permission gate, and a Mac app. Memory and scheduling, multi-device access, voice and more modules come next.
+**[zirma.dev](https://zirma.dev)** · [Architecture](docs/ARCHITECTURE.md) · [Design docs](docs/design/README.md) · [Develop](#develop)
 
-**Design:** [Current views, chosen identity and screenshot](docs/design/README.md).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/todos-dark.png">
+  <img alt="The Todos page: todos by day, each in its area's colour, with the rest of today beside them" src="docs/media/todos-light.png">
+</picture>
 
-**The name.** Zirma (say ZEER-ma) is a city in Italo Calvino's *Invisible Cities*. The app was called Alfred until 2026-11-23 and Isocline until 2026-11-24 ([why](docs/design/rename-isocline.md), [what moved](docs/design/rename-zirma.md)). You talk with one of two characters, **Ana** (a woman's voice) or **Kata** (a man's), named for the two directions of the fourth dimension; pick one, or give it a name of your own, in Settings → General. An install from before either rename moves its world, logs, keychain entries and launchd agent over by itself the first time the new app opens.
+**Status: early (0.1.x).** Zirma is in daily use by its author and changes every week. There is no signed download yet: you run it from source, or build the Mac app yourself. Everything in the screenshots is sample data.
 
-## The Mac app
+## What it does
+
+- **Today.** One page that says what is next: the day's events, what is due, what is waiting on you.
+- **Todos, Calendar, Mail.** Todos by day or as a board, in areas you define. Google Calendar and Gmail are read in; an event Zirma wants to add or a reply it wants to send is a proposal you accept, change or decline.
+- **Notes.** Pages inside pages, kept as plain Markdown in a folder on your disk, with tables, callouts, to-dos and a history per page.
+- **Links.** What you saved from the web, in categories, with one search across all of it.
+- **Chats.** Ask in a sentence from any page. Each conversation keeps its own session and model, and you can add to a run while it works.
+- **Automations.** Things that happen on a schedule, such as a morning brief written before you sit down.
+- **Code.** A second mode for development: projects, sessions in their own git worktree, your terminal beside the conversation, and a permission mode you choose.
+- **Voice.** Dictate into any field, or hold a key and say it; Zirma can answer aloud.
+- **Every device.** Pair a phone or a laptop and open the same workspace there. A notice goes to the one device you are using.
+- **Your own tools.** Sign in to the model you want to use, and add MCP servers and skills, all in Settings.
+
+A note is a page of Markdown with pages inside it:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/notes-dark.png">
+  <img alt="A note page with a table, a to-do list and a callout" src="docs/media/notes-light.png">
+</picture>
+
+Links, and the same workspace on a phone:
+
+<p>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/links-dark.png"><img alt="The Links page: places, saved links and categories" src="docs/media/links-light.png" width="72%" align="top"></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/phone-dark.png"><img alt="The Todos page on a phone" src="docs/media/phone-light.png" width="24%" align="top"></picture>
+</p>
+
+## How it is put together
+
+One **home node** on your computer holds your world: what you asked for, what got done, and the proof that it got done. The Mac app, a browser tab and your phone are windows onto that same node. Closing a window stops nothing; the node keeps working and starts again at login.
+
+- **A sentence becomes a run.** Submitting one returns at once; the conversation never blocks while a run works.
+- **Results are backed by receipts:** the events a run actually wrote, recorded in the same transaction as each change. If the model says "done" but called no tool, the run has no receipts.
+- **Retries are safe.** Every command and run carries a request id; sending it again returns the first result.
+- **A crash never repeats work.** A run cut off in the middle comes back marked *interrupted* and runs again only if you continue it.
+- **You decide what a tool may do.** Tools that only read run freely. Any other tool call asks you first, for that one call, and if you say no the assistant is told not to try another way. Deleting for good always asks.
+- **The node listens only on this machine.** Other devices reach it over your own Tailscale network after pairing with a one-time code, and you can remove a device at any time.
+
+The full design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Run it
+
+You need a Mac and Node 24 or newer. (The home node also runs on Linux; the app is Mac only.)
 
 ```bash
+git clone https://github.com/bruceche-cmu-F25/Zirma.git
+cd Zirma
 npm install
 npm run desktop
 ```
 
-On first open, the app installs the home node as a launchd user agent (`~/Library/LaunchAgents/zirma.home-node.plist`) and starts it with the app's own runtime, so you don't need a separate Node to run it. From then on:
+On first open, the app installs the home node as a launchd user agent and shows a short walkthrough; each step can be skipped and done later in Settings. Connect a model in Settings → Models and, for Calendar and Mail, a Google account in Settings → Accounts. Without a model, the pages still work by hand.
 
-- **The home node is independent of the app.** Closing the window or quitting the app does not stop a run. The node also starts again at login. Its log is at `~/Library/Logs/Zirma/zirma.home-node.log`.
-- **The figure stays on screen.** It sits in the bottom-right corner, always on top, and never takes focus. It shows when the assistant is working or has something waiting. Click it to open the main window.
-- **Returning from away gets one greeting.** When you lock the screen and come back after 10 minutes or more, the figure greets you once with what actually happened while you were away. Change the 10 minutes with `ZIRMA_AWAY_MINUTES`.
-- **Chat replies stay in their conversation.** Unseen replies have an unread dot. Ask the assistant to notify you when it finishes to receive an Inbox delivery. Read the morning brief in Inbox and browse previous editions in Automations.
-- **⌥Space opens Zirma from anywhere.** The menu bar item shows whether the home node is online, can hide the figure, and can restart or stop the node.
+- Run from source, macOS shows the app as "Electron".
+- `⌥Space` opens Zirma from anywhere. The figure in the corner of the screen shows when Zirma is working or has something waiting.
+- To build `Zirma.app` and a disk image: `npm run package:mac`. The build is ad hoc signed, not notarized: on another Mac, open it the first time with right-click → Open. See [docs/packaging.md](docs/packaging.md).
 
-Running the app from source, macOS shows it as "Electron" and asks once for permission to show notifications. To build `Zirma.app` and a disk image: `npm run package:mac` (ad hoc signed, not notarized: on another Mac, open it the first time with right-click → Open). How it is built, how to try a build without touching your real data, and what a public release still needs: [docs/packaging.md](docs/packaging.md).
-
-To remove the background service completely:
+To run only the home node and use it in a browser:
 
 ```bash
-launchctl bootout gui/$(id -u)/zirma.home-node; rm ~/Library/LaunchAgents/zirma.home-node.plist
+npm start          # builds the interface, then serves http://127.0.0.1:7491
 ```
 
-`npm run e2e --workspace @zirma/desktop` drives the real app against a throwaway world on port 7481 and checks all of the above. It installs its own temporary launchd agent and removes it at the end.
-
-## Tools beyond todos: MCP servers and skills
-
-Zirma uses its own configuration, separate from your personal Pi setup, in its data directory (`~/Library/Application Support/Zirma/` on macOS):
-
-- **MCP servers** go in `mcp.json`. It uses the same format as Pi and Claude Desktop, so you can copy entries across. `${VAR}` placeholders are filled in from the environment when Zirma connects.
-
-  ```json
-  { "mcpServers": { "github": { "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer ${GITHUB_TOKEN}" } } } }
-  ```
-
-- **Skills** go in `skills/<name>/SKILL.md`, using the [Agent Skills](https://agentskills.io/specification) format.
-
-Each server marks its tools with hints, and those hints decide what runs freely:
-
-- **Runs without asking:** tools a server marks as read-only, and reading Zirma's own skill files.
-- **Asks you first, for that one call:** every other tool, including tools a server doesn't mark at all, and reading any other file. If you say no, the assistant is told not to try another way.
-- **Not available at all:** a shell, writing files, and editing files.
-
-A call you allowed that may have changed something outside Zirma is kept as a receipt of that run.
-
-A conversation's session stays open between turns, as in Pi Web, so its MCP connections stay up; it closes after 10 minutes idle.
-
-## Run the home node alone
-
-You need Node 24 or newer. To talk to the assistant in sentences, you also need a model signed in through [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) (`~/.pi/agent`). Without a model, the todo list still works by hand.
-
-```bash
-npm install
-npm start          # builds the interface, then serves a development world on http://127.0.0.1:7491
-```
-
-**Development and production never share anything** ([packages/core/src/stage.ts](packages/core/src/stage.ts)). Production is the installed Zirma.app; anything run from this source tree is development, with its own world, port, launchd agent and keychain entry:
+**Development and production never share anything.** Anything run from this source tree is development; production is the installed Zirma.app.
 
 | | Production (Zirma.app) | Development (from source) |
 |---|---|---|
@@ -73,39 +83,41 @@ npm start          # builds the interface, then serves a development world on ht
 | launchd agent | `zirma.home-node` | `zirma.home-node.dev` |
 | Keychain service | `Zirma` | `Zirma Dev` |
 
-On Linux the worlds are `~/.local/share/zirma` and `zirma-dev`. `--data-dir` / `ZIRMA_DATA_DIR`, `ZIRMA_PORT` and `ZIRMA_KEYCHAIN_SERVICE` move a world within its stage; a development run refuses production's world and keychain. A server run from source as the real node says so with `ZIRMA_ENV=production`. Only one home node can run on a data directory at a time.
-
-## What is guaranteed so far
-
-- A sentence becomes a **run**. Submitting a run returns immediately, and the conversation never blocks while a run works.
-- A run's result is backed by **receipts**: the events it actually wrote, recorded in the same transaction as each change. If the model says "done" but called no tool, the run has no receipts.
-- **Retries are safe.** Every command and run carries a request id. Sending the same request again returns the original result instead of running it a second time.
-- **A crash never repeats work.** If the home node stops in the middle of a run, the run comes back marked *interrupted*. It runs again only after you choose to continue it.
-- **Coming back is a real event.** Devices report when you are active or away. Exactly one welcome is recorded per return, and it holds only what actually happened, never a guess.
-- **Runs cannot delete.** A run gets read and reversible tools only. Permanent deletion stays with you.
-- **The server only listens locally.** It binds to loopback and refuses any other Host header and any cross-site browser origin. Paired devices come with the multi-device step.
-
-## Layout
-
-```text
-packages/core        world (events, state), runs, notices, commands; the engine port
-packages/module-kit  the module contract: operations, agent tools, permission levels
-packages/engine-pi   runs one core run as a tool-scoped, in-memory Pi session
-packages/server      the home node: client protocol (HTTP + SSE), single-instance lock, CLI
-packages/protocol    the public client protocol types
-packages/ui          the interface every device opens (React + Vite), and the figure's page
-packages/desktop     the Mac app (Electron): launchd home node, figure, menu bar, hotkey, notifications, presence
-modules/todo         todos, moved from Robin's todo domain, with a read-only Robin importer
-prototype/           chosen tesseract identity, its state sheet, and the workspace layout study
-archive/design/      earlier interaction, layout and identity studies
-```
+To remove the development background service:
 
 ```bash
-npm test             # core, todo module and home node, including a kill-mid-run test
-npm run typecheck
-npm run dev:ui       # Vite on :5173, proxied to a running home node
+launchctl bootout gui/$(id -u)/zirma.home-node.dev; rm ~/Library/LaunchAgents/zirma.home-node.dev.plist
 ```
 
-MIT licensed. Zirma builds on [Pi](https://github.com/earendil-works/pi) (MIT, © Mario Zechner) and borrows code and
-designs from [pi-web](https://github.com/agegr/pi-web) (MIT, © agegr), among others: see
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+## Develop
+
+```bash
+npm test             # every package and module, including a kill-mid-run test
+npm run typecheck
+npm run trial        # a throwaway node on a fresh temporary world, port 7520
+npm run dev:ui       # the interface with hot reload on :5173, talking to the trial node
+npm run prototype    # the clickable design prototypes on :4173
+```
+
+Read [AGENTS.md](AGENTS.md) before the first command and [docs/WORKFLOW.md](docs/WORKFLOW.md) before the first branch: one branch per task cut from `zirma`, merged back by a squash-merged pull request. A large feature starts as a design doc in [docs/design/](docs/design/README.md).
+
+```text
+packages/core        the world (events, state), runs, notices, attention, settings
+packages/module-kit  the module contract: operations, agent tools, permission levels
+packages/engine-pi   runs one run as a tool-scoped agent session; MCP servers and skills
+packages/server      the home node: HTTP + SSE, pairing, voice, web access, the CLI
+packages/protocol    the public client protocol types
+packages/ui          the interface every device opens (React + Vite), and the figure
+packages/desktop     the Mac app (Electron): launchd home node, figure, menu bar, hotkeys
+modules/             todo, calendar, mail, links, notes: each one a module on the kit
+prototype/           clickable studies made before a feature is built
+docs/                architecture, design docs, research, workflow
+```
+
+## The name
+
+Zirma (say ZEER-ma) is a city in Italo Calvino's *Invisible Cities*. You talk with one of two characters, **Ana** or **Kata**, named for the two directions of the fourth dimension; pick one, or give it a name of your own, in Settings → General. The app was called Alfred, then Isocline, until November 2026; an older install moves its data over by itself the first time the new app opens.
+
+## Licence
+
+MIT. Zirma builds on [Pi](https://github.com/earendil-works/pi) (MIT, © Mario Zechner) and borrows code and designs from [pi-web](https://github.com/agegr/pi-web) (MIT, © agegr), among others: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
