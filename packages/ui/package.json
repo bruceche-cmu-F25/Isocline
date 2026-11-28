@@ -32,6 +32,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.3.0",
     "@zirma/module-calendar": "*",
+    "@zirma/module-goals": "*",
     "@zirma/module-links": "*",
     "@zirma/module-mail": "*",
     "@zirma/module-notes": "*",

@@ -108,7 +108,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .top-menu-go span { flex: 1; }
 .top-menu-go kbd { color: var(--muted); font: .6875rem var(--sans); }
 .mode-switch { flex: none; display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--wash); }
-.mode-switch button { width: 32px; height: 26px; display: grid; place-items: center; border-radius: 7px; color: var(--muted); }
+.mode-switch button { width: 28px; height: 26px; display: grid; place-items: center; border-radius: 7px; color: var(--muted); }
 .mode-switch button svg { width: 16px; height: 16px; }
 .mode-switch button:hover { color: var(--ink); }
 .mode-switch button[aria-pressed="true"] { background: var(--raise); color: var(--ink); font-weight: 500; box-shadow: 0 0 0 1px var(--line-soft), 0 1px 2px #0000000f; }
@@ -751,7 +751,7 @@ button.link { color: var(--accent); text-decoration: underline; text-decoration-
 
 /* Inside the Mac app: the window buttons sit at the top bar's left; the bar and the tops of the columns drag the window. */
 html.desktop .topbar-lead { padding-left: 82px; }
-html.desktop.full-screen .topbar-lead { padding-left: 12px; } /* full screen: no window buttons, the bar starts at the edge */ /* with its buttons, 199px: inside the sidebar's narrowest (layout.ts NAV.min) */
+html.desktop.full-screen .topbar-lead { padding-left: 12px; } /* full screen: no window buttons, the bar starts at the edge */ /* with its buttons (three workspaces), 221px: inside the sidebar's narrowest (layout.ts NAV.min) */
 html.desktop .topbar, html.desktop .page-head, html.desktop .alf-head { -webkit-app-region: drag; }
 html.desktop .topbar button, html.desktop .page-head button, html.desktop .alf-head button { -webkit-app-region: no-drag; }
 
@@ -1771,3 +1771,8 @@ html.desktop .dev-browser-bar { -webkit-app-region: no-drag; }
 
 /* A note's to-do on the todo card: back to its line in the note. */
 .todo-note-link { color: var(--accent); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+
+/* An icon kept on its own 24 × 24 grid (shell/icons.tsx BOX): its stroke is widened by 24/20, so it is as thick as
+   the others at the same size. */
+svg[data-box="24"] { stroke-width: 1.92; }
+.topbar-title svg[data-box="24"], .page-head h1 svg[data-box="24"] { stroke-width: 2.16; }

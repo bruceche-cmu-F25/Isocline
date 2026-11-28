@@ -24,6 +24,7 @@ says what, where, and under which licence. Where code was adapted, the file it l
 | `packages/ui/src/brand/svg/`: `gmail`, `google-calendar` | [gilbarbara/logos](https://github.com/gilbarbara/logos), through `@iconify-json/logos` 1.2.20 | CC0-1.0 |
 | `packages/ui/src/fonts/GeistSerif-Regular.woff2`: the Geist Serif font, for the wordmark; `prototype/fonts/GeistSerifVF.woff2`: the same font with its variable axis, for `prototype/serif.html` | [Geist](https://github.com/vercel/geist-font), through `geist` 1.9.2 | SIL OFL 1.1, © 2023 Vercel; the licence text is beside each file (`GeistSerif-OFL.txt`) |
 | `prototype/goals.html`: the telescope icon of the Goals mode (`scope` in its icon table), paths unchanged, stroke width 1.6 | [Tabler Icons](https://github.com/tabler/tabler-icons) 3.19.0, `icons/outline/telescope.svg` | MIT, © 2020-2024 Paweł Kuna |
+| `packages/ui/src/shell/icons.tsx`: the same telescope icon in the app (`scope`), its four paths unchanged and joined into one, drawn on its own 24 × 24 grid | [Tabler Icons](https://github.com/tabler/tabler-icons) 3.19.0, `icons/outline/telescope.svg` | MIT, © 2020-2024 Paweł Kuna |
 
 The logos are trademarks of their owners; see `packages/ui/src/brand/README.md`.
 

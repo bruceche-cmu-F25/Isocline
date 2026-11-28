@@ -32,6 +32,8 @@ const Settings = lazyPage(() => import("../Settings.tsx").then((module) => modul
 // The notes page brings its editor (ProseMirror); it loads when notes are first opened.
 import { Chats, dailyConversations, type ChatProps } from "../Chats.tsx";
 const Notes = lazyPage(() => import("../notes/Notes.tsx").then((module) => module.Notes));
+// The Goals mode shares the notes' editor; it loads when the mode is first opened.
+const Goals = lazyPage(() => import("../goals/Goals.tsx").then((module) => module.Goals));
 
 export interface PageProps<S = unknown> extends NamePreference {
   /** A module page's own snapshot (see `modulePage`); nothing a core page reads. */
@@ -71,8 +73,9 @@ export interface PageDef<S = unknown> {
   icon: IconName;
   /** Category colour slot (tokens.css `data-k`). */
   k: string;
-  /** Sidebar group. Today ("alfred") has its own row at the top of daily navigation. */
-  group: "alfred" | "work" | "modules" | "dev" | "system";
+  /** Sidebar group. Today ("alfred") has its own row at the top of daily navigation. "dev" and "goals" are
+   * workspaces of their own, switched to from the top bar. */
+  group: "alfred" | "work" | "modules" | "dev" | "goals" | "system";
   /** The page draws its own top (no title and summary above it), and Zirma's panel steps aside for it. */
   bare?: boolean;
   /** The page brings its own side column (Notes: its page tree). While it is open the sidebar's pages list slides
@@ -283,6 +286,16 @@ const PAGES: PageDef[] = [
     summary: (_, state) => state.projects?.length ? t("page.dev.summary", { n: state.projects.length }) : t("page.dev.none"),
     render: ({ state, dev }) => <Dev state={state} {...dev} />,
   },
+  modulePage("goal", {
+    // The third workspace (docs/design/goals.md 4.13): its own sidebar (which goal, its pages, the steps at hand), and
+    // its own top (the goal's one line), so the page is bare and brings its side column.
+    key: "goal.home", get title() { return t("page.goals"); }, icon: "scope", k: "violet", group: "goals", bare: true, side: true,
+    summary: (snapshot) => {
+      const n = snapshot?.goals.length ?? 0;
+      return n ? t("goals.sum", { n }) : t("goals.sum.none");
+    },
+    render: ({ snapshot, item, go, side, state }) => <Goals snapshot={snapshot} notes={snapshotOf(state, "note")} item={item} go={go} side={side} />,
+  }),
   {
     key: "core.settings", get title() { return t("page.settings"); }, icon: "gear", k: "gray", group: "system",
     summary: () => t("page.settings.summary"),
@@ -316,7 +329,8 @@ export function dockPages(pages: PageDef[]) {
   const daily = pages.filter((page) => page.group === "alfred" || page.group === "work").slice(0, 3);
   const chats = pages.find((page) => page.key === "core.chat");
   const fixed = chats ? [...daily, chats] : daily;
-  return { daily, chats, fixed, options: pages.filter((page) => !fixed.includes(page)) };
+  // The Goals workspace has no phone layout yet (docs/design/goals.md 4.13): it is not offered as a shortcut.
+  return { daily, chats, fixed, options: pages.filter((page) => !fixed.includes(page) && page.group !== "goals") };
 }
 
 /** The dock's pages from left to right: the daily ones, this device's shortcut, then Chats beside Zirma. In the

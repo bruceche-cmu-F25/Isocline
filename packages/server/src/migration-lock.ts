@@ -12,13 +12,15 @@ import { calendarModule } from "@zirma/module-calendar";
 import { linksModule } from "@zirma/module-links";
 import { mailModule } from "@zirma/module-mail";
 import { createNotesModule } from "@zirma/module-notes";
+import { createGoalsModule } from "@zirma/module-goals";
 import { todoModule } from "@zirma/module-todo";
 
 export const LOCK_FILE = fileURLToPath(new URL("../../../migrations.lock.json", import.meta.url));
 
 /** Every migration a home node runs: the core's, then each built-in module's. */
 export function allMigrations(): Migration[] {
-  const modules = [todoModule, calendarModule, mailModule, linksModule, createNotesModule({ defaultRoot: "/nonexistent" })];
+  const notes = createNotesModule({ defaultRoot: "/nonexistent" });
+  const modules = [todoModule, calendarModule, mailModule, linksModule, notes, createGoalsModule({ notes })];
   return [...CORE_MIGRATIONS, ...modules.flatMap((module) => module.migrations)];
 }
 

@@ -5,15 +5,17 @@ import { Icon, type IconName } from "./icons.tsx";
 import { MOD } from "./Nav.tsx";
 import type { PageDef } from "./pages.tsx";
 
-export type Mode = "daily" | "dev";
-const MODE_ICON: Record<Mode, IconName> = { daily: "layers", dev: "code" };
+export type Mode = "daily" | "dev" | "goals";
+const MODE_ICON: Record<Mode, IconName> = { daily: "layers", dev: "code", goals: "scope" };
 
 export interface TopbarProps {
   pageHistory: ReactElement;
   navOpen: boolean;
   onNav(): void;
   mode: Mode;
-  /** Absent when this device has no Code page: then there is nothing to switch. */
+  /** The workspaces this device can switch between, in order (daily, Code, Goals). */
+  modes: readonly Mode[];
+  /** Absent when there is only the daily workspace: then there is nothing to switch. */
   onMode?: (mode: Mode) => void;
   onLanguage(to?: Locale): void;
   /** The page in view: its name is the bar's title, its facts the quiet line beside it. Absent when no page is in sight. */
@@ -27,13 +29,13 @@ export interface TopbarProps {
 /**
  * The bar across the top of the window, in two parts divided by the line that runs on down the sidebar's edge.
  * The lead is as wide as the sidebar under it: in the Mac app the window buttons, then the sidebar button, and the
- * switch between the daily workspace and Code at its right end. The switch belongs with the sidebar it changes, so
+ * switch between the daily workspace, Code and Goals at its right end. The switch belongs with the sidebar it changes, so
  * it goes away with it: while the sidebar is folded the lead is only the sidebar button. The rest is the page's: its name and its facts,
  * so the page under the bar starts with its contents; at the far right, one gear: Settings, with light/dark and the
  * language in the small menu it opens, since those change a few times a year.
  * The bar drags the window.
  */
-export function Topbar({ pageHistory, navOpen, onNav, mode, onMode, onLanguage, heading, system, page, onPage }: TopbarProps) {
+export function Topbar({ pageHistory, navOpen, onNav, mode, modes, onMode, onLanguage, heading, system, page, onPage }: TopbarProps) {
   const fold = t(navOpen ? "nav.fold" : "nav.unfold");
   return (
     <header className="topbar">
@@ -43,7 +45,7 @@ export function Topbar({ pageHistory, navOpen, onNav, mode, onMode, onLanguage, 
         </button>
         {onMode && navOpen && (
           <div className="mode-switch" role="group" aria-label={t("top.mode")}>
-            {(["daily", "dev"] as const).map((id) => (
+            {modes.map((id) => (
               <button type="button" key={id} aria-pressed={mode === id} aria-label={t(`top.${id}`)} title={t(`top.${id}`)} onClick={() => onMode(id)}>
                 <Icon name={MODE_ICON[id]} />
               </button>
