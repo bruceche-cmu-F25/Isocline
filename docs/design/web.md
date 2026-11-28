@@ -221,12 +221,14 @@ Claude、OpenAI、Gemini 的 API 都有自带搜索，质量往往最好。但�
 
 | 服务 | 用「模型」里哪家的 key | 怎么搜 | 用的模型 |
 |---|---|---|---|
-| Claude | Anthropic | Messages API 的 `web_search_20260209` 工具，只搜一次；结果从 `web_search_tool_result` 取，摘录从回答的引用里取 | `claude-opus-5-5`，effort `low` |
+| Claude | Anthropic | Messages API 的基础版 `web_search_20250305` 工具，直接调用、只搜一次；结果从 `web_search_tool_result` 取，摘录从回答的引用里取 | `claude-haiku-5-5`，effort `low`（只为搜一次，用最小的；原先是 `claude-opus-5-5`） |
 | OpenAI | OpenAI | Responses API 的 `web_search` 工具；结果从回答的 `url_citation` 和搜索调用列出的来源取 | `gpt-6-luna`（照 pi-web-access 0.48.0 的默认）【未实测】 |
 | Gemini | Google | `generateContent` 加 `google_search`；结果从 `groundingChunks` 取，Google 的跳转地址解开成真正的网址 | `gemini-3.6-flash`（同上）【未实测】 |
 | DeepSeek | DeepSeek | 它的搜索接口 `/v1/tools/search`，不经过模型；查询最多 128 个字，网站和日期写成 `site:`、`after:` | 不用模型 |
 
 每次搜索都另外收费（搜索费加上模型读结果的 token），卡片上写「按次另收费」。
+
+要填 key 的服务和用模型 key 的服务，每家每天最多搜 100 次（`DAILY_LIMIT`，按本机日期算）：到了就当天不再用它，卡片上写「今天用完了」；所有服务都到了，`web_search` 告诉模型今天搜不了，第二天自动恢复。免 key 的服务不计。
 
 ## 5. 网页里的话不能指挥 Zirma【建议】
 

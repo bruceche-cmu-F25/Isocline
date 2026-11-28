@@ -9,7 +9,7 @@ import { fetchIcon, fetchPage, imageType, isPublicAddress, looksLikeWall, PageFe
 
 test("only public addresses are reached: not this machine, a private network or a reserved range", async () => {
   for (const [address, family] of [["127.0.0.1", 4], ["10.1.2.3", 4], ["192.168.1.10", 4], ["172.20.0.1", 4], ["169.254.169.254", 4], ["100.100.100.100", 4], ["0.0.0.0", 4],
-    ["::1", 6], ["fe80::1", 6], ["fd00::1", 6], ["::ffff:127.0.0.1", 6], ["::ffff:10.0.0.1", 6]] as const) {
+    ["::1", 6], ["fe80::1", 6], ["fd00::1", 6], ["::ffff:127.0.0.1", 6], ["::ffff:10.0.0.1", 6], ["::7f00:1", 6], ["::a9fe:a9fe", 6]] as const) {
     assert.equal(isPublicAddress(address, family), false, address);
   }
   for (const [address, family] of [["93.184.216.34", 4], ["8.8.8.8", 4], ["2606:4700:4700::1111", 6], ["::ffff:8.8.8.8", 6]] as const) assert.equal(isPublicAddress(address, family), true, address);
