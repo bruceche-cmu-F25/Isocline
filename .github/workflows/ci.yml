@@ -32,11 +32,13 @@ jobs:
         name: Did anything besides docs change?
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           # A push to zirma is always checked in full.
           if [ "$EVENT" != "pull_request" ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
-          changed=$(git diff --name-only "$BASE...HEAD")
+          # What the pull request brings: the checkout is GitHub's merge of it onto zirma's tip now, whose first parent
+          # is that tip. Not pull_request.base.sha: it can still be the tip from when the request was opened, and a diff
+          # from there counts every pull request merged since (a migration among them) as this one's.
+          changed=$(git diff --name-only HEAD^1 HEAD)
           echo "$changed"
           code=$(echo "$changed" | grep -Ev '^(docs/|prototype/)|^[^/]+\.md$' | grep -c . || true)
           if [ "$code" -gt 0 ]; then echo "code=true" >> "$GITHUB_OUTPUT"; else echo "code=false" >> "$GITHUB_OUTPUT"; fi
