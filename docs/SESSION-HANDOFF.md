@@ -75,7 +75,7 @@ Zirma（读作 ZEER-ma；2026-11-23 前叫 Alfred，11-24 前叫 Isocline）是�
 | PR #6：人始终在控制（产品、地图、决策三样东西，加会话回执） | 草案 v0.3，**待看，未批准**；代码没开始 | 分支 `docs/in-control`：`docs/design/in-control.md`、`prototype/in-control.html` |
 | PR #7：新的工作目录和新代码用 Zirma 命名 | 小改，等合 | 分支 `docs/worktree-names` |
 | 日历上的待办（每天一行「待办」，拖下来的都落在今天） | 草案 v0.1，**待看**；起因是 Bruce 一句话，理解错了就整篇作废 | `docs/design/calendar-todos.md`、`prototype/calendar-todos.html` |
-| 学习模式（第三种模式，一个课题一张书桌） | 草案 v0.1，方向认可，细节没定 | `docs/design/study-mode.md`、`prototype/study.html` |
+| 目标（第三种模式，一个长期目标一个地方；原名学习模式） | v0.10（2026-11-27），不当老师（去掉练习、出题、间隔重复和「提示」做法）；世界观页和路线页都照「先讲明白、你来问」重做了，第 8 节的项都定了；整份文档他还没通读，没批准；只做电脑端；代码没开始 | `docs/design/goals.md`、`prototype/goals.html` |
 | 多个邮箱 | 草案 v0.1，没批准 | `docs/design/mail-accounts.md` |
 | Notes（`Alfred Notes` 文件夹里的 Markdown，Obsidian 可选） | **已批准，代码没开始**。原型 Bruce 还没看；下一步 N1、N2 连着做 | `docs/design/notes.md`、`prototype/notes.html` |
 
@@ -123,7 +123,7 @@ Zirma（读作 ZEER-ma；2026-11-23 前叫 Alfred，11-24 前叫 Isocline）是�
 |---|---|---|---|
 | Notes | 草稿 → 归档到 Obsidian 或 Notion；Canvas、Mind map | 按 `notes.md` 做（已批准）；Canvas 和 Mind map 不搬（已定） | 中 |
 | Higgs 语音 | 浏览器麦克风 → Boson Higgs Realtime，全双工；真事委派给主模型 | Zirma 有"一来一回"的快说，没有全双工通话。先写设计文档，先定数据流（私人内容进不进 Boson） | 大 |
-| Learning Hub | 能力地图、路线图、四门课、书架、导师、刷题教练、周报 | 落在学习模式（`study-mode.md`）里；先数据和首页，后教练 | 很大 |
+| Learning Hub | 能力地图、路线图、四门课、书架、导师、刷题教练、周报 | 落在「目标」这个模式（`goals.md`）里；刷题教练不进来（2026-11-27：不出题、不检验） | 很大 |
 | 周计划 | 用真实日程算空闲、预览 / 接受 | 搬成日历模块上的提议 | 中 |
 | 早报全流程 | 采集游标、证据和版次、预算、语音早报 | 现在是一个自动任务样例；要不要搬整条流水线，先问 Bruce 够不够 | 中 |
 | Gmail 分类回顾 | 来信分桶，给约定建日程、给截止建待办 | 建待办的一半已做；建日程那一半走提议 | 小 |
@@ -135,7 +135,7 @@ Zirma（读作 ZEER-ma；2026-11-23 前叫 Alfred，11-24 前叫 Isocline）是�
 
 ## 8. 要 Bruce 定的
 
-1. PR #6「人始终在控制」、`calendar-todos.md`、`study-mode.md`、`mail-accounts.md`：看过后批不批。
+1. PR #6「人始终在控制」、`calendar-todos.md`、`goals.md`、`mail-accounts.md`：看过后批不批。
 2. 求职、外联、产品实验室、研究台：哪些现在还在用？不用的不搬。
 3. Higgs：继续用 Boson 的云端 Realtime，还是等本地全双工模型（`docs/research/full-duplex-voice.md`）？私人查询结果进不进 Boson？
 4. Telegram 还要不要？
@@ -169,6 +169,6 @@ npm run dev:copy-world         把生产的世界复制进开发版
 - 已批准、已做：`workspace-architecture.md`（工作台，到 W7）、`dev-mode.md`（D1–D5）、`dev-terminal-browser.md`、`attention.md`（A1–A6）、`links.md`（L1 + v0.5 的树）、`user-defined.md`、`attachments.md`、`voice.md`、`rename-zirma.md`。
 - 部分做了：`today-and-inbox.md`（T1、T5 做了，T2–T4 没做）、`settings-and-connections.md`。
 - 已批准、没开始：`notes.md`。
-- 草案：`calendar-todos.md`、`study-mode.md`、`mail-accounts.md`、`browser.md`（先存着）、PR #6 的 `in-control.md`。
+- 草案：`calendar-todos.md`、`goals.md`、`mail-accounts.md`、`browser.md`（先存着）、PR #6 的 `in-control.md`。
 - 历史：`rename-isocline.md`（已被 `rename-zirma.md` 取代，里面有名字的来由和商标检查）。
-- `docs/research/`：形象、视觉、远程访问、语音输入、全双工语音、工作台能力、Web 和手机安全。
+- `docs/research/`：形象、视觉、远程访问、语音输入、全双工语音、工作台能力、Web 和手机安全；`goals-trial/` 是「目标」模式用真模型写世界观和路线的试验（2026-11-27）。
