@@ -110,7 +110,10 @@ test("a registry server is added with what it needs: a header template filled in
   assert.deepEqual(readMcpFile(t.dataDir).servers.notes, { url: "https://mcp.notes.example/mcp", alfred: { title: "Notes", secretHeaders: ["Authorization"] } });
   assert.deepEqual(await t.vault.secrets("notes"), { headers: { Authorization: "Bearer KEY1" }, env: {} });
 
-  const helper = await t.connectors.add({ registry: "com.example/notes-helper", values: { NOTES_DIR: "/tmp/notes" } });
+  await assert.rejects(t.connectors.add({ registry: "com.example/notes-helper", values: { NOTES_DIR: "/tmp/notes" } }), /runs on this Mac \(npx -y @example\/notes@1\.0\.0\)/, "a package needs a yes to its command");
+  await assert.rejects(t.connectors.add({ registry: "com.example/notes-helper", values: { NOTES_DIR: "/tmp/notes" }, runs: "npx -y @example/notes@0.9.0" }), /changed since the search/);
+  assert.equal(readMcpFile(t.dataDir).servers["notes-helper"], undefined, "nothing added without the yes");
+  const helper = await t.connectors.add({ registry: "com.example/notes-helper", values: { NOTES_DIR: "/tmp/notes" }, runs: "npx -y @example/notes@1.0.0" });
   assert.equal(helper.name, "notes-helper");
   assert.deepEqual(readMcpFile(t.dataDir).servers["notes-helper"], { command: "npx", args: ["-y", "@example/notes@1.0.0"], alfred: { title: "notes-helper", secretEnv: ["NOTES_DIR"] } });
   assert.ok((await t.connectors.search("notes")).find((result) => result.id === "com.example/notes-helper")?.added);

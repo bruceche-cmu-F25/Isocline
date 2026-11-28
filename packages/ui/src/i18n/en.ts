@@ -758,6 +758,8 @@ export const en: Record<keyof typeof zh, string> = {
   "mcp.search": "Search the MCP Registry",
   "mcp.found": "On this Mac · {n}",
   "mcp.needs": "Needs {names}",
+  "mcp.runs.warn": "It runs this program on this Mac, where it can read and change your files. The registry does not check what is in it: add only one you trust.",
+  "mcp.runs.yes": "Run it and add",
   "mcp.inputs.note": "Kept only in this computer's keychain.",
   "mcp.privacy": "The list is mcp.json in the data directory; tokens and secrets are only in the keychain.",
   "settings.tab.general": "General",

@@ -40,7 +40,7 @@ async function mcpRoutes(mcp: McpConnectors, req: IncomingMessage, res: ServerRe
     const body = await readJson(req);
     const text = (key: string) => (typeof body[key] === "string" ? body[key] as string : undefined);
     const input: NewMcpConnector = {
-      catalog: text("catalog"), token: text("token"), found: text("found"), registry: text("registry"), values: texts(body.values),
+      catalog: text("catalog"), token: text("token"), found: text("found"), registry: text("registry"), values: texts(body.values), runs: text("runs"),
       name: text("name"), url: text("url"), command: text("command"),
       ...(Array.isArray(body.args) ? { args: body.args.filter((item): item is string => typeof item === "string") } : {}),
       headers: texts(body.headers), env: texts(body.env),

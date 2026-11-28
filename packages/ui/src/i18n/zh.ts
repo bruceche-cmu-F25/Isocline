@@ -758,6 +758,8 @@ export const zh = {
   "mcp.search": "搜 MCP Registry",
   "mcp.found": "这台 Mac 上 · {n}",
   "mcp.needs": "要填 {names}",
+  "mcp.runs.warn": "它会在这台 Mac 上运行下面这个程序，能读写你的文件。注册表不检查程序内容，只加你信得过的。",
+  "mcp.runs.yes": "运行并添加",
   "mcp.inputs.note": "只存在这台电脑的钥匙串里。",
   "mcp.privacy": "服务清单在数据目录的 mcp.json 里；令牌和密钥只在钥匙串里。",
   "settings.tab.general": "通用",

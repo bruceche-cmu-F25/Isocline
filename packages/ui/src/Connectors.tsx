@@ -94,7 +94,8 @@ export function Connectors() {
   });
   const addFound = (found: FoundMcpServer) => run(found.id, async () => signInIfNeeded(await call<McpConnector>("/api/connections/mcp", { found: found.id })));
   const addFromRegistry = (result: McpSearchResult, given?: Record<string, string>) => run(result.id, async () => {
-    const added = await call<McpConnector>("/api/connections/mcp", { registry: result.id, ...(given ? { values: given } : {}) });
+    // A server that runs on this Mac goes in only with the yes to the command shown in its card.
+    const added = await call<McpConnector>("/api/connections/mcp", { registry: result.id, ...(given ? { values: given } : {}), ...(result.kind === "stdio" ? { runs: result.where } : {}) });
     setResults((current) => current?.map((item) => (item.id === result.id ? { ...item, added: true } : item)) ?? null);
     setFillFor(null);
     setValues({});
@@ -218,12 +219,13 @@ export function Connectors() {
                     : <span className="skill-words" title={result.description || result.where}><b>{result.title}</b><span>{result.description || result.where}</span></span>}
                   {result.inputs.length > 0 && !result.added && <span className="mcp-needs">{t("mcp.needs", { names: result.inputs.map((input) => input.name).join(", ") })}</span>}
                   {addButton(result.id, result.added, () => {
-                    if (!result.inputs.length) void addFromRegistry(result);
+                    if (!result.inputs.length && result.kind !== "stdio") void addFromRegistry(result);
                     else { setFillFor(fillFor === result.id ? null : result.id); setValues({}); }
                   })}
                 </div>
                 {fillFor === result.id && (
                   <form className="set-flow mcp-fill" onSubmit={(event) => { event.preventDefault(); void addFromRegistry(result, values); }}>
+                    {result.kind === "stdio" && <p className="small mcp-runs">{t("mcp.runs.warn")}</p>}
                     <span className="quiet small mcp-fill-where" title={result.where}>{result.where}</span>
                     {result.inputs.map((input, index) => (
                       <label className="mcp-fill-field" key={input.name}>
@@ -232,9 +234,9 @@ export function Connectors() {
                           onChange={(event) => setValues({ ...values, [input.name]: event.target.value })} />
                       </label>
                     ))}
-                    <p className="quiet small">{t("mcp.inputs.note")}</p>
+                    {result.inputs.length > 0 && <p className="quiet small">{t("mcp.inputs.note")}</p>}
                     <div className="set-actions">
-                      <button type="submit" className="set-button" disabled={!!busy || result.inputs.some((input) => !(values[input.name] ?? "").trim())}>{t(busy === result.id ? "skills.adding" : "mcp.add")}</button>
+                      <button type="submit" className="set-button" disabled={!!busy || result.inputs.some((input) => !(values[input.name] ?? "").trim())}>{t(busy === result.id ? "skills.adding" : result.kind === "stdio" ? "mcp.runs.yes" : "mcp.add")}</button>
                       <button type="button" className="set-button ghost" onClick={() => { setFillFor(null); setValues({}); }}>{t("common.cancel")}</button>
                     </div>
                   </form>

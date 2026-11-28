@@ -143,6 +143,7 @@ html[data-web-covered] dialog[open] { display: none !important; }
 .mcp-fill-where { font-family: var(--mono, ui-monospace, monospace); font-size: .75rem; overflow-wrap: anywhere; }
 .mcp-fill-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
 .mcp-fill p { margin: 0; }
+.mcp-runs { color: var(--ink); overflow-wrap: anywhere; }
 @container page (max-width: 560px) { .mcp-needs { display: none; } }
 @container page (max-width: 640px) {
   .set-row.has-logo.mcp-row .set-name, .set-row.has-logo.mcp-row .set-note { grid-column: 2 / 4; }

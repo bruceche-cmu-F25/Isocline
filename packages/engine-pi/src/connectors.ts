@@ -329,6 +329,13 @@ export class McpConnectors {
         const entry = await this.#ask(`/v0/servers/${encodeURIComponent(id)}/versions/latest`) as RegistryEntry;
         const found = entry.server ? registryPlan(entry.server) : null;
         if (!found) throw new McpConnectorError("invalid", "Zirma cannot add this server: it has no address and no npm or PyPI package");
+        // A package runs on this Mac with the user's rights, and nobody checks what is in it: it is added only with a
+        // yes to the very command it runs, and not if the registry says something else now.
+        if (found.command) {
+          const runs = shownCommand(found.command, found.args ?? []);
+          if (!input.runs) throw new McpConnectorError("invalid", `This server runs on this Mac (${runs}): say yes to that command first`);
+          if (input.runs !== runs) throw new McpConnectorError("state", `This server changed since the search: it now runs ${runs}. Look at it again`);
+        }
         plan = found;
         keepPlain = () => true;
       }

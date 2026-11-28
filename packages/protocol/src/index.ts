@@ -887,6 +887,9 @@ export interface NewMcpConnector {
   catalog?: string; token?: string;
   found?: string;
   registry?: string; values?: Record<string, string>;
+  /** For a registry server that runs on this Mac: the command the user was shown and said yes to (`where`). It must
+   * still be what the registry says, or nothing is added. */
+  runs?: string;
   name?: string; url?: string; command?: string; args?: string[];
   headers?: Record<string, string>; env?: Record<string, string>;
 }
