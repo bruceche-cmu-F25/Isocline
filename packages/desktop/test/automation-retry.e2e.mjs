@@ -56,43 +56,57 @@ for (const locale of ["en", "zh"]) {
       if (pathname === "/api/remote") return route.fulfill({ json: { local: true } });
       if (pathname === "/api/device/web-lock") return route.fulfill({ json: { enabled: false, locked: false, expiresAt: null } });
       if (pathname === "/api/events") return route.fulfill({ status: 204 });
+      // The open automation lists its runs.
+      if (/^\/api\/automations\/\w+\/runs$/.test(pathname)) return route.fulfill({ json: { runs: [], nextCursor: null } });
       if (pathname.startsWith("/api/")) return route.fulfill({ json: {} });
       return route.fulfill({ path: fileURLToPath(new URL(pathname.slice(1) || "index.html", dist)) });
     };
     let page = await open({ viewport: { width: 1280, height: 800 } });
     const shot = async (name) => { if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/automation-retry-${name}-${locale}.png` }); };
-    /** Text boxes of one row that sit on top of each other. */
+    /** Text boxes that sit on top of each other, in the list and in the open automation. */
     const overlaps = () => page.evaluate(() => {
+      const boxes = [...document.querySelectorAll(".au-list .st-name, .au-list .st-count, .auto-head h2, .auto-meta span, .auto-why, .auto-actions button, .auto-part h3, .auto-part p")]
+        .map((el) => el.getBoundingClientRect()).filter((box) => box.width && box.height);
       let hits = 0;
-      for (const row of document.querySelectorAll(".auto-row")) {
-        const boxes = [...row.querySelectorAll(".auto-name b, .auto-name small, .auto-sched span, .auto-sched small, .auto-last span, .auto-last small, .auto-last .link, .auto-actions button")]
-          .map((el) => el.getBoundingClientRect()).filter((box) => box.width && box.height);
-        for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
-          const a = boxes[i], b = boxes[j];
-          if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) hits++;
-        }
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i], b = boxes[j];
+        if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) hits++;
       }
       return hits;
     });
-
-    await page.goto("https://zirma.test/#p=core.automations");
-    let rows = page.locator(".auto-row");
-    await rows.first().waitFor();
-    assert.equal(await rows.count(), 3);
-    const last = (index) => rows.nth(index).locator(".auto-last");
-    assert.match(await last(0).locator("span").first().innerText(), locale === "zh" ? /^没做成，今天 \d\d:\d\d 再试$/ : /^Failed · trying again Today \d\d:\d\d$/i);
-    assert.match(await last(0).locator("small").innerText(), locale === "zh" ? /模型那边出错了/ : /model's side/);
-    assert.match(await last(1).locator("span").first().innerText(), locale === "zh" ? /^试了 4 次没做成/ : /^Failed after 4 tries/);
-    assert.match(await last(2).locator("small").innerText(), locale === "zh" ? /还没有可用的模型/ : /No model is available/);
-    assert.equal(await overlaps(), 0);
-    await shot("wide");
-
     /** What reaches past the window's right edge. */
     const tooWide = () => page.evaluate(() => [...document.querySelectorAll("body *")].filter((el) => el.getBoundingClientRect().right > window.innerWidth + 1)
       .map((el) => `${el.tagName.toLowerCase()}.${String(el.className).split(" ")[0]} "${(el.textContent ?? "").slice(0, 30)}"`).slice(0, 5));
+    /** Opens the n-th automation from the list and waits for its page. */
+    const pick = async (list, index) => {
+      const name = (await list.locator(".au-row .st-name").nth(index).innerText()).trim();
+      await list.locator(".au-row").nth(index).click();
+      await page.waitForFunction((name) => document.querySelector(".auto-head h2")?.textContent === name, name);
+    };
+    const last = page.locator(".auto-meta .auto-last"), why = page.locator(".auto-why");
+
+    await page.goto("https://zirma.test/#p=core.automations");
+    const side = page.locator(".side-host nav.au-list");
+    // The list is there before the state is; wait for its rules.
+    await side.locator(".au-row").first().waitFor();
+    assert.equal(await side.locator(".au-row").count(), 3);
+    assert.equal(await side.locator(".au-dot[data-failed]").count(), 3);
+    // The first one is open: another try is coming, and it says when and why.
+    await page.locator(".auto-head").waitFor();
+    assert.match(await last.innerText(), locale === "zh" ? /^没做成，今天 \d\d:\d\d 再试$/ : /^Failed · trying again today \d\d:\d\d$/i);
+    assert.match(await why.innerText(), locale === "zh" ? /模型那边出错了/ : /model's side/);
+    assert.equal(await overlaps(), 0);
+    await shot("wide");
+    await pick(side, 1);
+    assert.match(await last.innerText(), locale === "zh" ? /^试了 4 次没做成/ : /^Failed after 4 tries/);
+    await pick(side, 2);
+    assert.match(await why.innerText(), locale === "zh" ? /还没有可用的模型/ : /No model is available/);
+    assert.equal(await overlaps(), 0);
+    await shot("no-model");
+
     // A narrow window.
     await page.setViewportSize({ width: 900, height: 800 });
-    await rows.first().waitFor();
+    await side.waitFor();
     assert.equal(await overlaps(), 0, "no text on top of other text at 900px");
     assert.deepEqual(await tooWide(), [], "nothing wider than the window at 900px");
     await shot("w900");
@@ -109,9 +123,10 @@ for (const locale of ["en", "zh"]) {
     await page.close();
     page = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await page.goto("https://zirma.test/#p=core.automations");
-    rows = page.locator(".auto-row");
-    await rows.first().waitFor();
-    assert.equal(await rows.count(), 3);
+    const list = page.locator(".automations > .au-list");
+    await list.waitFor();
+    await list.locator(".au-row").nth(2).tap();
+    await page.locator(".auto-why").waitFor();
     assert.equal(await overlaps(), 0, "no text on top of other text on a phone");
     assert.deepEqual(await tooWide(), [], "nothing wider than a phone's screen");
     await shot("phone");

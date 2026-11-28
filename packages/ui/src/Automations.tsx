@@ -1,10 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import type { Automation, Run, StateResponse } from "@zirma/protocol";
 import { api, type AutomationOptions } from "./api.ts";
-import { automationTitle, scheduleText, whenText } from "./automationText.ts";
+import { automationTitle, hhmm, scheduleText, whenText } from "./automationText.ts";
 import { AutomationHistory } from "./AutomationHistory.tsx";
-import { Linked } from "./Linked.tsx";
-import { plainText } from "./markdown.ts";
 import { errorText } from "./receipts.ts";
 import { Icon } from "./shell/icons.tsx";
 import { MicButton } from "./voice/MicButton.tsx";
@@ -41,7 +40,7 @@ function Choices<T extends string>({ label, value, options, onChange, text }: { 
 
 /** Making or changing one: its name, what to do, when, and how its results are shown and told. A sample (the morning
  * brief) is changed like any other: its words are shown in full, and kept as the user's once they change them. */
-function AutomationForm({ automation, onDone }: { automation?: Automation; onDone(): void }) {
+function AutomationForm({ automation, onDone }: { automation?: Automation; onDone(saved?: Automation): void }) {
   const template = automation?.template ?? null;
   const shownName = automation ? automationTitle(automation) : "";
   const shownGoal = automation?.instruction ?? automation?.goal ?? "";
@@ -72,7 +71,7 @@ function AutomationForm({ automation, onDone }: { automation?: Automation; onDon
     const request = automation
       ? api.updateAutomation(automation.id, { ...words, schedule, ...options })
       : api.createAutomation({ name: name.trim(), goal: goal.trim(), schedule, ...options });
-    request.then(onDone).catch((reason: Error) => { setError(reason.message); setBusy(false); });
+    request.then((saved) => onDone(saved)).catch((reason: Error) => { setError(reason.message); setBusy(false); });
   };
   const toggleDay = (day: number) => setDays((current) => current.includes(day) ? current.filter((value) => value !== day) : [...current, day].sort());
 
@@ -121,15 +120,20 @@ function AutomationForm({ automation, onDone }: { automation?: Automation; onDon
       {error && <p className="problem small" role="alert">{error}</p>}
       <div className="auto-form-actions">
         <button type="submit" disabled={!ready || busy}>{t(automation ? "auto.save" : "auto.create")}</button>
-        <button type="button" className="ghost" onClick={onDone}>{t("common.cancel")}</button>
+        <button type="button" className="ghost" onClick={() => onDone()}>{t("common.cancel")}</button>
       </div>
     </form>
   );
 }
 
-function AutomationRow({ automation, recent, onOpenConversation }: { automation: Automation; recent: Run[]; onOpenConversation(conversationId: string, runId?: string): void }) {
+/** One automation, as the page: its name and switch, when it runs and how it last went, what it does, and its runs
+ * (the newest one's result is open there). */
+function AutomationPage({ automation, recent, onOpenConversation, onPick }: {
+  automation: Automation; recent: Run[]; onOpenConversation(conversationId: string, runId?: string): void;
+  /** Go to another automation (a copy just made), or to the first one left (after deleting this one). */
+  onPick(id: string | null): void;
+}) {
   const [editing, setEditing] = useState(false);
-  const [history, setHistory] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -145,65 +149,116 @@ function AutomationRow({ automation, recent, onOpenConversation }: { automation:
     action().then((result) => then?.(result)).catch((reason: Error) => setError(reason.message)).finally(() => setBusy(false));
   };
   const title = automationTitle(automation);
-  const about = automation.goal ?? (automation.template ? t(`auto.tpl.${automation.template}.goal` as Key) : "");
+  // Why the last run failed, when the run knows (no model yet, the model's side, a timeout).
+  const why = automation.lastRun?.state === "failed" ? errorText(automation.lastRun.error) : "";
   const remove = () => {
     if (!confirming) return setConfirming(true);
     setConfirming(false);
-    act(() => api.deleteAutomation(automation.id));
+    act(() => api.deleteAutomation(automation.id), () => onPick(null));
   };
 
-  if (editing) return <li className="auto-row editing"><AutomationForm automation={automation} onDone={() => setEditing(false)} /></li>;
+  if (editing) return <AutomationForm automation={automation} onDone={() => setEditing(false)} />;
   return (
-    <li className="auto-row" data-enabled={automation.enabled || undefined}>
-      <div className="auto-name" data-k={automation.k}>
+    <>
+      <header className="auto-head" data-k={automation.k}>
         <i><Icon name="clock" /></i>
-        <span>
-          <b>{title}</b>
-          <small title={about}>{about}</small>
-        </span>
-      </div>
-      <div className="auto-sched">
-        <span>{scheduleText(automation.schedule)}</span>
-        <small>{automation.enabled && automation.nextAt ? t("auto.next", { when: whenText(automation.nextAt) }) : t("auto.off")}</small>
-      </div>
-      <div className="auto-last" data-state={automation.lastRun?.state}>
-        <span>{lastText(automation)}</span>
-        {automation.lastRun?.reply && <small><Linked text={plainText(automation.lastRun.reply)} /></small>}
-        {automation.lastRun?.state === "failed" && errorText(automation.lastRun.error) && <small title={errorText(automation.lastRun.error)}>{errorText(automation.lastRun.error)}</small>}
-        {automation.lastRun && <button type="button" className="link" aria-expanded={!!history} onClick={() => setHistory(history ? null : "latest")}>{t("auto.history")}</button>}
-      </div>
-      <div className="auto-actions">
+        <h2>{title}</h2>
         <button type="button" className="switch" role="switch" aria-checked={automation.enabled} disabled={busy} aria-label={t("auto.toggle", { name: title })}
           onClick={() => act(() => api.updateAutomation(automation.id, { enabled: !automation.enabled }))} />
-        <button type="button" className="ghost small" disabled={busy}
-          onClick={() => act(() => api.runAutomation(automation.id), (run) => setHistory(run.id))}>{t("auto.runNow")}</button>
+      </header>
+      <p className="auto-meta">
+        <span>{scheduleText(automation.schedule)}</span>
+        <span>{automation.enabled && automation.nextAt ? t("auto.next", { when: whenText(automation.nextAt) }) : t("auto.off")}</span>
+        <span className="auto-last" data-state={automation.lastRun?.state}>{lastText(automation)}</span>
+      </p>
+      {why && <p className="auto-why">{why}</p>}
+      <div className="auto-actions">
+        <button type="button" className="ghost small" disabled={busy} onClick={() => act(() => api.runAutomation(automation.id))}>{t("auto.runNow")}</button>
         <button type="button" className="ghost small" disabled={busy} onClick={() => setEditing(true)}>{t("auto.edit")}</button>
         <button type="button" className="ghost small" disabled={busy} title={t("auto.copy.note")} onClick={() => act(() => api.createAutomation({
           name: t("auto.copyName", { name: title }).slice(0, 60), goal: automation.instruction, schedule: automation.schedule, enabled: false,
           layout: automation.layout, keep: automation.keep, notify: automation.notify, k: automation.k,
-        }))}>{t("auto.copy")}</button>
+        }), (copy) => onPick(copy.id))}>{t("auto.copy")}</button>
         <button type="button" className={confirming ? "ghost small danger" : "ghost small"} disabled={busy} onClick={remove}>{t(confirming ? "auto.confirmDelete" : "auto.delete")}</button>
       </div>
-      {history && <AutomationHistory key={history} automation={automation} recent={recent} onOpenConversation={onOpenConversation} />}
-      {error && <p className="problem small auto-error" role="alert">{error}</p>}
-    </li>
+      {error && <p className="problem small" role="alert">{error}</p>}
+      <section className="auto-part" aria-label={t("auto.what")}>
+        <h3>{t("auto.what")}</h3>
+        <p className="auto-words">{automation.instruction}</p>
+        <p className="quiet small">{t("auto.note")}</p>
+      </section>
+      {automation.lastRun && <AutomationHistory key={automation.lastRun.id} automation={automation} recent={recent} onOpenConversation={onOpenConversation} />}
+    </>
   );
 }
 
-/** The automations page: each rule, when it fires next, how it last went; switch, run now, change, delete, add. */
-export function Automations({ state, onOpenConversation }: { state: StateResponse; onOpenConversation(conversationId: string, runId?: string): void }) {
-  const [adding, setAdding] = useState(false);
+/** Below this page width the list and the open automation take turns (as the Chats page does). */
+const NARROW = 720;
+/** Which one was open, for coming back to the page: an automation's id, or `new` for the form. */
+let lastPicked: string | null = null;
+
+/** The automations page: the list of rules is the page's own side column (in the app sidebar while it has room,
+ * workspace-architecture.md §6), and the page is the one picked: when, what, how it went; switch, run now, change,
+ * copy, delete. */
+export function Automations({ state, side, onOpenConversation }: { state: StateResponse; side: HTMLElement | null; onOpenConversation(conversationId: string, runId?: string): void }) {
+  const page = useRef<HTMLElement>(null);
+  const [narrow, setNarrow] = useState(false);
+  // On a narrow page without the sidebar, whether the list is showing (else the open automation).
+  const [listing, setListing] = useState(true);
+  const [picked, setPicked] = useState<string | null>(lastPicked);
   const automations = state.automations ?? [];
+  // Nothing picked, or the one picked is gone: the first. None at all: the form.
+  const adding = picked === "new" || !automations.length;
+  const open = adding ? null : automations.find((automation) => automation.id === picked) ?? automations[0]!;
+  const pick = (id: string | null) => { lastPicked = id; setPicked(id); setListing(false); };
+
+  useEffect(() => {
+    const element = page.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => setNarrow(entry!.contentRect.width < NARROW));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const list = (
+    <nav className="st-list au-list" aria-label={t("page.automations")}>
+      <button type="button" className="st-node" aria-current={adding && automations.length ? "true" : undefined} onClick={() => pick("new")}>
+        <span className="st-space" /><Icon name="plus" /><span className="st-name">{t("auto.new")}</span>
+      </button>
+      {automations.length === 0 && <p className="au-hint">{t("auto.sum.empty")}</p>}
+      {automations.map((automation) => {
+        const failed = automation.lastRun?.state === "failed" || automation.lastRun?.state === "interrupted";
+        return (
+          <button type="button" key={automation.id} className="st-node au-row" data-off={!automation.enabled || undefined} title={automation.instruction}
+            aria-current={open?.id === automation.id ? "true" : undefined} onClick={() => pick(automation.id)}>
+            <span className="st-space"><i className="au-dot" data-k={automation.k} data-failed={failed || undefined} /></span>
+            <span className="st-name">{automationTitle(automation)}</span>
+            <span className="st-count au-when">{automation.enabled && automation.nextAt ? hhmm(new Date(automation.nextAt)) : t("auto.off")}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+
+  // Where the list goes: the app sidebar while it has room; else in the page, beside the open automation or, narrow,
+  // instead of it.
+  const listHere = !side;
+  const showList = listHere && (!narrow || listing);
+  const showOpen = !listHere || !narrow || !listing;
   return (
-    <section className="automations" aria-label={t("auto.label")}>
-      <p className="auto-note quiet">{t("auto.note")}</p>
-      {automations.length === 0 && !adding && <p className="quiet empty-list">{t("auto.sum.empty")}</p>}
-      <ul className="auto-list">
-        {automations.map((automation) => <AutomationRow key={automation.id} automation={automation} recent={state.runs} onOpenConversation={onOpenConversation} />)}
-        {adding && <li className="auto-row editing"><AutomationForm onDone={() => setAdding(false)} /></li>}
-      </ul>
-      {!adding && (
-        <button type="button" className="auto-add" onClick={() => setAdding(true)}><Icon name="plus" />{t("auto.new")}</button>
+    <section className="automations" ref={page} data-narrow={narrow || undefined} data-list={listHere || undefined} aria-label={t("auto.label")}>
+      {side && createPortal(list, side)}
+      {showList && list}
+      {showOpen && (
+        <article className="auto-one" aria-label={open ? automationTitle(open) : t("auto.newTitle")}>
+          {listHere && narrow && <button type="button" className="auto-back" onClick={() => setListing(true)}><Icon name="back" /><span>{t("page.automations")}</span></button>}
+          {open
+            ? <AutomationPage key={open.id} automation={open} recent={state.runs} onOpenConversation={onOpenConversation} onPick={pick} />
+            : <>
+                <h2 className="auto-new-title">{t("auto.newTitle")}</h2>
+                <AutomationForm key="new" onDone={(made) => (made ? pick(made.id) : automations.length ? pick(null) : undefined)} />
+              </>}
+        </article>
       )}
     </section>
   );

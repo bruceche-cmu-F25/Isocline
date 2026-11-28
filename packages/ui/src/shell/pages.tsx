@@ -256,7 +256,7 @@ const PAGES: PageDef[] = [
     render: ({ snapshot, item, go, side, state }) => <Notes snapshot={snapshot} item={item} go={go} side={side} todos={snapshotOf(state, "todo")?.todos} />,
   }),
   {
-    key: "core.automations", get title() { return t("page.automations"); }, icon: "clock", k: "green", group: "modules",
+    key: "core.automations", get title() { return t("page.automations"); }, icon: "clock", k: "green", group: "modules", side: true,
     summary: (_, state) => {
       const all = state.automations ?? [], next = soonest(state);
       if (!all.length) return t("auto.sum.empty");
@@ -268,7 +268,7 @@ const PAGES: PageDef[] = [
       return next ? t("head.auto.next", { name: automationTitle(next), when: whenText(next.nextAt!) }) : t("head.auto.off");
     },
     suggestions: () => ["sug.auto.weekly", "sug.auto.which"],
-    render: ({ state, openConversation }) => <Automations state={state} onOpenConversation={openConversation} />,
+    render: ({ state, side, openConversation }) => <Automations state={state} side={side} onOpenConversation={openConversation} />,
   },
   {
     key: "core.chat", get title() { return t("page.chat"); }, icon: "chat", k: "alfred", group: "modules", bare: true, side: true,

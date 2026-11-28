@@ -897,6 +897,7 @@ export const zh = {
   "auto.label": "自动任务",
   "auto.note": "自动任务开的任务没人看着：只读，或者做能撤销的改动；别的都变成提议，在通知里等你点头。",
   "auto.new": "新建",
+  "auto.what": "做什么",
   "auto.newTitle": "新的自动任务",
   "auto.name": "名字",
   "auto.namePlaceholder": "比如：周一理待办",
