@@ -11,6 +11,7 @@ import { calendarModule } from "@zirma/module-calendar";
 import { mailModule } from "@zirma/module-mail";
 import { linksModule } from "@zirma/module-links";
 import { createNotesModule } from "@zirma/module-notes";
+import { createGoalsModule } from "@zirma/module-goals";
 import type { ModuleServices } from "@zirma/module-kit";
 import { googleService } from "./google-service.ts";
 import { DEFAULT_PORT, defaultDataDir, defaultUiDir } from "./config.ts";
@@ -51,7 +52,9 @@ const { values, positionals } = parseArgs({
 if (!values["data-dir"]) moveRenamedFolders(undefined, log);
 const dataDir = values["data-dir"] ?? defaultDataDir();
 // A note page that moves takes its todos along (the todo list knows them by page): the one place that knows both.
-const MODULES = [...baseModules, createNotesModule({ defaultRoot: defaultNotesRoot(dataDir), onMoved: (world, from, to) => { moveNoteSources(world, from, to); } })];
+const notesModule = createNotesModule({ defaultRoot: defaultNotesRoot(dataDir), onMoved: (world, from, to) => { moveNoteSources(world, from, to); } });
+// A goal is a folder of the notes (docs/design/goals.md 4.1): the goals module reads and writes through the notes' library.
+const MODULES = [...baseModules, notesModule, createGoalsModule({ notes: notesModule, onMoved: (world, from, to) => { moveNoteSources(world, from, to); } })];
 // A development run never opens production's world or its keychain (core stage.ts).
 const crossing = checkStage(dataDir);
 if (crossing) {

@@ -18,6 +18,7 @@
     "@zirma/core": "*",
     "@zirma/engine-pi": "*",
     "@zirma/module-calendar": "*",
+    "@zirma/module-goals": "*",
     "@zirma/module-kit": "*",
     "@zirma/module-links": "*",
     "@zirma/module-mail": "*",

@@ -1,0 +1,16 @@
+{
+  "name": "@zirma/module-goals",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Goals module: a long-term goal as a folder in the notes, with its big picture and its route (docs/design/goals.md).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts"
+  },
+  "dependencies": {
+    "@zirma/module-kit": "*",
+    "@zirma/module-notes": "*"
+  }
+}

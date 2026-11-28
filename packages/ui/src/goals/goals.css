@@ -1,0 +1,118 @@
+/* The Goals mode (docs/design/goals.md 4.13). Everything lays out by the page column's width (@container page),
+   not the window's; nothing here may overlap at 320px in Chinese or English. */
+.goals { position: relative; flex: 1; min-height: 0; display: flex; background: var(--bg); }
+.gl-main { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.gl-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.gl-col { width: 100%; max-width: 760px; margin: 0 auto; padding: 24px 32px 96px; display: flex; flex-direction: column; gap: 16px; }
+.gl-col.gl-wide { max-width: 1080px; }
+
+/* The goal's one line, always at the top: press it for the goal's card. */
+.gl-obj { flex: none; display: flex; padding: 10px 24px; border-bottom: 1px solid var(--line-soft); }
+.gl-objb { min-width: 0; max-width: 100%; padding: 4px 8px; border-radius: 8px; color: var(--ink); font-size: .9375rem; font-weight: 600; line-height: 1.4; text-align: left; overflow-wrap: anywhere; }
+.gl-objb:hover:not(:disabled) { background: var(--wash); }
+
+.gl-head { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.gl-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 1.375rem; font-weight: 650; line-height: 1.3; color: var(--ink); }
+.gl-saved { flex: none; color: var(--muted); font-size: .75rem; }
+.gl-saved[data-state="saved"] { opacity: .7; }
+.gl-hint { margin: 0; color: var(--muted); font-size: .8125rem; line-height: 1.5; }
+.gl-over { margin: 0; color: var(--k-text, var(--muted)); font-size: .75rem; font-weight: 600; }
+.gl-whole { color: var(--ink); font-size: 1rem; line-height: 1.7; }
+.gl-line { color: var(--muted); font-size: .8125rem; line-height: 1.5; }
+.gl-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Nothing written yet. */
+.gl-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 28px 0; color: var(--copy); font-size: .9375rem; line-height: 1.6; }
+.gl-empty p { margin: 0; }
+.gl-empty-title { color: var(--ink); font-size: 1.125rem; font-weight: 650; }
+
+/* The big picture: a board. A column is a part, a row a topic; the topic picked is explained under it. */
+.gl-board { display: flex; align-items: flex-start; gap: 12px; padding: 2px 2px 10px; overflow-x: auto; }
+.gl-part { flex: 0 0 220px; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 14px; background: var(--paper); }
+.gl-part h3 { margin: 0 0 2px; color: var(--ink); font-size: .9375rem; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.gl-row { width: 100%; padding: 8px 10px; border-radius: 9px; background: var(--raise); box-shadow: 0 0 0 1px var(--line-soft); color: var(--copy); font-size: .875rem; line-height: 1.4; text-align: left; overflow-wrap: anywhere; }
+.gl-row:hover { color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.gl-row[aria-expanded="true"] { color: var(--ink); font-weight: 600; box-shadow: 0 0 0 1.5px var(--k-solid, var(--accent)); }
+.gl-topic { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px; border-radius: 14px; background: var(--raise); box-shadow: 0 0 0 1px var(--line-soft); color: var(--ink); font-size: 1rem; line-height: 1.7; }
+.gl-topic h3 { margin: 0; font-size: 1.125rem; font-weight: 650; line-height: 1.35; }
+.gl-more { display: flex; flex-direction: column; gap: 6px; color: var(--copy); font-size: .875rem; line-height: 1.6; }
+.gl-more h4 { margin: 0; color: var(--muted); font-size: .75rem; font-weight: 600; }
+
+/* The route: stages, and under each the steps laid out so far. A stage with no steps yet is only its line. */
+.gl-stage { display: flex; flex-direction: column; gap: 6px; }
+.gl-stage h3 { margin: 6px 0 0; color: var(--ink); font-size: 1rem; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.gl-stage[data-later] h3 { color: var(--copy); font-weight: 500; }
+.gl-steps { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.gl-steps li { border-radius: 12px; }
+.gl-steps li:has(> .gl-step[aria-expanded="true"]) { background: var(--raise); box-shadow: 0 0 0 1px var(--line-soft); }
+.gl-step { width: 100%; display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: 12px; color: var(--ink); font-size: .9375rem; line-height: 1.45; text-align: left; }
+.gl-step:hover { background: var(--wash); }
+.gl-step[aria-expanded="true"]:hover { background: none; }
+.gl-step svg { flex: none; margin-top: 2px; color: var(--muted); }
+.gl-steps li[data-done] .gl-step svg { color: var(--ok); }
+.gl-steps li[data-done] .gl-step-name { color: var(--muted); }
+.gl-step-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.gl-st { flex: none; color: var(--muted); font-size: .75rem; line-height: 1.8; }
+.gl-step-body { display: flex; flex-direction: column; gap: 12px; padding: 2px 14px 14px 40px; color: var(--copy); font-size: .9375rem; line-height: 1.65; }
+
+/* The desk, for now: the step at hand. */
+.gl-now { display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; border-radius: 16px; background: var(--raise); box-shadow: 0 0 0 1px var(--line-soft); color: var(--copy); font-size: .9375rem; line-height: 1.65; }
+.gl-now h2 { margin: 0; color: var(--ink); font-size: 1.25rem; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.gl-now .gl-acts { margin-top: 4px; }
+
+/* A new goal: one question. */
+.gl-new { max-width: 620px; padding-top: 12vh; gap: 12px; }
+.gl-new h2 { margin: 0; color: var(--ink); font: 1.625rem/1.3 var(--serif); }
+.gl-new p { margin: 0; color: var(--copy); font-size: .9375rem; line-height: 1.6; }
+.gl-new form { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; margin-top: 8px; }
+.gl-new textarea, .gl-field textarea, .gl-field input { width: 100%; padding: 10px 12px; border: 0; border-radius: 12px; background: var(--field); box-shadow: 0 0 0 1px var(--line); color: var(--ink); font: inherit; font-size: .9375rem; line-height: 1.5; resize: vertical; }
+.gl-new textarea:focus, .gl-field textarea:focus, .gl-field input:focus { outline: none; box-shadow: 0 0 0 2px var(--k-solid, var(--accent)); }
+.goals .nt-btn:disabled, .gl-card .nt-btn:disabled { opacity: .5; }
+
+/* Writing a page by hand: the notes' editor, in the page's column. */
+.gl-edit .nt-editor { margin-top: 4px; }
+
+/* The sidebar: which goal, its pages, the steps of the stage at hand. */
+.gl-side { padding-top: 8px; }
+.gl-side-step[data-done] { color: var(--muted); }
+.gl-side-step[data-done] > svg { color: var(--ok); }
+.gl-pick-wrap { position: relative; margin: 0 0 6px; }
+.gl-pick { width: 100%; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 9px; color: var(--ink); font-size: .9375rem; font-weight: 600; text-align: left; }
+.gl-pick:hover, .gl-pick[aria-expanded="true"] { background: var(--wash); }
+.gl-pick > svg { flex: none; width: 17px; height: 17px; }
+.gl-pick > svg:first-child { color: var(--k-solid, var(--accent)); }
+.gl-pick > svg:last-child { width: 14px; height: 14px; color: var(--muted); }
+.gl-menu { position: absolute; left: 0; right: 0; top: 38px; z-index: 30; display: flex; flex-direction: column; padding: 4px; border-radius: 12px; background: var(--raise); box-shadow: var(--shadow), 0 0 0 1px var(--line-soft); }
+.gl-menu button { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 4px 8px 4px 4px; border-radius: 8px; color: var(--copy); font-size: .875rem; text-align: left; }
+.gl-menu button:hover { background: var(--wash); color: var(--ink); }
+.gl-menu button[aria-checked="true"] { color: var(--ink); font-weight: 600; }
+.gl-menu hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--line-soft); }
+.gl-ck { flex: none; width: 18px; height: 18px; display: grid; place-items: center; color: var(--muted); }
+.gl-ck svg { width: 14px; height: 14px; }
+/* No sidebar to put the column in (folded, or a narrow window): it sits above the page. */
+.gl-side-here { display: none; }
+.goals:has(> .gl-side-here) { flex-direction: column; }
+.goals > .gl-side-here { display: block; flex: none; max-height: 40%; overflow-y: auto; border-bottom: 1px solid var(--line-soft); }
+.gl-side-here .gl-side { flex: none; overflow: visible; padding-bottom: 8px; }
+
+/* The goal's card. */
+.gl-card { width: min(520px, 100%); gap: 14px; padding: 20px; font-size: .875rem; }
+.gl-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.gl-field > span { color: var(--muted); font-size: .75rem; font-weight: 600; }
+.gl-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.gl-n { min-width: 34px; justify-content: center; padding: 0 8px; }
+.gl-unit { color: var(--muted); font-size: .8125rem; }
+.gl-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 2px; }
+.gl-grow { flex: 1; }
+.gl-ask { flex: 1 1 14em; min-width: 0; color: var(--ink); }
+.gl-card button.gl-remove { color: var(--muted); text-decoration-color: color-mix(in oklch, currentColor 35%, transparent); }
+.gl-card button.gl-remove:hover, .nt-btn.gl-bad { color: var(--now); }
+
+@container page (max-width: 640px) {
+  .gl-col { padding: 16px 16px 80px; }
+  .gl-obj { padding: 8px 10px; }
+  .gl-part { flex-basis: 188px; }
+  .gl-step-body { padding-left: 14px; }
+  .gl-now { padding: 16px; }
+  .gl-new { padding-top: 6vh; }
+}

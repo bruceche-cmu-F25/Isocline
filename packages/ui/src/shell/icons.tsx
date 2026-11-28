@@ -13,6 +13,14 @@ const MARK = (() => {
 
 /** Line icons on a 20 × 20 grid, drawn with the page's stroke style (styles.css: svg). */
 const PATHS = {
+  // The Goals mode's telescope: Tabler Icons 3.19.0, icons/outline/telescope.svg, MIT, (c) 2020-2024 Paweł Kuna
+  // (https://github.com/tabler/tabler-icons). Its four paths unchanged, one after another; drawn on its own 24 × 24
+  // grid (BOX below). See THIRD-PARTY-NOTICES.md.
+  scope: "M6 21l6 -5l6 5M12 13v8M3.294 13.678l.166 .281c.52 .88 1.624 1.265 2.605 .91l14.242 -5.165a1.023 1.023 0 0 0 .565 -1.456l-2.62 -4.705a1.087 1.087 0 0 0 -1.447 -.42l-.056 .032l-12.694 7.618c-1.02 .613 -1.357 1.897 -.76 2.905zM14 5l3 5.5",
+  desk: "M2.5 5.5h15v2.5h-15zM4.5 8v8M15.5 8v8M9.5 8v4.5h6",
+  route: "M4.5 16.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM15.5 6.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM6 15h5.5a2.5 2.5 0 0 0 0-5h-3a2.5 2.5 0 0 1 0-5H14",
+  ring: "M10 15.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11z",
+  ringDone: "M10 15.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11zM7.6 10.2l1.7 1.7 3.2-3.5",
   todo: "M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM7 10.2l2 2 4-4.4",
   inbox: "M3.5 11.5 5.5 5h9l2 6.5V15.5h-13zM3.5 11.5H8l1 2h2l1-2h4.5",
   alfred: MARK,
@@ -72,9 +80,14 @@ const PATHS = {
 
 export type IconName = keyof typeof PATHS;
 
+/** Icons drawn on a grid of their own (a borrowed one, kept as it was drawn). The stroke is widened to match
+ * (styles.css: svg[data-box]), so it looks as thick as the others at the same size. */
+const BOX: Partial<Record<IconName, number>> = { scope: 24 };
+
 export function Icon({ name, label }: { name: IconName; label?: string }) {
+  const box = BOX[name] ?? 20;
   return (
-    <svg viewBox="0 0 20 20" data-icon={name} aria-hidden={label ? undefined : true} aria-label={label} role={label ? "img" : undefined}>
+    <svg viewBox={`0 0 ${box} ${box}`} data-icon={name} data-box={box === 20 ? undefined : box} aria-hidden={label ? undefined : true} aria-label={label} role={label ? "img" : undefined}>
       <path d={PATHS[name]} />
     </svg>
   );

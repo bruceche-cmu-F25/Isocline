@@ -27,7 +27,8 @@ export interface NavProps {
   state: StateResponse;
   pages: PageDef[];
   page: string;
-  /** Daily: the workspace and modules. Dev: the Code page and its projects' sessions. All (phone): both; the conversations are on the Chats page. */
+  /** Daily: the workspace and modules. Dev: the Code page and its projects' sessions. Goals: the Goals page (which
+   * brings its own side column). All (phone): daily and dev; the conversations are on the Chats page. */
   mode: Mode | "all";
   /** The development session open on the Code page, if any. */
   session: string | null;
@@ -102,10 +103,13 @@ export function Nav({ state, pages, page, mode, session, onSession, onNewProject
       }}><Icon name="archive" />{t("archive.title")}</button>
     </details>
   );
+  const daily = mode === "daily" || mode === "all";
   const groups: Array<[string, PageDef[]]> = [
-    [t("nav.g.work"), mode === "dev" ? [] : pages.filter((item) => item.group === "work")],
-    [t("nav.g.modules"), mode === "dev" ? [] : pages.filter((item) => item.group === "modules")],
-    [t("nav.g.dev"), mode === "daily" ? [] : pages.filter((item) => item.group === "dev")],
+    [t("nav.g.work"), daily ? pages.filter((item) => item.group === "work") : []],
+    [t("nav.g.modules"), daily ? pages.filter((item) => item.group === "modules") : []],
+    [t("nav.g.dev"), mode === "dev" || mode === "all" ? pages.filter((item) => item.group === "dev") : []],
+    // Goals has no phone layout yet, so the phone's list ("all") leaves it out.
+    [t("nav.g.goals"), mode === "goals" ? pages.filter((item) => item.group === "goals") : []],
     // Settings sits in the top bar; the phone has none, so there it stays here.
     [t("nav.g.system"), mode === "all" ? pages.filter((item) => item.group === "system") : []],
   ];
@@ -131,7 +135,7 @@ export function Nav({ state, pages, page, mode, session, onSession, onNewProject
         </div>
       )}
 
-      {mode !== "dev" && (
+      {daily && (
         <div className="nav-group nav-above">
           {pages.filter((item) => item.group === "alfred").map((item) => (
             <button type="button" key={item.key} className="nav-item" data-k={item.k} data-page={item.key} aria-current={page === item.key ? "page" : undefined} onClick={() => onPage(item.key)}>
