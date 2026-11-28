@@ -6,7 +6,7 @@ import type { AutoFileState } from "@zirma/module-links/types";
 import { useOp } from "./linkControls.tsx";
 import { Pop } from "./shell/Pop.tsx";
 import { Icon } from "./shell/icons.tsx";
-import { t } from "./i18n/index.ts";
+import { intlLocale, t } from "./i18n/index.ts";
 import "./links-autofile.css";
 
 const ASKED_KEY = "zirma.links.autofileAsked";
@@ -55,11 +55,25 @@ export function AutoFileButton({ state, busy, onPress }: { state: AutoFileState 
   );
 }
 
-/** One line above the links: what the last pass filed, with its undo, until seen (a day at most); or that Zirma is
- * going through Not filed. */
+/** One line above the links: that the last pass did not go through and when it tries again; what the last pass filed,
+ * with its undo, until seen (a day at most); or that Zirma is going through Not filed. */
 export function AutoFileLine({ state, onError, onSaid }: { state: AutoFileState | undefined; onError(message: string | null): void; onSaid(text: string): void }) {
   const { busy, run } = useOp(onError);
   const last = state?.last;
+  const failed = state?.failed;
+  if (failed) {
+    // The newest pass did not go through: its links wait, and it tries again by itself.
+    const retry = new Date(failed.retryAt);
+    const at = retry.toLocaleTimeString(intlLocale(), { hour: "2-digit", minute: "2-digit", hour12: false });
+    return (
+      <p className="la-line" role="status">
+        <Icon name="alfred" />
+        <span>{t(retry.toDateString() === new Date().toDateString() ? "links.auto.failed" : "links.auto.failedTomorrow", { time: at })}</span>
+        <button type="button" className="la-close" disabled={busy} aria-label={t("links.auto.dismiss")} title={t("links.auto.dismiss")}
+          onClick={() => void run("link.autofile_seen", { id: failed.id })}><Icon name="close" /></button>
+      </p>
+    );
+  }
   if (last) {
     return (
       <p className="la-line" role="status">

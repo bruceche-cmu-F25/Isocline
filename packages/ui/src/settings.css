@@ -135,6 +135,16 @@ html[data-web-covered] dialog[open] { display: none !important; }
 /* A connector's row has a state, up to three buttons and a switch at its end: in a narrow column they go under its
    name instead of squeezing it. */
 .mcp-row .set-note { overflow-wrap: anywhere; }
+/* Adding: a registry server that needs a token or a value says which, and asks for them under its line. */
+.mcp-result { list-style: none; }
+.mcp-needs { flex: none; max-width: 32%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .75rem; }
+.mcp-fill { margin: 8px 0 10px; }
+.mcp-fill .model-input { width: 100%; min-width: 0; }
+.mcp-fill-where { font-family: var(--mono, ui-monospace, monospace); font-size: .75rem; overflow-wrap: anywhere; }
+.mcp-fill-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.mcp-fill p { margin: 0; }
+.mcp-runs { color: var(--ink); overflow-wrap: anywhere; }
+@container page (max-width: 560px) { .mcp-needs { display: none; } }
 @container page (max-width: 640px) {
   .set-row.has-logo.mcp-row .set-name, .set-row.has-logo.mcp-row .set-note { grid-column: 2 / 4; }
   .set-row.has-logo.mcp-row .set-end { grid-column: 2 / 4; grid-row: 3; justify-content: flex-start; margin-top: 8px; }
@@ -339,12 +349,22 @@ button.area-dot:hover, button.area-dot:focus-visible, button.area-dot[aria-check
 /* Settings → Web (WebSettings.tsx). */
 .web-on { border-bottom: 0; padding-bottom: 4px; }
 .web-unused .set-name { color: var(--muted); }
+.web-inline-link { color: inherit; font: inherit; padding: 0; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .web-row .set-note a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .web-ask .model-input { width: 220px; }
 .web-limited[data-k] { color: var(--k-text); }
 .set-row.has-logo.web-row .set-note { overflow-wrap: anywhere; }
-.web-order { display: inline-flex; gap: 2px; }
-.web-order .set-button { min-width: 30px; padding-inline: 6px; }
+/* Rows of a service list keep a narrow first column: the handle on rows in use, empty on the rest, so logos line up. */
+.set-row.has-logo.web-row { grid-template-columns: 14px auto minmax(0, 1fr) auto; column-gap: 12px; }
+.set-row.has-logo.web-row .set-logo { grid-column: 2; }
+.set-row.has-logo.web-row .set-name, .set-row.has-logo.web-row .set-note { grid-column: 3; }
+.set-row.has-logo.web-row .set-end { grid-column: 4; }
+.web-grip { grid-column: 1; grid-row: 1 / 3; width: 14px; height: 28px; display: grid; place-items: center; color: var(--muted); opacity: .55; cursor: grab; touch-action: none; border-radius: 4px; }
+.web-grip svg { width: 10px; height: 16px; fill: currentColor; }
+.web-grip:hover:not(:disabled), .web-grip:focus-visible { opacity: 1; }
+.web-grip:disabled { visibility: hidden; }
+.web-dragging .web-grip { cursor: grabbing; opacity: 1; }
+.web-dragging > .set-row { background: var(--wash); border-radius: 10px; }
 .web-test .web-results { margin: 8px 0 0; padding-left: 1.3em; display: grid; gap: 6px; }
 .web-results li { display: grid; gap: 1px; min-width: 0; }
 .web-results a { color: var(--ink); overflow-wrap: anywhere; }
@@ -359,8 +379,8 @@ button.area-dot:hover, button.area-dot:focus-visible, button.area-dot[aria-check
 .web-records li { display: grid; grid-template-columns: 3.6rem auto minmax(0, 1fr) auto; column-gap: 10px; align-items: baseline; padding: 7px 2px; border-bottom: 1px solid var(--line-soft); font-size: .8125rem; }
 .web-record-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 @container page (max-width: 640px) {
-  .set-row.has-logo.web-row .set-name, .set-row.has-logo.web-row .set-note { grid-column: 2 / 4; }
-  .set-row.has-logo.web-row .set-end { grid-column: 2 / 4; grid-row: 3; justify-content: flex-start; margin-top: 8px; }
+  .set-row.has-logo.web-row .set-name, .set-row.has-logo.web-row .set-note { grid-column: 3 / 5; }
+  .set-row.has-logo.web-row .set-end { grid-column: 3 / 5; grid-row: 3; justify-content: flex-start; margin-top: 8px; }
   .web-ask .set-end { flex-wrap: nowrap; }
   .web-ask .model-input { flex: 1; width: auto; min-width: 0; }
 }

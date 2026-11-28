@@ -7,7 +7,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getConversation, getRun, listConversations, listEvents, type EnginePort, type EngineRequest } from "@zirma/core";
-import { createLinksModule, currentPass, listClips, QUIET_MS, recordPage, saveClip, setAutoFile } from "@zirma/module-links";
+import { createLinksModule, currentPass, listClips, QUIET_MS, recordPage, saveClip, setAutoFile, waitingCount } from "@zirma/module-links";
 import { openHome } from "../src/index.ts";
 import { tickLinkFile } from "../src/link-file.ts";
 
@@ -54,6 +54,32 @@ test("a pass files the batch under the links' own profile, out of the user's cha
     assert.equal(tickLinkFile(home, Date.now() + QUIET_MS * 2), null);
     assert.equal(currentPass(world), undefined);
     assert.deepEqual(listEvents(world).events.filter((event) => event.kind === "link.auto_filed").map((event) => event.payload), [{ kind: "auto", filed: 2, made: 1, tried: 2 }]);
+  } finally {
+    home.close();
+  }
+});
+
+test("a pass whose run fails keeps its links waiting, and the page says so", async () => {
+  const links = createLinksModule({ fetcher: async (url) => ({ url, title: "A page" }), icons: async () => null, covers: async () => null });
+  const engine: EnginePort = { async submit() { throw new Error("No API key for the model"); } };
+  const home = openHome({ dataDir: mkdtempSync(join(tmpdir(), "zirma-link-file-")), engine, modules: [links] });
+  try {
+    const world = home.world;
+    setAutoFile(world, true);
+    const clip = saveClip(world, { url: "https://example.com/waits" });
+    assert.ok(!("error" in clip));
+    recordPage(world, clip.clip.id, { title: "waits" });
+    const runId = tickLinkFile(home, Date.now() + QUIET_MS * 2);
+    assert.ok(runId);
+    await home.idle();
+    for (let i = 0; i < 50 && getRun(world, runId).run.state !== "failed"; i++) { await new Promise((resolve) => setTimeout(resolve, 20)); await home.idle(); }
+    assert.equal(getRun(world, runId).run.state, "failed");
+    assert.equal(tickLinkFile(home, Date.now() + QUIET_MS * 2), null, "finished, and no new pass straight away");
+    assert.equal(currentPass(world), undefined);
+    const state = links.snapshot!(world) as { autoFile?: { failed?: { retryAt: string } } };
+    assert.ok(state.autoFile?.failed, "the page is told");
+    assert.ok(Date.parse(state.autoFile!.failed!.retryAt) > Date.now());
+    assert.equal(waitingCount(world), 1, "the link still waits");
   } finally {
     home.close();
   }

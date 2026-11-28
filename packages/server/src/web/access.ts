@@ -2,7 +2,8 @@
  * order they are tried, the sites that open without asking, the keys (in the secret store, never in a file), and a
  * short record of what was searched and opened (on this home node only).
  *
- * `<data>/web.json` holds the settings, `<data>/web-log.json` the record. Both are read on every use, so a change in
+ * `<data>/web.json` holds the settings, `<data>/web-log.json` the record, `<data>/web-count.json` today's searches by
+ * service (the record keeps only the last few, so it cannot count a day). They are read on every use, so a change in
  * Settings applies to the very next search; there is nothing to reload.
  */
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -35,6 +36,9 @@ export interface WebLogEntry {
 
 const DEFAULTS: WebConfig = { on: true, search: ["exa"], read: ["jina"], sites: [], addresses: {} };
 const MAX_LOG = 50;
+/** Searches a day, at most, with each service that takes a key or a model's key: those are paid per search, and a
+ * model in a loop should not run up a bill. One at its limit is not tried again until tomorrow (local time). */
+export const DAILY_LIMIT = 100;
 const MAX_SITES = 200;
 const MAX_KEY = 500;
 /** The page a reading service's "Try it" reads: a plain public page that is there for exactly this. */
@@ -55,6 +59,11 @@ export function siteOf(input: string): string | null {
 
 const localDay = (at: Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
 
+/** Where a model provider's API key comes from (engine-pi's ModelAccounts). */
+export interface ModelKeys {
+  apiKey(providerId: string): Promise<string | null>;
+}
+
 export class WebAccess {
   readonly #dir: string;
   readonly #secrets: Pick<SecretStore, "get" | "set" | "delete">;
@@ -64,13 +73,25 @@ export class WebAccess {
   readonly #limited = new Map<string, string>();
   /** The connectors' search tools, once the home node has its connectors (cli.ts sets this). */
   connectors: ConnectorSearch | null = null;
+  /** The API keys of model providers the user added under Models, for the services that search with one (cli.ts
+   * sets this). Only a plain API key comes back, never a subscription sign-in (docs/design/web.md §4.6). */
+  modelKeys: ModelKeys | null = null;
 
-  constructor(options: { dataDir: string; secrets: Pick<SecretStore, "get" | "set" | "delete">; providers?: readonly SearchProvider[]; readers?: readonly ReaderProvider[]; connectors?: ConnectorSearch }) {
+  constructor(options: { dataDir: string; secrets: Pick<SecretStore, "get" | "set" | "delete">; providers?: readonly SearchProvider[]; readers?: readonly ReaderProvider[]; connectors?: ConnectorSearch; modelKeys?: ModelKeys }) {
     this.#dir = options.dataDir;
     this.#secrets = options.secrets;
     this.#providers = options.providers ?? PROVIDERS;
     this.#readers = options.readers ?? READERS;
     this.connectors = options.connectors ?? null;
+    this.modelKeys = options.modelKeys ?? null;
+  }
+
+  /** What a service needs to search: its key, its address, or its model provider's API key. */
+  async secretFor(provider: SearchProvider): Promise<string | null> {
+    if (CONNECTOR_ID.test(provider.id)) return null;
+    if (provider.needs === "address") return this.config().addresses[provider.id] ?? null;
+    if (provider.needs === "model") return provider.modelProvider ? await this.modelKeys?.apiKey(provider.modelProvider).catch(() => null) ?? null : null;
+    return this.key(provider.id).catch(() => null);
   }
 
   /** The search services Zirma itself knows. */
@@ -183,38 +204,39 @@ export class WebAccess {
     this.#write("web.json", next);
   }
 
+  /** Where a service's key is kept: its own id, or for the reading side of one that also searches, the search side's. */
+  #keyName(id: string): string {
+    const service = this.#service(id);
+    return `web:${"keyOf" in service && service.keyOf ? service.keyOf : id}`;
+  }
+
   async key(id: string): Promise<string | null> {
-    this.#service(id);
-    return (await this.#secrets.get(`web:${id}`)) ?? null;
+    return (await this.#secrets.get(this.#keyName(id))) ?? null;
   }
 
   async setKey(id: string, key: string): Promise<void> {
-    this.#service(id);
+    const name = this.#keyName(id);
     const value = key.trim();
     if (!value || value.length > MAX_KEY || /\s/.test(value)) throw new WebSettingsError("A key is one word with no spaces");
-    await this.#secrets.set(`web:${id}`, value);
+    await this.#secrets.set(name, value);
   }
 
   async deleteKey(id: string): Promise<void> {
-    this.#service(id);
-    await this.#secrets.delete(`web:${id}`);
+    await this.#secrets.delete(this.#keyName(id));
   }
 
   /** The services a search tries, in order, each with what it needs (its key, or its address). One that lacks what it
    * needs, or a connector's tool whose server is away, is left out. */
   async order(): Promise<Array<{ provider: SearchProvider; secret: string | null }>> {
-    const { search, addresses } = this.config();
+    const { search } = this.config();
     const connected = search.some((id) => CONNECTOR_ID.test(id)) ? await this.connectorProviders() : [];
     const out: Array<{ provider: SearchProvider; secret: string | null }> = [];
     for (const id of search) {
       const provider = this.#providers.find((candidate) => candidate.id === id) ?? connected.find((candidate) => candidate.id === id);
       if (!provider) continue;
-      if (provider.needs === "address") {
-        if (addresses[id]) out.push({ provider, secret: addresses[id] });
-        continue;
-      }
-      const secret = CONNECTOR_ID.test(id) ? null : await this.key(id).catch(() => null);
-      if (provider.needs === "key" && !secret) continue;
+      const secret = await this.secretFor(provider);
+      if (provider.needs !== "nothing" && !CONNECTOR_ID.test(id) && !secret) continue;
+      if (this.overDailyLimit(provider)) continue;
       out.push({ provider, secret });
     }
     // One whose limit ran out today is tried only after the others (and still tried, if they all fail).
@@ -222,6 +244,17 @@ export class WebAccess {
   }
 
   markLimited(id: string, now = new Date()): void { this.#limited.set(id, localDay(now)); }
+  /** A paid service that already answered `DAILY_LIMIT` searches today. */
+  overDailyLimit(provider: Pick<SearchProvider, "id" | "needs">, now = new Date()): boolean {
+    return (provider.needs === "key" || provider.needs === "model") && (this.today(now)[provider.id] ?? 0) >= DAILY_LIMIT;
+  }
+  /** The services in the search order left out today because they reached `DAILY_LIMIT`. */
+  overLimitToday(now = new Date()): string[] {
+    return this.config().search.filter((id) => {
+      const provider = this.#providers.find((candidate) => candidate.id === id);
+      return !!provider && this.overDailyLimit(provider, now);
+    });
+  }
   limitedToday(id: string, now = new Date()): boolean { return this.#limited.get(id) === localDay(now); }
 
   /** The reading services, in order, each with its key if the user added one. */
@@ -246,9 +279,14 @@ export class WebAccess {
     return known ? { id, title: known.title } : connector ? { id, title: `${connector[1]} · ${connector[2]}` } : null;
   }
 
-  log(entry: Omit<WebLogEntry, "at">): void {
+  log(entry: Omit<WebLogEntry, "at">, now = new Date()): void {
+    if (entry.kind === "search" && entry.provider) {
+      const counts = this.today(now);
+      counts[entry.provider] = (counts[entry.provider] ?? 0) + 1;
+      try { this.#write("web-count.json", { day: localDay(now), counts }); } catch { /* as below */ }
+    }
     const list = this.records();
-    list.unshift({ at: new Date().toISOString(), ...entry, what: entry.what.slice(0, 300) });
+    list.unshift({ at: now.toISOString(), ...entry, what: entry.what.slice(0, 300) });
     try { this.#write("web-log.json", list.slice(0, MAX_LOG)); } catch { /* a record is not worth failing a search */ }
   }
 
@@ -259,14 +297,11 @@ export class WebAccess {
 
   clearRecords(): void { this.#write("web-log.json", []); }
 
-  /** How many searches each service answered today (local time), from the record. */
+  /** How many searches each service answered today (local time). */
   today(now = new Date()): Record<string, number> {
-    const day = localDay(now);
-    const counts: Record<string, number> = {};
-    for (const entry of this.records()) {
-      if (entry.kind === "search" && entry.provider && localDay(new Date(entry.at)) === day) counts[entry.provider] = (counts[entry.provider] ?? 0) + 1;
-    }
-    return counts;
+    const saved = this.#read<{ day?: unknown; counts?: unknown }>("web-count.json", {});
+    if (saved.day !== localDay(now) || !saved.counts || typeof saved.counts !== "object") return {};
+    return Object.fromEntries(Object.entries(saved.counts as Record<string, unknown>).filter((entry): entry is [string, number] => typeof entry[1] === "number"));
   }
 
   /** One search with one service, as Settings' "Try it" runs it; for a reading service, one page read. */
@@ -280,7 +315,7 @@ export class WebAccess {
     }
     const provider = this.#providers.find((candidate) => candidate.id === id) ?? (CONNECTOR_ID.test(id) ? (await this.connectorProviders()).find((candidate) => candidate.id === id) : undefined);
     if (!provider) throw new WebSettingsError(`No web service ${id}`);
-    const secret = provider.needs === "address" ? this.config().addresses[id] ?? null : CONNECTOR_ID.test(id) ? null : await this.key(id);
+    const secret = await this.secretFor(provider);
     const results = await provider.search({ query, count: 3 }, secret, signal);
     return { results, ms: Date.now() - started };
   }

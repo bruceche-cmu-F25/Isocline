@@ -9,7 +9,7 @@
  */
 import { acceptLanguage, conversationBefore, coreContext, getRun, type RunTool, type RunToolContext, userLocale, type World } from "@zirma/core";
 import { PageFetchError, type Lookup } from "@zirma/core/net";
-import type { WebAccess } from "./access.ts";
+import { DAILY_LIMIT, type WebAccess } from "./access.ts";
 import { exa } from "./providers/exa.ts";
 import { SearchError, type ReadPage, type SearchInput, type SearchProvider, type SearchResult } from "./providers/index.ts";
 import { MIN_TEXT, readPage } from "./read.ts";
@@ -178,6 +178,9 @@ export function webTools(world: World, options: WebToolOptions = {}): RunTool[] 
           reasons.push(error instanceof SearchError ? error.message : `${provider.title} failed`);
         }
       }
+      if (!reasons.length && web?.overLimitToday().length) {
+        throw new Error(`Every search service has used today's ${DAILY_LIMIT} searches (a limit so a paid service does not run up a bill); searching works again tomorrow. Say so, and answer from what you know.`);
+      }
       throw new Error(reasons.length ? `Searching failed: ${reasons.join("; ")}.` : "No search service is set up.");
     },
   };
@@ -186,7 +189,7 @@ export function webTools(world: World, options: WebToolOptions = {}): RunTool[] 
     name: "web_fetch",
     label: "Read a web page",
     description: [
-      "Read one web page as text: an address the user gave, or one from web_search's results.",
+      "Read one web page or PDF as text: an address the user gave, or one from web_search's results.",
       "An address you made up yourself, or one a page mentioned, needs the user's yes first, so prefer addresses you were given or found by searching.",
       "Pages behind a sign-in cannot be read.",
     ].join(" "),

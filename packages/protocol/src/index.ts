@@ -802,7 +802,8 @@ export interface ModelSignIn {
  * node's machine. No secret ever appears in a response.
  *
  *   GET  /api/connections/mcp                        McpConnectorsResponse (a server not looked at lately is `checking`: ask again)
- *   POST /api/connections/mcp                        NewMcpConnector -> McpConnector (from the catalog, or the user's own)
+ *   POST /api/connections/mcp                        NewMcpConnector -> McpConnector (from the catalog, this Mac, the registry, or the user's own)
+ *   POST /api/connections/mcp/search                 { query } -> McpSearchResponse (asks the MCP Registry)
  *   POST /api/connections/mcp/:name/login            -> McpSignIn (open its `url` in the system browser)
  *   GET  /api/connections/mcp/flows/:id              McpSignIn (poll while `waiting`)
  *   POST /api/connections/mcp/flows/:id/cancel       -> McpSignIn
@@ -844,11 +845,51 @@ export interface McpCatalogItem {
   /** Already among the user's connectors. */
   added: boolean;
 }
-export interface McpConnectorsResponse { servers: McpConnector[]; catalog: McpCatalogItem[]; /** `mcp.json` could not be read. */ error?: string }
-/** From the catalog: `catalog` (and `token` when it takes one). The user's own: `name` with `url` or `command`;
- * `headers` and `env` are secrets and are kept in the keychain. */
+/** An MCP server another agent on this Mac has (Claude, Cursor, Codex…) and Zirma does not. No secret is in it. */
+export interface FoundMcpServer {
+  /** What `add` takes as `found`. */
+  id: string;
+  name: string;
+  kind: "http" | "stdio";
+  /** Its address or command line, with credentials masked. */
+  where: string;
+  /** The agent it was found in. */
+  place: string;
+}
+export interface McpConnectorsResponse {
+  servers: McpConnector[]; catalog: McpCatalogItem[];
+  /** Servers other agents on this Mac have. */
+  found: FoundMcpServer[];
+  /** `mcp.json` could not be read. */
+  error?: string;
+}
+/** Something a server needs before it is added: a header for an address, an environment variable for a command. */
+export interface McpInput { name: string; kind: "header" | "env"; description?: string; secret: boolean }
+/** A server in the MCP Registry that Zirma can add: by its address, or by running its npm or PyPI package. */
+export interface McpSearchResult {
+  /** Its registry name (`io.github.owner/server`), what `add` takes as `registry`. */
+  id: string;
+  title: string;
+  description: string;
+  kind: "http" | "stdio";
+  where: string;
+  /** Its website or repository. */
+  page?: string;
+  /** What the user gives when adding it; kept in the keychain. */
+  inputs: McpInput[];
+  added: boolean;
+}
+export interface McpSearchResponse { results: McpSearchResult[] }
+/** From the catalog: `catalog` (and `token` when it takes one). From this Mac: `found`. From the registry:
+ * `registry`, with `values` for its inputs. The user's own: `name` with `url` or `command`; `headers`, `env` and
+ * `values` are secrets and are kept in the keychain. */
 export interface NewMcpConnector {
   catalog?: string; token?: string;
+  found?: string;
+  registry?: string; values?: Record<string, string>;
+  /** For a registry server that runs on this Mac: the command the user was shown and said yes to (`where`). It must
+   * still be what the registry says, or nothing is added. */
+  runs?: string;
   name?: string; url?: string; command?: string; args?: string[];
   headers?: Record<string, string>; env?: Record<string, string>;
 }
@@ -907,7 +948,9 @@ export interface WebService {
   about: { zh: string; en: string };
   /** `nothing`: works as it is (a key may still raise its limit); `key`: unused until a key is given; `address`: one
    * the user runs themself, unused until its address is given. */
-  needs: "nothing" | "key" | "address";
+  needs: "nothing" | "key" | "address" | "model";
+  /** For one that searches with a model's API key: Pi's id of that provider. `hasKey` says whether Models has one. */
+  modelProvider?: string;
   /** Where the user makes a key (or, for one that needs an address, how to set one up). */
   keyPage?: string;
   hasKey: boolean;

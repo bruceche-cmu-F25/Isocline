@@ -6,7 +6,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { SpeechServiceStatus, VoiceSettings as Voice, VoiceStatus } from "@zirma/protocol";
 import { api } from "./api.ts";
 import { t, useLocale } from "./i18n/index.ts";
-import { Logo } from "./brand/Logo.tsx";
+import { hasMark, Logo } from "./brand/Logo.tsx";
 import { Select } from "./shell/Select.tsx";
 import { say, stopSpeaking, useSpeaking, useVoiceSettings } from "./speech/voice.ts";
 
@@ -165,7 +165,7 @@ function ServiceRow({ service, local, onChange, onError }: {
     : local ? t("voice.services.none") : t("voice.services.onMac");
   return (
     <form className="set-row has-logo voice-service" aria-busy={busy} onSubmit={(event) => { event.preventDefault(); if (key.trim()) act(api.voiceServiceKey(service.id, key.trim())); }}>
-      <span className="set-logo" data-k="gray"><Logo name={service.id} /></span>
+      <span className="set-logo" data-k="gray">{hasMark(service.id) ? <Logo name={service.id} /> : service.name.slice(0, 1).toUpperCase()}</span>
       <span className="set-name">{service.name}</span>
       <span className="set-note" data-problem={service.error ? "" : undefined}>
         {note}{local && !service.key && <> · <a href={service.keyUrl} target="_blank" rel="noreferrer">{t("voice.services.getKey")}</a></>}

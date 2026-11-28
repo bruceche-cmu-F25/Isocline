@@ -3,13 +3,17 @@
 import { bocha } from "./bocha.ts";
 import { brave } from "./brave.ts";
 import { exa } from "./exa.ts";
+import { firecrawl, firecrawlReader } from "./firecrawl.ts";
 import { jina } from "./jina.ts";
+import { MODEL_SEARCH } from "./models.ts";
+import { perplexity } from "./perplexity.ts";
 import { searxng } from "./searxng.ts";
+import { serper } from "./serper.ts";
 import { tavily } from "./tavily.ts";
 import type { ReaderProvider, SearchProvider } from "./types.ts";
 
-export const PROVIDERS: readonly SearchProvider[] = [exa, bocha, tavily, brave, searxng];
-export const READERS: readonly ReaderProvider[] = [jina];
+export const PROVIDERS: readonly SearchProvider[] = [exa, bocha, tavily, brave, searxng, serper, perplexity, firecrawl, ...MODEL_SEARCH];
+export const READERS: readonly ReaderProvider[] = [jina, firecrawlReader];
 
 export type { ReaderProvider, ReadPage, SearchInput, SearchProvider, SearchResult } from "./types.ts";
 export { SearchError } from "./types.ts";

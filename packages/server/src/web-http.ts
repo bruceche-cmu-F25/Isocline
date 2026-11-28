@@ -12,13 +12,17 @@ import { HttpError, readJson, send } from "./wire.ts";
 export async function describeWeb(web: WebAccess): Promise<WebResponse> {
   const config = web.config();
   const today = web.today();
-  const one = async (service: { id: string; title: string; zhTitle?: string; about: { zh: string; en: string }; needs: WebService["needs"]; keyPage?: string }, connector = false): Promise<WebService> => ({
+  const one = async (service: { id: string; title: string; zhTitle?: string; about: { zh: string; en: string }; needs: WebService["needs"]; keyPage?: string; modelProvider?: string }, connector = false): Promise<WebService> => ({
     id: service.id, title: service.title, ...(service.zhTitle ? { zhTitle: service.zhTitle } : {}), about: service.about, needs: service.needs,
     ...(service.keyPage ? { keyPage: service.keyPage } : {}),
-    hasKey: connector ? false : Boolean(await web.key(service.id).catch(() => null)),
+    ...(service.modelProvider ? { modelProvider: service.modelProvider } : {}),
+    // One that searches with a model's key has one when Models does; the key itself stays on the home node.
+    hasKey: connector ? false : service.needs === "model"
+      ? Boolean(service.modelProvider && await web.modelKeys?.apiKey(service.modelProvider).catch(() => null))
+      : Boolean(await web.key(service.id).catch(() => null)),
     ...(config.addresses[service.id] ? { address: config.addresses[service.id] } : {}),
     today: today[service.id] ?? 0,
-    ...(web.limitedToday(service.id) ? { limited: true } : {}),
+    ...(web.limitedToday(service.id) || web.overDailyLimit(service) ? { limited: true } : {}),
     ...(connector ? { connector: true } : {}),
   });
   const own = await Promise.all(web.providers.map((provider) => one(provider)));

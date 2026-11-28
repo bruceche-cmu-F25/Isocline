@@ -13,6 +13,7 @@
     "./rename": "./src/rename.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.129.0",
     "@mozilla/readability": "0.6.0",
     "@zirma/core": "*",
     "@zirma/engine-pi": "*",
@@ -27,6 +28,7 @@
     "linkedom": "0.18.15",
     "node-pty": "1.2.0-beta.15",
     "turndown": "7.2.5",
+    "unpdf": "^1.9.1",
     "web-push": "3.6.7"
   },
   "devDependencies": {

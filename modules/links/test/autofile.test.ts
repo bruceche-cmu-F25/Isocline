@@ -28,7 +28,7 @@ test("links already filed when the update comes are the user's, and nothing wait
   const dir = mkdtempSync(join(tmpdir(), "zirma-links-"));
   try {
     const path = join(dir, "world.db");
-    const before = linksModule.migrations.filter((migration) => !["link:9", "link:10"].includes(migration.id));
+    const before = linksModule.migrations.filter((migration) => !["link:9", "link:10", "link:11"].includes(migration.id));
     let w = openWorld(path, [...CORE_MIGRATIONS, ...before]);
     w.db.exec("INSERT INTO link_topics (id, name, area, created_at) VALUES ('t1', 'Reading', 'learn', '2026-11-01T00:00:00Z')");
     w.db.exec(`INSERT INTO link_items (id, kind, url, title, topic_id, saved_at) VALUES

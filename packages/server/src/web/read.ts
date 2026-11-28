@@ -3,7 +3,9 @@
  * The connection is the careful one Links uses (`@zirma/core/net`): public addresses only, checked again on every
  * redirect, limits on time and size, no cookies, and it says it is Zirma. A web page is turned into Markdown the way
  * pi-web-access does it (linkedom parses, Readability finds the article, Turndown writes Markdown). Plain text,
- * Markdown and JSON are read as they are. Anything else is refused with a reason the model can pass on.
+ * Markdown and JSON are read as they are. A PDF's text is taken out page by page with unpdf, after pi-web-access's
+ * `pdf-extract.ts` (0.48.0, https://github.com/nicobailon/pi-web-access, MIT, © 2025 Nico Bailon). Anything else is
+ * refused with a reason the model can pass on.
  */
 import { isIP } from "node:net";
 import { decodeText, getPublic, isPublicAddress, type Lookup, PageFetchError, publicLookup, readBody } from "@zirma/core/net";
@@ -23,9 +25,13 @@ export interface ReadPage {
 
 const TIMEOUT_MS = 15_000;
 const MAX_BYTES = 3 * 1024 * 1024;
+/** A PDF is larger for the same text. */
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
+/** Pages read from a PDF; the rest is named, not read. */
+const MAX_PDF_PAGES = 100;
 const MAX_REDIRECTS = 5;
 const AGENT = "Mozilla/5.0 (compatible; Zirma web reader)";
-const ACCEPT = "text/html,application/xhtml+xml,text/markdown;q=0.9,text/plain;q=0.8,application/json;q=0.7,*/*;q=0.3";
+const ACCEPT = "text/html,application/xhtml+xml,text/markdown;q=0.9,text/plain;q=0.8,application/json;q=0.7,application/pdf;q=0.6,*/*;q=0.3";
 /** A path that is a site's sign-in, not a page of its own. */
 const SIGN_IN = /(^|\/)(login|signin|sign-in|sign_in|passport|sso|auth)(\/|$)/i;
 /** Less than this is a page's furniture, not its text: most likely a page that needs scripts to show anything. */
@@ -95,10 +101,43 @@ export async function readPage(input: string, options: { signal?: AbortSignal; l
     if (status === 401 || status === 403) { response.destroy(); throw new PageFetchError("login", `The site answered ${status}`); }
     if (status < 200 || status >= 300) { response.destroy(); throw new PageFetchError("status", `The site answered ${status}`); }
     const type = String(response.headers["content-type"] ?? "").toLowerCase();
+    // Some servers send a PDF as a plain download; its address still says what it is.
+    if (type.includes("application/pdf") || (/octet-stream/.test(type) && /\.pdf$/i.test(target.pathname))) {
+      return { url: target.href, ...(await pdfToText(await readBody(response, MAX_PDF_BYTES), target)) };
+    }
     const html = !type || /html|xml/.test(type);
     if (!html && !/^text\/|json/.test(type)) { response.destroy(); throw new PageFetchError("not_html", `Not a page Zirma reads (${type.split(";")[0]})`); }
     const raw = decodeText(await readBody(response, MAX_BYTES), type);
     if (!html) return { url: target.href, text: raw.trim() };
     return { url: target.href, ...htmlToText(raw, target.href) };
+  }
+}
+
+/** A PDF's text, page by page, with its title from its own details or else its file name. */
+export async function pdfToText(bytes: Buffer, url: URL): Promise<Omit<ReadPage, "url">> {
+  const { getDocumentProxy } = await import("unpdf");
+  let pdf: Awaited<ReturnType<typeof getDocumentProxy>>;
+  try {
+    pdf = await getDocumentProxy(new Uint8Array(bytes));
+  } catch {
+    throw new PageFetchError("not_html", "The PDF could not be opened");
+  }
+  try {
+    const info = ((await pdf.getMetadata().catch(() => null))?.info ?? {}) as Record<string, unknown>;
+    const named = typeof info.Title === "string" ? info.Title.trim() : "";
+    const file = decodeURIComponent(url.pathname.split("/").pop() ?? "").replace(/\.pdf$/i, "").replace(/[_-]+/g, " ").trim();
+    const author = typeof info.Author === "string" && info.Author.trim() ? info.Author.trim() : undefined;
+    const reading = Math.min(pdf.numPages, MAX_PDF_PAGES);
+    const pages: string[] = [];
+    for (let number = 1; number <= reading; number++) {
+      const page = await pdf.getPage(number);
+      const items = (await page.getTextContent()).items as Array<{ str?: string }>;
+      const line = items.map((item) => item.str ?? "").join(" ").replace(/\s+/g, " ").trim();
+      if (line) pages.push(`<!-- Page ${number} -->\n${line}`);
+    }
+    const rest = pdf.numPages > reading ? `\n\n[Only the first ${reading} of ${pdf.numPages} pages were read]` : "";
+    return { ...(named || file ? { title: named || file } : {}), ...(author ? { author } : {}), text: pages.join("\n\n") + rest };
+  } finally {
+    await pdf.cleanup().catch(() => undefined);
   }
 }

@@ -5,7 +5,7 @@
  *
  * Each pass is a conversation of its own, archived from the start, like the notes' passes (note-compile.ts): not one
  * of the user's chats, but kept, so what Zirma filed and why can be looked at afterwards. */
-import { isRunUnfinished, submitRun, updateConversation, userLocale } from "@zirma/core";
+import { getRun, isRunUnfinished, submitRun, updateConversation, userLocale } from "@zirma/core";
 import { attachRun, beginFilePass, currentPass, FILE_PROFILE, filePassDue, filePassGoal, finishFilePass } from "@zirma/module-links";
 import type { Home } from "./home.ts";
 
@@ -19,7 +19,10 @@ export function tickLinkFile(home: Pick<Home, "world" | "modules" | "kick">, now
   const pass = currentPass(world);
   if (pass) {
     if (pass.runId && isRunUnfinished(world, pass.runId)) return null;
-    finishFilePass(world, pass.id, now);
+    // A run that did not complete (no model, a refused key, a used-up quota) leaves its links waiting for a later pass.
+    let failed = true;
+    try { failed = !pass.runId || getRun(world, pass.runId).run.state !== "completed"; } catch { /* the run is gone: failed */ }
+    finishFilePass(world, pass.id, now, { failed });
   }
   const due = filePassDue(world, now);
   if (!due) return null;
@@ -32,7 +35,7 @@ export function tickLinkFile(home: Pick<Home, "world" | "modules" | "kick">, now
     home.kick();
     return run.id;
   } catch (error) {
-    finishFilePass(world, passId, now);
+    finishFilePass(world, passId, now, { failed: true });
     throw error;
   }
 }

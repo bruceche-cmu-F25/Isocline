@@ -8,6 +8,7 @@ import type { WebResponse, WebService, WebTestResponse } from "@zirma/protocol";
 import { ApiError, request as call } from "./api.ts";
 import { connectorMark, hasMark, Logo } from "./brand/Logo.tsx";
 import { getLocale, t } from "./i18n/index.ts";
+import { openSettings } from "./settingsTab.ts";
 
 type Open = { id: string; what: "key" | "address" | "test" } | null;
 type Kind = "search" | "read";
@@ -16,7 +17,9 @@ const CONNECTOR = /^mcp:([^:]+):/;
 
 /** The service's own mark (a connector's tool takes its connector's), its first letter where Zirma has none. */
 function Mark({ service }: { service: WebService }) {
-  const name = service.connector ? connectorMark({ name: CONNECTOR.exec(service.id)?.[1] }) : hasMark(service.id) ? service.id : undefined;
+  // The reading side of one that also searches ("firecrawl-read") shows the same mark.
+  const own = service.id.replace(/-read$/, "");
+  const name = service.connector ? connectorMark({ name: CONNECTOR.exec(service.id)?.[1] }) : hasMark(own) ? own : undefined;
   return <span className="set-logo" data-k="gray">{name ? <Logo name={name} /> : service.title.slice(0, 1).toUpperCase()}</span>;
 }
 
@@ -33,6 +36,8 @@ export function WebSettings() {
   const [data, setData] = useState<WebResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** A row being dragged by its handle: the order as it stands under the pointer, saved when it is let go. */
+  const [drag, setDrag] = useState<{ kind: Kind; id: string; ids: string[]; moved: boolean } | null>(null);
   const [open, setOpen] = useState<Open>(null);
   const [key, setKey] = useState("");
   const [tested, setTested] = useState<{ id: string; reading?: boolean; result?: WebTestResponse; error?: string; code?: string } | null>(null);
@@ -75,7 +80,7 @@ export function WebSettings() {
   const name = (service: WebService) => (locale === "zh" && service.zhTitle) || service.title;
   const all = [...data.services, ...data.readers];
   const byId = new Map(all.map((service) => [service.id, service]));
-  const order = (kind: Kind) => (kind === "search" ? data.search : data.read);
+  const order = (kind: Kind) => (drag?.kind === kind ? drag.ids : kind === "search" ? data.search : data.read);
   const setOrder = (kind: Kind, next: string[]) => save(kind === "search" ? { search: next } : { read: next });
   const move = (kind: Kind, id: string, step: -1 | 1) => {
     const next = [...order(kind)];
@@ -84,11 +89,44 @@ export function WebSettings() {
     [next[at], next[to]] = [next[to]!, next[at]!];
     void setOrder(kind, next);
   };
+  /** The handle a row in use is dragged by (mouse or finger), or moved with the arrow keys once it has focus. */
+  const grip = (kind: Kind, service: WebService, count: number) => (
+    <button type="button" className="web-grip" disabled={count < 2}
+      aria-label={t("web.drag", { name: name(service) })} title={t("web.drag", { name: name(service) })}
+      onKeyDown={(event) => {
+        if ((event.key !== "ArrowUp" && event.key !== "ArrowDown") || busy) return;
+        event.preventDefault();
+        move(kind, service.id, event.key === "ArrowUp" ? -1 : 1);
+      }}
+      onPointerDown={(event) => {
+        if (event.button !== 0 || busy) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setDrag({ kind, id: service.id, ids: [...order(kind)], moved: false });
+      }}
+      onPointerMove={(event) => {
+        if (drag?.id !== service.id) return;
+        // Where it lands: after every other row in use whose middle is above the pointer.
+        const rows = [...(event.currentTarget.closest(".set-rows")?.querySelectorAll<HTMLElement>("[data-used]") ?? [])].filter((row) => row.dataset.used !== service.id);
+        const at = rows.filter((row) => { const box = row.getBoundingClientRect(); return box.top + box.height / 2 < event.clientY; }).length;
+        const others = drag.ids.filter((id) => id !== service.id);
+        const before = rows[at]?.dataset.used;
+        const ids = before ? [...others.slice(0, others.indexOf(before)), service.id, ...others.slice(others.indexOf(before))] : [...others, service.id];
+        if (ids.join() !== drag.ids.join()) setDrag({ ...drag, ids, moved: true });
+      }}
+      onPointerUp={() => {
+        if (drag?.id !== service.id) return;
+        if (!drag.moved) return setDrag(null);
+        void setOrder(kind, drag.ids).finally(() => { if (alive.current) setDrag(null); });
+      }}
+      onPointerCancel={() => setDrag(null)}>
+      <svg viewBox="0 0 10 16" aria-hidden="true">{[3, 8, 13].flatMap((y) => [<circle key={`a${y}`} cx="2.5" cy={y} r="1.3" />, <circle key={`b${y}`} cx="7.5" cy={y} r="1.3" />])}</svg>
+    </button>
+  );
   const toggle = (id: string, what: "key" | "address") => {
     setKey("");
     setOpen(open?.id === id && open.what === what ? null : { id, what });
   };
-  const ready = (service: WebService) => service.needs === "key" ? service.hasKey : service.needs === "address" ? !!service.address : true;
+  const ready = (service: WebService) => service.needs === "key" || service.needs === "model" ? service.hasKey : service.needs === "address" ? !!service.address : true;
   const saveSecret = async (event: FormEvent, service: WebService, kind: Kind, thenUse: boolean, typed = key) => {
     event.preventDefault();
     const value = typed.trim();
@@ -117,13 +155,17 @@ export function WebSettings() {
   const note = (service: WebService) => {
     if (service.needs === "key" && !service.hasKey) return t("web.needsKey");
     if (service.needs === "address" && !service.address) return t("web.needsAddress");
+    if (service.needs === "model" && !service.hasKey) return t("web.needsModelKey");
     if (service.limited) return t("web.limited");
     return [service.address ?? service.about[locale], service.today ? t("web.today", { n: service.today }) : ""].filter(Boolean).join(" · ");
   };
   /** Where to get its key (or, for one the user runs themself, how to set it up), on every row that has one. */
-  const keyLink = (service: WebService) => service.keyPage && (
-    <> · <a href={service.keyPage} target="_blank" rel="noopener noreferrer">{t(service.needs === "address" ? "web.address.howto" : service.hasKey ? "web.key.manage" : "web.key.make")}</a></>
-  );
+  const keyLink = (service: WebService) => service.needs === "model"
+    // Its key is the one under Models: that is where it is added or changed.
+    ? <> · <button type="button" className="web-inline-link" onClick={() => openSettings("models")}>{t(service.hasKey ? "web.model.where" : "web.model.go")}</button></>
+    : service.keyPage && (
+      <> · <a href={service.keyPage} target="_blank" rel="noopener noreferrer">{t(service.needs === "address" ? "web.address.howto" : service.hasKey ? "web.key.manage" : "web.key.make")}</a></>
+    );
   const addSite = (event: FormEvent) => {
     event.preventDefault();
     const value = site.trim();
@@ -194,21 +236,16 @@ export function WebSettings() {
     const secret = (service: WebService, thenUse: boolean) => open?.id === service.id && (open.what === "key" || open.what === "address") && secretForm(service, kind, thenUse);
     return (
       <div className="set-rows">
-        {used.map((service, index) => (
-          <div className="set-rows-item" key={service.id}>
+        {used.map((service) => (
+          <div className={`set-rows-item${drag?.id === service.id ? " web-dragging" : ""}`} key={service.id} data-used={service.id}>
             <div className="set-row has-logo web-row">
+              {grip(kind, service, used.length)}
               <Mark service={service} />
               <span className="set-name">{name(service)}</span>
               <span className={`set-note${service.limited ? " web-limited" : ""}`} {...(service.limited ? { "data-k": "warm" } : {})}>{note(service)}{keyLink(service)}</span>
               <span className="set-end">
-                {used.length > 1 && (
-                  <span className="web-order">
-                    <button type="button" className="set-button ghost" disabled={!!busy || index === 0} aria-label={t("web.up", { name: name(service) })} title={t("web.up", { name: name(service) })} onClick={() => move(kind, service.id, -1)}>↑</button>
-                    <button type="button" className="set-button ghost" disabled={!!busy || index === used.length - 1} aria-label={t("web.down", { name: name(service) })} title={t("web.down", { name: name(service) })} onClick={() => move(kind, service.id, 1)}>↓</button>
-                  </span>
-                )}
                 <button type="button" className="set-button ghost" disabled={!!busy || !ready(service)} onClick={() => void test(service, kind)}>{t("web.test")}</button>
-                {!service.connector && (
+                {!service.connector && service.needs !== "model" && (
                   <button type="button" className="set-button ghost" onClick={() => toggle(service.id, service.needs === "address" ? "address" : "key")}>
                     {service.needs === "address" ? t(service.address ? "web.address.change" : "web.address.add") : t(service.hasKey ? "web.key.change" : "web.key.add")}
                   </button>
@@ -229,6 +266,16 @@ export function WebSettings() {
                 <span className="set-note">{service.about[locale]}{keyLink(service)}</span>
                 <span className="set-end">
                   <button type="button" className="set-button ghost" disabled={!!busy} onClick={() => void setOrder(kind, [...order(kind), service.id])}>{t("web.use")}</button>
+                </span>
+              </div>
+            ) : service.needs === "model" ? (
+              // One that searches with a model's key has nothing to type here: the key belongs under Models.
+              <div className="set-row has-logo web-row">
+                <Mark service={service} />
+                <span className="set-name">{name(service)}</span>
+                <span className="set-note">{service.about[locale]}</span>
+                <span className="set-end">
+                  <button type="button" className="set-button ghost" onClick={() => openSettings("models")}>{t("web.model.go")}</button>
                 </span>
               </div>
             ) : (
