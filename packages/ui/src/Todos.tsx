@@ -164,7 +164,7 @@ function Meta({ todo, today, all, areas, when, hour, children }: { todo: Item; t
     <span className="todo-meta">
       {hour && <span className="hour">{hour}</span>}
       {children}
-      {todo.suggested && <span className="by"><Icon name="alfred" />{t("todo.g.suggested")}</span>}
+      {todo.suggested && <span className="by">{t("todo.g.suggested")}</span>}
       {area && <span className="tag" data-k={area.k}>{area.name}</span>}
       {due && <span className="due">{due}</span>}
       {!when && todo.startDate && todo.due && todo.startDate !== todo.due && <span className="due">{md(todo.startDate)} – {md(todo.due)}</span>}
@@ -173,7 +173,7 @@ function Meta({ todo, today, all, areas, when, hour, children }: { todo: Item; t
       {todo.source?.repeat && !todo.done && (
         <span><Icon name="repeat" />{repeatLabel(todo.source.repeat)}{streak > 0 && ` · ${t("todo.streak", { n: streak })}`}</span>
       )}
-      {origin !== "you" && <span className={origin === "alfred" ? "by" : undefined} title={originLong(todo)}><Icon name={origin} />{originShort(todo)}</span>}
+      {origin !== "you" && <span className={origin === "alfred" ? "by" : undefined} title={originLong(todo)}>{origin !== "alfred" && <Icon name={origin} />}{originShort(todo)}</span>}
       {days >= STALE_DAYS && <span className="stale" title={t("todo.waitedLong", { n: days })}><Icon name="wait" />{t("todo.waited", { n: days })}</span>}
       {todo.url && <span><Icon name="link" />{t("todo.hasLink")}</span>}
     </span>

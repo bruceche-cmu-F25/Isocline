@@ -1,6 +1,6 @@
 /** Filing links on their own, on the Links page (docs/design/links-autofile.md §2, §4): the Auto-file button in the
  * head and its card, the line that says what the last pass did (with its undo), the offer in Not filed to go through
- * what nobody filed, and the marks on what Zirma filed and made. */
+ * what nobody filed, and the line in an opened link that says where Zirma filed it. */
 import { useState } from "react";
 import type { AutoFileState } from "@zirma/module-links/types";
 import { useOp } from "./linkControls.tsx";
@@ -27,7 +27,7 @@ export function useAutoFile(state: AutoFileState | undefined, onError: (message:
   const view = card && state ? (
     <Pop onClose={() => setCard(false)}>
       <div className="ev-edit la-card" role="dialog" aria-label={t("links.auto.title")}>
-        <h3><Icon name="alfred" />{t("links.auto.title")}</h3>
+        <h3>{t("links.auto.title")}</h3>
         {state.enabled
           ? <p>{t("links.auto.isOn", { n: state.today, max: state.perDay })}</p>
           : <><p>{t("links.auto.about")}</p><p className="quiet">{t("links.auto.sends")}</p></>}
@@ -50,7 +50,7 @@ export function AutoFileButton({ state, busy, onPress }: { state: AutoFileState 
   if (!state) return null;
   return (
     <button type="button" className="la-button" aria-pressed={state.enabled} disabled={busy} title={t("links.auto.button")} onClick={onPress}>
-      {state.enabled && <span className="la-on" aria-hidden="true" />}<Icon name="alfred" /><span className="la-label">{t("links.auto.button")}</span>
+      {state.enabled && <span className="la-on" aria-hidden="true" />}<span className="la-label">{t("links.auto.button")}</span>
     </button>
   );
 }
@@ -67,7 +67,6 @@ export function AutoFileLine({ state, onError, onSaid }: { state: AutoFileState 
     const at = retry.toLocaleTimeString(intlLocale(), { hour: "2-digit", minute: "2-digit", hour12: false });
     return (
       <p className="la-line" role="status">
-        <Icon name="alfred" />
         <span>{t(retry.toDateString() === new Date().toDateString() ? "links.auto.failed" : "links.auto.failedTomorrow", { time: at })}</span>
         <button type="button" className="la-close" disabled={busy} aria-label={t("links.auto.dismiss")} title={t("links.auto.dismiss")}
           onClick={() => void run("link.autofile_seen", { id: failed.id })}><Icon name="close" /></button>
@@ -77,7 +76,6 @@ export function AutoFileLine({ state, onError, onSaid }: { state: AutoFileState 
   if (last) {
     return (
       <p className="la-line" role="status">
-        <Icon name="alfred" />
         <span>{last.made ? t("links.auto.filedMade", { n: last.filed, m: last.made }) : t("links.auto.filed", { n: last.filed })}</span>
         <button type="button" className="lk-see" disabled={busy} onClick={() => void run("link.autofile_undo", { id: last.id }, () => onSaid(t("links.auto.undone")))}>{t("links.undo")}</button>
         <button type="button" className="la-close" disabled={busy} aria-label={t("links.auto.dismiss")} title={t("links.auto.dismiss")}
@@ -98,11 +96,11 @@ export function SweepOffer({ state, onError, onSaid }: { state: AutoFileState | 
   return <>
     <p className="la-offer">
       <span>{t("links.auto.sweep.offer", { n })}</span>
-      <button type="button" className="lk-btn" onClick={() => setCard(true)}><Icon name="alfred" />{t("links.auto.sweep.go")}</button>
+      <button type="button" className="lk-btn" onClick={() => setCard(true)}>{t("links.auto.sweep.go")}</button>
     </p>
     {card && <Pop onClose={() => setCard(false)}>
       <div className="ev-edit la-card" role="dialog" aria-label={t("links.auto.sweep.title", { n })}>
-        <h3><Icon name="alfred" />{t("links.auto.sweep.title", { n })}</h3>
+        <h3>{t("links.auto.sweep.title", { n })}</h3>
         <p>{t("links.auto.sweep.about")}</p>
         <p className="quiet">{t("links.auto.sends")}</p>
         <div className="lr-foot">
@@ -119,15 +117,8 @@ export function SweepOffer({ state, onError, onSaid }: { state: AutoFileState | 
 export function FiledByZirma({ path, busy, onPutBack }: { path: string; busy: boolean; onPutBack(): void }) {
   return (
     <p className="la-filed">
-      <Icon name="alfred" />
       <span>{t("links.auto.filedTo", { path })}</span>
       <button type="button" className="lk-see" disabled={busy} onClick={onPutBack}>{t("links.auto.putBack")}</button>
     </p>
   );
-}
-
-/** The small mark on a row, a card or a category: Zirma filed or made it. */
-export function ZirmaMark({ made }: { made?: boolean }) {
-  const label = t(made ? "links.auto.madeMark" : "links.auto.mark");
-  return <span className="la-mark" role="img" aria-label={label} title={label}><Icon name="alfred" /></span>;
 }

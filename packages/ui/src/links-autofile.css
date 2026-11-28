@@ -1,24 +1,21 @@
 /* Filing links on their own (LinkAutoFile.tsx; docs/design/links-autofile.md §2, §4). */
 
-/* The Auto-file button in the category's head: quiet when off, filled with a dot when on; only its mark when narrow. */
-.la-button { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px 0 9px; border-radius: 9px;
+/* The Auto-file button in the category's head: quiet when off, filled with a dot when on. */
+.la-button { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 9px;
   box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--muted); font-size: .8125rem; white-space: nowrap; }
 .la-button:hover { color: var(--ink); }
-.la-button svg { width: 15px; height: 15px; }
 .la-button[aria-pressed="true"] { background: var(--wash); box-shadow: none; color: var(--ink); }
 .la-on { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .la-button:disabled { opacity: .6; }
 
 .la-card { width: min(420px, 100%); display: flex; flex-direction: column; gap: 10px; font-size: .875rem; line-height: 1.5; }
-.la-card h3 { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 1rem; }
-.la-card h3 svg { flex: none; width: 18px; height: 18px; color: var(--accent); }
+.la-card h3 { color: var(--ink); font-size: 1rem; }
 .la-card p { margin: 0; color: var(--copy); }
 .la-card p.quiet { color: var(--muted); font-size: .8125rem; }
 
 /* One line above the links: what the last pass did, its undo, and away. */
 .la-line { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; padding: 6px 6px 6px 10px; border-radius: 10px; background: var(--wash);
   color: var(--copy); font-size: .8125rem; }
-.la-line > svg { flex: none; width: 15px; height: 15px; color: var(--accent); }
 .la-line > span:not(.pulse) { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .la-line .pulse { flex: none; }
 .la-line .lk-see { flex: none; margin: 0; }
@@ -28,26 +25,18 @@
 
 /* In Not filed: how many nobody filed, and the button that has Zirma go through them. */
 .la-offer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 2px 0 10px; color: var(--muted); font-size: .8125rem; }
-.la-offer .lk-btn svg { width: 14px; height: 14px; }
 
 /* On an opened link Zirma filed. */
 .la-filed { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin: 0; color: var(--muted); font-size: .8125rem; }
-.la-filed svg { flex: none; width: 14px; height: 14px; color: var(--accent); }
 .la-filed .lk-see { margin: 0; }
-
-/* The mark on a row, a card or a category Zirma filed or made. */
-.la-mark { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--muted); }
-.la-mark svg { width: 13px; height: 13px; }
-.lt-node .la-mark { width: 14px; margin-left: -2px; }
-.lt-node .la-mark svg { width: 11px; height: 11px; }
 
 /* The ⋯ menu's Auto-file: only on a phone, where the head's button is not. */
 .lt-menu .la-menu-item { display: none; }
 
-/* On a phone the links come first: the switch moves into ⋯, the line and the rows' marks go (an opened link still
- * says who filed it). */
+/* On a phone the links come first: the switch moves into ⋯ and the line goes (an opened link still says who filed
+ * it). */
 @container page (max-width: 520px) {
-  .la-button, .la-line, :is(.lr-row, .lg-tile) .la-mark { display: none; }
+  .la-button, .la-line { display: none; }
   .lt-menu .la-menu-item { display: block; }
 }
 @media (pointer: coarse) {
