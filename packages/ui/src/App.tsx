@@ -388,15 +388,16 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
     else setLayout({ nav: layout.nav === "full" ? "hidden" : "full" });
   }, [layout.nav, navMode, setLayout]);
   // Settings keeps the current workspace. Each workspace remembers its last page.
-  const pageMode: Mode | null = !current || current.group === "system" ? null : current.group === "dev" ? "dev" : "daily";
+  const pageMode: Mode | null = !current || current.group === "system" ? null : current.group === "dev" ? "dev" : current.group === "goals" ? "goals" : "daily";
   const lastMode = useRef<Mode>("daily");
-  const lastPage = useRef<Record<Mode, string>>({ daily: "", dev: "" });
+  const lastPage = useRef<Record<Mode, string>>({ daily: "", dev: "", goals: "" });
   if (pageMode && current) { lastMode.current = pageMode; lastPage.current[pageMode] = current.key; }
   const mode = pageMode ?? lastMode.current;
   const accessRequest = state.devAccessRequests?.[0];
-  const hasDev = pages.some((page) => page.group === "dev");
+  // The workspaces this home node has, for the top bar's switch: daily always, Code and Goals when their pages exist.
+  const modes: Mode[] = ["daily", ...(pages.some((page) => page.group === "dev") ? ["dev" as const] : []), ...(pages.some((page) => page.group === "goals") ? ["goals" as const] : [])];
   const switchMode = (next: Mode) => {
-    const first = listed.find((page) => (next === "dev" ? page.group === "dev" : page.group === "alfred" || page.group === "work" || page.group === "modules"));
+    const first = listed.find((page) => (next === "daily" ? page.group === "alfred" || page.group === "work" || page.group === "modules" : page.group === next));
     const key = lastPage.current[next] || first?.key;
     if (key) goPage(key);
   };
@@ -593,7 +594,7 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
       data-sheet={sheet ?? undefined} style={{ "--nav-px": `${size.nav}px`, "--alf-px": `${size.alf}px` } as CSSProperties}>
       {greet && <Welcome name={name!} onDone={endOpening} />}
       {firstRun && <FirstRun state={state} name={name} saveName={saveName} place={{ phone, show: showStop }} onDone={endFirstRun} />}
-      {!phone && <Topbar pageHistory={pageHistory} navOpen={navMode === "full"} onNav={toggleNav} mode={mode} onMode={hasDev ? switchMode : undefined} onLanguage={switchLanguage}
+      {!phone && <Topbar pageHistory={pageHistory} navOpen={navMode === "full"} onNav={toggleNav} mode={mode} modes={modes} onMode={modes.length > 1 ? switchMode : undefined} onLanguage={switchLanguage}
         heading={current ? { title: current.title, icon: current.icon, k: current.k, summary: bare ? undefined : current.topline?.(state) ?? current.summary?.(state.modules[moduleOf(current)], state) } : undefined}
         system={pages.filter((page) => page.group === "system")} page={current?.key ?? ""} onPage={goPage} />}
       <div className="sidebar" data-visible={navVisible || undefined}>
@@ -606,7 +607,8 @@ function Workspace({ state, alfred }: { state: StateResponse; alfred: Zirma }) {
             </div>
             {!phone && (
               <div className="side-view side-page" inert={!pageSide || undefined} data-k={current?.k}>
-                {current?.side && <button type="button" className="side-back" onClick={() => setNavPeek(true)} title={t("nav.back")}><Icon name="back" /><span>{current.title}</span></button>}
+                {/* A workspace of one page (Goals) has no list behind its column to go back to. */}
+                {current?.side && current.group !== "goals" && <button type="button" className="side-back" onClick={() => setNavPeek(true)} title={t("nav.back")}><Icon name="back" /><span>{current.title}</span></button>}
                 <div className="side-host" ref={setSideHost} />
               </div>
             )}

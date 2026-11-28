@@ -10,8 +10,8 @@ export type ZirmaMode = "open" | "closed";
 export interface Layout { nav: NavMode; navW: number; alfW: number; alfred: ZirmaMode }
 
 /** min: the top bar's lead sits over the sidebar at the same width, and in the Mac app it holds the window buttons,
- * the sidebar button and the Daily | Code switch (styles.css .topbar-lead): 200px. */
-export const NAV = { min: 200, max: 300, def: 208, foldAt: 120 };
+ * the sidebar button and the Daily | Code | Goals switch (styles.css .topbar-lead): 222px. */
+export const NAV = { min: 222, max: 300, def: 224, foldAt: 120 };
 /** pageMin: what the page keeps while Zirma has width to give. pageFloor: what it keeps at any window size (a phone's width). */
 export const ALF = { min: 300, max: 640, def: 400, pageMin: 420, pageFloor: 320 };
 /** Below this width the workspace is a phone: one column, a dock, Zirma as a sheet. The Mac window never gets this narrow. */

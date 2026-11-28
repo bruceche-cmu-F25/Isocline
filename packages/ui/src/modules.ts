@@ -6,6 +6,7 @@
  * themselves (packages/server/test/module-types.test.ts); each module's `snapshot()` is declared with its type.
  */
 import type { CalendarOp, CalendarSnapshot } from "@zirma/module-calendar/types";
+import type { GoalOp, GoalsSnapshot } from "@zirma/module-goals/types";
 import type { LinkOp, LinksSnapshot } from "@zirma/module-links/types";
 import type { MailOp, MailSnapshot } from "@zirma/module-mail/types";
 import type { NoteOp, NotesSnapshot } from "@zirma/module-notes/types";
@@ -17,11 +18,12 @@ export interface ModuleSnapshots {
   mail: MailSnapshot;
   link: LinksSnapshot;
   note: NotesSnapshot;
+  goal: GoalsSnapshot;
 }
 export type ModuleId = keyof ModuleSnapshots;
 
 /** An operation a device may ask of a module (POST /api/ops/<name>). */
-export type OpName = TodoOp | CalendarOp | MailOp | LinkOp | NoteOp;
+export type OpName = TodoOp | CalendarOp | MailOp | LinkOp | NoteOp | GoalOp;
 
 /** A module's snapshot as the state holds it; undefined when this home node has no such module, or has not sent it. */
 export function snapshotOf<K extends ModuleId>(state: { modules: Record<string, unknown> } | null | undefined, id: K): ModuleSnapshots[K] | undefined {
