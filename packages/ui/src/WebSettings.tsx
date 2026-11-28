@@ -8,6 +8,7 @@ import type { WebResponse, WebService, WebTestResponse } from "@zirma/protocol";
 import { ApiError, request as call } from "./api.ts";
 import { connectorMark, hasMark, Logo } from "./brand/Logo.tsx";
 import { getLocale, t } from "./i18n/index.ts";
+import { openSettings } from "./settingsTab.ts";
 
 type Open = { id: string; what: "key" | "address" | "test" } | null;
 type Kind = "search" | "read";
@@ -125,7 +126,7 @@ export function WebSettings() {
     setKey("");
     setOpen(open?.id === id && open.what === what ? null : { id, what });
   };
-  const ready = (service: WebService) => service.needs === "key" ? service.hasKey : service.needs === "address" ? !!service.address : true;
+  const ready = (service: WebService) => service.needs === "key" || service.needs === "model" ? service.hasKey : service.needs === "address" ? !!service.address : true;
   const saveSecret = async (event: FormEvent, service: WebService, kind: Kind, thenUse: boolean, typed = key) => {
     event.preventDefault();
     const value = typed.trim();
@@ -154,13 +155,17 @@ export function WebSettings() {
   const note = (service: WebService) => {
     if (service.needs === "key" && !service.hasKey) return t("web.needsKey");
     if (service.needs === "address" && !service.address) return t("web.needsAddress");
+    if (service.needs === "model" && !service.hasKey) return t("web.needsModelKey");
     if (service.limited) return t("web.limited");
     return [service.address ?? service.about[locale], service.today ? t("web.today", { n: service.today }) : ""].filter(Boolean).join(" · ");
   };
   /** Where to get its key (or, for one the user runs themself, how to set it up), on every row that has one. */
-  const keyLink = (service: WebService) => service.keyPage && (
-    <> · <a href={service.keyPage} target="_blank" rel="noopener noreferrer">{t(service.needs === "address" ? "web.address.howto" : service.hasKey ? "web.key.manage" : "web.key.make")}</a></>
-  );
+  const keyLink = (service: WebService) => service.needs === "model"
+    // Its key is the one under Models: that is where it is added or changed.
+    ? <> · <button type="button" className="web-inline-link" onClick={() => openSettings("models")}>{t(service.hasKey ? "web.model.where" : "web.model.go")}</button></>
+    : service.keyPage && (
+      <> · <a href={service.keyPage} target="_blank" rel="noopener noreferrer">{t(service.needs === "address" ? "web.address.howto" : service.hasKey ? "web.key.manage" : "web.key.make")}</a></>
+    );
   const addSite = (event: FormEvent) => {
     event.preventDefault();
     const value = site.trim();
@@ -240,7 +245,7 @@ export function WebSettings() {
               <span className={`set-note${service.limited ? " web-limited" : ""}`} {...(service.limited ? { "data-k": "warm" } : {})}>{note(service)}{keyLink(service)}</span>
               <span className="set-end">
                 <button type="button" className="set-button ghost" disabled={!!busy || !ready(service)} onClick={() => void test(service, kind)}>{t("web.test")}</button>
-                {!service.connector && (
+                {!service.connector && service.needs !== "model" && (
                   <button type="button" className="set-button ghost" onClick={() => toggle(service.id, service.needs === "address" ? "address" : "key")}>
                     {service.needs === "address" ? t(service.address ? "web.address.change" : "web.address.add") : t(service.hasKey ? "web.key.change" : "web.key.add")}
                   </button>
@@ -261,6 +266,16 @@ export function WebSettings() {
                 <span className="set-note">{service.about[locale]}{keyLink(service)}</span>
                 <span className="set-end">
                   <button type="button" className="set-button ghost" disabled={!!busy} onClick={() => void setOrder(kind, [...order(kind), service.id])}>{t("web.use")}</button>
+                </span>
+              </div>
+            ) : service.needs === "model" ? (
+              // One that searches with a model's key has nothing to type here: the key belongs under Models.
+              <div className="set-row has-logo web-row">
+                <Mark service={service} />
+                <span className="set-name">{name(service)}</span>
+                <span className="set-note">{service.about[locale]}</span>
+                <span className="set-end">
+                  <button type="button" className="set-button ghost" onClick={() => openSettings("models")}>{t("web.model.go")}</button>
                 </span>
               </div>
             ) : (

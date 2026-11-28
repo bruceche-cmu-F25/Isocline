@@ -114,3 +114,15 @@ test("Pi's setup: plain API keys can be imported; commands and subscriptions are
   assert.deepEqual(after.piKeys, []);
   assert.deepEqual(after.piSubscriptions.map((item) => item.id), ["anthropic"]);
 });
+
+test("a web search service gets a provider's plain API key, never a subscription sign-in or a key Pi would run a command for", async () => {
+  const t = setup();
+  await t.store.modify("deepseek", async () => ({ type: "api_key", key: "sk-deep" }));
+  await t.store.modify("google", async () => ({ type: "api_key", key: "!security find-generic-password -w" }));
+  await t.store.modify("anthropic", async () => ({ type: "oauth", access: "a", refresh: "r", expires: Date.now() + 60_000 }));
+  const accounts = new ModelAccounts({ store: t.store, dataDir: t.dataDir, piAgentDir: t.piAgentDir });
+  assert.equal(await accounts.apiKey("deepseek"), "sk-deep");
+  assert.equal(await accounts.apiKey("google"), null);
+  assert.equal(await accounts.apiKey("anthropic"), null);
+  assert.equal(await accounts.apiKey("openai"), null);
+});

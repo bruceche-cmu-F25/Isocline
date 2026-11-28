@@ -907,7 +907,9 @@ export interface WebService {
   about: { zh: string; en: string };
   /** `nothing`: works as it is (a key may still raise its limit); `key`: unused until a key is given; `address`: one
    * the user runs themself, unused until its address is given. */
-  needs: "nothing" | "key" | "address";
+  needs: "nothing" | "key" | "address" | "model";
+  /** For one that searches with a model's API key: Pi's id of that provider. `hasKey` says whether Models has one. */
+  modelProvider?: string;
   /** Where the user makes a key (or, for one that needs an address, how to set one up). */
   keyPage?: string;
   hasKey: boolean;

@@ -55,6 +55,11 @@ export function siteOf(input: string): string | null {
 
 const localDay = (at: Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
 
+/** Where a model provider's API key comes from (engine-pi's ModelAccounts). */
+export interface ModelKeys {
+  apiKey(providerId: string): Promise<string | null>;
+}
+
 export class WebAccess {
   readonly #dir: string;
   readonly #secrets: Pick<SecretStore, "get" | "set" | "delete">;
@@ -64,13 +69,25 @@ export class WebAccess {
   readonly #limited = new Map<string, string>();
   /** The connectors' search tools, once the home node has its connectors (cli.ts sets this). */
   connectors: ConnectorSearch | null = null;
+  /** The API keys of model providers the user added under Models, for the services that search with one (cli.ts
+   * sets this). Only a plain API key comes back, never a subscription sign-in (docs/design/web.md §4.6). */
+  modelKeys: ModelKeys | null = null;
 
-  constructor(options: { dataDir: string; secrets: Pick<SecretStore, "get" | "set" | "delete">; providers?: readonly SearchProvider[]; readers?: readonly ReaderProvider[]; connectors?: ConnectorSearch }) {
+  constructor(options: { dataDir: string; secrets: Pick<SecretStore, "get" | "set" | "delete">; providers?: readonly SearchProvider[]; readers?: readonly ReaderProvider[]; connectors?: ConnectorSearch; modelKeys?: ModelKeys }) {
     this.#dir = options.dataDir;
     this.#secrets = options.secrets;
     this.#providers = options.providers ?? PROVIDERS;
     this.#readers = options.readers ?? READERS;
     this.connectors = options.connectors ?? null;
+    this.modelKeys = options.modelKeys ?? null;
+  }
+
+  /** What a service needs to search: its key, its address, or its model provider's API key. */
+  async secretFor(provider: SearchProvider): Promise<string | null> {
+    if (CONNECTOR_ID.test(provider.id)) return null;
+    if (provider.needs === "address") return this.config().addresses[provider.id] ?? null;
+    if (provider.needs === "model") return provider.modelProvider ? await this.modelKeys?.apiKey(provider.modelProvider).catch(() => null) ?? null : null;
+    return this.key(provider.id).catch(() => null);
   }
 
   /** The search services Zirma itself knows. */
@@ -207,18 +224,14 @@ export class WebAccess {
   /** The services a search tries, in order, each with what it needs (its key, or its address). One that lacks what it
    * needs, or a connector's tool whose server is away, is left out. */
   async order(): Promise<Array<{ provider: SearchProvider; secret: string | null }>> {
-    const { search, addresses } = this.config();
+    const { search } = this.config();
     const connected = search.some((id) => CONNECTOR_ID.test(id)) ? await this.connectorProviders() : [];
     const out: Array<{ provider: SearchProvider; secret: string | null }> = [];
     for (const id of search) {
       const provider = this.#providers.find((candidate) => candidate.id === id) ?? connected.find((candidate) => candidate.id === id);
       if (!provider) continue;
-      if (provider.needs === "address") {
-        if (addresses[id]) out.push({ provider, secret: addresses[id] });
-        continue;
-      }
-      const secret = CONNECTOR_ID.test(id) ? null : await this.key(id).catch(() => null);
-      if (provider.needs === "key" && !secret) continue;
+      const secret = await this.secretFor(provider);
+      if (provider.needs !== "nothing" && !CONNECTOR_ID.test(id) && !secret) continue;
       out.push({ provider, secret });
     }
     // One whose limit ran out today is tried only after the others (and still tried, if they all fail).
@@ -284,7 +297,7 @@ export class WebAccess {
     }
     const provider = this.#providers.find((candidate) => candidate.id === id) ?? (CONNECTOR_ID.test(id) ? (await this.connectorProviders()).find((candidate) => candidate.id === id) : undefined);
     if (!provider) throw new WebSettingsError(`No web service ${id}`);
-    const secret = provider.needs === "address" ? this.config().addresses[id] ?? null : CONNECTOR_ID.test(id) ? null : await this.key(id);
+    const secret = await this.secretFor(provider);
     const results = await provider.search({ query, count: 3 }, secret, signal);
     return { results, ms: Date.now() - started };
   }
