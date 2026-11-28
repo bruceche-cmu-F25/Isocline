@@ -7,8 +7,8 @@
  *
  * The model sign-in is the development stage's own (as scripts/eval). This is the script of the third round
  * (2026-11-28); rounds one and two used two tools of its own instead (a search-engine page and a plain fetch), before
- * the product had the web. It imports the web tools from packages/server/src/web, which this branch has only once it
- * is brought up to the trunk; the runs were made from a scratch folder against the trunk's checkout.
+ * the product had the web. The runs were made from a scratch folder against the trunk's checkout with this code;
+ * this copy has not been run again from here.
  */
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
