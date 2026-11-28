@@ -33,6 +33,8 @@ export function WebSettings() {
   const [data, setData] = useState<WebResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** A row being dragged by its handle: the order as it stands under the pointer, saved when it is let go. */
+  const [drag, setDrag] = useState<{ kind: Kind; id: string; ids: string[]; moved: boolean } | null>(null);
   const [open, setOpen] = useState<Open>(null);
   const [key, setKey] = useState("");
   const [tested, setTested] = useState<{ id: string; reading?: boolean; result?: WebTestResponse; error?: string; code?: string } | null>(null);
@@ -75,7 +77,7 @@ export function WebSettings() {
   const name = (service: WebService) => (locale === "zh" && service.zhTitle) || service.title;
   const all = [...data.services, ...data.readers];
   const byId = new Map(all.map((service) => [service.id, service]));
-  const order = (kind: Kind) => (kind === "search" ? data.search : data.read);
+  const order = (kind: Kind) => (drag?.kind === kind ? drag.ids : kind === "search" ? data.search : data.read);
   const setOrder = (kind: Kind, next: string[]) => save(kind === "search" ? { search: next } : { read: next });
   const move = (kind: Kind, id: string, step: -1 | 1) => {
     const next = [...order(kind)];
@@ -84,6 +86,39 @@ export function WebSettings() {
     [next[at], next[to]] = [next[to]!, next[at]!];
     void setOrder(kind, next);
   };
+  /** The handle a row in use is dragged by (mouse or finger), or moved with the arrow keys once it has focus. */
+  const grip = (kind: Kind, service: WebService, count: number) => (
+    <button type="button" className="web-grip" disabled={count < 2}
+      aria-label={t("web.drag", { name: name(service) })} title={t("web.drag", { name: name(service) })}
+      onKeyDown={(event) => {
+        if ((event.key !== "ArrowUp" && event.key !== "ArrowDown") || busy) return;
+        event.preventDefault();
+        move(kind, service.id, event.key === "ArrowUp" ? -1 : 1);
+      }}
+      onPointerDown={(event) => {
+        if (event.button !== 0 || busy) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setDrag({ kind, id: service.id, ids: [...order(kind)], moved: false });
+      }}
+      onPointerMove={(event) => {
+        if (drag?.id !== service.id) return;
+        // Where it lands: after every other row in use whose middle is above the pointer.
+        const rows = [...(event.currentTarget.closest(".set-rows")?.querySelectorAll<HTMLElement>("[data-used]") ?? [])].filter((row) => row.dataset.used !== service.id);
+        const at = rows.filter((row) => { const box = row.getBoundingClientRect(); return box.top + box.height / 2 < event.clientY; }).length;
+        const others = drag.ids.filter((id) => id !== service.id);
+        const before = rows[at]?.dataset.used;
+        const ids = before ? [...others.slice(0, others.indexOf(before)), service.id, ...others.slice(others.indexOf(before))] : [...others, service.id];
+        if (ids.join() !== drag.ids.join()) setDrag({ ...drag, ids, moved: true });
+      }}
+      onPointerUp={() => {
+        if (drag?.id !== service.id) return;
+        if (!drag.moved) return setDrag(null);
+        void setOrder(kind, drag.ids).finally(() => { if (alive.current) setDrag(null); });
+      }}
+      onPointerCancel={() => setDrag(null)}>
+      <svg viewBox="0 0 10 16" aria-hidden="true">{[3, 8, 13].flatMap((y) => [<circle key={`a${y}`} cx="2.5" cy={y} r="1.3" />, <circle key={`b${y}`} cx="7.5" cy={y} r="1.3" />])}</svg>
+    </button>
+  );
   const toggle = (id: string, what: "key" | "address") => {
     setKey("");
     setOpen(open?.id === id && open.what === what ? null : { id, what });
@@ -194,19 +229,14 @@ export function WebSettings() {
     const secret = (service: WebService, thenUse: boolean) => open?.id === service.id && (open.what === "key" || open.what === "address") && secretForm(service, kind, thenUse);
     return (
       <div className="set-rows">
-        {used.map((service, index) => (
-          <div className="set-rows-item" key={service.id}>
+        {used.map((service) => (
+          <div className={`set-rows-item${drag?.id === service.id ? " web-dragging" : ""}`} key={service.id} data-used={service.id}>
             <div className="set-row has-logo web-row">
+              {grip(kind, service, used.length)}
               <Mark service={service} />
               <span className="set-name">{name(service)}</span>
               <span className={`set-note${service.limited ? " web-limited" : ""}`} {...(service.limited ? { "data-k": "warm" } : {})}>{note(service)}{keyLink(service)}</span>
               <span className="set-end">
-                {used.length > 1 && (
-                  <span className="web-order">
-                    <button type="button" className="set-button ghost" disabled={!!busy || index === 0} aria-label={t("web.up", { name: name(service) })} title={t("web.up", { name: name(service) })} onClick={() => move(kind, service.id, -1)}>↑</button>
-                    <button type="button" className="set-button ghost" disabled={!!busy || index === used.length - 1} aria-label={t("web.down", { name: name(service) })} title={t("web.down", { name: name(service) })} onClick={() => move(kind, service.id, 1)}>↓</button>
-                  </span>
-                )}
                 <button type="button" className="set-button ghost" disabled={!!busy || !ready(service)} onClick={() => void test(service, kind)}>{t("web.test")}</button>
                 {!service.connector && (
                   <button type="button" className="set-button ghost" onClick={() => toggle(service.id, service.needs === "address" ? "address" : "key")}>
