@@ -22,7 +22,7 @@ export async function describeWeb(web: WebAccess): Promise<WebResponse> {
       : Boolean(await web.key(service.id).catch(() => null)),
     ...(config.addresses[service.id] ? { address: config.addresses[service.id] } : {}),
     today: today[service.id] ?? 0,
-    ...(web.limitedToday(service.id) ? { limited: true } : {}),
+    ...(web.limitedToday(service.id) || web.overDailyLimit(service) ? { limited: true } : {}),
     ...(connector ? { connector: true } : {}),
   });
   const own = await Promise.all(web.providers.map((provider) => one(provider)));

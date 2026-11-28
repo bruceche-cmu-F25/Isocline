@@ -2,7 +2,8 @@
  * order they are tried, the sites that open without asking, the keys (in the secret store, never in a file), and a
  * short record of what was searched and opened (on this home node only).
  *
- * `<data>/web.json` holds the settings, `<data>/web-log.json` the record. Both are read on every use, so a change in
+ * `<data>/web.json` holds the settings, `<data>/web-log.json` the record, `<data>/web-count.json` today's searches by
+ * service (the record keeps only the last few, so it cannot count a day). They are read on every use, so a change in
  * Settings applies to the very next search; there is nothing to reload.
  */
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -35,6 +36,9 @@ export interface WebLogEntry {
 
 const DEFAULTS: WebConfig = { on: true, search: ["exa"], read: ["jina"], sites: [], addresses: {} };
 const MAX_LOG = 50;
+/** Searches a day, at most, with each service that takes a key or a model's key: those are paid per search, and a
+ * model in a loop should not run up a bill. One at its limit is not tried again until tomorrow (local time). */
+export const DAILY_LIMIT = 100;
 const MAX_SITES = 200;
 const MAX_KEY = 500;
 /** The page a reading service's "Try it" reads: a plain public page that is there for exactly this. */
@@ -232,6 +236,7 @@ export class WebAccess {
       if (!provider) continue;
       const secret = await this.secretFor(provider);
       if (provider.needs !== "nothing" && !CONNECTOR_ID.test(id) && !secret) continue;
+      if (this.overDailyLimit(provider)) continue;
       out.push({ provider, secret });
     }
     // One whose limit ran out today is tried only after the others (and still tried, if they all fail).
@@ -239,6 +244,17 @@ export class WebAccess {
   }
 
   markLimited(id: string, now = new Date()): void { this.#limited.set(id, localDay(now)); }
+  /** A paid service that already answered `DAILY_LIMIT` searches today. */
+  overDailyLimit(provider: Pick<SearchProvider, "id" | "needs">, now = new Date()): boolean {
+    return (provider.needs === "key" || provider.needs === "model") && (this.today(now)[provider.id] ?? 0) >= DAILY_LIMIT;
+  }
+  /** The services in the search order left out today because they reached `DAILY_LIMIT`. */
+  overLimitToday(now = new Date()): string[] {
+    return this.config().search.filter((id) => {
+      const provider = this.#providers.find((candidate) => candidate.id === id);
+      return !!provider && this.overDailyLimit(provider, now);
+    });
+  }
   limitedToday(id: string, now = new Date()): boolean { return this.#limited.get(id) === localDay(now); }
 
   /** The reading services, in order, each with its key if the user added one. */
@@ -263,9 +279,14 @@ export class WebAccess {
     return known ? { id, title: known.title } : connector ? { id, title: `${connector[1]} · ${connector[2]}` } : null;
   }
 
-  log(entry: Omit<WebLogEntry, "at">): void {
+  log(entry: Omit<WebLogEntry, "at">, now = new Date()): void {
+    if (entry.kind === "search" && entry.provider) {
+      const counts = this.today(now);
+      counts[entry.provider] = (counts[entry.provider] ?? 0) + 1;
+      try { this.#write("web-count.json", { day: localDay(now), counts }); } catch { /* as below */ }
+    }
     const list = this.records();
-    list.unshift({ at: new Date().toISOString(), ...entry, what: entry.what.slice(0, 300) });
+    list.unshift({ at: now.toISOString(), ...entry, what: entry.what.slice(0, 300) });
     try { this.#write("web-log.json", list.slice(0, MAX_LOG)); } catch { /* a record is not worth failing a search */ }
   }
 
@@ -276,14 +297,11 @@ export class WebAccess {
 
   clearRecords(): void { this.#write("web-log.json", []); }
 
-  /** How many searches each service answered today (local time), from the record. */
+  /** How many searches each service answered today (local time). */
   today(now = new Date()): Record<string, number> {
-    const day = localDay(now);
-    const counts: Record<string, number> = {};
-    for (const entry of this.records()) {
-      if (entry.kind === "search" && entry.provider && localDay(new Date(entry.at)) === day) counts[entry.provider] = (counts[entry.provider] ?? 0) + 1;
-    }
-    return counts;
+    const saved = this.#read<{ day?: unknown; counts?: unknown }>("web-count.json", {});
+    if (saved.day !== localDay(now) || !saved.counts || typeof saved.counts !== "object") return {};
+    return Object.fromEntries(Object.entries(saved.counts as Record<string, unknown>).filter((entry): entry is [string, number] => typeof entry[1] === "number"));
   }
 
   /** One search with one service, as Settings' "Try it" runs it; for a reading service, one page read. */

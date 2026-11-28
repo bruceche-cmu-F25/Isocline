@@ -63,7 +63,9 @@ async function post(name: string, url: string, headers: Record<string, string>, 
 
 // ── Claude ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-const CLAUDE_MODEL = "claude-opus-5-5";
+/** The smallest current Claude: it only has to run one search and hand back what it found, and each search is a
+ * request of its own on the user's bill. The basic search tool is called directly, without code running first. */
+const CLAUDE_MODEL = "claude-haiku-5-5";
 
 /** Claude's answer: `web_search_tool_result` blocks hold the results; the text's citations hold excerpts. */
 export function parseClaude(content: readonly unknown[]): SearchResult[] {
@@ -100,7 +102,7 @@ export const claudeSearch: SearchProvider = {
         model: CLAUDE_MODEL,
         max_tokens: 4096,
         output_config: { effort: "low" },
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 1, ...(input.site ? { allowed_domains: [input.site] } : {}) }],
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 1, ...(input.site ? { allowed_domains: [input.site] } : {}) }],
         messages: [{ role: "user", content: ask(input) }],
       }, { signal });
       return parseClaude(response.content).slice(0, input.count);

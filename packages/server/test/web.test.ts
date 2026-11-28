@@ -20,7 +20,7 @@ import { parsePerplexity } from "../src/web/providers/perplexity.ts";
 import { firecrawl, firecrawlReader, parseFirecrawlPage, parseFirecrawlSearch } from "../src/web/providers/firecrawl.ts";
 import { connectorProvider, parseConnectorAnswer, type ConnectorSearch } from "../src/web/connectors.ts";
 import { searchToolsOf } from "@zirma/engine-pi";
-import { siteOf, WebAccess } from "../src/web/access.ts";
+import { DAILY_LIMIT, siteOf, WebAccess } from "../src/web/access.ts";
 import { accessFor } from "../src/access.ts";
 import { pdfToText, rawGitHub, readPage } from "../src/web/read.ts";
 import { addressesIn, carriesData, normalize, webTools } from "../src/web/tools.ts";
@@ -295,6 +295,24 @@ test("Settings → Web: a service the user runs needs its address; reading servi
   assert.throws(() => web.update({ read: ["free"] }), /known services/);
   web.setAddress("searxng", "");
   assert.deepEqual(web.config().addresses, {});
+});
+
+test("a paid service stops for the day at its limit and the search says why; one that needs nothing is not counted against one", async (t) => {
+  const web = settings(t, [provider("paid", [], { needs: "key" }), provider("free", [])]);
+  web.update({ search: ["paid", "free"] });
+  await web.setKey("paid", "k");
+  const now = new Date();
+  for (let n = 0; n < DAILY_LIMIT; n++) web.log({ kind: "search", what: `q${n}`, provider: "paid" }, now);
+  web.log({ kind: "search", what: "q", provider: "free" }, now);
+  assert.deepEqual(web.today(now), { paid: DAILY_LIMIT, free: 1 }, "counted past the record's last fifty");
+  assert.deepEqual((await web.order()).map((entry) => entry.provider.id), ["free"]);
+  assert.deepEqual(web.overLimitToday(), ["paid"]);
+  assert.deepEqual(web.today(new Date(now.getTime() + 86_400_000)), {}, "a new day starts from nothing");
+  web.update({ search: ["paid"] });
+  const world = openWorld(":memory:", CORE_MIGRATIONS);
+  t.after(() => world.close());
+  const [search] = webTools(world, { web });
+  await assert.rejects(async () => search!.execute({ query: "x" }, new AbortController().signal), new RegExp(`today's ${DAILY_LIMIT} searches`));
 });
 
 function reader(id: string, text: string, seen?: string[]): ReaderProvider {
