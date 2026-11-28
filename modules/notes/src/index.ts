@@ -60,6 +60,25 @@ function refused(error: unknown): { error: string; code: string } {
   throw error;
 }
 
+/** How much of the page about the user goes into each run's instructions. */
+export const ABOUT_MAX = 2000;
+
+/** The page about the user as a run gets it: without its front matter, and when it is longer than ABOUT_MAX, its
+ * newest lines (a fact is added at the end), whole, with a line saying older ones were left out. */
+export function aboutForRun(text: string, max = ABOUT_MAX): string {
+  const body = text.replace(/^---[\s\S]*?\n---\n?/, "").trim();
+  if (body.length <= max) return body;
+  const NOTE = "(Older lines of the page are left out here.)";
+  const kept: string[] = [];
+  let size = NOTE.length + 1;
+  for (const line of body.split("\n").reverse()) {
+    if (size + line.length + 1 > max) break;
+    kept.unshift(line);
+    size += line.length + 1;
+  }
+  return [NOTE, ...kept].join("\n").trim();
+}
+
 export function createNotesModule(options: NotesOptions): ZirmaModule & {
   library(world: World): { library: Library; id: string };
   /** The folder watcher's quick read: just these pages (see indexFiles). */
@@ -466,7 +485,7 @@ export function createNotesModule(options: NotesOptions): ZirmaModule & {
       let about = "";
       try {
         const read = open(world).library.read(aboutId(localeOf(world)));
-        if (read) about = read.text.replace(/^---[\s\S]*?\n---\n?/, "").trim().slice(0, 2000);
+        if (read) about = aboutForRun(read.text);
       } catch { about = ""; }
       // The page is a file anything on this Mac can write, and a pass adds to it unattended: it goes in as quoted
       // data, fenced, so words in it that read like orders stay words about the user.
