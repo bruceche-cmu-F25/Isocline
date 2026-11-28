@@ -97,6 +97,9 @@ export interface AutoFileState {
   sweeping?: boolean;
   /** The last pass that filed something, for the line on top of the page: until the user saw or undid it, a day at most. */
   last?: { id: string; filed: number; made: number; at: string };
+  /** The newest pass failed (no model, a refused key, a used-up quota): its links wait, and the next try is at
+   * `retryAt`. Until the user closes the line, a day at most. */
+  failed?: { id: string; at: string; retryAt: string };
 }
 
 export interface LinksSnapshot {

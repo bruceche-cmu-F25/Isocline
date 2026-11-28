@@ -23,6 +23,21 @@ export const READY_BATCH = 10;
 export const QUIET_MS = 60_000;
 /** How long the line on top of the page says what the last pass did. */
 const NOTICE_MS = 86_400_000;
+/** After a pass whose run failed, how long until the next one is tried (its links wait meanwhile); after
+ * SLOW_AFTER failures in a row, RETRY_SLOW_MS, so a key that stays missing costs a few tries a day, not one every half
+ * hour. */
+export const RETRY_MS = 30 * 60_000;
+export const RETRY_SLOW_MS = 6 * 3_600_000;
+export const SLOW_AFTER = 3;
+
+/** When the next pass may start after the newest ended pass failed; null when it did not fail. */
+function retryAt(world: World): number | null {
+  const rows = world.db.prepare("SELECT failed, ended_at FROM link_file_passes WHERE ended_at IS NOT NULL ORDER BY ended_at DESC, rowid DESC LIMIT ?").all(SLOW_AFTER);
+  if (rows[0]?.failed !== 1) return null;
+  const inRow = rows.findIndex((row) => row.failed !== 1);
+  const failures = inRow === -1 ? rows.length : inRow;
+  return Date.parse(rows[0].ended_at as string) + (failures >= SLOW_AFTER ? RETRY_SLOW_MS : RETRY_MS);
+}
 
 interface Filed { id: string; to: string }
 export interface FilePass {
@@ -30,13 +45,15 @@ export interface FilePass {
   itemIds: string[]; filed: Filed[]; made: string[];
   /** Links that needed a new category after the pass had made its three: left for the next pass, once. */
   deferred: string[]; undone: boolean; seen: boolean;
+  /** Its run did not end well: what it did not file waits for a later pass. */
+  failed: boolean;
 }
 function toPass(row: Record<string, unknown>): FilePass {
   return {
     id: row.id as string, runId: (row.run_id as string | null) ?? null, kind: row.kind as FilePass["kind"], sweep: (row.sweep as string | null) ?? null,
     startedAt: row.started_at as string, endedAt: (row.ended_at as string | null) ?? null,
     itemIds: JSON.parse(row.item_ids as string), filed: JSON.parse(row.filed as string), made: JSON.parse(row.made as string), deferred: JSON.parse(row.deferred as string),
-    undone: row.undone === 1, seen: row.seen === 1,
+    undone: row.undone === 1, seen: row.seen === 1, failed: row.failed === 1,
   };
 }
 function passRow(world: World, id: string): FilePass | undefined {
@@ -52,11 +69,11 @@ export function currentPass(world: World): FilePass | undefined {
 }
 
 /** Links nobody filed whose page is there to go by: what a sweep goes through, minus what it already tried (a link a
- * pass left for the next one is tried again). */
+ * pass left for the next one, or a pass that failed did not get to, is tried again). */
 function sweepCandidates(world: World, sweep: string, limit: number): string[] {
   return world.db.prepare(`SELECT id FROM link_items WHERE topic_id IS NULL AND filed_by IS NULL AND (kind = 'place' OR fetch != 'pending')
     AND id NOT IN (SELECT j.value FROM link_file_passes p, json_each(p.item_ids) j WHERE p.sweep = ?
-      AND j.value NOT IN (SELECT d.value FROM json_each(p.deferred) d))
+      AND j.value NOT IN (SELECT d.value FROM json_each(p.deferred) d) AND p.failed = 0)
     ORDER BY saved_at, rowid LIMIT ?`).all(sweep, limit).map((row) => row.id as string);
 }
 
@@ -67,6 +84,9 @@ export interface DuePass { kind: "auto" | "sweep"; sweep: string | null; itemIds
  * alone a minute. Nothing while a pass is on. */
 export function filePassDue(world: World, now: number = Date.now()): DuePass | null {
   if (currentPass(world)) return null;
+  // The last pass failed: wait a while before the next, so a missing key or a used-up quota is not hit every minute.
+  const retry = retryAt(world);
+  if (retry !== null && retry > now) return null;
   const sweep = world.db.prepare("SELECT sweep FROM link_autofile WHERE one = 1").get()?.sweep as string | null | undefined;
   if (sweep) {
     const itemIds = sweepCandidates(world, sweep, PASS_SIZE);
@@ -105,18 +125,22 @@ export function attachRun(world: World, passId: string, runId: string): void {
 }
 
 /** The pass is over (its run ended, or never started): what it did not file is not tried again on its own, except a
- * link it left for the next pass because its three new categories were made (links-autofile.md §9.2). */
-export function finishFilePass(world: World, passId: string, now: number = Date.now()): FilePass | undefined {
+ * link it left for the next pass because its three new categories were made (links-autofile.md §9.2). When its run
+ * failed (`failed`), nothing it did not file is let go: those links wait for a later pass, after RETRY_MS. */
+export function finishFilePass(world: World, passId: string, now: number = Date.now(), options: { failed?: boolean } = {}): FilePass | undefined {
   return world.tx((db) => {
     const pass = passRow(world, passId);
     if (!pass) return undefined;
     if (!pass.endedAt) {
-      const clear = db.prepare("UPDATE link_items SET file_queue = 0 WHERE id = ?");
-      for (const id of pass.itemIds) if (!pass.deferred.includes(id)) clear.run(id);
-      db.prepare("UPDATE link_file_passes SET ended_at = ? WHERE id = ?").run(new Date(now).toISOString(), passId);
+      if (!options.failed) {
+        const clear = db.prepare("UPDATE link_items SET file_queue = 0 WHERE id = ?");
+        for (const id of pass.itemIds) if (!pass.deferred.includes(id)) clear.run(id);
+      }
+      db.prepare("UPDATE link_file_passes SET ended_at = ?, failed = ? WHERE id = ?").run(new Date(now).toISOString(), options.failed ? 1 : 0, passId);
       if (pass.filed.length || pass.made.length) {
         recordDomainEvent(world, said("auto_filed", passId, { kind: pass.kind, filed: pass.filed.length, made: pass.made.length, tried: pass.itemIds.length }));
       }
+      if (options.failed) recordDomainEvent(world, said("auto_file_failed", passId, { kind: pass.kind, filed: pass.filed.length, tried: pass.itemIds.length }));
     }
     db.prepare("UPDATE link_autofile SET run = NULL WHERE one = 1 AND run = ?").run(passId);
     return passRow(world, passId);
@@ -173,9 +197,13 @@ export function autoFileSnapshot(world: World, now: number = Date.now()): AutoFi
   const row = world.db.prepare(`SELECT * FROM link_file_passes WHERE ended_at IS NOT NULL AND undone = 0 AND seen = 0 AND ended_at > ?
     AND json_array_length(filed) > 0 ORDER BY ended_at DESC LIMIT 1`).get(new Date(now - NOTICE_MS).toISOString());
   const last = row ? toPass(row) : undefined;
+  // The newest pass failed and the user has not closed the line about it: its links wait, and the page says so.
+  const latest = world.db.prepare("SELECT * FROM link_file_passes WHERE ended_at IS NOT NULL ORDER BY ended_at DESC, rowid DESC LIMIT 1").get();
+  const failed = latest && latest.failed === 1 && latest.seen === 0 && (latest.ended_at as string) > new Date(now - NOTICE_MS).toISOString() ? toPass(latest) : undefined;
   return {
     ...state, unsorted: unsortedCount(world), filing: !!currentPass(world), sweeping: !!sweep,
     ...(last ? { last: { id: last.id, filed: last.filed.length, made: last.made.length, at: last.endedAt! } } : {}),
+    ...(failed ? { failed: { id: failed.id, at: failed.endedAt!, retryAt: new Date(retryAt(world) ?? now).toISOString() } } : {}),
   };
 }
 

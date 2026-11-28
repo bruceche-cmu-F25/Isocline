@@ -1244,6 +1244,8 @@ export const en: Record<keyof typeof zh, string> = {
   "links.auto.filedMade": "{assistant} filed {n}, new categories: {m}",
   "links.auto.undone": "Put back in Not filed",
   "links.auto.dismiss": "Dismiss",
+  "links.auto.failed": "Filing did not go through; trying again at {time}",
+  "links.auto.failedTomorrow": "Filing did not go through; trying again tomorrow at {time}",
   "links.auto.sorting": "{assistant} is filing what is not filed",
   "links.auto.mark": "Filed by {assistant}",
   "links.auto.madeMark": "Made by {assistant}",

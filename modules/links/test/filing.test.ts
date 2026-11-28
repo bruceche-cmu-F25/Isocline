@@ -7,7 +7,7 @@ import { CORE_MIGRATIONS, listEvents, openWorld, type World } from "@zirma/core"
 import { invokeOp } from "@zirma/module-kit";
 import {
   AUTO_FILE_PER_DAY, beginFilePass, currentPass, fileOne, filePassDue, filePassGoal, finishFilePass, linksModule, listClips, listTopics, MAX_NEW_PER_PASS,
-  pinPlace, QUIET_MS, recordPage, saveClip, setAutoFile, undoFilePass, updateClip, type LinksSnapshot,
+  pinPlace, QUIET_MS, RETRY_MS, RETRY_SLOW_MS, recordPage, saveClip, setAutoFile, undoFilePass, updateClip, type LinksSnapshot,
 } from "../src/index.ts";
 
 const world = (): World => openWorld(":memory:", [...CORE_MIGRATIONS, ...linksModule.migrations]);
@@ -188,6 +188,48 @@ test("the Unfiled button goes through every link nobody filed, in passes, switch
   assert.equal(snapshot(w).sweeping, false);
   assert.ok(listEvents(w).events.some((event) => event.kind === "link.autofile_swept"));
   assert.deepEqual(op(w, "link.autofile_sweep", {}), ok(op(w, "link.autofile_sweep", {}) as object), "pressed again: another sweep, same answer");
+});
+
+test("a pass whose run failed lets nothing go: its links wait, the page says when it tries again, and it slows down after three", () => {
+  const w = world();
+  setAutoFile(w, true);
+  const [a, b] = [saved(w, "a"), saved(w, "b")];
+  const t0 = later();
+  const pass = start(w, t0);
+  assert.match(fileOne(w, { id: a, category: "Reading", area: "learn" }), /^Filed/);
+  finishFilePass(w, pass, t0, { failed: true });
+  assert.equal(listClips(w).find((clip) => clip.id === a)?.filedByZirma, true, "what it filed stays filed");
+  assert.equal(filePassDue(w, t0 + 1000), null, "not straight away");
+  const failed = snapshot(w).failed;
+  assert.equal(failed?.id, pass);
+  assert.equal(failed?.retryAt, new Date(t0 + RETRY_MS).toISOString());
+  assert.deepEqual(filePassDue(w, t0 + RETRY_MS + 1)?.itemIds, [b], "the one it did not get to is tried again");
+  assert.deepEqual(listEvents(w).events.filter((event) => event.kind === "link.auto_file_failed").map((event) => event.payload), [{ kind: "auto", filed: 1, tried: 2 }]);
+
+  // Two more failures in a row: the next try waits hours, not half an hour.
+  let at = t0 + RETRY_MS + 1;
+  for (let i = 0; i < 2; i++) { finishFilePass(w, start(w, at), at, { failed: true }); at += RETRY_MS + 1; }
+  const third = at - RETRY_MS - 1;
+  assert.equal(filePassDue(w, third + RETRY_MS + 1), null);
+  assert.deepEqual(filePassDue(w, third + RETRY_SLOW_MS + 1)?.itemIds, [b]);
+
+  // It goes through at last: the line goes, and the next failure waits half an hour again.
+  const fine = start(w, third + RETRY_SLOW_MS + 1);
+  finishFilePass(w, fine, third + RETRY_SLOW_MS + 1);
+  assert.equal(snapshot(w).failed, undefined);
+  assert.equal(op(w, "link.autofile_seen", { id: pass }) !== undefined, true);
+});
+
+test("a sweep tries again what a failed pass did not get to", () => {
+  const w = world();
+  saved(w, "x"); saved(w, "y");
+  ok(op(w, "link.autofile_sweep", {}) as object);
+  const now = Date.now();
+  const pass = start(w, now);
+  const tried = currentPass(w)!.itemIds;
+  finishFilePass(w, pass, now, { failed: true });
+  assert.equal(filePassDue(w, now + 1000), null);
+  assert.deepEqual(filePassDue(w, now + RETRY_MS + 1)?.itemIds, tried);
 });
 
 test("the request names the categories, the user's corrections and the links, fenced as data", () => {
