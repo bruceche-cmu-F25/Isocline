@@ -183,21 +183,25 @@ export class WebAccess {
     this.#write("web.json", next);
   }
 
+  /** Where a service's key is kept: its own id, or for the reading side of one that also searches, the search side's. */
+  #keyName(id: string): string {
+    const service = this.#service(id);
+    return `web:${"keyOf" in service && service.keyOf ? service.keyOf : id}`;
+  }
+
   async key(id: string): Promise<string | null> {
-    this.#service(id);
-    return (await this.#secrets.get(`web:${id}`)) ?? null;
+    return (await this.#secrets.get(this.#keyName(id))) ?? null;
   }
 
   async setKey(id: string, key: string): Promise<void> {
-    this.#service(id);
+    const name = this.#keyName(id);
     const value = key.trim();
     if (!value || value.length > MAX_KEY || /\s/.test(value)) throw new WebSettingsError("A key is one word with no spaces");
-    await this.#secrets.set(`web:${id}`, value);
+    await this.#secrets.set(name, value);
   }
 
   async deleteKey(id: string): Promise<void> {
-    this.#service(id);
-    await this.#secrets.delete(`web:${id}`);
+    await this.#secrets.delete(this.#keyName(id));
   }
 
   /** The services a search tries, in order, each with what it needs (its key, or its address). One that lacks what it

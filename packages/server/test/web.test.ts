@@ -14,11 +14,14 @@ import { parseBrave, stripHtml } from "../src/web/providers/brave.ts";
 import { parseJina } from "../src/web/providers/jina.ts";
 import { parseSearxng, searxng, searxngAddress } from "../src/web/providers/searxng.ts";
 import { parseTavily } from "../src/web/providers/tavily.ts";
+import { parseSerper } from "../src/web/providers/serper.ts";
+import { parsePerplexity } from "../src/web/providers/perplexity.ts";
+import { firecrawl, firecrawlReader, parseFirecrawlPage, parseFirecrawlSearch } from "../src/web/providers/firecrawl.ts";
 import { connectorProvider, parseConnectorAnswer, type ConnectorSearch } from "../src/web/connectors.ts";
 import { searchToolsOf } from "@zirma/engine-pi";
 import { siteOf, WebAccess } from "../src/web/access.ts";
 import { accessFor } from "../src/access.ts";
-import { rawGitHub, readPage } from "../src/web/read.ts";
+import { pdfToText, rawGitHub, readPage } from "../src/web/read.ts";
 import { addressesIn, carriesData, normalize, webTools } from "../src/web/tools.ts";
 
 /** A local site, reached with the system's own lookup (the real one would refuse 127.0.0.1). */
@@ -364,4 +367,62 @@ test("a connector's search tool: found by its name and its query field, called w
   const failing = connectorProvider({ ...source, async callTool() { return { text: "Rate limit exceeded", isError: true }; } }, tools[0]!);
   await assert.rejects(async () => failing.search({ query: "x", count: 3 }, null, new AbortController().signal), (error) => error instanceof SearchError && error.code === "limit");
   assert.throws(() => web.update({ search: ["mcp:bad name:x"] }), /known services/);
+});
+
+test("Serper, Perplexity and Firecrawl answers are read into results; Serper keeps a site to itself; Firecrawl says why it failed", () => {
+  assert.deepEqual(parseSerper({ organic: [
+    { title: "Docs", link: "https://docs.example.com/a", snippet: "  one\n two ", date: "2 days ago" },
+    { title: "Elsewhere", link: "https://other.org/b", snippet: "x" },
+    { title: "No link" },
+  ] }, "example.com"), [{ title: "Docs", url: "https://docs.example.com/a", snippet: "one two", published: "2 days ago" }]);
+  assert.throws(() => parseSerper({ results: [] }), SearchError);
+
+  assert.deepEqual(parsePerplexity({ results: [{ title: "", url: "https://a.example/x", snippet: "s", date: "2026-11-20" }, { url: "ftp://x" }] }),
+    [{ title: "https://a.example/x", url: "https://a.example/x", snippet: "s", published: "2026-11-20" }]);
+
+  assert.deepEqual(parseFirecrawlSearch({ success: true, data: { web: [
+    { url: "https://a.example/x", title: "A", description: "about a" },
+    { url: "https://a.example/x", title: "Again" },
+    { metadata: { sourceURL: "https://b.example/y", title: "B" } },
+  ] } }), [{ title: "A", url: "https://a.example/x", snippet: "about a" }, { title: "B", url: "https://b.example/y", snippet: "" }]);
+  assert.deepEqual(parseFirecrawlPage({ success: true, data: { markdown: " # Hi\n\ntext ", metadata: { title: "Hi" } } }), { title: "Hi", text: "# Hi\n\ntext" });
+  assert.throws(() => parseFirecrawlSearch({ success: false, error: "Insufficient credits" }), /Insufficient credits/);
+});
+
+test("Firecrawl's reading side uses the key given for its search, and is left out without one", async (t) => {
+  const web = settings(t, [firecrawl], [firecrawlReader]);
+  web.update({ read: ["firecrawl-read"] });
+  assert.deepEqual(await web.readerOrder(), []);
+  await web.setKey("firecrawl", "fc-123");
+  assert.equal(await web.key("firecrawl-read"), "fc-123");
+  assert.deepEqual((await web.readerOrder()).map((entry) => [entry.reader.id, entry.secret]), [["firecrawl-read", "fc-123"]]);
+  await web.deleteKey("firecrawl-read");
+  assert.equal(await web.key("firecrawl"), null);
+});
+
+/** A one-page PDF saying `words`, with a title in its details. */
+function tinyPdf(words: string, title: string): Buffer {
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    (() => { const stream = `BT /F1 18 Tf 20 70 Td (${words}) Tj ET`; return `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`; })(),
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Title (${title}) >>`,
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => { const at = body.length; body += `${index + 1} 0 obj\n${object}\nendobj\n`; return at; });
+  const xref = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((at) => `${String(at).padStart(10, "0")} 00000 n \n`).join("")}`;
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 6 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(body, "latin1");
+}
+
+test("a PDF is read page by page, titled by its own details, else by its file name; a broken one says so", async () => {
+  const page = await pdfToText(tinyPdf("Hello from a PDF", "A Small Report"), new URL("https://example.com/files/q3_report.pdf"));
+  assert.equal(page.title, "A Small Report");
+  assert.match(page.text, /<!-- Page 1 -->\nHello from a PDF/);
+  const untitled = await pdfToText(tinyPdf("Hi", ""), new URL("https://example.com/files/q3_report.pdf"));
+  assert.equal(untitled.title, "q3 report");
+  await assert.rejects(pdfToText(Buffer.from("not a pdf"), new URL("https://example.com/x.pdf")), /could not be opened/);
 });

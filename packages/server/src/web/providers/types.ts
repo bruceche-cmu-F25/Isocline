@@ -44,6 +44,8 @@ export interface ReaderProvider {
   title: string;
   /** "nothing": works without a key; a key, when the user adds one, is sent along. */
   needs: "nothing" | "key";
+  /** A service that both searches and reads keeps one key, under its search side's id. */
+  keyOf?: string;
   about: { zh: string; en: string };
   keyPage?: string;
   read(url: string, secret: string | null, signal: AbortSignal): Promise<ReadPage>;

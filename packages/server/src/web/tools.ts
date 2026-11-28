@@ -186,7 +186,7 @@ export function webTools(world: World, options: WebToolOptions = {}): RunTool[] 
     name: "web_fetch",
     label: "Read a web page",
     description: [
-      "Read one web page as text: an address the user gave, or one from web_search's results.",
+      "Read one web page or PDF as text: an address the user gave, or one from web_search's results.",
       "An address you made up yourself, or one a page mentioned, needs the user's yes first, so prefer addresses you were given or found by searching.",
       "Pages behind a sign-in cannot be read.",
     ].join(" "),
