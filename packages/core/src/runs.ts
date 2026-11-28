@@ -15,7 +15,8 @@ import { appendEvent, readRunEvents, type CoreEvent } from "./events.ts";
 import { attachFiles } from "./files.ts";
 import { iso, newId } from "./ids.ts";
 import { createNotice } from "./notices.ts";
-import { resultDestination, retirePreviousEditions } from "./result-delivery.ts";
+import { resultDestination, retireFailedEditions, retirePreviousEditions } from "./result-delivery.ts";
+import { FAILED_STREAK, failedStreak, heldForRetry, scheduledAttempt } from "./automation-retries.ts";
 import { TEMPLATE_TEXT, type AutomationTemplate } from "./automation-templates.ts";
 import { localeOf } from "./settings.ts";
 import { RUN_STATES, UNFINISHED_RUN_STATES } from "./schema.ts";
@@ -187,7 +188,48 @@ function interrupt(db: DatabaseSync, run: Run, now: number): void {
   setState(db, run, "interrupted", now, { lease_owner: null, lease_until: null, request: null });
   closeWaitingNotices(db, run.id, now);
   const event = runEvent(db, run, "interrupted", now, { attempt: run.attempt });
+  // An automation's firing that did nothing yet is tried again by the clock, so nobody is asked (automation-retries.ts).
+  if (heldForRetry(db, run)) return;
   createNotice(db, { eventSeq: event.seq, kind: "run_interrupted", payload: { runId: run.id, conversationId: run.conversationId, ...said(db, run) }, now });
+}
+
+/** Puts an ended run's result where it goes (result-delivery.ts): the Inbox, or for a chat's reply nobody asked to be
+ * told about, the conversation's unread mark.
+ * An automation's scheduled firings that keep failing are told once, at the FAILED_STREAK-th in a row, as one notice
+ * that takes the place of the earlier ones; the ones after it are not told until one goes through. */
+function tellResult(db: DatabaseSync, run: Run, outcome: RunOutcome, eventSeq: number, now: number): void {
+  const destination = resultDestination(db, run, outcome.status);
+  if (!destination) {
+    if (!run.automationId && outcome.status === "completed" && outcome.reply) recordUnreadReply(db, run.conversationId, run.id);
+    return;
+  }
+  const streak = outcome.status === "failed" && run.automationId && scheduledAttempt(run.requestId) ? failedStreak(db, run.automationId) : 0;
+  if (streak > FAILED_STREAK) return;
+  createNotice(db, {
+    eventSeq, kind: "run_result", now,
+    payload: {
+      runId: run.id, conversationId: run.conversationId, status: outcome.status, ...said(db, run), ...destination, receipts: outcome.receipts.length,
+      ...(outcome.reply ? { reply: outcome.reply.slice(0, 280) } : {}),
+      ...(outcome.error ? { error: outcome.error } : {}), ...(streak === FAILED_STREAK ? { streak } : {}),
+    },
+  });
+  if (streak === FAILED_STREAK) retireFailedEditions(db, run.automationId!, run.id);
+  if (destination.keep === "latest" && outcome.status === "completed" && run.automationId) retirePreviousEditions(db, run.automationId, run.id);
+}
+
+/** For the automations' clock: says what was held back while a firing could still be tried again, now that no try is
+ * coming. Once: a run that already has its notice is left alone. */
+export function releaseHeldRun(world: World, id: string, options: { now?: number } = {}): void {
+  const now = options.now ?? Date.now();
+  world.tx((db) => {
+    const run = load(db, id);
+    if (run.state !== "failed" && run.state !== "interrupted") return;
+    if (db.prepare("SELECT 1 FROM core_notices WHERE kind IN ('run_result', 'run_interrupted') AND json_extract(payload, '$.runId') = ? LIMIT 1").get(id)) return;
+    const event = db.prepare("SELECT seq FROM core_events WHERE run_id = ? AND kind = ? ORDER BY seq DESC LIMIT 1").get(id, `run.${run.state}`);
+    if (!event) return;
+    if (run.state === "interrupted") createNotice(db, { eventSeq: event.seq as number, kind: "run_interrupted", payload: { runId: id, conversationId: run.conversationId, ...said(db, run) }, now });
+    else if (run.outcome) tellResult(db, run, run.outcome, event.seq as number, now);
+  });
 }
 
 export interface SubmitRunInput {
@@ -322,19 +364,8 @@ export function finishRun(world: World, id: string, owner: string, result: Omit<
     closeWaitingNotices(db, id, now);
     touchConversation(db, run.conversationId, now);
     const event = runEvent(db, run, result.status, now, { receipts: receipts.length });
-    const destination = resultDestination(db, run, result.status);
-    if (destination) {
-      createNotice(db, {
-        eventSeq: event.seq, kind: "run_result", now,
-        payload: {
-          runId: id, conversationId: run.conversationId, status: result.status, ...said(db, run), ...destination, receipts: receipts.length,
-          ...(outcome.reply ? { reply: outcome.reply.slice(0, 280) } : {}),
-        },
-      });
-      if (destination.keep === "latest" && result.status === "completed" && run.automationId) retirePreviousEditions(db, run.automationId, id);
-    } else if (!run.automationId && result.status === "completed" && outcome.reply) {
-      recordUnreadReply(db, run.conversationId, id);
-    }
+    // An automation's firing that failed before doing anything is tried again, and not told while a try is coming.
+    if (!(result.status === "failed" && heldForRetry(db, run, result.error))) tellResult(db, run, outcome, event.seq, now);
     return detailRun(db, id);
   });
 }

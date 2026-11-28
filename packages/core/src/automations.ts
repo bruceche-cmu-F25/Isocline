@@ -6,6 +6,8 @@
  *  2. A slot missed while the home node was off fires late at most once: only the latest slot due is ever considered,
  *     and if it is more than CATCH_UP_MS late it is skipped (and recorded) instead.
  *  3. Turned off, it never fires; turned on or rescheduled, it starts from the next slot, never one already past.
+ *  4. A firing that did not go through and left nothing behind is tried again, a few times (automation-retries.ts);
+ *     one that did something is never run twice. A new slot, a change to the rule, or switching it off ends the tries.
  * Times are the home node's local time.
  */
 import type { DatabaseSync } from "node:sqlite";
@@ -13,7 +15,8 @@ import { withDefaultActor } from "./context.ts";
 import { createConversation } from "./conversations.ts";
 import { recordDomainEvent } from "./events.ts";
 import { iso, newId } from "./ids.ts";
-import { submitRun, type Run, type RunState } from "./runs.ts";
+import { releaseHeldRun, requestCancel, submitRun, type Run, type RunState } from "./runs.ts";
+import { heldForRetry, RETRY_AFTER_MS, scheduledAttempt, slotRequestId } from "./automation-retries.ts";
 import { userLocale, type Locale } from "./settings.ts";
 import { AUTOMATION_TEMPLATES, SECTIONS_GUIDE, TEMPLATE_OPTIONS, TEMPLATE_SCHEDULE, TEMPLATE_TEXT, type AutomationTemplate } from "./automation-templates.ts";
 import { AREA_COLOURS, type AreaColour } from "./areas.ts";
@@ -67,7 +70,9 @@ export interface AutomationView extends Automation {
   /** What Zirma is told each time, in the user's language: its own words, or its sample's. For editing and copying. */
   instruction: string;
   nextAt: string | null;
-  lastRun: { id: string; state: RunState; at: string; reply: string | null } | null;
+  /** `error`: why it failed, as the run's code. `tries`: which try of its slot this was, when not the first.
+   * `retryAt`: when it is tried again, while another try is coming. */
+  lastRun: { id: string; state: RunState; at: string; reply: string | null; error?: string; tries?: number; retryAt?: string } | null;
 }
 
 export class AutomationError extends Error {
@@ -151,17 +156,22 @@ const LEAD_CHARS = 1200;
 
 export function listAutomations(world: World, now: number = Date.now()): AutomationView[] {
   const rows = world.db.prepare("SELECT * FROM core_automations ORDER BY created_at, id").all().map(toAutomation);
-  const lastRun = world.db.prepare("SELECT id, state, updated_at, outcome FROM core_runs WHERE id = ?");
+  const lastRun = world.db.prepare("SELECT id, request_id, state, updated_at, outcome FROM core_runs WHERE id = ?");
   const locale = userLocale(world);
   return rows.map((automation) => {
     const run = automation.lastRunId ? lastRun.get(automation.lastRunId) : undefined;
     const next = automation.enabled ? nextSlot(automation.schedule, now) : null;
-    const outcome = run?.outcome ? JSON.parse(run.outcome as string) as { reply?: string } : null;
+    const outcome = run?.outcome ? JSON.parse(run.outcome as string) as { reply?: string; error?: string } : null;
+    const held = heldFiring(world.db, automation);
+    const tries = run ? scheduledAttempt(run.request_id as string)?.attempt : undefined;
     return {
       ...automation,
       instruction: automationGoal(automation, locale),
       nextAt: next === null ? null : iso(next),
-      lastRun: run ? { id: run.id as string, state: run.state as RunState, at: run.updated_at as string, reply: outcome?.reply?.slice(0, automation.layout === "sections" ? LEAD_CHARS : 280) ?? null } : null,
+      lastRun: run ? { id: run.id as string, state: run.state as RunState, at: run.updated_at as string, reply: outcome?.reply?.slice(0, automation.layout === "sections" ? LEAD_CHARS : 280) ?? null,
+        ...(outcome?.error ? { error: outcome.error } : {}), ...(tries ? { tries: tries + 1 } : {}),
+        ...(held && retrying(automation, held, now) ? { retryAt: iso(held.at) } : {}),
+      } : null,
     };
   });
 }
@@ -248,13 +258,38 @@ export interface FireOptions {
   now?: number;
 }
 
-function fire(world: World, automation: Automation, input: { requestId: string; slot: number | null; profile: string; now: number }): Run {
+/** The last firing, when it did not go through, left nothing behind and has tries left: which try it was, and when
+ * the next one may start. Whether that try still comes is `retrying`. */
+interface HeldFiring { runId: string; state: RunState; firedAt: number; slot: number; attempt: number; at: number }
+function heldFiring(db: DatabaseSync, automation: Automation): HeldFiring | null {
+  if (!automation.lastRunId || automation.lastSlot === null) return null;
+  const row = db.prepare("SELECT id, request_id, state, created_at, updated_at, outcome FROM core_runs WHERE id = ?").get(automation.lastRunId);
+  if (!row || (row.state !== "failed" && row.state !== "interrupted")) return null;
+  const tried = scheduledAttempt(row.request_id as string);
+  if (!tried || tried.slot !== Date.parse(automation.lastSlot)) return null;
+  const error = row.outcome ? (JSON.parse(row.outcome as string) as { error?: string }).error : null;
+  if (!heldForRetry(db, { id: row.id as string, requestId: row.request_id as string, automationId: automation.id }, error, { whenOff: true })) return null;
+  return {
+    runId: row.id as string, state: row.state as RunState, firedAt: Date.parse(row.created_at as string), ...tried,
+    at: Date.parse(row.updated_at as string) + RETRY_AFTER_MS[tried.attempt]!,
+  };
+}
+
+/** Whether a held firing is still to be tried again: the rule is on and as it was when it fired, no newer slot has
+ * come, and its slot is not too long ago to run at all. */
+function retrying(automation: Automation, held: HeldFiring, now: number): boolean {
+  return automation.enabled && Date.parse(automation.updatedAt) <= held.firedAt
+    && latestSlot(automation.schedule, now) === held.slot && now - held.slot <= CATCH_UP_MS;
+}
+
+function fire(world: World, automation: Automation, input: { requestId: string; slot: number | null; profile: string; now: number; retry?: number }): Run {
   return world.tx((db) => {
     const locale = userLocale(world);
     const late = input.slot !== null && input.now - input.slot > LATE_MS;
     const slotTime = input.slot === null ? "" : new Date(input.slot).toTimeString().slice(0, 5);
     const goal = automationGoal(automation, locale) + (automation.layout === "sections" ? `\n\n${SECTIONS_GUIDE[locale]}` : "")
-      + (late ? `\n\n(Scheduled for ${slotTime}; running late because Zirma was not running then.)` : "");
+      + (input.retry ? `\n\n(Scheduled for ${slotTime}; an earlier try did not go through, so this one is running late.)`
+        : late ? `\n\n(Scheduled for ${slotTime}; running late because Zirma was not running then.)` : "");
     const conversationId = automation.conversationId && db.prepare("SELECT 1 FROM core_conversations WHERE id = ?").get(automation.conversationId)
       ? automation.conversationId
       : createConversation(db, { title: automationName(automation, locale), now: input.now });
@@ -264,7 +299,7 @@ function fire(world: World, automation: Automation, input: { requestId: string; 
       .run(conversationId, run.id, ...(input.slot === null ? [] : [iso(input.slot)]), automation.id);
     recordDomainEvent(world, {
       kind: "automation.fired", subject: `automation:${automation.id}`, now: input.now,
-      payload: { runId: run.id, slot: input.slot === null ? null : iso(input.slot), late, manual: input.slot === null },
+      payload: { runId: run.id, slot: input.slot === null ? null : iso(input.slot), late, manual: input.slot === null, ...(input.retry ? { retry: input.retry } : {}) },
     });
     return run;
   });
@@ -279,8 +314,14 @@ export function fireDueAutomations(world: World, options: FireOptions): Run[] {
 function fireDue(world: World, options: FireOptions): Run[] {
   const now = options.now ?? Date.now();
   const fired: Run[] = [];
-  const rows = world.db.prepare("SELECT * FROM core_automations WHERE enabled = 1 ORDER BY created_at, id").all().map(toAutomation);
+  const rows = world.db.prepare("SELECT * FROM core_automations ORDER BY created_at, id").all().map(toAutomation);
   for (const automation of rows) {
+    const held = heldFiring(world.db, automation);
+    if (held) {
+      const retry = settleHeld(world, automation, held, options.profile, now);
+      if (retry) { fired.push(retry); continue; }
+    }
+    if (!automation.enabled) continue;
     const slot = latestSlot(automation.schedule, now);
     if (slot === null || (automation.lastSlot !== null && slot <= Date.parse(automation.lastSlot))) continue;
     if (now - slot > CATCH_UP_MS) {
@@ -290,9 +331,36 @@ function fireDue(world: World, options: FireOptions): Run[] {
       });
       continue;
     }
-    fired.push(fire(world, automation, { requestId: `auto:${automation.id}:${slot}`, slot, profile: options.profile, now }));
+    fired.push(fire(world, automation, { requestId: slotRequestId(automation.id, slot), slot, profile: options.profile, now }));
   }
   return fired;
+}
+
+/** What becomes of a firing that did not go through and was not told, because it could be tried again:
+ *  - its time has come: the next try starts (returned);
+ *  - it waits for its time;
+ *  - no try is coming any more (the rule was changed or switched off, or a newer slot is due): it is let go, quietly.
+ *    The page still shows it, and the user's change or the newer firing is what matters now;
+ *  - its slot is too long ago to run (the home node was off): it is recorded as skipped and told after all, once. */
+function settleHeld(world: World, automation: Automation, held: HeldFiring, profile: string, now: number): Run | null {
+  if (retrying(automation, held, now)) {
+    if (now < held.at) return null;
+    // An interrupted try is not left for the user to continue beside the new one.
+    if (held.state === "interrupted") requestCancel(world, held.runId, { now });
+    return fire(world, automation, { requestId: slotRequestId(automation.id, held.slot, held.attempt + 1), slot: held.slot, profile, now, retry: held.attempt + 1 });
+  }
+  const tooLate = automation.enabled && Date.parse(automation.updatedAt) <= held.firedAt && latestSlot(automation.schedule, now) === held.slot;
+  if (!tooLate) {
+    if (held.state === "interrupted") requestCancel(world, held.runId, { now });
+    return null;
+  }
+  world.tx((db) => {
+    const subject = `automation:${automation.id}`;
+    if (db.prepare("SELECT 1 FROM core_events WHERE subject = ? AND kind = 'automation.skipped' AND json_extract(payload, '$.runId') = ? LIMIT 1").get(subject, held.runId)) return;
+    recordDomainEvent(world, { kind: "automation.skipped", subject, payload: { slot: iso(held.slot), reason: "retry_too_late", runId: held.runId }, now });
+    releaseHeldRun(world, held.runId, { now });
+  });
+  return null;
 }
 
 /** The user's "run it now": a run outside the schedule, which leaves the schedule as it was. */

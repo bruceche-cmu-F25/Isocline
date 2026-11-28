@@ -5,6 +5,7 @@ import { automationTitle, scheduleText, whenText } from "./automationText.ts";
 import { AutomationHistory } from "./AutomationHistory.tsx";
 import { Linked } from "./Linked.tsx";
 import { plainText } from "./markdown.ts";
+import { errorText } from "./receipts.ts";
 import { Icon } from "./shell/icons.tsx";
 import { MicButton } from "./voice/MicButton.tsx";
 import { appendDictation } from "./voice/wav.ts";
@@ -15,7 +16,9 @@ function lastText(automation: Automation): string {
   const run = automation.lastRun;
   if (!run) return t("auto.never");
   if (run.state === "queued" || run.state === "running" || run.state === "cancelling") return t("auto.lastRunning");
-  if (run.state === "failed" || run.state === "interrupted") return t("auto.lastFailed", { when: whenText(run.at) });
+  // A firing that failed before doing anything is tried again (core automation-retries.ts): say when.
+  if (run.retryAt) return t("auto.retryAt", { when: whenText(run.retryAt) });
+  if (run.state === "failed" || run.state === "interrupted") return run.tries ? t("auto.lastFailedTries", { n: run.tries, when: whenText(run.at) }) : t("auto.lastFailed", { when: whenText(run.at) });
   return t("auto.last", { when: whenText(run.at) });
 }
 
@@ -166,6 +169,7 @@ function AutomationRow({ automation, recent, onOpenConversation }: { automation:
       <div className="auto-last" data-state={automation.lastRun?.state}>
         <span>{lastText(automation)}</span>
         {automation.lastRun?.reply && <small><Linked text={plainText(automation.lastRun.reply)} /></small>}
+        {automation.lastRun?.state === "failed" && errorText(automation.lastRun.error) && <small title={errorText(automation.lastRun.error)}>{errorText(automation.lastRun.error)}</small>}
         {automation.lastRun && <button type="button" className="link" aria-expanded={!!history} onClick={() => setHistory(history ? null : "latest")}>{t("auto.history")}</button>}
       </div>
       <div className="auto-actions">

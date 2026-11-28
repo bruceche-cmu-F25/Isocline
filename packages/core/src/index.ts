@@ -52,6 +52,7 @@ export {
   latestSlot, nextSlot, automationName, automationGoal, AutomationError, AUTOMATION_TEMPLATES, CATCH_UP_MS,
   type Automation, type AutomationView, type AutomationTemplate, type AutomationPatch, type NewAutomation, type Schedule,
 } from "./automations.ts";
+export { RETRY_AFTER_MS, FAILED_STREAK, scheduledAttempt } from "./automation-retries.ts";
 export { listProjects, getProject, addProject, trustProject, removeProject, ProjectError, PROJECT_ID, SESSION_MODES, type Project, type SessionMode } from "./projects.ts";
 export { listDevices, pairDevice, deviceForToken, revokeDevice, requestDevAccess, setDeviceScope, hashToken, DeviceError, DEVICE_KINDS, DEVICE_SCOPES, type Device, type DeviceKind, type DeviceScope } from "./devices.ts";
 export {

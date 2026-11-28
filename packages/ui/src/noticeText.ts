@@ -110,7 +110,9 @@ export function noticeLines(notice: Notice, locale: Locale = getLocale()): Notic
     return { title: say("mac.outbound.unknown"), body: say("mac.outbound.unknownBody", { preview }), mood: "notice", closesOnOpen: false, action: look };
   }
   const status = notice.payload.status;
-  if (status === "failed") return { title: say("mac.failed.title"), body: say("mac.goal", { goal }), mood: "error", closesOnOpen: true, action: look };
+  // An automation that keeps failing is told once, with how many firings in a row (core automation-retries.ts).
+  const streak = Number(notice.payload.streak) || 0;
+  if (status === "failed") return { title: streak ? say("mac.failed.streak", { n: streak }) : say("mac.failed.title"), body: say("mac.goal", { goal }), mood: "error", closesOnOpen: true, action: look };
   if (status === "cancelled") return { title: say("mac.cancelled.title"), body: say("mac.goal", { goal }), mood: "rest", closesOnOpen: true, action: look };
   return { title: goal ? say("mac.goal", { goal }) : getAssistant(), body: (typeof notice.payload.reply === "string" && plainText(notice.payload.reply)) || say("mac.done.body", { goal }), mood: "done", closesOnOpen: true, action: look };
 }

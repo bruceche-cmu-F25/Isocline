@@ -11,6 +11,7 @@ import { plainText } from "../markdown.ts";
 import { automationTitle, editionTitle } from "../automationText.ts";
 import { awayUpdate } from "../welcome.ts";
 import { outboundWhat } from "../noticeText.ts";
+import { errorText } from "../receipts.ts";
 
 export type InboxKind = "decide" | "result" | "away" | "remind";
 export const KINDS: Array<[InboxKind, Key, string]> = [["decide", "inbox.k.decide", "warm"], ["result", "inbox.k.result", "alfred"], ["away", "inbox.k.away", "gray"], ["remind", "inbox.k.remind", "teal"]];
@@ -105,7 +106,12 @@ export function inboxItems(state: StateResponse): InboxItem[] {
       const status = notice.payload.status;
       // The notice carries the start of the reply, cut short: shown as plain text, since Markdown cut in the middle draws wrong.
       const reply = typeof notice.payload.reply === "string" ? plainText(notice.payload.reply) : "";
-      const summary = status === "failed" ? t("inbox.failed") : status === "cancelled" ? t("inbox.cancelled") : reply || t("inbox.done");
+      // A failure says why when the run knows (no model yet, the model's side, a timeout), and for an automation that keeps
+      // failing, how many firings in a row.
+      const streak = Number(notice.payload.streak) || 0;
+      const why = status === "failed" ? errorText(typeof notice.payload.error === "string" ? notice.payload.error : undefined) : "";
+      const failed = [streak ? t("inbox.failedStreak", { n: streak }) : why ? "" : t("inbox.failed"), why].filter(Boolean).join(" ");
+      const summary = status === "failed" ? failed : status === "cancelled" ? t("inbox.cancelled") : reply || t("inbox.done");
       const edition = runId && conversationId ? editionFor({ runId, conversationId, at: notice.createdAt,
         name: notice.payload.automationId || notice.payload.delivery === "inbox" ? goal : null }, state, notice) : undefined;
       const item: InboxItem = { id: `n:${notice.id}`, kind: "result", title: edition?.title ?? goal, summary: edition?.preview || summary,

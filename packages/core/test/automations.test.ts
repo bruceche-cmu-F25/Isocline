@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
-  CORE_MIGRATIONS, createAutomation, createRunDrain, deleteAutomation, ensureTemplates, fireDueAutomations, getConversation, latestSlot,
-  listAutomationRuns, listAutomations, listDevices, listEvents, listNotices, listRuns, nextSlot, openWorld, runAutomationNow, submitRun, updateAutomation, updateSettings,
-  type EnginePort, type RunProfile, type World,
+  claimNextRun, CORE_MIGRATIONS, createAutomation, createRunDrain, deleteAutomation, ensureTemplates, finishRun, fireDueAutomations, getConversation, getRun, latestSlot,
+  listAutomationRuns, listAutomations, listDevices, listEvents, listNotices, listRuns, nextSlot, openWorld, recordDomainEvent, runAutomationNow, submitRun, sweepRuns,
+  updateAutomation, updateSettings, withCoreContext,
+  type EnginePort, type Run, type RunProfile, type World,
 } from "../src/index.ts";
 import { oldAutomation } from "./old-world.ts";
 
@@ -127,6 +128,156 @@ test("run now: one run per request, outside the schedule", () => {
   deleteAutomation(w, automation.id, at(20, 9));
   assert.deepEqual(listAutomations(w), []);
   assert.equal(listRuns(w).length, 2, "its runs stay");
+});
+
+const MIN = 60_000;
+/** The home node's executor takes the queued run at `now`. */
+const start = (w: World, now: number): Run => claimNextRun(w, "home", { now })!;
+/** …and the engine fails it there (the model could not be reached), or it goes through. */
+const fail = (w: World, now: number, error = "engine_failed"): Run => finishRun(w, start(w, now).id, "home", { status: "failed", error }, { now });
+const succeed = (w: World, now: number): Run => finishRun(w, start(w, now).id, "home", { status: "completed", reply: "Done." }, { now });
+const results = (w: World) => listNotices(w).filter((notice) => notice.kind === "run_result" && notice.payload.delivery === "inbox" && notice.state === "pending");
+
+test("a firing that failed before doing anything is tried again after 2, 10 and 30 minutes, and told only when the last try fails", () => {
+  const w = world();
+  const automation = createAutomation(w, { name: "Brief", goal: "Brief me", schedule: { at: "07:30", days: EVERY_DAY } }, at(19, 6));
+  const [first] = tick(w, at(19, 7, 30));
+  const t0 = at(19, 7, 30) + 5_000;
+  fail(w, t0);
+  assert.deepEqual(results(w), [], "not told while another try is coming");
+  let [view] = listAutomations(w, t0);
+  assert.equal(view.lastRun?.retryAt, new Date(t0 + 2 * MIN).toISOString());
+
+  assert.deepEqual(tick(w, t0 + 2 * MIN - 1_000), [], "not before its time");
+  const [second] = tick(w, t0 + 2 * MIN);
+  assert.notEqual(second.id, first.id, "a try again is a run of its own");
+  assert.equal(second.conversationId, first.conversationId);
+  assert.match(second.goal, /an earlier try did not go through/);
+  assert.deepEqual(tick(w, t0 + 2 * MIN + 1_000), [], "one run per try");
+
+  const t1 = t0 + 2 * MIN + 5_000;
+  fail(w, t1);
+  assert.deepEqual(tick(w, t1 + 10 * MIN - 1_000), []);
+  assert.equal(tick(w, t1 + 10 * MIN).length, 1);
+  const t2 = t1 + 10 * MIN + 5_000;
+  fail(w, t2);
+  assert.deepEqual(results(w), []);
+  assert.equal(tick(w, t2 + 30 * MIN).length, 1);
+  const t3 = t2 + 30 * MIN + 5_000;
+  fail(w, t3);
+
+  assert.equal(results(w).length, 1, "three tries again, then it is told, once");
+  assert.equal(results(w)[0].payload.status, "failed");
+  assert.equal(results(w)[0].payload.error, "engine_failed");
+  [view] = listAutomations(w, t3);
+  assert.equal(view.lastRun?.retryAt, undefined);
+  assert.equal(view.lastRun?.tries, 4);
+  assert.deepEqual(tick(w, t3 + 60 * MIN), [], "no fourth try again");
+  assert.equal(listRuns(w).length, 4);
+  assert.equal(tick(w, at(20, 7, 30)).length, 1, "the next slot fires as usual");
+  assert.deepEqual(listEvents(w).events.filter((event) => event.kind === "automation.fired" && event.subject === `automation:${automation.id}`).map((event) => event.payload.retry ?? 0), [0, 1, 2, 3, 0]);
+});
+
+test("a try again that goes through is told like any result; the failures before it never are", () => {
+  const w = world();
+  createAutomation(w, { name: "Brief", goal: "Brief me", schedule: { at: "07:30", days: EVERY_DAY } }, at(19, 6));
+  tick(w, at(19, 7, 30));
+  fail(w, at(19, 7, 31));
+  tick(w, at(19, 7, 33));
+  succeed(w, at(19, 7, 34));
+  assert.deepEqual(results(w).map((notice) => notice.payload.status), ["completed"]);
+  assert.deepEqual(tick(w, at(19, 9)), []);
+});
+
+test("a firing that did something before it failed is never run again, and is told at once", () => {
+  const w = world();
+  createAutomation(w, { name: "Brief", goal: "Brief me", schedule: { at: "07:30", days: EVERY_DAY } }, at(19, 6));
+  tick(w, at(19, 7, 30));
+  const run = start(w, at(19, 7, 30));
+  withCoreContext({ actor: "alfred", run: { id: run.id, owner: "home" } }, () => w.tx(() => recordDomainEvent(w, { kind: "toy.added", subject: "toy:ball", payload: {}, now: at(19, 7, 30) })));
+  finishRun(w, run.id, "home", { status: "failed", error: "engine_failed" }, { now: at(19, 7, 30) + 30_000 });
+  assert.equal(results(w).length, 1);
+  assert.equal(listAutomations(w, at(19, 7, 31))[0].lastRun?.retryAt, undefined);
+  assert.deepEqual(tick(w, at(19, 8, 30)), [], "running it again could do the same thing twice");
+});
+
+test("with no model to run with, another try cannot help: told at once, with the reason", () => {
+  const w = world();
+  createAutomation(w, { name: "Brief", goal: "Brief me", schedule: { at: "07:30", days: EVERY_DAY } }, at(19, 6));
+  tick(w, at(19, 7, 30));
+  fail(w, at(19, 7, 31), "engine_unavailable");
+  assert.equal(results(w)[0]?.payload.error, "engine_unavailable");
+  assert.deepEqual(tick(w, at(19, 8, 30)), []);
+});
+
+test("a new slot, a change to the rule, or switching it off ends the tries", () => {
+  const w = world();
+  const automation = createAutomation(w, { name: "Brief", goal: "Brief me", schedule: { at: "07:30", days: EVERY_DAY } }, at(19, 6));
+  tick(w, at(19, 7, 30));
+  fail(w, at(19, 7, 31));
+  updateAutomation(w, automation.id, { goal: "Brief me, shorter" }, at(19, 7, 32));
+  assert.equal(listAutomations(w, at(19, 7, 32))[0].lastRun?.retryAt, undefined);
+  assert.deepEqual(tick(w, at(19, 7, 40)), [], "the rule was changed: its old words are not run again");
+
+  const [next] = tick(w, at(20, 7, 30));
+  fail(w, at(20, 7, 31));
+  updateAutomation(w, automation.id, { enabled: false }, at(20, 7, 32));
+  assert.deepEqual(tick(w, at(20, 7, 40)), [], "switched off");
+
+  // The home node was off through the tries and the next slot: the new slot fires, not the old try.
+  updateAutomation(w, automation.id, { enabled: true }, at(20, 12));
+  tick(w, at(21, 7, 30));
+  fail(w, at(21, 7, 31));
+  const [later] = tick(w, at(22, 7, 30));
+  assert.doesNotMatch(later.goal, /an earlier try/);
+  assert.notEqual(later.id, next.id);
+  assert.deepEqual(results(w), [], "none of these was told: the user's change, or the newer firing, is what matters");
+});
+
+test("a firing interrupted before it did anything is tried again without asking; the interrupted run is closed", () => {
+  const w = world();
+  createAutomation(w, { name: "Brief", goal: "Brief me", schedule: { at: "07:30", days: EVERY_DAY } }, at(19, 6));
+  tick(w, at(19, 7, 30));
+  const run = start(w, at(19, 7, 30));
+  // The Mac slept: the executor's lease ran out.
+  sweepRuns(w, { now: at(19, 7, 40) });
+  assert.equal(getRun(w, run.id).run.state, "interrupted");
+  assert.deepEqual(listNotices(w).filter((notice) => notice.kind === "run_interrupted"), [], "nobody is asked whether to continue");
+  const [again] = tick(w, at(19, 7, 42));
+  assert.ok(again);
+  assert.equal(getRun(w, run.id).run.state, "cancelled", "not left to be continued beside the new try");
+});
+
+test("a held failure whose slot is by now too long ago is recorded as skipped and told after all, once", () => {
+  const w = world();
+  // Mondays only (the 23rd): nothing newer comes to take its place.
+  createAutomation(w, { name: "Weekly", goal: "Go over my todos", schedule: { at: "07:30", days: [1] } }, at(19, 6));
+  tick(w, at(23, 7, 30));
+  fail(w, at(23, 7, 31));
+  // Off until the next day.
+  assert.deepEqual(tick(w, at(24, 9)), []);
+  assert.equal(results(w).length, 1);
+  assert.deepEqual(tick(w, at(24, 9, 1)), []);
+  assert.equal(results(w).length, 1);
+  assert.equal(listEvents(w).events.filter((event) => event.kind === "automation.skipped" && event.payload.reason === "retry_too_late").length, 1);
+});
+
+test("three firings in a row that fail are told as one notice; the ones after it are not told until one goes through", () => {
+  const w = world();
+  createAutomation(w, { name: "Brief", goal: "Brief me", schedule: { at: "07:30", days: EVERY_DAY } }, at(19, 6));
+  const day = (d: number) => { tick(w, at(d, 7, 30)); fail(w, at(d, 7, 31), "engine_unavailable"); };
+  day(19);
+  day(20);
+  assert.deepEqual(results(w).map((notice) => notice.payload.streak), [undefined, undefined]);
+  day(21);
+  assert.deepEqual(results(w).map((notice) => notice.payload.streak), [3], "one notice takes the place of the three");
+  day(22);
+  day(23);
+  assert.equal(results(w).length, 1, "it has been said");
+  tick(w, at(24, 7, 30));
+  succeed(w, at(24, 7, 31));
+  day(25);
+  assert.deepEqual(results(w).map((notice) => [notice.payload.status, notice.payload.streak]), [["failed", 3], ["completed", undefined], ["failed", undefined]], "after one that went through, the count starts again");
 });
 
 test("the shipped automations are there from the start, off, in the user's language; deleted, one stays gone", () => {
