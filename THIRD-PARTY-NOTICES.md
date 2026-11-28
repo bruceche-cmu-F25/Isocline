@@ -17,7 +17,6 @@ says what, where, and under which licence. Where code was adapted, the file it l
 | `packages/server/src/web/providers/tavily.ts`: the request to Tavily's search, its time range and site filter, and reading its answer into results | [pi-web-access](https://github.com/nicobailon/pi-web-access) 0.48.0, `tavily.ts` (`searchWithTavily`, `mapDomainFilter`, `mapResults`) | MIT, © 2025 Nico Bailon |
 | `packages/ui/src/brand/svg/`: model-provider and service logos (all but the ones below) | [LobeHub Icons](https://github.com/lobehub/lobe-icons), through `@lobehub/icons-static-svg` 1.104.0 | MIT, © 2023 LobeHub |
 | `packages/ui/src/brand/svg/`: `tailscale`, `xiaomi`, `notion`, `linear`, `sentry`, `atlassian`, `github` | [Simple Icons](https://simpleicons.org) 16.38.0 | CC0-1.0 |
-| `packages/ui/src/brand/svg/`: `inworld`, `boson` | The companies' own sites: inworld.ai (its wordmark, cropped to the mark) and boson.ai (`/logo.svg`) | The owners' marks, not openly licensed; used only to name their services in Settings → Voice |
 | `packages/ui/src/brand/svg/`: `gmail`, `google-calendar` | [gilbarbara/logos](https://github.com/gilbarbara/logos), through `@iconify-json/logos` 1.2.20 | CC0-1.0 |
 | `packages/ui/src/fonts/GeistSerif-Regular.woff2`: the Geist Serif font, for the wordmark; `prototype/fonts/GeistSerifVF.woff2`: the same font with its variable axis, for `prototype/serif.html` | [Geist](https://github.com/vercel/geist-font), through `geist` 1.9.2 | SIL OFL 1.1, © 2023 Vercel; the licence text is beside each file (`GeistSerif-OFL.txt`) |
 
