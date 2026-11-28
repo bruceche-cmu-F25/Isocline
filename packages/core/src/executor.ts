@@ -17,7 +17,7 @@ import { newId } from "./ids.ts";
 import { getSettings, userLocale, type Locale } from "./settings.ts";
 import { completionNotification } from "./result-delivery.ts";
 import {
-  answerRequest, claimNextRun, conversationBefore, finishRun, heartbeatRun, openRequest, RUN_LEASE_MS, runAnswers, sweepRuns,
+  answerRequest, claimNextRun, conversationBefore, finishRun, heartbeatRun, runAfter, openRequest, RUN_LEASE_MS, runAnswers, sweepRuns,
   type Run, type RunRequest, type ViewContext,
 } from "./runs.ts";
 import type { World } from "./world.ts";
@@ -96,6 +96,10 @@ export interface EngineRequest {
   context?: ViewContext;
   /** Earlier turns of the same conversation, oldest first. Context, not instructions. */
   history: Array<{ role: "user" | "assistant"; text: string }>;
+  /** The turn this one goes on from (the newest version in use before it); null for the first. An engine that keeps
+   * its own session puts it back at that turn's end first, so a regenerated or edited turn, or a switched version,
+   * is what the model goes on from (docs/design/chat-regenerate.md §4.5). */
+  after?: string | null;
   tools: RunTool[];
   today: string;
   /** The local time the request was made, HH:MM: "in half an hour", "tonight at 8" (already past?) need it. */
@@ -365,6 +369,7 @@ async function drive(world: World, run: Run, engine: EnginePort, options: Execut
     ...(run.context ? { context: run.context } : {}),
     instructions: workspace && profile.modes ? `${profile.instructions}\n\n${profile.modes[workspace.mode]}` : profile.instructions,
     history: conversationBefore(world, run),
+    after: runAfter(world, run),
     tools,
     today: localDate(),
     now: localTime(),

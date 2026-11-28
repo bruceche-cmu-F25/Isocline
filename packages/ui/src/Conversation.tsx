@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { fastSpeed, type ConversationDetail, type CoreEvent, type FileInfo, type Run, type RunRequest, type SessionMode, type ThinkingLevel, type ViewContext } from "@zirma/protocol";
 import { mergeHistory } from "./conversationHistory.ts";
@@ -514,7 +514,8 @@ export function Conversation({ id, preferredModel, highlighted, context, suggest
     return () => { alive = false; window.clearTimeout(timer); off(); };
   }, [id, onEvent]);
 
-  const runs = detail?.runs ?? [];
+  // A turn's other versions (regenerated or edited) stay out of the line until R3 shows a switch for them.
+  const runs = useMemo(() => (detail?.runs ?? []).filter((run) => !run.setAside), [detail?.runs]);
   const working = runs.find((run) => run.state === "running");
   const stopTarget = stoppableRun(runs);
   // A turn waiting on the user holds the conversation: a new message would queue behind it and never start. So

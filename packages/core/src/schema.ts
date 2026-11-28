@@ -418,4 +418,13 @@ UPDATE core_notices SET payload = json_set(payload, '$.layout', 'sections', '$.k
 ALTER TABLE core_proposals ADD COLUMN revising_run_id TEXT;
 ALTER TABLE core_proposals ADD COLUMN revising_request TEXT;
 `,
+}, {
+  // A turn can have versions: regenerated, or its message edited and sent again (docs/design/chat-regenerate.md).
+  // `version_of`: the group's first run; `set_aside`: not the version the conversation goes on from.
+  id: "core:34",
+  sql: `
+ALTER TABLE core_runs ADD COLUMN version_of TEXT CHECK (version_of IS NULL OR length(version_of) BETWEEN 1 AND 64);
+ALTER TABLE core_runs ADD COLUMN set_aside INTEGER NOT NULL DEFAULT 0 CHECK (set_aside IN (0, 1));
+CREATE INDEX core_runs_version ON core_runs(version_of) WHERE version_of IS NOT NULL;
+`,
 }];

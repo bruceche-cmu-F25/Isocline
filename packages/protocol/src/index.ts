@@ -25,6 +25,8 @@
  *                                           for a day unless a message takes it (SubmitRunRequest.attachments)
  *   GET  /api/files/:id                     the file's bytes (an image shows; anything else downloads)
  *   POST /api/runs                          SubmitRunRequest -> SubmitRunResponse (202); no conversationId starts one
+ *   POST /api/runs/:id/again                AgainRunRequest -> SubmitRunResponse (202): another version of the last turn
+ *   POST /api/runs/:id/use                  -> Run: go on from this version of the last turn
  *   GET  /api/runs/:id/sources               { evidence: RunSources | null }
  *   GET  /api/runs/:id                      RunDetail
  *   POST /api/runs/:id/cancel               -> Run
@@ -121,7 +123,14 @@ export interface Run {
   context: ViewContext | null;
   /** The automation that started it on its schedule; null when the user asked. */
   automationId: string | null;
+  /** Another version of an earlier turn (regenerated or edited): that turn's first run. Null for a first version.
+   * Older home nodes leave it out. */
+  versionOf?: string | null;
+  /** A version the conversation does not go on from: another version of the turn is in use. */
+  setAside?: boolean;
 }
+/** POST /api/runs/:id/again: another version of the conversation's last turn. No `goal`: the same message again. */
+export interface AgainRunRequest { requestId: string; goal?: string }
 /** The page a request came from: its view, title, one line of what it shows, and what was selected on it. */
 export interface ViewContext {
   view: string; title?: string; summary?: string; selection?: { id: string; title?: string };

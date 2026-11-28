@@ -448,6 +448,45 @@ test("Zirma can list, make and change automations when asked; an automation's ow
   }
 });
 
+test("versions over HTTP: the last turn again, edited, switched back; an earlier turn is refused with a code", async () => {
+  const heard: string[] = [];
+  const listening: EnginePort = { async submit(request) { heard.push(`${request.goal} after ${request.after ?? "-"}`); return { reply: `re: ${request.goal}` }; } };
+  const home = openHome({ dataDir: mkdtempSync(join(tmpdir(), "alfred-")), engine: listening, modules: [todoModule] });
+  const { server, base } = await start(home);
+  try {
+    let cursor = ((await (await fetch(`${base}/api/state`)).json()) as StateResponse).cursor;
+    const finished = async () => { cursor = (await waitForEvent(base, cursor, (event) => event.kind === "run.completed")).at(-1)!.seq; };
+    const first = ((await (await post(base, "/api/runs", { requestId: "v1", goal: "Name a cat" })).json()) as SubmitRunResponse).run;
+    await finished();
+    const again = await post(base, `/api/runs/${first.id}/again`, { requestId: "v2" });
+    assert.equal(again.status, 202);
+    const second = ((await again.json()) as SubmitRunResponse).run;
+    assert.equal(second.versionOf, first.id);
+    await finished();
+    const edited = await post(base, `/api/runs/${second.id}/again`, { requestId: "v3", goal: "Name a black cat" });
+    assert.equal(edited.status, 202);
+    await finished();
+    assert.deepEqual(heard, ["Name a cat after -", "Name a cat after -", "Name a black cat after -"]);
+
+    const detail = (await (await fetch(`${base}/api/conversations/${first.conversationId}`)).json()) as ConversationDetail;
+    assert.deepEqual(detail.runs.map((run) => [run.goal, run.setAside]), [["Name a cat", true], ["Name a cat", true], ["Name a black cat", false]]);
+
+    const used = await post(base, `/api/runs/${first.id}/use`, { requestId: "u1" });
+    assert.equal(used.status, 200);
+    const next = ((await (await post(base, "/api/runs", { requestId: "v4", goal: "Thanks", conversationId: first.conversationId })).json()) as SubmitRunResponse).run;
+    await finished();
+    assert.equal(heard.at(-1), `Thanks after ${first.id}`, "the engine is told which version it goes on from");
+
+    const refused = await post(base, `/api/runs/${first.id}/again`, { requestId: "v5" });
+    assert.equal(refused.status, 409);
+    assert.equal(((await refused.json()) as { code?: string }).code, "not_last");
+    assert.equal((await post(base, `/api/runs/${next.id}/again`, { requestId: "v6", goal: 3 })).status, 400);
+  } finally {
+    server.close(); server.closeAllConnections();
+    home.close();
+  }
+});
+
 test("the model picked when opening Code receives the first message and can switch back to the displayed default", { timeout: 20_000 }, async (t) => {
   const dataDir = mkdtempSync(join(tmpdir(), "alfred-code-model-"));
   const agentDir = join(dataDir, "agent"), projectDir = join(dataDir, "project");
