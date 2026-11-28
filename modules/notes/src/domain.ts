@@ -95,6 +95,7 @@ export function setLibrary(world: World, root: string): LibraryRow {
     db.prepare("DELETE FROM note_pages").run();
     db.prepare("DELETE FROM note_links").run();
     db.prepare("DELETE FROM note_text").run();
+    db.prepare("DELETE FROM note_order").run();
     recordDomainEvent(world, { kind: "note.library_set", subject: "note:library", payload: { library } });
   });
   return { root: path, library, error: null };
@@ -136,6 +137,8 @@ function writeIndexed(world: World, file: PageFile, text: string | null): void {
 
 function dropIndexed(world: World, id: string): void {
   world.db.prepare("DELETE FROM note_pages WHERE id = ?").run(id);
+  // Its place among the pages beside it goes too: a new page by the same name later starts after them, by name.
+  world.db.prepare("DELETE FROM note_order WHERE id = ?").run(id);
   world.db.prepare("DELETE FROM note_links WHERE page = ?").run(id);
   world.db.prepare("DELETE FROM note_text WHERE id = ?").run(id);
 }

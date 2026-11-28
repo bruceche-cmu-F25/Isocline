@@ -234,6 +234,11 @@ test("the order pages are dragged into is kept, follows a rename, and resets whe
   assert.deepEqual(order(null), ["甲", "乙"]);
   assert.equal((module.snapshot!(world) as NotesSnapshot).pages.find((page) => page.id === "乙/丙")!.rank, null, "moved under another: after the pages there");
   assert.ok(op("note.order", { parent: ZIRMA_DIR, ids: [] }).error, "Zirma's pages are not reordered");
+  op("note.delete", { id: "甲" });
+  op("note.create", { title: "甲" });
+  const rank = (id: string) => (module.snapshot!(world) as NotesSnapshot).pages.find((page) => page.id === id)?.rank;
+  assert.equal(rank("甲"), null, "a new page by a deleted one's name does not take its old place");
+  assert.equal(world.db.prepare("SELECT count(*) AS n FROM note_order WHERE id = '甲' OR id LIKE '甲/%'").get()!.n, 0, "nothing left behind for it or the pages under it");
 });
 
 test("a change is taken back while its lines are as it left them, and put back again", () => {
