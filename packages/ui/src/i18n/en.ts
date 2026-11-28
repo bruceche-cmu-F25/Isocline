@@ -836,6 +836,7 @@ export const en: Record<keyof typeof zh, string> = {
   "skills.added": "Added",
   "skills.adding": "Adding…",
   "skills.found": "On this Mac · {n}",
+  "skills.found.none": "None match",
   "skills.fewer": "Fewer",
   "skills.all": "All {n}",
   "settings.models": "Models and subscriptions",

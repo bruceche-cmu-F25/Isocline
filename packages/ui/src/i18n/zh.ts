@@ -836,6 +836,7 @@ export const zh = {
   "skills.added": "已添加",
   "skills.adding": "添加中…",
   "skills.found": "这台 Mac 上 · {n}",
+  "skills.found.none": "没有匹配的",
   "skills.fewer": "收起",
   "skills.all": "全部 {n} 个",
 
