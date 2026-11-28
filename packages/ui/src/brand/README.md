@@ -11,10 +11,11 @@ Zirma is not affiliated with or endorsed by any of them. The licence texts are i
 | --- | --- | --- |
 | `gmail`, `google-calendar` | [gilbarbara/logos](https://github.com/gilbarbara/logos) through `@iconify-json/logos` 1.2.20 | CC0-1.0 |
 | `tailscale`, `xiaomi`, `notion`, `linear`, `sentry`, `atlassian`, `github` | [Simple Icons](https://simpleicons.org) 16.38.0 | CC0-1.0 |
-| `inworld`, `boson` | the companies' own sites (2026-11-23): Inworld's from the wordmark on inworld.ai, cropped to its mark; Boson AI's from boson.ai/logo.svg, its dark bar drawn in the text colour so it shows in dark mode | the owners' own marks, no open licence; shown only next to their names, as the others |
 | all the others | [LobeHub Icons](https://github.com/lobehub/lobe-icons) through `@lobehub/icons-static-svg` 1.104.0 | MIT, © LobeHub |
 
 ## Adding one
+
+Only a drawing with an open licence (MIT, CC0 or the like) goes in: look in the sets above first. A mark taken from a company's own site has no such licence, so a service without an open one shows its first letter instead (Inworld and Boson AI in Settings → Voice).
 
 Put a cleaned SVG in `svg/`. Its file name is its name: `<Logo name="…" />`. For a model provider, name it after
 Pi's provider id, or the id's first part: `openai.svg` also serves `openai-codex`.
