@@ -182,6 +182,9 @@ export function createWorkerEngine(options: WorkerEngineOptions): WorkerEngine {
         ...(request.locale ? { locale: request.locale } : {}),
         ...(request.workspace ? { workspace: request.workspace } : {}),
         ...(request.attachments?.length ? { attachments: request.attachments } : {}),
+        ...(request.turn ? { turn: request.turn } : {}),
+        ...(request.after !== undefined ? { after: request.after } : {}),
+        ...(request.branched ? { branched: true } : {}),
       };
       const worker = acquire(request.thread);
       running.set(request.thread, { worker, run });

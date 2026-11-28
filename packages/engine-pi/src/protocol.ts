@@ -22,6 +22,13 @@ export interface RunJob {
   prompt: Pick<EngineRequest, "today" | "now" | "timezone" | "goal" | "context">;
   /** Earlier turns, for a session that starts empty (a conversation older than its session). */
   history: string | null;
+  /** The turn this one goes on from, and whether it does not simply follow the session's last run (a regenerated or
+   * edited turn, or after switching versions): the worker moves the session there first (turns.ts). Absent from an
+   * older home node: the session goes on where it is. */
+  after?: string | null;
+  branched?: boolean;
+  /** This turn's run id in the core, under which the worker records where the turn ended. */
+  turn?: string;
   tools: ToolSpec[];
   /** `provider/model` and thinking level for this conversation; absent for Pi's defaults. */
   model?: string;
