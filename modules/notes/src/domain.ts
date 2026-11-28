@@ -58,6 +58,14 @@ CREATE INDEX note_history_page ON note_history(page, at);
 `,
 }];
 
+/** Where the user put each page among the pages beside it, by dragging it in the tree. Kept here, not in the pages'
+ * files, so other apps that open the folder see it as it was. A page without a place comes after those with one, by
+ * name; a folder nobody has reordered stays by name. */
+export const ORDER_MIGRATIONS: Migration[] = [{
+  id: "note:4",
+  sql: "CREATE TABLE note_order (id TEXT PRIMARY KEY NOT NULL, rank INTEGER NOT NULL) STRICT;",
+}];
+
 /** Saves of one page close together by the same hand are one change in its history (autosave writes every second). */
 const EDIT_WINDOW_MS = 10 * 60_000;
 
@@ -254,7 +262,30 @@ const toPage = (row: Record<string, unknown>): NotePage => ({
 });
 
 export function listPages(world: World): NotePage[] {
-  return world.db.prepare("SELECT * FROM note_pages ORDER BY lower(title), id").all().map(toPage);
+  return world.db.prepare("SELECT p.*, o.rank AS rank FROM note_pages p LEFT JOIN note_order o ON o.id = p.id ORDER BY lower(p.title), p.id").all()
+    .map((row) => ({ ...toPage(row), rank: (row.rank as number | null) ?? null }));
+}
+
+/** Puts the user's pages under `parent` in this order (the tree's drag). Ids that are not the user's pages directly
+ * under it are left out; the pages not named keep their place, after these. */
+export function orderPages(world: World, input: { parent: string | null; ids: string[] }): { ok: true; ids: string[] } {
+  if (input.parent && inZirma(input.parent)) throw new LibraryError("bad_name", "Zirma's pages are Zirma's");
+  const here = new Set(world.db.prepare("SELECT id FROM note_pages WHERE parent IS ? AND zirma = 0").all(input.parent).map((row) => row.id as string));
+  const ids = [...new Set(input.ids)].filter((id) => here.has(id));
+  world.tx((db) => {
+    const put = db.prepare("INSERT INTO note_order (id, rank) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET rank = excluded.rank");
+    ids.forEach((id, rank) => put.run(id, rank));
+  });
+  return { ok: true, ids };
+}
+
+/** A page that moved keeps its place among the pages beside it only when it stays under the same parent (a rename);
+ * moved under another, it goes after the pages there. The pages under it keep their places. */
+function followOrder(world: World, from: string, to: string): void {
+  const under = (id: string) => `${id.replace(/[\\%_]/g, "\\$&")}/%`;
+  world.db.prepare("DELETE FROM note_order WHERE id = ? OR id LIKE ? ESCAPE '\\'").run(to, under(to));
+  if (parentOf(from) !== parentOf(to)) world.db.prepare("DELETE FROM note_order WHERE id = ?").run(from);
+  world.db.prepare("UPDATE note_order SET id = ? || substr(id, ?) WHERE id = ? OR id LIKE ? ESCAPE '\\'").run(to, from.length + 1, from, under(from));
 }
 
 export function getPage(world: World, id: string): NotePage | null {
@@ -445,6 +476,7 @@ export function movePage(world: World, library: Library, input: { id: string; ti
     // The page, and every page under it, keep their history under the new names.
     world.db.prepare("UPDATE note_history SET page = ? || substr(page, ?) WHERE page = ? OR page LIKE ? ESCAPE '\\'")
       .run(to, input.id.length + 1, input.id, `${input.id.replace(/[\\%_]/g, "\\$&")}/%`);
+    followOrder(world, input.id, to);
     indexLibrary(world, library);
     recordStep(world, to, "rename", { from: input.id, to });
     result = relink(world, library, input.id, to, linking);
@@ -625,6 +657,7 @@ export function flipHistory(world: World, library: Library, entryId: string, red
         world.tx(() => {
           world.db.prepare("UPDATE note_history SET page = ? || substr(page, ?) WHERE page = ? OR page LIKE ? ESCAPE '\\'")
             .run(back, now.length + 1, now, `${now.replace(/[\\%_]/g, "\\$&")}/%`);
+          followOrder(world, now, back);
           indexLibrary(world, library);
         });
         mark();

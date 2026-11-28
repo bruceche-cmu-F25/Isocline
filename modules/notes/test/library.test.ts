@@ -212,6 +212,30 @@ test("pages in pages: a new sub-page makes the folder, a move takes the sub-page
   assert.ok(readdirSync(join(root, ".trash")).length >= 1);
 });
 
+test("the order pages are dragged into is kept, follows a rename, and resets when a page moves under another", () => {
+  const { op, world, module } = setup();
+  for (const title of ["甲", "乙", "丙"]) op("note.create", { title });
+  op("note.create", { parent: "甲", title: "子" });
+  const order = (parent: string | null) => (module.snapshot!(world) as NotesSnapshot).pages
+    .filter((page) => page.parent === parent && !page.zirma)
+    .sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.title.localeCompare(b.title)).map((page) => page.id);
+  const byName = order(null);
+  assert.equal(new Set(byName).size, 3, "never placed: by name");
+  assert.deepEqual(op("note.order", { parent: null, ids: ["丙", "甲", "乙", "甲/子", "没有"] }), { ok: true, ids: ["丙", "甲", "乙"] }, "only the pages directly under it");
+  assert.deepEqual(order(null), ["丙", "甲", "乙"]);
+  op("note.order", { parent: "甲", ids: ["甲/子"] });
+  op("note.move", { id: "甲", title: "甲甲" });
+  assert.deepEqual(order(null), ["丙", "甲甲", "乙"], "a rename keeps its place");
+  assert.equal((module.snapshot!(world) as NotesSnapshot).pages.find((page) => page.id === "甲甲/子")!.rank, 0, "the pages under it keep theirs");
+  const [renamed] = listHistory(world, "甲甲");
+  assert.deepEqual(op("note.undo", { entry: renamed.id }), { ok: true });
+  assert.deepEqual(order(null), ["丙", "甲", "乙"], "taken back, it is still in its place");
+  op("note.move", { id: "丙", parent: "乙" });
+  assert.deepEqual(order(null), ["甲", "乙"]);
+  assert.equal((module.snapshot!(world) as NotesSnapshot).pages.find((page) => page.id === "乙/丙")!.rank, null, "moved under another: after the pages there");
+  assert.ok(op("note.order", { parent: ZIRMA_DIR, ids: [] }).error, "Zirma's pages are not reordered");
+});
+
 test("a change is taken back while its lines are as it left them, and put back again", () => {
   const { write, index, world, library, libraryId, op } = setup();
   write("页", "第一行\n第二行\n第三行\n");
