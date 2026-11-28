@@ -19,14 +19,14 @@ import { extname, join, normalize, sep } from "node:path";
 import {
   listAreas, listPreferences, getSettings, listOpenProposals, userLocale, withCoreContext, listAutomations, type Locale, type World,
   acknowledgeNotice, answerRequest, claimNotice, getConversation, markConversationReplyRead, getRun, listAutomationRuns, getAutomation, latestEventSeq, listConversations, listArchivedConversations, listEvents, listNotices,
-  listRunActivity, listRunReceipts, listRuns, conversationRuns, presentNotice, reportPresence, submitRun,
+  listRunActivity, listRunReceipts, listRuns, conversationRuns, presentNotice, reportPresence, submitRun, againRun,
   deviceForToken, listDevices, requestDevAccess, DEVICE_KINDS, DEVICE_SCOPES, type Device, type DeviceKind, type DeviceScope, type LiveUpdate,
   getProject, listProjects, getFile, listRunFiles, requireOpenSession, isSession, runInSession, sessionEvent, sessionIds, sessionRoot,
 } from "@zirma/core";
 import { invokeOp, runQuery } from "@zirma/module-kit";
 import type {
   ConversationDetail, CoreEvent, ModelsResponse, NoticeRequest, OpRequest, OutletReport, OutletsResponse, PairRequest, PresenceRequest, ProposalResponse, PushInfo, PushResult,
-  RemoteResponse, RespondRequest, StateResponse, SteerRequest, LiveUpdate as WireLiveUpdate, SubmitRunRequest, SessionBranch, SessionChanges, SessionProcesses, SessionPullRequest,
+  RemoteResponse, RespondRequest, StateResponse, SteerRequest, LiveUpdate as WireLiveUpdate, SubmitRunRequest, AgainRunRequest, SessionBranch, SessionChanges, SessionProcesses, SessionPullRequest,
 } from "@zirma/protocol";
 import { PROTOCOL_VERSION } from "@zirma/protocol";
 import type { Home } from "./home.ts";
@@ -555,7 +555,7 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     return send(res, 200, { models: await home.models() } satisfies ModelsResponse);
   }
 
-  const run = /^\/api\/runs\/([A-Za-z0-9_-]+)(?:\/(cancel|resume|respond|steer|sources))?$/.exec(path);
+  const run = /^\/api\/runs\/([A-Za-z0-9_-]+)(?:\/(cancel|resume|respond|steer|sources|again|use))?$/.exec(path);
   if (run) needDev(runInSession(home.world, run[1]));
   if (run && method === "GET" && !run[2]) return send(res, 200, getRun(home.world, run[1]));
   if (run && method === "GET" && run[2] === "sources") {
@@ -569,6 +569,15 @@ async function route(home: Home, peer: Peer, req: IncomingMessage, res: ServerRe
     if (typeof body.text !== "string" || !body.text.trim()) throw new HttpError(400, "text is required");
     if (!(await home.steer(run[1], body.text))) throw new HttpError(409, "That run is not working right now; send it as a new message", "not_running");
     return send(res, 200, { delivered: true });
+  }
+  // Another version of the last turn: a new run, which replays by its request id like any other (core againRun).
+  if (run && method === "POST" && run[2] === "again") {
+    const body = await readJson<AgainRunRequest>(req);
+    if (typeof body.requestId !== "string") throw new HttpError(400, "requestId is required");
+    if (body.goal !== undefined && typeof body.goal !== "string") throw new HttpError(400, "goal is a string");
+    const result = withCoreContext({ actor: "user" }, () => againRun(home.world, run[1], { requestId: body.requestId, goal: body.goal }));
+    home.kick();
+    return send(res, result.replayed ? 200 : 202, result);
   }
   if (run && method === "POST" && run[2] === "respond") {
     const body = await readJson<RespondRequest>(req);

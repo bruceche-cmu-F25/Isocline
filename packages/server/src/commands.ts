@@ -14,7 +14,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
   acceptProposal, addProject, listRunReceipts, listRuns, commandReplay, CONVERSATION_MODEL, coreContext, createAutomation, declineProposal, deleteAutomation, getConversation, getProject,
-  ProjectError, recordCommit, recordPublished, removeProject, requestCancel, resumeRun, revokeCommand, runAutomationNow, sessionRoot, startSession, submitRun, getProposal, markRevising, ProposalStateError, trustProject,
+  ProjectError, recordCommit, recordPublished, removeProject, requestCancel, resumeRun, useVersion, revokeCommand, runAutomationNow, sessionRoot, startSession, submitRun, getProposal, markRevising, ProposalStateError, trustProject,
   addArea, addPreference, removePreference, updatePreference, moveArea, updateArea, updateAutomation, updateConversation, updateSettings, userLocale, withCoreContext, type Locale, type SessionMode, type Speed, type ThinkingLevel, type World,
 } from "@zirma/core";
 import { syncAssistantName } from "./assistant-name.ts";
@@ -293,6 +293,11 @@ const OPS: readonly HarnessOp[] = [
   define({
     name: "run.resume", unnumbered: true, input: Type.Object({ id: Id }),
     run: (home, input) => resumeRun(home.world, input.id),
+  }),
+  // Go on from another version of the conversation's last turn (docs/design/chat-regenerate.md).
+  define({
+    name: "run.use", unnumbered: true, input: Type.Object({ id: Id }),
+    run: (home, input) => useVersion(home.world, input.id),
   }),
 ];
 const BY_NAME = new Map(OPS.map((op) => [op.name, op]));

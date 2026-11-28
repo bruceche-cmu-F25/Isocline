@@ -78,8 +78,8 @@ const SELECT = `SELECT c.*,
       (r.automation_id IS NOT a.id OR EXISTS (SELECT 1 FROM core_events e WHERE e.run_id = r.id
         AND e.actor = 'user' AND e.kind IN ('run.steered', 'run.answered'))))) AS automation_only,
   (SELECT count(*) FROM core_runs r WHERE r.conversation_id = c.id AND r.state IN ('queued', 'running', 'cancelling')) AS busy,
-  (SELECT count(*) FROM core_runs r WHERE r.conversation_id = c.id AND r.state IN ('waiting_input', 'waiting_permission', 'interrupted')) AS attention,
-  (SELECT r.goal FROM core_runs r WHERE r.conversation_id = c.id ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS last_goal
+  (SELECT count(*) FROM core_runs r WHERE r.conversation_id = c.id AND r.set_aside = 0 AND r.state IN ('waiting_input', 'waiting_permission', 'interrupted')) AS attention,
+  (SELECT r.goal FROM core_runs r WHERE r.conversation_id = c.id AND r.set_aside = 0 ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS last_goal
   FROM core_conversations c`;
 
 function toConversation(row: Record<string, unknown>): Conversation {

@@ -80,12 +80,22 @@ export function attachFiles(db: DatabaseSync, ids: readonly string[], run: { id:
   return files;
 }
 
-/** The files sent with each of these runs, by run id, in the order they were attached. */
+/** The files sent with each of these runs, by run id, in the order they were attached. Another version of a turn
+ * (regenerated or edited) goes with the files of the turn's first version. */
 export function listRunFiles(world: World, runIds: readonly string[]): Record<string, FileInfo[]> {
   const out: Record<string, FileInfo[]> = {};
   if (!runIds.length) return out;
-  const rows = world.db.prepare(`SELECT * FROM core_files WHERE run_id IN (${runIds.map(() => "?").join(",")}) ORDER BY rowid`).all(...runIds);
-  for (const row of rows) (out[row.run_id as string] ??= []).push(toFile(row));
+  const marks = runIds.map(() => "?").join(",");
+  const from = new Map<string, string[]>();
+  for (const row of world.db.prepare(`SELECT id, COALESCE(version_of, id) AS source FROM core_runs WHERE id IN (${marks})`).all(...runIds)) {
+    const list = from.get(row.source as string) ?? [];
+    list.push(row.id as string);
+    from.set(row.source as string, list);
+  }
+  const sources = [...from.keys()];
+  if (!sources.length) return out;
+  const rows = world.db.prepare(`SELECT * FROM core_files WHERE run_id IN (${sources.map(() => "?").join(",")}) ORDER BY rowid`).all(...sources);
+  for (const row of rows) for (const runId of from.get(row.run_id as string) ?? []) (out[runId] ??= []).push(toFile(row));
   return out;
 }
 

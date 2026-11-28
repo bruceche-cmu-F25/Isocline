@@ -72,6 +72,10 @@ export interface Run {
   context: ViewContext | null;
   /** The automation that started this run on its schedule; null when the user asked. */
   automationId: string | null;
+  /** Another version of an earlier turn: that turn's first run. Null for a turn's first version. */
+  versionOf: string | null;
+  /** A version the conversation does not go on from (another version of this turn is in use). */
+  setAside: boolean;
 }
 
 /** The page a request came from: its view (`todo.list`, `core.inbox`), its title and one line of what it shows now,
@@ -110,13 +114,18 @@ export function viewContext(input: unknown): ViewContext | null {
 
 export class RunError extends Error {
   override name = "RunError";
-  readonly code: "missing" | "conflict" | "state" | "lease";
-  constructor(code: "missing" | "conflict" | "state" | "lease", message?: string) {
+  readonly code: "missing" | "conflict" | "state" | "lease" | "invalid" | "not_last" | "did_something" | "busy" | "session";
+  constructor(code: RunError["code"], message?: string) {
     super(message ?? {
       missing: "No such run",
       conflict: "This request id was already used for a different request",
       state: "The run is not in a state that allows this",
       lease: "Run lease expired or was replaced",
+      invalid: "That is not a valid request",
+      not_last: "Only the conversation's last turn can be done again",
+      did_something: "This turn changed things; ask again instead, so they are not done twice",
+      busy: "Something is still running in this conversation",
+      session: "Only an everyday chat's own turns can be done again",
     }[code]);
     this.code = code;
   }
@@ -145,6 +154,8 @@ function toRun(row: Record<string, unknown>): Run {
     request: row.request ? JSON.parse(row.request as string) : null,
     context: row.context ? JSON.parse(row.context as string) : null,
     automationId: (row.automation_id as string | null) ?? null,
+    versionOf: (row.version_of as string | null) ?? null,
+    setAside: row.set_aside === 1,
   };
 }
 
@@ -398,7 +409,7 @@ export function resumeRun(world: World, id: string, options: { now?: number } = 
   const now = options.now ?? Date.now();
   return world.tx((db) => {
     const run = load(db, id);
-    if (run.state !== "interrupted") throw new RunError("state");
+    if (run.state !== "interrupted" || run.setAside) throw new RunError("state");
     requireOpenSession(db, run.conversationId, true);
     setState(db, run, "queued", now, { cancel_requested: 0 });
     touchConversation(db, run.conversationId, now);
@@ -567,6 +578,97 @@ export function listRuns(world: World, options: {
   return recent.map(toRun);
 }
 
+// ---- versions of a turn (docs/design/chat-regenerate.md) ---------------------
+
+/** Not finished yet: a conversation with one of these cannot have a turn done again, nor switch versions. */
+const UNFINISHED_SQL = UNFINISHED_RUN_STATES.map((state) => `'${state}'`).join(", ");
+
+/** The turn the conversation goes on from now: its newest run in use. */
+function lastInUse(db: DatabaseSync, conversationId: string): Run | null {
+  const row = db.prepare("SELECT * FROM core_runs WHERE conversation_id = ? AND set_aside = 0 ORDER BY created_at DESC, rowid DESC LIMIT 1").get(conversationId);
+  return row ? toRun(row) : null;
+}
+
+/** Why the conversation's last turn may not get another version or switch to one; nothing when it may. */
+function versionable(db: DatabaseSync, run: Run): void {
+  const conversation = db.prepare("SELECT project_id FROM core_conversations WHERE id = ?").get(run.conversationId);
+  if (!conversation) throw new ConversationError("missing");
+  if (conversation.project_id || run.automationId) throw new RunError("session");
+  if (db.prepare(`SELECT 1 FROM core_runs WHERE conversation_id = ? AND state IN (${UNFINISHED_SQL}) LIMIT 1`).get(run.conversationId)) throw new RunError("busy");
+  if (lastInUse(db, run.conversationId)?.id !== run.id) throw new RunError("not_last");
+}
+
+/** The turn did something besides answering: a receipt of a change, or a proposal it made or rewrote. */
+function didSomething(db: DatabaseSync, runId: string): boolean {
+  return receiptsOf(db, runId).length > 0
+    || !!db.prepare("SELECT 1 FROM core_proposals WHERE run_id = ? OR revising_run_id = ? LIMIT 1").get(runId, runId);
+}
+
+/** Another version of the conversation's last turn: the same message again (regenerate) or `goal` in its place
+ * (edit). Only an everyday chat's own turn that has ended and changed nothing; nothing else may be running. The
+ * version it replaces is set aside, not deleted. The new run uses the files of the turn's first version. The same
+ * request id returns the same run. */
+export function againRun(world: World, id: string, input: { requestId: string; goal?: string; now?: number }): { run: Run; replayed: boolean } {
+  if (!REQUEST_ID.test(input.requestId)) throw new RunError("invalid", "Invalid request id");
+  const edited = input.goal?.trim();
+  if (input.goal !== undefined && (!edited || edited.length > 8000)) throw new RunError("invalid", "Goal must be 1–8000 characters");
+  const hash = createHash("sha256").update(JSON.stringify({ again: id, ...(edited ? { goal: edited } : {}) })).digest("hex");
+  const now = input.now ?? Date.now();
+  return world.tx((db) => {
+    const existing = db.prepare("SELECT * FROM core_runs WHERE request_id = ?").get(input.requestId);
+    if (existing) {
+      if (existing.request_hash !== hash) throw new RunError("conflict");
+      return { run: toRun(existing), replayed: true };
+    }
+    const old = load(db, id);
+    if (old.setAside) throw new RunError("not_last");
+    versionable(db, old);
+    if (didSomething(db, old.id)) throw new RunError("did_something");
+    const root = old.versionOf ?? old.id;
+    const runId = newId();
+    db.prepare(`INSERT INTO core_runs (id, request_id, request_hash, conversation_id, goal, profile, state, created_at, updated_at, context, version_of)
+      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)`).run(runId, input.requestId, hash, old.conversationId, edited ?? old.goal, old.profile, iso(now), iso(now),
+      old.context ? JSON.stringify(old.context) : null, root);
+    db.prepare("UPDATE core_runs SET set_aside = 1 WHERE id = ?").run(old.id);
+    db.prepare("UPDATE core_conversations SET unread_reply_id = NULL WHERE id = ? AND unread_reply_id = ?").run(old.conversationId, old.id);
+    closeWaitingNotices(db, old.id, now);
+    touchConversation(db, old.conversationId, now);
+    const run = load(db, runId);
+    runEvent(db, run, "queued", now, { conversationId: run.conversationId, versionOf: root, replaces: old.id, ...(edited ? { edited: true } : {}) });
+    return { run, replayed: false };
+  });
+}
+
+/** Go on from this version of the conversation's last turn; the turn's other versions are set aside. */
+export function useVersion(world: World, id: string, options: { now?: number } = {}): Run {
+  const now = options.now ?? Date.now();
+  return world.tx((db) => {
+    const run = load(db, id);
+    const root = run.versionOf ?? run.id;
+    const group = db.prepare("SELECT * FROM core_runs WHERE id = ? OR version_of = ?").all(root, root).map(toRun);
+    if (group.length < 2) throw new RunError("state", "This turn has one version");
+    const inUse = group.find((member) => !member.setAside);
+    if (!inUse) throw new RunError("state");
+    versionable(db, inUse);
+    if (inUse.id === run.id) return run;
+    db.prepare("UPDATE core_runs SET set_aside = CASE WHEN id = ? THEN 0 ELSE 1 END WHERE id = ? OR version_of = ?").run(run.id, root, root);
+    db.prepare("UPDATE core_conversations SET unread_reply_id = NULL WHERE id = ? AND unread_reply_id = ?").run(run.conversationId, inUse.id);
+    touchConversation(db, run.conversationId, now);
+    const used = load(db, id);
+    runEvent(db, used, "version_used", now, { conversationId: used.conversationId, versionOf: root, instead: inUse.id });
+    return used;
+  });
+}
+
+/** The turn this run goes on from: the conversation's newest version in use before it. What the engine branches
+ * its own session from (EngineRequest.after); null for a conversation's first turn. */
+export function runAfter(world: World, run: Run): string | null {
+  const row = world.db.prepare(`SELECT id FROM core_runs WHERE conversation_id = ? AND id != ? AND set_aside = 0
+    AND (created_at, rowid) < (SELECT created_at, rowid FROM core_runs WHERE id = ?)
+    ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(run.conversationId, run.id, run.id);
+  return (row?.id as string | undefined) ?? null;
+}
+
 /** Page through a rule's own runs, including manual triggers. Ordinary follow-up turns in the conversation stay out. */
 export function listAutomationRuns(world: World, automationId: string, before: string | null = null, limit = 20) {
   const scope = "FROM core_runs WHERE automation_id = ?";
@@ -586,7 +688,7 @@ export function listAutomationRuns(world: World, automationId: string, before: s
  */
 export function conversationBefore(world: World, run: Run, options: { turns?: number; chars?: number } = {}): Array<{ role: "user" | "assistant"; text: string }> {
   const chars = options.chars ?? 1000;
-  const rows = world.db.prepare(`SELECT * FROM core_runs WHERE conversation_id = ? AND id != ?
+  const rows = world.db.prepare(`SELECT * FROM core_runs WHERE conversation_id = ? AND id != ? AND set_aside = 0
     AND state IN ('completed', 'failed', 'cancelled') AND created_at <= ?
     ORDER BY created_at DESC, rowid DESC LIMIT ?`).all(run.conversationId, run.id, run.createdAt, options.turns ?? 6).map(toRun).reverse();
   return rows.flatMap((past) => [
