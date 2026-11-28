@@ -516,7 +516,7 @@ function wordsOf(message: unknown): string {
 let currentAbort: (() => void) | null = null;
 
 /** What Pi says when no model can be used: none signed in, or no key for the one chosen. */
-export const NO_MODEL = /no api key found|no models? (?:are |is )?available|no model selected|model not available/i;
+export const NO_MODEL = /no api key (?:found|for)|no models? (?:are |is )?available|no model selected|model not available/i;
 
 async function models(): Promise<ModelInfo[]> {
   const runtime = await ModelRuntime.create(modelOptions);

@@ -78,7 +78,8 @@ for (const locale of ["en", "zh"]) {
 
     let page = await open({ viewport: { width: 1280, height: 800 } });
     const side = page.locator(".side-host nav.au-list");
-    await side.waitFor();
+    // The list is there before the state is; wait for its rules.
+    await side.locator(".au-row").first().waitFor();
     // New first, then the three rules; none of them in the page.
     assert.equal(await side.locator(".st-node").count(), 4);
     assert.equal(await page.locator(".automations .au-list").count(), 0, "the list is not also in the page");

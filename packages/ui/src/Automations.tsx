@@ -4,6 +4,7 @@ import type { Automation, Run, StateResponse } from "@zirma/protocol";
 import { api, type AutomationOptions } from "./api.ts";
 import { automationTitle, hhmm, scheduleText, whenText } from "./automationText.ts";
 import { AutomationHistory } from "./AutomationHistory.tsx";
+import { errorText } from "./receipts.ts";
 import { Icon } from "./shell/icons.tsx";
 import { MicButton } from "./voice/MicButton.tsx";
 import { appendDictation } from "./voice/wav.ts";
@@ -14,7 +15,9 @@ function lastText(automation: Automation): string {
   const run = automation.lastRun;
   if (!run) return t("auto.never");
   if (run.state === "queued" || run.state === "running" || run.state === "cancelling") return t("auto.lastRunning");
-  if (run.state === "failed" || run.state === "interrupted") return t("auto.lastFailed", { when: whenText(run.at) });
+  // A firing that failed before doing anything is tried again (core automation-retries.ts): say when.
+  if (run.retryAt) return t("auto.retryAt", { when: whenText(run.retryAt) });
+  if (run.state === "failed" || run.state === "interrupted") return run.tries ? t("auto.lastFailedTries", { n: run.tries, when: whenText(run.at) }) : t("auto.lastFailed", { when: whenText(run.at) });
   return t("auto.last", { when: whenText(run.at) });
 }
 
@@ -146,6 +149,8 @@ function AutomationPage({ automation, recent, onOpenConversation, onPick }: {
     action().then((result) => then?.(result)).catch((reason: Error) => setError(reason.message)).finally(() => setBusy(false));
   };
   const title = automationTitle(automation);
+  // Why the last run failed, when the run knows (no model yet, the model's side, a timeout).
+  const why = automation.lastRun?.state === "failed" ? errorText(automation.lastRun.error) : "";
   const remove = () => {
     if (!confirming) return setConfirming(true);
     setConfirming(false);
@@ -166,6 +171,7 @@ function AutomationPage({ automation, recent, onOpenConversation, onPick }: {
         <span>{automation.enabled && automation.nextAt ? t("auto.next", { when: whenText(automation.nextAt) }) : t("auto.off")}</span>
         <span className="auto-last" data-state={automation.lastRun?.state}>{lastText(automation)}</span>
       </p>
+      {why && <p className="auto-why">{why}</p>}
       <div className="auto-actions">
         <button type="button" className="ghost small" disabled={busy} onClick={() => act(() => api.runAutomation(automation.id))}>{t("auto.runNow")}</button>
         <button type="button" className="ghost small" disabled={busy} onClick={() => setEditing(true)}>{t("auto.edit")}</button>

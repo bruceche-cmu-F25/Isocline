@@ -842,6 +842,7 @@ html.desktop .topbar button, html.desktop .page-head button, html.desktop .alf-h
 .auto-new-title { margin-bottom: 14px; }
 .auto-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 8px; color: var(--copy); font-size: .8125rem; }
 .auto-meta span + span { color: var(--muted); }
+.auto-why { margin-top: 4px; color: var(--muted); font-size: .8125rem; overflow-wrap: anywhere; }
 .auto-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
 .auto-actions .small { min-height: 28px; padding: 0 10px; border-radius: 999px; font-size: .75rem; white-space: nowrap; }
 .auto-actions .danger { background: var(--bad); color: #fff; box-shadow: none; }

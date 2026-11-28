@@ -12,7 +12,7 @@ import { Figure } from "./shell/Figure.tsx";
 import { dragHandle, PHONE, useMedia } from "./shell/layout.ts";
 import { editionDate, hhmm } from "./automationText.ts";
 import "./inbox-reader.css";
-import { intlLocale, t } from "./i18n/index.ts";
+import { intlLocale, t, useLocale } from "./i18n/index.ts";
 import { snapshotOf } from "./modules.ts";
 
 export interface InboxProps {
@@ -220,7 +220,9 @@ export function Inbox({ state, focus, onFocused, onOpenConversation, line }: Inb
       else localStorage.setItem(LIST_WIDTH_KEY, String(preferredListWidth));
     } catch { /* keep the width for this visit */ }
   }, [preferredListWidth]);
-  const items = useMemo(() => inboxItems(state), [state]);
+  // The items carry words (a failure's reason, "done"), so they are made again when the language changes.
+  const locale = useLocale();
+  const items = useMemo(() => inboxItems(state), [state, locale]);
   const [filter, setFilter] = useState<InboxKind | "all">("all");
   const [selected, setSelected] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);

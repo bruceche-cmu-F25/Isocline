@@ -124,7 +124,8 @@ export function noticeMessage(notice: { id: string; kind: string; payload: Recor
   const target = inboxTarget(notice);
   const destination = target ? { url: inbox, ack: false } : { url: at, ack: true };
   const status = notice.payload.status;
-  if (status === "failed") return { ...base, title: say("mac.failed.title"), body: say("mac.goal", { goal }), ...destination };
+  const streak = Number(notice.payload.streak) || 0;
+  if (status === "failed") return { ...base, title: streak ? say("mac.failed.streak", { n: String(streak) }) : say("mac.failed.title"), body: say("mac.goal", { goal }), ...destination };
   if (status === "cancelled") return { ...base, title: say("mac.cancelled.title"), body: say("mac.goal", { goal }), ...destination };
   // A reply is written in Markdown; a notification shows it as plain text.
   const said = typeof notice.payload.reply === "string" ? plainText(notice.payload.reply).trim() : "";

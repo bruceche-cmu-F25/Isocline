@@ -711,7 +711,9 @@ export interface Automation {
   instruction: string;
   /** When it fires next; null when it is off. */
   nextAt: string | null;
-  lastRun: { id: string; state: RunState; at: string; reply: string | null } | null;
+  /** `error`: why it failed (the run's code). `tries`: which try of its slot this was, when not the first.
+   * `retryAt`: when it is tried again, while another try is coming (a firing that failed before doing anything). */
+  lastRun: { id: string; state: RunState; at: string; reply: string | null; error?: string; tries?: number; retryAt?: string } | null;
 }
 export interface AutomationHistory { runs: Run[]; nextCursor: string | null }
 export interface NewAutomationRequest { requestId: string; name: string; goal: string; schedule: Schedule; enabled?: boolean }

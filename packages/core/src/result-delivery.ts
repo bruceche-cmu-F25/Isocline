@@ -99,6 +99,18 @@ export function retirePreviousEditions(db: DatabaseSync, automationId: string, l
   if (retired.length && updateWelcomes) refreshResultRecaps(db, retired.map((row) => String(row.created_at)));
 }
 
+/** For an automation that has failed several firings in a row: the notice that says so takes the place of the
+ * earlier failures', so the Inbox holds one. */
+export function retireFailedEditions(db: DatabaseSync, automationId: string, latestRunId: string): void {
+  const retired = db.prepare(`UPDATE core_notices SET payload = json_set(payload, '$.delivery', 'history'),
+      state = CASE WHEN state IN ('pending','claimed','presented') THEN 'expired' ELSE state END,
+      claimed_by = NULL, claim_until = NULL
+    WHERE kind = 'run_result' AND json_extract(payload, '$.automationId') = ? AND json_extract(payload, '$.delivery') = 'inbox'
+      AND json_extract(payload, '$.status') = 'failed'
+      AND json_extract(payload, '$.runId') != ? RETURNING created_at`).all(automationId, latestRunId);
+  if (retired.length) refreshResultRecaps(db, retired.map((row) => String(row.created_at)));
+}
+
 export function refreshResultRecaps(db: DatabaseSync, times: string[]): void {
   const recaps = db.prepare(`SELECT id, created_at, json_extract(payload, '$.since') AS since FROM core_notices
     WHERE kind = 'welcome' AND state IN ('pending','claimed','presented')
