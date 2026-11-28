@@ -16,7 +16,9 @@ const CONNECTOR = /^mcp:([^:]+):/;
 
 /** The service's own mark (a connector's tool takes its connector's), its first letter where Zirma has none. */
 function Mark({ service }: { service: WebService }) {
-  const name = service.connector ? connectorMark({ name: CONNECTOR.exec(service.id)?.[1] }) : hasMark(service.id) ? service.id : undefined;
+  // The reading side of one that also searches ("firecrawl-read") shows the same mark.
+  const own = service.id.replace(/-read$/, "");
+  const name = service.connector ? connectorMark({ name: CONNECTOR.exec(service.id)?.[1] }) : hasMark(own) ? own : undefined;
   return <span className="set-logo" data-k="gray">{name ? <Logo name={name} /> : service.title.slice(0, 1).toUpperCase()}</span>;
 }
 
