@@ -11,6 +11,7 @@ export { composeHistory, composePrompt, type ExternalStep, type RunJob, type Too
 export { loadZirmaMcpConfig, readMcpFile, type LoadedMcpConfig } from "./mcp-config.ts";
 export { McpConnectors, McpConnectorError, searchToolsOf, type McpConnectorsOptions, type McpSearchTool } from "./connectors.ts";
 export { MCP_CATALOG, type McpCatalogEntry } from "./mcp-catalog.ts";
+export { codexServers, findMcpOnMac, registryPlan } from "./mcp-find.ts";
 export { createMcpVault, type McpVault } from "./mcp-store.ts";
 export { Skills, SkillError, setSkillDisabled, type SkillsOptions } from "./skills.ts";
 

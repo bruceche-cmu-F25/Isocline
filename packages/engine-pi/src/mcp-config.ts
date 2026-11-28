@@ -102,3 +102,26 @@ export function loadZirmaMcpConfig(dir: string): LoadedMcpConfig {
   }
   return result;
 }
+
+/** Names that mean a credential, in a URL's query or a command's arguments (after pi-web's Settings › MCP, github.com/agegr/pi-web, MIT). */
+const SECRET_WORD = /(key|token|secret|passw(or)?d|passphrase|credential|auth)/i;
+const MASK = "•••";
+/** A server's address as it is shown: without a password in it, and without the values of query parameters. */
+export function shownUrl(text: string): string {
+  try {
+    const url = new URL(text);
+    if (url.password) url.password = MASK;
+    for (const key of [...url.searchParams.keys()]) url.searchParams.set(key, MASK);
+    return url.href.replaceAll(encodeURIComponent(MASK), MASK);
+  } catch { return text; }
+}
+/** A command line as it is shown: a value given to an option that names a credential is masked. */
+export function shownCommand(command: string, args: readonly string[]): string {
+  const shown = args.map((arg, index) => {
+    const pair = /^(--?[^=]+)=(.+)$/.exec(arg);
+    if (pair && SECRET_WORD.test(pair[1])) return `${pair[1]}=${MASK}`;
+    const before = args[index - 1];
+    return before?.startsWith("-") && !before.includes("=") && SECRET_WORD.test(before) ? MASK : arg;
+  });
+  return [command, ...shown].join(" ").slice(0, 300);
+}
