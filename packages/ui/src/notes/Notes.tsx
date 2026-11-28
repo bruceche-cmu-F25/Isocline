@@ -2,12 +2,12 @@
  * the user's pages as a tree, and the pages the assistant keeps. On the right, one page: its icon, its title (the
  * file name), its words written as they look, the pages under it and the pages that mention it. Every page has a
  * history, and a change in it can be taken back. A file changed elsewhere is never written over: the page asks. */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { HistoryEntry, NotePage, NotesSnapshot, PageDetail, Suggestion } from "@zirma/module-notes/types";
 import { PAGE_ICONS } from "@zirma/module-notes/types";
 import { api } from "../api.ts";
-import { t } from "../i18n/index.ts";
+import { intlLocale, t } from "../i18n/index.ts";
 import { Icon } from "../shell/icons.tsx";
 import { when } from "../shell/Nav.tsx";
 import { NoteEditor, type EditorHandle, type SaveState } from "./NoteEditor.tsx";
@@ -25,23 +25,75 @@ async function op(name: string, input: unknown): Promise<OpAnswer> {
 }
 
 const byTime = (a: NotePage, b: NotePage) => b.mtime - a.mtime;
+
+/** Recent's groups (prototype/notes-home.html B): which day a page was last changed, and the time or date beside it. */
+type Day = "today" | "yesterday" | "earlier";
+function dayOf(mtime: number, now = new Date()): { day: Day; at: string } {
+  const at = new Date(mtime);
+  const start = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.round((start(now) - start(at)) / 86_400_000);
+  if (days <= 1) return { day: days <= 0 ? "today" : "yesterday", at: `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}` };
+  return { day: "earlier", at: at.toLocaleDateString(intlLocale(), { month: "short", day: "numeric", ...(at.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}) }) };
+}
+const DAYS: Day[] = ["today", "yesterday", "earlier"];
 /** On the Mac the home node runs on, things can be shown in its Finder. */
 const onThisMac = typeof location !== "undefined" && ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
-const byName = (a: NotePage, b: NotePage) => a.title.localeCompare(b.title);
+/** Where the user dragged it among the pages beside it, then by name: pages never placed come after (notes.md 4.5). */
+export const byPlace = (a: NotePage, b: NotePage) => (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.title.localeCompare(b.title);
 
-function Tree({ pages, under, depth, at, open, marked, onOpen, onToggle, onAdd }: {
+const DRAG_NOTE = "application/x-zirma-note";
+export type Where = "before" | "after" | "inside";
+/** The tree's drag: which page is held and where it would land. Only the user's pages can be dragged. */
+export interface TreeDrag {
+  held: string | null;
+  over: { id: string; where: Where } | null;
+  start(id: string): void;
+  hover(target: { id: string; where: Where } | null): void;
+  drop(): void;
+  end(): void;
+}
+
+function Tree({ pages, under, depth, at, open, marked, onOpen, onToggle, onAdd, drag }: {
   pages: NotePage[]; under: string | null; depth: number; at: string | null; open: ReadonlySet<string>;
   /** Pages with the assistant's suggestions waiting: a small dot. */
   marked?: ReadonlySet<string>;
   onOpen(id: string): void; onToggle(id: string): void; onAdd?(parent: string): void;
+  drag?: TreeDrag;
 }): ReactNode {
-  const here = pages.filter((page) => page.parent === under).sort(byName);
+  const here = pages.filter((page) => page.parent === under).sort(byPlace);
   return here.map((page) => {
     const kids = pages.some((other) => other.parent === page.id);
     const expanded = open.has(page.id);
+    // A page cannot go into itself or a page under it.
+    const blocked = !drag?.held || drag.held === page.id || page.id.startsWith(`${drag.held}/`);
+    const where = (event: React.DragEvent<HTMLElement>): Where => {
+      const box = event.currentTarget.getBoundingClientRect();
+      const y = (event.clientY - box.top) / box.height;
+      // Below an open page with pages under it is its first place inside, so the bottom edge means inside there.
+      return y < 0.28 ? "before" : y > 0.72 && !(kids && expanded) ? "after" : "inside";
+    };
+    const dropping = drag?.over?.id === page.id ? drag.over.where : undefined;
     return (
       <div key={page.id} role="treeitem" aria-expanded={kids ? expanded : undefined} aria-selected={at === page.id}>
-        <div className="nt-node" style={{ "--d": depth } as React.CSSProperties} data-current={at === page.id || undefined}>
+        <div className="nt-node" style={{ "--d": depth } as React.CSSProperties} data-current={at === page.id || undefined}
+          data-drop={dropping} data-held={drag?.held === page.id || undefined} draggable={!!drag}
+          onDragStart={drag && ((event) => {
+            event.dataTransfer.setData(DRAG_NOTE, page.id);
+            event.dataTransfer.effectAllowed = "move";
+            drag.start(page.id);
+          })}
+          onDragOver={drag && ((event) => {
+            if (blocked || !event.dataTransfer.types.includes(DRAG_NOTE)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            const next = where(event);
+            if (dropping !== next) drag.hover({ id: page.id, where: next });
+          })}
+          onDragLeave={drag && ((event) => {
+            if (dropping && !event.currentTarget.contains(event.relatedTarget as Node | null)) drag.hover(null);
+          })}
+          onDrop={drag && ((event) => { if (blocked) return; event.preventDefault(); drag.drop(); })}
+          onDragEnd={drag?.end}>
           {kids
             ? <button type="button" className="nt-tw" data-open={expanded || undefined} onClick={() => onToggle(page.id)} aria-label={t("notes.expand")}><Icon name="forward" /></button>
             : <span className="nt-tw-space" />}
@@ -52,7 +104,7 @@ function Tree({ pages, under, depth, at, open, marked, onOpen, onToggle, onAdd }
           </button>
           {onAdd && <button type="button" className="nt-add" onClick={() => onAdd(page.id)} aria-label={t("notes.newSub")} title={t("notes.newSub")}><Icon name="plus" /></button>}
         </div>
-        {kids && expanded && <div role="group"><Tree pages={pages} under={page.id} depth={depth + 1} at={at} open={open} marked={marked} onOpen={onOpen} onToggle={onToggle} onAdd={onAdd} /></div>}
+        {kids && expanded && <div role="group"><Tree pages={pages} under={page.id} depth={depth + 1} at={at} open={open} marked={marked} onOpen={onOpen} onToggle={onToggle} onAdd={onAdd} drag={drag} /></div>}
       </div>
     );
   });
@@ -91,8 +143,12 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   // A page that was open stays open when it vanishes from the library (deleted or renamed elsewhere): its words may
   // not be saved yet, and the page says what happened instead of dropping them.
   const [detail, setDetail] = useState<PageDetail | null>(null);
-  const at = item && (pages.some((page) => page.id === item) || !snapshot || detail?.id === item) ? item : null;
-  const gone = !!(at && detail && detail.fp !== null && snapshot && !pages.some((page) => page.id === at));
+  // Pages this window has just made, renamed or moved, opened before the page list from the home node has them: for a
+  // few seconds they count as there, so the page opens at once instead of Recent (or the "gone" banner) flashing first.
+  const known = useRef(new Map<string, number>());
+  const isKnown = (id: string) => Date.now() - (known.current.get(id) ?? 0) < 5000;
+  const at = item && (pages.some((page) => page.id === item) || !snapshot || detail?.id === item || isKnown(item)) ? item : null;
+  const gone = !!(at && detail && detail.fp !== null && snapshot && !pages.some((page) => page.id === at) && !isKnown(at));
   const listed = useMemo(() => new Set((todos ?? []).filter((todo) => todo.source?.kind === "note").map((todo) => todo.source!.ref)), [todos]);
   const exists = (target: string) => {
     const name = target.toLowerCase().replace(/\.md$/, "");
@@ -123,7 +179,13 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   const [choose, setChoose] = useState<{ name: string; pages: NotePage[] } | null>(null);
 
   const page = at ? pages.find((one) => one.id === at) ?? null : null;
-  const yours = pages.filter((one) => !one.zirma);
+  // A drop shows its order at once; the page list from the home node takes over once it has it.
+  const [placed, setPlaced] = useState<{ parent: string | null; ids: string[] } | null>(null);
+  useEffect(() => {
+    if (placed && placed.ids.every((id, rank) => pages.find((one) => one.id === id)?.rank === rank)) setPlaced(null);
+  }, [pages, placed]);
+  const yours = pages.filter((one) => !one.zirma)
+    .map((one) => (placed && one.parent === placed.parent && placed.ids.includes(one.id) ? { ...one, rank: placed.ids.indexOf(one.id) } : one));
   const kept = pages.filter((one) => one.zirma);
 
   useEffect(() => {
@@ -193,6 +255,12 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   const refreshHistory = () => { if (at) api.query<HistoryEntry[]>("note.history", { id: at }).then(setHistory).catch(() => {}); };
   useEffect(() => { if (historyOpen) refreshHistory(); }, [historyOpen, at, page?.mtime]);
 
+  /** Opens a page this window has just made or moved, which the page list may not have yet. */
+  const openNew = (id: string) => {
+    known.current.set(id, Date.now());
+    go("note.list", id);
+  };
+
   const openPage = async (id: string | null, words?: string) => {
     await editor.current?.flush();
     setFlash(id && words ? { page: id, words } : null);
@@ -219,7 +287,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
       await fetch("/api/notes/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ library: found.library, id: made.id, base: found.fp, text }) });
     }
     if (parent) setOpen((was) => new Set(was).add(parent));
-    go("note.list", made.id);
+    openNew(made.id);
   };
 
   const rename = async () => {
@@ -232,7 +300,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     // A file name cannot hold some characters: say so when the title had any, instead of changing it quietly.
     const became = moved.id.split("/").pop()!;
     if (became !== next) { setTitle(became); setToast({ text: t("notes.titleCleaned", { title: became }) }); }
-    go("note.list", moved.id);
+    openNew(moved.id);
   };
 
   const setIcon = async (icon: string | null) => {
@@ -257,7 +325,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
         const entries = await api.query<HistoryEntry[]>("note.history", { id });
         const entry = entries.find((one) => one.kind === "delete" && !one.undone);
         if (entry) await op("note.undo", { entry: entry.id });
-        go("note.list", id);
+        openNew(id);
       },
     });
   };
@@ -267,7 +335,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     await editor.current?.flush();
     const answer = await op("note.undo", { entry: entry.id, redo: entry.undone });
     if (answer.ok === false) setToast({ text: t(UNDO_WHY[answer.reason ?? "changed"] ?? "notes.undo.changed") });
-    if (entry.kind === "rename" && answer.ok) { go("note.list", (entry.undone ? entry.extra.to : entry.extra.from) ?? detail.id); return; }
+    if (entry.kind === "rename" && answer.ok) { openNew((entry.undone ? entry.extra.to : entry.extra.from) ?? detail.id); return; }
     if (entry.kind === "create" && answer.ok && !entry.undone) { go("note.list"); return; }
     await reload(detail.id).catch(() => {});
     refreshHistory();
@@ -282,7 +350,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     if (!moved.id) { setToast({ text: moved.code === "exists" ? t("notes.renameExists") : moved.error ?? t("notes.failed") }); return; }
     setToast({ text: parent ? t("notes.moved", { to: parent.split("/").pop()! }) : t("notes.movedTop") });
     if (parent) setOpen((was) => new Set(was).add(parent));
-    go("note.list", moved.id);
+    openNew(moved.id);
   };
 
   const showMarkdown = async () => {
@@ -299,7 +367,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     const answer = await op("note.suggestion", { id: suggestion.id, accept });
     if (answer.ok === false) setToast({ text: t("notes.sug.stale") });
     else if (accept) setToast({ text: t("notes.sug.done"), ...(answer.entry ? { undo: async () => { await op("note.undo", { entry: answer.entry }); if (detail) await reload(answer.id ?? detail.id).catch(() => {}); } } : {}) });
-    if (answer.ok && accept && suggestion.kind === "move" && answer.id && answer.id !== detail?.id) { go("note.list", answer.id); return; }
+    if (answer.ok && accept && suggestion.kind === "move" && answer.id && answer.id !== detail?.id) { openNew(answer.id); return; }
     if (detail) await reload(detail.id).catch(() => {});
   };
 
@@ -316,8 +384,8 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     setMenu(null);
     const answer = await op("note.adopt", { id: detail.id });
     if (!answer.id) { setToast({ text: answer.error ?? t("notes.failed") }); return; }
-    setToast({ text: t("notes.kept.adopted", { title: detail.title }), ...(answer.entry ? { undo: async () => { await op("note.undo", { entry: answer.entry }); go("note.list", detail.id); } } : {}) });
-    go("note.list", answer.id);
+    setToast({ text: t("notes.kept.adopted", { title: detail.title }), ...(answer.entry ? { undo: async () => { await op("note.undo", { entry: answer.entry }); openNew(detail.id); } } : {}) });
+    openNew(answer.id);
   };
 
   const giveBack = async () => {
@@ -329,6 +397,44 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   };
 
   const toggle = (id: string) => setOpen((was) => { const next = new Set(was); if (!next.delete(id)) next.add(id); return next; });
+
+  // Dragging in the tree (notes.md 4.5): a page dropped on another's top or bottom edge goes before or after it, on its
+  // middle inside it. Under another parent it moves (its file and the pages under it, links following), then takes
+  // its place there.
+  const [held, setHeld] = useState<string | null>(null);
+  const [over, setOver] = useState<TreeDrag["over"]>(null);
+  const dropPage = async () => {
+    const id = held, target = over;
+    setHeld(null);
+    setOver(null);
+    const page = pages.find((one) => one.id === id), onto = pages.find((one) => one.id === target?.id);
+    if (!id || !target || !page || !onto) return;
+    const parent = target.where === "inside" ? onto.id : onto.parent;
+    if (target.where === "inside" && parent === page.parent) return;
+    const siblings = yours.filter((one) => one.parent === parent && one.id !== id).sort(byPlace).map((one) => one.id);
+    let now = id;
+    if (parent !== page.parent) {
+      const opened = !!at && (at === id || at.startsWith(`${id}/`));
+      if (opened) await editor.current?.flush();
+      const moved = await op("note.move", { id, parent });
+      if (!moved.id) { setToast({ text: moved.code === "exists" ? t("notes.renameExists") : moved.error ?? t("notes.failed") }); return; }
+      now = moved.id;
+      setToast({ text: parent ? t("notes.moved", { to: parent.split("/").pop()! }) : t("notes.movedTop") });
+      if (opened) openNew(now + at!.slice(id.length));
+    }
+    if (target.where === "inside") { setOpen((was) => new Set(was).add(onto.id)); return; }
+    siblings.splice(siblings.indexOf(onto.id) + (target.where === "after" ? 1 : 0), 0, now);
+    setPlaced({ parent, ids: siblings });
+    const answer = await op("note.order", { parent, ids: siblings });
+    if (answer.error) { setPlaced(null); setToast({ text: answer.error }); }
+  };
+  const drag: TreeDrag = {
+    held, over,
+    start: setHeld,
+    hover: setOver,
+    drop: () => void dropPage(),
+    end: () => { setHeld(null); setOver(null); },
+  };
   const tree = (
     <div className="nt-side-scroll" role="tree">
           <div className="nt-node" data-current={!at || undefined}>
@@ -336,15 +442,16 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
             <button type="button" className="nt-node-main" onClick={() => void openPage(null)}><Icon name="clock" /><span className="nt-name">{t("notes.recent")}</span></button>
           </div>
           <div className="nt-label">{t("notes.yours")}</div>
-          {yours.length ? <Tree pages={yours} under={null} depth={0} at={at} open={open} marked={marked} onOpen={(id) => void openPage(id)} onToggle={toggle} onAdd={(parent) => void newPage(parent)} />
+          {yours.length ? <Tree pages={yours} under={null} depth={0} at={at} open={open} marked={marked} onOpen={(id) => void openPage(id)} onToggle={toggle} onAdd={(parent) => void newPage(parent)} drag={drag} />
             : <p className="nt-hint">{t("notes.empty")}</p>}
           <div className="nt-label"><Icon name="alfred" />{t("notes.zirma")}</div>
           {kept.length ? <Tree pages={kept} under={null} depth={0} at={at} open={open} marked={marked} onOpen={(id) => void openPage(id)} onToggle={toggle} />
             : <p className="nt-hint">{t("notes.zirma.empty")}</p>}
         </div>
   );
-  const crumbs = at ? at.split("/") : [];
-  const kids = page ? pages.filter((one) => one.parent === page.id).sort(byName) : [];
+  // Up top, only the pages above this one: the page's own name is its title just below.
+  const crumbs = at ? at.split("/").slice(0, -1) : [];
+  const kids = page ? pages.filter((one) => one.parent === page.id).sort(byPlace) : [];
 
   return (
     <section className="notes" aria-label={t("page.notes")} data-drawer={drawer || undefined} data-side={side ? "app" : undefined}>
@@ -366,14 +473,14 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
       )}
       <button type="button" className="nt-scrim" aria-label={t("common.close")} onClick={() => setDrawer(false)} />
       <div className="nt-main">
-        <div className="nt-top">
+        {/* The bar over the page spans the page's column, so its buttons sit at the words' right edge, not the window's. */}
+        <div className="nt-top"><div className="nt-top-in">
           {!side && <button type="button" className="nt-ib nt-only-narrow" onClick={() => setDrawer(true)} aria-label={t("notes.pages")}><Icon name="rail" /></button>}
           <div className="nt-crumbs">
-            {!at && <span className="nt-crumb-now"><Icon name="clock" />{t("notes.recent")}</span>}
             {crumbs.map((part, i) => {
               const id = crumbs.slice(0, i + 1).join("/");
               const one = pages.find((p) => p.id === id);
-              return <span key={id} className="nt-crumb">{i > 0 && <span className="nt-sl">/</span>}<button type="button" onClick={() => void openPage(id)} data-now={i === crumbs.length - 1 || undefined}><PageGlyph name={one?.icon} size={14} /><span>{part === "zirma_notes" ? t("notes.zirma") : part}</span></button></span>;
+              return <span key={id} className="nt-crumb">{i > 0 && <span className="nt-sl">/</span>}<button type="button" onClick={() => void openPage(id)}><PageGlyph name={one?.icon} size={14} /><span>{part === "zirma_notes" ? t("notes.zirma") : part}</span></button></span>;
             })}
           </div>
           {at && <span className="nt-status" aria-live="polite">{save.kind === "saving" ? t("notes.saving") : ""}</span>}
@@ -410,14 +517,15 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
               </div>
             )}
           </div>}
-        </div>
+        </div></div>
         {snapshot?.library.error && <p className="nt-banner">{t("notes.libraryMissing", { root: snapshot.library.root })}</p>}
         <div className="nt-scroll">
           {!at && (
             <div className="nt-doc-wrap">
               <div className="nt-recent-head">
                 <h1 className="nt-title-static">{t("notes.recent")}</h1>
-                {pages.length > 0 && <button type="button" className="nt-btn" onClick={() => void newPage(null)}><Icon name="plus" />{t("notes.new")}</button>}
+                {/* The tree beside it has a New page row; folded into the drawer, the page needs its own. */}
+                {pages.length > 0 && !side && <button type="button" className="nt-btn nt-only-narrow" onClick={() => void newPage(null)}><Icon name="plus" />{t("notes.new")}</button>}
               </div>
               {suggestions.length > 0 && (
                 <button type="button" className="nt-sug-count" onClick={() => void openPage(suggestions[0].page)}>
@@ -425,25 +533,46 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
                 </button>
               )}
               {snapshot?.compile?.running && <p className="nt-hint nt-running"><Icon name="alfred" />{t("notes.kept.running")}</p>}
-              {pages.length ? <div className="nt-recent">{[...pages].filter((one) => one.file).sort(byTime).map((one) => (
-                <button type="button" key={one.id} className="nt-row" onClick={() => void openPage(one.id)}>
-                  <PageGlyph name={one.icon} size={18} />
-                  <span className="nt-row-text"><b>{one.title}</b><span>{one.first || " "}</span></span>
-                  <span className="nt-row-meta">{one.zirma && <span className="nt-tag">{t("notes.tag")}</span>}<span>{when(new Date(one.mtime).toISOString())}</span></span>
-                </button>
-              ))}</div> : <div className="nt-empty"><p>{t("notes.empty")}</p><button type="button" className="nt-btn nt-pri" onClick={() => void newPage(null)}><Icon name="plus" />{t("notes.new")}</button></div>}
+              {/* One line a page, grouped by day: the page it is in before its name (the tree keeps the shape). */}
+              {pages.length ? <div className="nt-recent">{DAYS.map((day) => {
+                const rows = [...pages].filter((one) => one.file).sort(byTime).map((one) => ({ one, ...dayOf(one.mtime) })).filter((row) => row.day === day);
+                return rows.length > 0 && <section key={day} className="nt-day" aria-label={t(`notes.day.${day}`)}>
+                  <h3>{t(`notes.day.${day}`)}</h3>
+                  {rows.map(({ one, at: time }) => {
+                    const above = one.id.split("/").slice(0, -1).filter((part, i) => !(i === 0 && part === "zirma_notes"));
+                    return (
+                      <button type="button" key={one.id} className="nt-row" onClick={() => void openPage(one.id)}>
+                        <PageGlyph name={one.icon} />
+                        <span className="nt-row-name">{above.length > 0 && <span className="nt-row-path">{above.map((part) => <Fragment key={part}>{part}<i>/</i></Fragment>)}</span>}{one.title}</span>
+                        {one.zirma && <span className="nt-tag">{t("notes.tag")}</span>}
+                        <span className="nt-row-first">{one.first}</span>
+                        <span className="nt-row-when">{time}</span>
+                      </button>
+                    );
+                  })}
+                </section>;
+              })}</div> : <div className="nt-empty"><p>{t("notes.empty")}</p><button type="button" className="nt-btn nt-pri" onClick={() => void newPage(null)}><Icon name="plus" />{t("notes.new")}</button></div>}
             </div>
           )}
           {at && detail && (
             <div className="nt-doc-wrap">
-              {/* The page's icon is small, beside its name in the tree and up top; it is chosen from the ⋯ menu. */}
+              {/* The page's icon stands beside its title (and its name in the tree); a click on it changes it. The pages under
+                  it follow straight after: part of what the page is, not an appendix at its end. */}
               <div className="nt-head">
-                {detail.zirma
-                  ? <h1 className="nt-title-static">{detail.title}</h1>
-                  : <input className="nt-title" value={title} aria-label={t("notes.title")} placeholder={t("notes.untitled")} maxLength={120}
-                    onChange={(event) => { touched.current.add(detail.id); setTitle(event.target.value); }} onBlur={() => void rename()}
-                    onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); (event.target as HTMLInputElement).blur(); } }} />}
+                <div className="nt-head-row">
+                  {detail.icon && (detail.zirma
+                    ? <span className="nt-head-icon"><PageGlyph name={detail.icon} size={26} /></span>
+                    : <button type="button" className="nt-head-icon" onClick={() => setMenu("icon")} aria-label={t("notes.icon.change")} title={t("notes.icon.change")}><PageGlyph name={detail.icon} size={26} /></button>)}
+                  {detail.zirma
+                    ? <h1 className="nt-title-static">{detail.title}</h1>
+                    : <input className="nt-title" value={title} aria-label={t("notes.title")} placeholder={t("notes.untitled")} maxLength={120}
+                      onChange={(event) => { touched.current.add(detail.id); setTitle(event.target.value); }} onBlur={() => void rename()}
+                      onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); (event.target as HTMLInputElement).blur(); } }} />}
+                </div>
                 {detail.zirma && !detail.kept && <p className="nt-meta"><Icon name="alfred" />{t("notes.readonly")}</p>}
+                {kids.length > 0 && <div className="nt-kids" role="group" aria-label={t("notes.subpages")}>{kids.map((one) => (
+                  <button type="button" key={one.id} className="nt-kid" onClick={() => void openPage(one.id)}><PageGlyph name={one.icon} size={15} /><span>{one.title}</span></button>
+                ))}</div>}
               </div>
               {gone && save.kind !== "changed" && (
                 <div className="nt-banner" role="alert">
@@ -516,9 +645,6 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
                   else if (named.length > 1) setChoose({ name: said, pages: named });
                   else void newPage(null, undefined, said);
                 }} />}
-              {kids.length > 0 && <div className="nt-sec"><h3>{t("notes.subpages")}</h3>{kids.map((one) => (
-                <button type="button" key={one.id} className="nt-link-row" onClick={() => void openPage(one.id)}><PageGlyph name={one.icon} /><span>{one.title}</span></button>
-              ))}</div>}
               {detail.mentions.length > 0 && <div className="nt-sec"><h3>{t("notes.mentions")}</h3>{detail.mentions.map((one) => (
                 <button type="button" key={one.id} className="nt-link-row" onClick={() => void openPage(one.id)}><PageGlyph name={one.icon} /><span>{one.title}</span>{one.zirma && <span className="nt-tag">{t("notes.tag")}</span>}</button>
               ))}</div>}

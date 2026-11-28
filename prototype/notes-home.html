@@ -1,0 +1,220 @@
+<!doctype html>
+<!--
+  Zirma: what the Notes page shows when no page is open (v0.1, 2026-11-27). A prototype for docs/design/notes.md 4.5.
+  No build step; the pages are made up.
+    Now  today's 最近 / Recent: every page by time, one long row each, sub-pages with no sign of the page they are in,
+         every time on its own line even when it is the same day.
+    B    (recommended) Recent stays a list by time, the tree stays the shape: each row says which page it is in, rows are
+         grouped Today / Yesterday / Earlier with the time only where it helps, and they are tighter.
+    C    an overview: the last few pages as cards, then every top-level page with the pages under it. It shows the
+         shape in the page as well, which the tree beside it already does.
+  Strip on top: language, light/dark, now/B/C, desktop/phone.
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zirma：笔记的最近</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root { --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { height: 100dvh; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font: 14px/1.55 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
+p, h1, h2, h3 { margin: 0; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+
+/* ── The prototype's own strip ── */
+.proto { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.proto b { flex: none; padding: 0 6px; }
+.proto .lab { flex: none; padding: 0 4px 0 10px; opacity: .6; }
+.proto button { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; }
+.proto button:hover { opacity: 1; }
+.proto button[aria-pressed="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+.proto .what { flex: 1; min-width: 0; padding: 0 10px; opacity: .7; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1100px) { .proto .what { display: none; } }
+
+/* ── Frame: the app's top bar, its sidebar with Notes' tree, the page ── */
+.stage { flex: 1; min-height: 0; display: flex; justify-content: center; }
+.app { flex: 1; min-width: 0; display: grid; grid-template-columns: 208px minmax(0, 1fr); grid-template-rows: 52px minmax(0, 1fr); background: var(--bg); }
+.stage[data-phone] .app { max-width: 390px; display: flex; flex-direction: column; box-shadow: 0 0 0 1px var(--line); }
+.lead { background: var(--paper); border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+.top { display: flex; align-items: center; gap: 9px; padding: 0 16px; border-bottom: 1px solid var(--line-soft); }
+.top h1 { font-size: 17px; font-weight: 650; }
+.top svg { color: var(--warm, #c98a2b); }
+.side { overflow-y: auto; padding: 10px 8px; background: var(--paper); border-right: 1px solid var(--line-soft); }
+.node { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 8px 0 calc(8px + var(--d, 0) * 14px); border-radius: 8px; color: var(--copy); font-size: 13.5px; white-space: nowrap; overflow: hidden; }
+.node .tw { width: 14px; color: var(--muted); }
+.node[data-now] { background: var(--wash); color: var(--ink); font-weight: 600; }
+.node svg { color: var(--muted); }
+.label { padding: 14px 8px 4px; color: var(--muted); font-size: 12px; }
+.back { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px; font-weight: 600; }
+
+/* The page: dotted paper, the column leaning left as in the app */
+.main { position: relative; min-width: 0; overflow-y: auto; --dot: color-mix(in oklch, var(--muted) 28%, transparent); background-image: radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 1.4px); background-size: 24px 24px; background-position: 11px 11px; }
+.col { max-width: 740px; margin: 0 auto 0 clamp(0px, calc((100% - 740px) / 4), 120px); padding: 76px 56px 80px; }
+.stage[data-phone] .col { padding: 20px 20px 100px; }
+.head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.head h2 { flex: 1; font-size: 32px; font-weight: 700; letter-spacing: -.01em; line-height: 1.25; }
+.btn { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: 8px; background: var(--raise); box-shadow: 0 0 0 1px var(--line); font-size: 13px; white-space: nowrap; }
+.tag { padding: 0 6px; border-radius: 5px; background: var(--alf-soft); color: var(--alf); font-size: 11px; font-weight: 600; line-height: 18px; }
+
+/* Now: one tall row per page */
+.row-now { width: calc(100% + 16px); display: flex; align-items: flex-start; gap: 12px; margin-left: -8px; padding: 10px 8px; border-radius: 10px; }
+.row-now:hover, .row:hover, .card:hover, .kid:hover, .top-page:hover { background: var(--wash); }
+.row-now svg { width: 18px; height: 18px; margin-top: 2px; color: var(--muted); }
+.row-now .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.row-now b { font-size: 15px; font-weight: 600; line-height: 22px; }
+.row-now .tx span { color: var(--muted); font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.row-now .meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; color: var(--muted); font-size: 12px; line-height: 22px; }
+
+/* B: grouped by day, one line each, the page it is in before its name */
+.day { margin: 18px 0 2px; color: var(--muted); font-size: 12px; }
+.day:first-of-type { margin-top: 6px; }
+.row { width: calc(100% + 16px); display: flex; align-items: center; gap: 10px; min-height: 36px; margin-left: -8px; padding: 0 8px; border-radius: 8px; }
+.row svg { color: var(--muted); }
+.row .name { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.row .path { color: var(--muted); }
+.row .path i { padding: 0 5px; color: var(--line); font-style: normal; }
+.row .first { flex: 1 1 0; min-width: 0; padding-left: 6px; color: var(--muted); font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.row .when { flex: none; margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.stage[data-phone] .row .first { display: none; }
+
+/* C: recent cards, then the pages and what is under each */
+.sec { margin: 22px 0 8px; color: var(--muted); font-size: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.card { min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.card svg { color: var(--muted); }
+.card b { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.card span { color: var(--muted); font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.top-page { display: flex; align-items: center; gap: 9px; height: 34px; margin: 6px 0 0 -8px; padding: 0 8px; border-radius: 8px; font-weight: 600; }
+.top-page svg { color: var(--muted); }
+.kids { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 6px 27px; }
+.kid { max-width: 100%; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border-radius: 8px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--copy); font-size: 13px; }
+.kid svg { width: 14px; height: 14px; color: var(--muted); }
+
+.why { margin-top: 36px; padding: 12px 14px; border-radius: 10px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--copy); font-size: 13px; }
+.why b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="proto" id="proto"></div>
+<div class="stage" id="stage"><div class="app" id="app"></div></div>
+<script>
+const S = { lang: "zh", v: "B", phone: false };
+const t = (zh, en) => (S.lang === "zh" ? zh : en);
+const I = {
+  doc: '<path d="M6 3h6l4 4v10H6z"/><path d="M12 3v4h4"/><path d="M8.5 11h5M8.5 14h5"/>',
+  cup: '<path d="M4 8h10v4a5 5 0 0 1-10 0z"/><path d="M14 9h1.5a2 2 0 0 1 0 4H14"/><path d="M7 3v2M10 3v2"/>',
+  book: '<path d="M3 5c2-1 5-1 7 1 2-2 5-2 7-1v11c-2-1-5-1-7 1-2-2-5-2-7-1z"/><path d="M10 6v11"/>',
+  map: '<path d="M3 5l4.5-1.5 5 2L17 4v11l-4.5 1.5-5-2L3 16z"/><path d="M7.5 3.5v11M12.5 5.5v11"/>',
+  person: '<circle cx="10" cy="7" r="3"/><path d="M4 17c1-3 3.5-4.5 6-4.5s5 1.5 6 4.5"/>',
+  clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/>',
+  plus: '<path d="M10 4v12M4 10h12"/>',
+  note: '<path d="M4 16l1-4 8-8 3 3-8 8z"/><path d="M11 6l3 3"/>',
+  back: '<path d="M12 5l-5 5 5 5"/>',
+  fwd: '<path d="M8 5l5 5-5 5"/>',
+  down: '<path d="M5 8l5 5 5-5"/>',
+};
+const icon = (name, size = 16) => `<svg class="i" viewBox="0 0 20 20" style="width:${size}px;height:${size}px">${I[name]}</svg>`;
+
+// Made-up pages: [id, icon, first words, when ("today 17:12", "yesterday 21:40", "2026-11-22")].
+const PAGES = () => [
+  [t("手冲咖啡/V60 参数", "Pour-over/V60 recipe"), "doc", t("水温 92°C，粉 15g，水 240g。", "92°C, 15 g coffee, 240 g water."), ["today", "17:12"]],
+  [t("工作/周报 11-27", "Work/Weekly 11-27"), "doc", t("本周：搜索改版上线。", "This week: the new search shipped."), ["today", "16:05"]],
+  [t("关于你", "About you"), "person", "", ["today", "09:30"], true],
+  [t("读书/思考快与慢", "Reading/Thinking, Fast and Slow"), "doc", t("系统 1 和系统 2。", "System 1 and System 2."), ["yesterday", "21:40"]],
+  [t("手冲咖啡", "Pour-over"), "cup", t("我在家做手冲的记录。", "Notes on making pour-over at home."), ["yesterday", "08:15"]],
+  [t("旅行 2026/京都", "Travel 2026/Kyoto"), "map", t("五天：清水寺、伏见稻荷。", "Five days: Kiyomizu, Fushimi Inari."), ["earlier", t("11月24日", "Nov 24")]],
+  [t("手冲咖啡/豆子", "Pour-over/Beans"), "doc", t("埃塞 耶加雪菲，花香明显。", "Ethiopia Yirgacheffe, floral."), ["earlier", t("11月22日", "Nov 22")]],
+  [t("读书", "Reading"), "book", t("今年在读的书。", "Books this year."), ["earlier", t("11月20日", "Nov 20")]],
+];
+const name = (id) => id.split("/").pop();
+const path = (id) => id.split("/").slice(0, -1).join(" / ");
+
+function side() {
+  const tops = [[t("工作", "Work"), "doc", false], [t("读书", "Reading"), "book", true], [t("手冲咖啡", "Pour-over"), "cup", true], [t("旅行 2026", "Travel 2026"), "map", true]];
+  return `<aside class="side">
+    <div class="back">${icon("back", 14)}${t("笔记", "Notes")}</div>
+    <div class="node">${icon("plus")}${t("新页面", "New page")}</div>
+    <div class="node" data-now>${icon("clock")}${t("最近", "Recent")}</div>
+    <div class="label">${t("你的", "Yours")}</div>
+    ${tops.map(([n, i, kids]) => `<div class="node"><span class="tw">${kids ? icon("fwd", 12) : ""}</span>${icon(i)}${n}</div>`).join("")}
+    <div class="label">${t("Ana 整理的", "Kept by Ana")}</div>
+    <div class="node"><span class="tw"></span>${icon("person")}${t("关于你", "About you")}</div>
+  </aside>`;
+}
+
+function now() {
+  return PAGES().map(([id, i, first, [, at], zirma]) => `<button class="row-now">${icon(i, 18)}
+    <span class="tx"><b>${name(id)}</b><span>${first || "&nbsp;"}</span></span>
+    <span class="meta">${zirma ? '<span class="tag">Ana</span>' : ""}<span>${at}</span></span></button>`).join("");
+}
+
+function b() {
+  const groups = [["today", t("今天", "Today")], ["yesterday", t("昨天", "Yesterday")], ["earlier", t("更早", "Earlier")]];
+  return groups.map(([key, title]) => {
+    const rows = PAGES().filter(([, , , [day]]) => day === key);
+    return `<h3 class="day">${title}</h3>` + rows.map(([id, i, first, [, at], zirma]) => `<button class="row">${icon(i)}
+      <span class="name">${path(id) ? `<span class="path">${path(id)}<i>/</i></span>` : ""}${name(id)}</span>
+      ${zirma ? '<span class="tag">Ana</span>' : ""}<span class="first">${first}</span><span class="when">${at}</span></button>`).join("");
+  }).join("");
+}
+
+function c() {
+  const recent = PAGES().slice(0, S.phone ? 4 : 5);
+  const tree = [
+    [t("手冲咖啡", "Pour-over"), "cup", [t("V60 参数", "V60 recipe"), t("豆子", "Beans"), t("磨豆机刻度", "Grinder settings")]],
+    [t("读书", "Reading"), "book", [t("思考快与慢", "Thinking, Fast and Slow"), t("置身事内", "Inside the Game")]],
+    [t("旅行 2026", "Travel 2026"), "map", [t("京都", "Kyoto")]],
+    [t("工作", "Work"), "doc", [t("周报 11-27", "Weekly 11-27"), t("周报 11-20", "Weekly 11-20")]],
+  ];
+  return `<h3 class="sec">${t("最近打开", "Opened lately")}</h3>
+    <div class="cards">${recent.map(([id, i, first, , zirma]) => `<button class="card">${icon(i)}<b>${name(id)}</b><span>${path(id) || (zirma ? "Ana" : first)}</span></button>`).join("")}</div>
+    <h3 class="sec">${t("全部页面", "All pages")}</h3>
+    ${tree.map(([n, i, kids]) => `<button class="top-page">${icon(i)}${n}</button><div class="kids">${kids.map((k) => `<button class="kid">${icon("doc")}${k}</button>`).join("")}</div>`).join("")}`;
+}
+
+const WHY = {
+  now: () => t("<b>现在：</b>子页面和上级平铺，看不出属于哪页；同一天的时间每行都写一遍；一行占两行高。", "<b>Now:</b> sub-pages sit beside the pages they are in with nothing to say so; the same day's time on every row; each row two lines tall."),
+  B: () => t("<b>B（推荐）：</b>最近还是按时间，结构交给左边的树：每行前面是它在哪一页下面，按今天 / 昨天 / 更早分组，一行一页。每样东西只说一次。", "<b>B (recommended):</b> Recent stays by time and the tree beside it keeps the shape: each row starts with the page it is in, rows are grouped Today / Yesterday / Earlier, one line each. Each thing is said once."),
+  C: () => t("<b>C：</b>上面几张最近的卡片，下面每个顶层页面和它下面的页。看得到全貌，但和左边的树说的是同一件事；页面一多，这一页会很长。", "<b>C:</b> a few recent cards, then every top-level page with the pages under it. You see the whole, but it says what the tree beside it says; with many pages it gets long."),
+};
+
+function render() {
+  document.documentElement.lang = S.lang === "zh" ? "zh-CN" : "en";
+  document.title = t("Zirma：笔记的最近", "Zirma: Notes' Recent");
+  const dark = document.documentElement.dataset.scheme === "dark";
+  const on = (yes) => `aria-pressed="${yes}"`;
+  document.getElementById("proto").innerHTML = `<b>${t("笔记 · 最近", "Notes · Recent")}</b>
+    <span class="lab">${t("语言", "Language")}</span><button data-p="zh" ${on(S.lang === "zh")}>中文</button><button data-p="en" ${on(S.lang === "en")}>English</button>
+    <span class="lab">${t("外观", "Look")}</span><button data-p="light" ${on(!dark)}>${t("浅", "Light")}</button><button data-p="dark" ${on(dark)}>${t("深", "Dark")}</button>
+    <span class="lab">${t("版本", "Version")}</span><button data-p="now" ${on(S.v === "now")}>${t("现在", "Now")}</button><button data-p="B" ${on(S.v === "B")}>B</button><button data-p="C" ${on(S.v === "C")}>C</button>
+    <span class="lab">${t("设备", "Device")}</span><button data-p="desk" ${on(!S.phone)}>${t("电脑", "Desktop")}</button><button data-p="phone" ${on(S.phone)}>${t("手机", "Phone")}</button>
+    <span class="what">${t("左边的树不变；只看右边这一页。", "The tree on the left stays; look at the page on the right.")}</span>`;
+  const stage = document.getElementById("stage");
+  stage.toggleAttribute("data-phone", S.phone);
+  const body = S.v === "now" ? now() : S.v === "B" ? b() : c();
+  const head = S.v === "C" ? "" : `<div class="head"><h2>${t("最近", "Recent")}</h2>${S.phone ? `<button class="btn">${icon("plus", 14)}${t("新页面", "New page")}</button>` : ""}</div>`;
+  document.getElementById("app").innerHTML = (S.phone ? "" : `<div class="lead"></div><div class="top">${icon("note")}<h1>${t("笔记", "Notes")}</h1></div>${side()}`)
+    + `<main class="main"><div class="col">${head}${body}<p class="why">${WHY[S.v]()}</p></div></main>`;
+}
+
+document.getElementById("proto").addEventListener("click", (event) => {
+  const p = event.target.closest("button")?.dataset.p;
+  if (!p) return;
+  if (p === "zh" || p === "en") S.lang = p;
+  else if (p === "light" || p === "dark") document.documentElement.dataset.scheme = p;
+  else if (p === "now" || p === "B" || p === "C") S.v = p;
+  else S.phone = p === "phone";
+  render();
+});
+if (matchMedia("(prefers-color-scheme: dark)").matches) document.documentElement.dataset.scheme = "dark";
+render();
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { defineModule, defineOp, defineQuery, defineTool, Type, userLocale, type World, type ZirmaModule } from "@zirma/module-kit";
 import {
-  applyEdit, createPage, discardPage, flipHistory, indexFiles, getPage, indexLibrary, libraryRow, listHistory, listPages, MIGRATIONS, movePage, pageDetail, pruneHistory, searchPages,
+  applyEdit, createPage, discardPage, flipHistory, indexFiles, getPage, indexLibrary, libraryRow, listHistory, listPages, MIGRATIONS, movePage, ORDER_MIGRATIONS, orderPages, pageDetail, pruneHistory, searchPages,
   setIcon, setLibrary, trashPage,
 } from "./domain.ts";
 import { Library, LibraryError } from "./library.ts";
@@ -222,7 +222,7 @@ export function createNotesModule(options: NotesOptions): ZirmaModule & {
   const module = defineModule({
     id: "note",
     title: "Notes",
-    migrations: [...MIGRATIONS, ...LAYER_MIGRATIONS],
+    migrations: [...MIGRATIONS, ...LAYER_MIGRATIONS, ...ORDER_MIGRATIONS],
     views: [{ id: "list", title: "Notes" }],
     ops: [
       defineOp({
@@ -243,6 +243,14 @@ export function createNotesModule(options: NotesOptions): ZirmaModule & {
             if (moved.id !== input.id) options.onMoved?.(world, input.id, moved.id);
             return moved;
           } catch (error) { return refused(error); }
+        },
+      }),
+      defineOp({
+        // The user's pages under one parent, in the order they were dragged into. Only the order: no file changes.
+        name: "note.order",
+        input: Type.Object({ parent: Type.Union([PageId, Type.Null()]), ids: Type.Array(PageId, { maxItems: 2000 }) }),
+        run: (world, input) => {
+          try { ready(world); return orderPages(world, input); } catch (error) { return refused(error); }
         },
       }),
       defineOp({

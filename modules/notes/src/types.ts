@@ -15,6 +15,8 @@ export interface NotePage {
   /** The page's first words. */
   first: string;
   mtime: number;
+  /** Where the user put it among the pages beside it (dragged in the tree); null when never placed: after those, by name. */
+  rank?: number | null;
 }
 
 export interface NotesSnapshot {
@@ -92,7 +94,7 @@ export type PageIcon = (typeof PAGE_ICONS)[number];
 /** The operations a device may ask of the notes module (POST /api/ops/<name>). Saving a page's text is not one of
  * them: it is POST /api/notes/save. */
 export const NOTE_OPS = [
-  "note.create", "note.move", "note.delete", "note.discard", "note.icon", "note.undo", "note.library", "note.edit",
+  "note.create", "note.move", "note.order", "note.delete", "note.discard", "note.icon", "note.undo", "note.library", "note.edit",
   "note.reject", "note.adopt", "note.return", "note.suggestion", "note.compile",
 ] as const;
 export type NoteOp = (typeof NOTE_OPS)[number];
