@@ -3,7 +3,9 @@
  * A plain list: one line per skill, its name, what it is for, and a switch (off stays on disk, and Zirma is not told
  * about it). Ten are shown, and the rest open under them. A skill's name opens its instructions in a card over the page, where it can also be removed. Under the
  * list, one box adds more: what is typed narrows the skills other agents on this Mac already have (they are copied
- * in), and searching asks skills.sh. Only on the Mac Zirma runs on.
+ * in), and searching asks skills.sh. The Mac's group stays when nothing there matches, with a way back to all of them, and
+ * the box empties once a skill from skills.sh is added, so the words searched for stop narrowing the Mac's. Only on the
+ * Mac Zirma runs on.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -85,6 +87,7 @@ export function Skills() {
   const addFound = (found: FoundSkill) => run(found.path, () => call("/api/skills/add", { path: found.path }));
   const install = (result: SkillSearchResult) => run(result.package, async () => {
     await call("/api/skills/add", { package: result.package });
+    setQuery("");
     setResults((current) => current?.map((item) => (item.package === result.package ? { ...item, added: true } : item)) ?? null);
   });
   const update = (skill: SkillInfo) => run(skill.id, async () => {
@@ -115,7 +118,10 @@ export function Skills() {
   const count = new Intl.NumberFormat(intlLocale(), { notation: "compact", maximumFractionDigits: 1 });
   const needle = query.trim().toLowerCase();
   const found = (data?.found ?? []).filter((skill) => !needle || skill.name.toLowerCase().includes(needle) || skill.description.toLowerCase().includes(needle));
+  const foundAll = data?.found.length ?? 0;
   const foundShown = allFound || needle ? found : found.slice(0, FEW);
+  /** Narrowed by the box: the way back to all of them empties it. */
+  const showAllFound = () => { setQuery(""); setAllFound(true); };
   const viewed = skills.find((skill) => skill.id === viewing);
   const add = (key: string, added: boolean, onAdd: () => void) => (added
     ? <span className="skill-done">{t("skills.added")}</span>
@@ -174,7 +180,7 @@ export function Skills() {
         </>
       )}
 
-      {(data?.found.length ?? 0) > 0 && (found.length > 0 || !results) && (
+      {foundAll > 0 && (
         <>
           <h4 className="skill-group">{t("skills.found", { n: found.length })}</h4>
           <ul className="skill-list skill-found">
@@ -185,6 +191,8 @@ export function Skills() {
               </li>
             ))}
           </ul>
+          {needle && found.length === 0 && <p className="quiet small skill-none">{t("skills.found.none")}</p>}
+          {needle && found.length < foundAll && <button type="button" className="skill-add skill-more" onClick={showAllFound}>{t("skills.all", { n: foundAll })}</button>}
           {!needle && found.length > FEW && <button type="button" className="skill-add skill-more" onClick={() => setAllFound(!allFound)}>{allFound ? t("skills.fewer") : t("skills.all", { n: found.length })}</button>}
         </>
       )}
