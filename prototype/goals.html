@@ -1,0 +1,1442 @@
+<!doctype html>
+<!--
+  Zirma: a long-term goal and the place where you work toward it. A prototype for docs/design/goals.md (v0.2):
+  no build step, sample goals, and scripts in place of the folder on disk, the model and the video player.
+  The question it asks: can one place carry a goal from "what is this, even" to showing up every day?
+    New goal     you write the goal. Zirma does not draft a plan; it goes to look the thing up.
+    Big picture  its own tab: one whole thing, explained. First the whole in plain words (what it is, and why),
+                 then a board so the whole stays in view: a column a part, a short row a topic. Pressing a row
+                 does not list facts; it explains two things as to someone hearing it for the first time: what it
+                 is, and why. "A little more detail" where there is more. After that the questions are yours, in
+                 the line at the bottom; each answer stays on that topic. Nothing is tracked here: no "I know
+                 this", no counts, no switch, nothing to fill in.
+    Route        its own tab: how to get there, a step at a time. It explains before it lists, like the big
+                 picture. You ask how people usually get there; Zirma tells two or three ways in plain words, each
+                 with what it costs, none recommended; you take one or bring your own. Only the stage at hand is
+                 laid out. Pressing a step explains two things: what you do, and why this step; under it, what you
+                 can use from the web, which you put on the desk yourself. Nothing to confirm on the way. Deadline
+                 and pace sit at the bottom, for when you want them; goals here are long ones (months, a year).
+    Goal card    press the goal line on top of any page: the goal in your words and why you want it.
+    Desk         the material in the middle (a video, a text, a pointer), Zirma beside it with two tabs: Ask and
+                 Notes. It can see where you are (the minute of the video and its captions, the selected sentence).
+                 The video here is a stand-in that only runs a clock and sample captions.
+    Close        "That's it for today": what changed, a question left for next time, when next time is.
+    Record       NOT in the first round (decided 2026-11-27: do the important parts first). Left here as a sketch:
+                 a heat map (a square a day, brighter when you finished a step, a dot under each week that met your pace),
+                 the date you would arrive, every sitting. No streak count, and brightness is not by the minute.
+    Timer        beside the gear in the top bar: digits only. You set hours, minutes and seconds, or no timer.
+                 Start counts five down on the button itself; press again to go now.
+    No testing   Zirma is not a teacher here: no practice page, no quizzes, nothing comes back due. Whether a
+                 step is done is your word (a quiet button), never asked for.
+  Play: "It is time" (the cue), "Fell behind" (three choices with what each costs).
+  ?scene=new|picture|route|desk|record  ?goal=la|job  ?lang=en  ?scheme=dark  ?bare hides the strip.
+  Borrowed: the mode's telescope icon is from Tabler Icons (MIT, © 2020-2024 Paweł Kuna); see the ICON table and THIRD-PARTY-NOTICES.md.
+  Desktop first (decided 2026-11-26): the phone layout under 760px is left from earlier rounds and is no longer kept up.
+-->
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zirma：目标</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<style>
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+  --serif: Georgia, "Songti SC", serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --ease: cubic-bezier(.23, 1, .32, 1);
+  --side-w: 240px;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; text-align: inherit; }
+h1, h2, h3, h4, p, ul, ol, dl, dd, dt, blockquote { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+:focus-visible { outline: 2px solid var(--alf); outline-offset: 2px; }
+.grow { flex: 1; min-width: 0; }
+.muted { color: var(--muted); }
+.small { font-size: .8125rem; }
+.cut { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
+
+/* ── The prototype's own strip ── */
+.proto { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--ink); color: var(--bg); font-size: 12px; overflow-x: auto; white-space: nowrap; }
+.proto b { flex: none; padding: 0 6px; }
+.proto .lab { flex: none; padding: 0 4px 0 10px; opacity: .6; }
+.proto button { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; opacity: .72; }
+.proto button:hover { opacity: 1; }
+.proto button[aria-pressed="true"] { background: var(--bg); color: var(--ink); opacity: 1; }
+.proto svg.i { width: 15px; height: 15px; }
+html[data-bare] .proto { display: none; }
+@media (max-width: 620px) { .proto .lab, .proto b { display: none; } }
+
+/* ── Shell: top bar over sidebar | page | Zirma ── */
+.app { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr) auto; grid-template-rows: 52px minmax(0, 1fr); }
+body[data-side="off"] .app { grid-template-columns: 0 minmax(0, 1fr) auto; }
+body[data-side="off"] .side { display: none; }
+.top { grid-column: 1 / -1; display: flex; align-items: stretch; border-bottom: 1px solid var(--line-soft); min-width: 0; }
+.lead { flex: none; width: var(--side-w); display: flex; align-items: center; gap: 6px; padding: 0 10px 0 14px; border-right: 1px solid var(--line-soft); background: var(--paper); }
+.lights { display: flex; gap: 8px; margin-right: 6px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: var(--line); }
+.modes { margin-left: auto; display: inline-flex; padding: 2px; border-radius: 9px; background: var(--wash); }
+.modes button { width: 30px; height: 26px; display: grid; place-items: center; border-radius: 7px; color: var(--muted); }
+.modes button svg.i { width: 16px; height: 16px; }
+.modes button[aria-pressed="true"] { background: var(--raise); color: var(--ink); box-shadow: 0 1px 2px #0002; }
+.titlebar { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 20px; }
+.titlebar > svg.i { color: var(--k-solid); }
+.titlebar h1 { flex: none; max-width: 46%; font-size: 1.0625rem; font-weight: 650; }
+.titlebar .sum { color: var(--muted); font-size: .8125rem; }
+.ib { flex: none; width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 8px; color: var(--muted); }
+.ib:hover { background: var(--wash); color: var(--ink); }
+.ib[aria-pressed="true"] { color: var(--ink); }
+
+.side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; padding: 10px 8px 12px; background: var(--paper); border-right: 1px solid var(--line-soft); position: relative; }
+.pick { width: 100%; min-height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 9px; margin-bottom: 6px; border-radius: 10px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); font-weight: 600; }
+.pick svg.i { width: 14px; height: 14px; color: var(--muted); }
+.pick .ic { color: var(--k-solid); width: 17px; height: 17px; }
+.nav { width: 100%; min-height: 30px; display: flex; align-items: center; gap: 9px; padding: 3px 9px; border-radius: 8px; color: var(--copy); font-size: .84375rem; }
+.nav:hover { background: var(--wash); }
+.nav[aria-current="true"] { background: var(--wash); color: var(--ink); font-weight: 550; }
+.nav svg.i { width: 17px; height: 17px; }
+.nav .end { margin-left: auto; flex: none; color: var(--muted); font-size: .75rem; }
+.label { padding: 14px 9px 4px; color: var(--muted); font-size: .75rem; }
+.side .sp { flex: 1; min-height: 12px; }
+.menu { position: absolute; z-index: 40; min-width: 210px; padding: 6px; border-radius: 12px; background: var(--raise); box-shadow: var(--shadow), inset 0 0 0 1px var(--line-soft); }
+.menu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; color: var(--copy); font-size: .8125rem; font-weight: 400; }
+.menu button:hover { background: var(--wash); color: var(--ink); }
+.menu button small { display: block; color: var(--muted); font-size: .75rem; line-height: 1.4; }
+.menu .ck { flex: none; width: 16px; color: var(--alf); }
+.menu .ck svg.i { width: 15px; height: 15px; }
+.menu hr { border: 0; height: 1px; margin: 4px 6px; background: var(--line-soft); }
+
+/* A step's state: drawn in shapes, so it never rests on colour alone. */
+.g { flex: none; width: 14px; height: 14px; }
+.st { display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--muted); white-space: nowrap; }
+.st[data-s="done"] { color: var(--copy); }
+
+/* ── The page ── */
+.page { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; container: page / inline-size; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 0 120px; }
+.col { max-width: 760px; margin: 0 auto; padding: 0 28px; }
+.col.wide { max-width: 880px; }
+.col.read { max-width: 700px; }
+.phone-head { display: none; }
+
+.btn { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 14px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .8125rem; white-space: nowrap; }
+.btn:hover { color: var(--ink); }
+.btn.solid { background: var(--alf-solid); color: var(--on-alf); box-shadow: none; font-weight: 550; }
+.btn[aria-pressed="true"] { background: var(--wash); color: var(--ink); box-shadow: none; font-weight: 550; }
+.btn svg.i { width: 15px; height: 15px; }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 6px; background: var(--k-fill, var(--wash)); color: var(--k-text, var(--copy)); font-size: .75rem; font-weight: 500; white-space: nowrap; }
+.linkish { color: var(--alf); font-size: .8125rem; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--alf) 35%, transparent); text-underline-offset: 3px; }
+.acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sec { padding-top: 26px; }
+.sec > h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding-bottom: 6px; font-size: .8125rem; font-weight: 600; color: var(--muted); }
+.sec > h3 span { font-weight: 400; font-size: .75rem; }
+.head { padding: 30px 0 4px; }
+.head h2 { font-size: 1.5rem; line-height: 1.25; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.head p { margin-top: 6px; color: var(--muted); font-size: .875rem; overflow-wrap: anywhere; }
+.row { position: relative; width: calc(100% + 20px); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; padding: 10px 10px; margin: 0 -10px; border-radius: 12px; }
+.row + .row::before { content: ""; position: absolute; left: 10px; right: 10px; top: 0; height: 1px; background: var(--line-soft); }
+button.row:hover { background: var(--wash); }
+button.row:hover::before, button.row:hover + .row::before, .row[data-fresh]::before, .row[data-fresh] + .row::before { display: none; }
+.row[data-fresh] { background: var(--alf-soft); }
+.row .rt { font-weight: 550; overflow-wrap: anywhere; }
+.row .rs { grid-column: 2; color: var(--muted); font-size: .8125rem; overflow-wrap: anywhere; }
+.row .re { grid-column: 3; grid-row: 1 / span 2; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.row > svg.i { color: var(--muted); }
+.empty { padding: 10px 0; color: var(--muted); font-size: .875rem; }
+.stagename { padding: 18px 0 2px; color: var(--muted); font-size: .75rem; font-weight: 600; }
+.guess { padding: 0 6px; border-radius: 6px; border: 1px dashed color-mix(in oklch, var(--alf) 60%, var(--line)); }
+.seg { display: inline-flex; flex-wrap: wrap; padding: 2px; border-radius: 9px; background: var(--wash); }
+.seg button { min-height: 26px; padding: 0 10px; border-radius: 7px; color: var(--copy); font-size: .78125rem; white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--raise); color: var(--ink); box-shadow: 0 1px 2px #0002; font-weight: 550; }
+
+/* The line that stays on top: the goal with its date, and where today stands. */
+.obj { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 28px; border-bottom: 1px solid var(--line-soft); font-size: .8125rem; }
+.obj b, .objb { font-weight: 600; overflow-wrap: anywhere; }
+.objb { text-align: left; border-radius: 6px; }
+.objb:hover { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
+.obj .when { color: var(--muted); }
+.dots { display: inline-flex; gap: 5px; }
+.dots i { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line); }
+.dots i.on { background: var(--copy); box-shadow: none; }
+
+/* The plan: one page; the planner speaks in place, and the figure sits where it waits for you. */
+.prail { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 0 10px; background: var(--bg); }
+.pr { height: 26px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--muted); font-size: .78125rem; white-space: nowrap; }
+.pr svg.i { width: 13px; height: 13px; }
+.pr[data-s="done"], .pr[data-s="open"] { color: var(--copy); }
+.pr[data-s="now"] { background: var(--pick); color: var(--on-pick); box-shadow: none; }
+.ps { padding-top: 30px; scroll-margin-top: 56px; }
+.ps > h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding-bottom: 4px; font-size: 1.25rem; font-weight: 650; }
+.ps > h3 span { color: var(--muted); font-size: .8125rem; font-weight: 400; }
+.goalline { font-size: 1.125rem; font-weight: 600; overflow-wrap: anywhere; }
+.pl { margin-top: 10px; padding: 8px 12px; border-radius: 12px; background: var(--alf-soft); color: var(--copy); font-size: .875rem; overflow-wrap: anywhere; }
+.pl.me { width: fit-content; max-width: 88%; margin-left: auto; background: var(--wash); color: var(--ink); }
+.pl.now { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0 6px; }
+.pl.now .fig { flex: none; width: 26px; height: 26px; }
+.pl.now p { color: var(--ink); }
+.pl.now .acts { margin-top: 8px; }
+.later { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-top: 14px; padding: 12px 14px; border-radius: 12px; border: 1px dashed var(--line); color: var(--muted); font-size: .875rem; scroll-margin-top: 56px; }
+.later b { color: var(--copy); font-weight: 600; }
+.saybar { flex: none; padding: 8px 28px 14px; border-top: 1px solid var(--line-soft); background: var(--bg); }
+.saybar .in { max-width: 644px; margin: 0 auto; }
+.saybar .tries { padding: 0 0 8px; }
+.saybar .compose { margin-top: 0; }
+.popmenu { position: absolute; z-index: 40; right: 76px; top: 46px; padding: 10px 12px; border-radius: 12px; background: var(--raise); box-shadow: var(--shadow), inset 0 0 0 1px var(--line-soft); }
+
+.more { margin: 6px 0 0 14px !important; padding-left: 12px; border-left: 2px solid var(--line); color: var(--copy); font-size: .9375rem !important; }
+.ownrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.ownrow input { flex: 1 1 200px; min-width: 0; height: 32px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); outline: none; font-size: .875rem; }
+.ownrow input:focus { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.ownrow input::placeholder { color: var(--muted); }
+.place { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 12px; }
+.place > span { width: 100%; }
+.pc { min-height: 30px; display: inline-flex; align-items: center; gap: 8px; padding: 2px 6px 2px 12px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font-size: .8125rem; }
+.pc b { padding: 1px 8px; border-radius: 999px; background: var(--wash); color: var(--copy); font-size: .75rem; font-weight: 500; white-space: nowrap; }
+.pc[data-l="2"] b { background: var(--ink); color: var(--bg); }
+.pc[data-l="1"] b { box-shadow: inset 0 0 0 1px var(--copy); background: none; }
+.wv .mine { margin-top: 10px; }
+
+/* The big picture as a map of parts */
+.whyline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 14px; font-size: .9375rem; overflow-wrap: anywhere; }
+.whyline .muted { font-size: .8125rem; }
+.starters { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 12px; }
+.starter { min-height: 40px; padding: 6px 16px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); font-size: .9375rem; text-align: left; }
+.starter:hover { background: var(--wash); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-top: 18px; }
+.tile { display: flex; flex-direction: column; gap: 4px; min-height: 96px; padding: 12px 14px; border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); text-align: left; }
+.tile:hover { box-shadow: inset 0 0 0 1px var(--line); }
+.tile[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.tile b { font-weight: 650; overflow-wrap: anywhere; }
+.tile span { color: var(--copy); font-size: .8125rem; line-height: 1.45; overflow-wrap: anywhere; }
+.tile i { margin-top: auto; padding-top: 4px; color: var(--muted); font-size: .75rem; font-style: normal; overflow-wrap: anywhere; }
+.tile.add { flex-direction: row; align-items: center; justify-content: center; gap: 6px; background: none; box-shadow: none; border: 1px dashed var(--line); color: var(--muted); font-size: .8125rem; }
+.tile.add svg.i { width: 15px; height: 15px; }
+.block { margin-top: 18px; padding: 18px 20px; border-radius: 16px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.block-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.block-h h3 { font-size: 1.1875rem; font-weight: 650; overflow-wrap: anywhere; }
+.bline { margin-top: 6px; color: var(--copy); overflow-wrap: anywhere; }
+.qa { margin-top: 16px; padding-top: 14px; box-shadow: 0 -1px 0 var(--line-soft); }
+.qa-h { display: flex; align-items: baseline; gap: 6px; color: var(--muted); font-size: .8125rem; }
+.qa-h sup { color: var(--alf); font: .6875rem var(--mono); }
+.qa ul { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.qa li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.qa li > span { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.btn.mini { min-height: 26px; padding: 0 10px; font-size: .75rem; }
+.asks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 16px; }
+.asks > span { width: 100%; }
+.block .mine { margin-top: 14px; }
+
+/* The big picture as a board: a column a part, a short row a topic */
+.col.board-col { max-width: 1180px; }
+.btools { display: flex; align-items: center; gap: 10px; min-height: 30px; margin-top: 16px; }
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(148px, 1fr); gap: 12px; align-items: start; margin-top: 10px; padding-bottom: 8px; overflow-x: auto; }
+.bcol { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.bcol-h { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; padding: 4px 6px; border-radius: 8px; font-size: .84375rem; text-align: left; }
+.bcol-h:hover, .bcol-h[aria-pressed="true"] { background: var(--wash); }
+.bcol-h b { font-weight: 650; overflow-wrap: anywhere; }
+.bcol-h span { flex: none; color: var(--muted); font: .75rem var(--mono); }
+.trow { display: flex; flex-direction: column; gap: 1px; padding: 7px 9px; border-radius: 9px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); font-size: .8125rem; line-height: 1.4; text-align: left; }
+.trow:hover { box-shadow: inset 0 0 0 1px var(--line); }
+.trow[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.trow span { overflow-wrap: anywhere; }
+.trow i { display: block; color: var(--muted); font-size: .6875rem; font-style: normal; overflow-wrap: anywhere; }
+.trow i svg.i { display: inline-block; width: 11px; height: 11px; margin-right: 3px; vertical-align: -1px; }
+.trow.ghost { background: none; box-shadow: none; border: 1px dashed var(--line); color: var(--muted); }
+.bmore { padding: 2px 9px; color: var(--muted); font-size: .6875rem; }
+.dsets { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; }
+
+/* An explanation in plain words: what it is, and why */
+.eli h4 { margin-top: 14px; color: var(--muted); font-size: .75rem; font-weight: 600; }
+.eli p { margin-top: 4px; color: var(--ink); font-size: 1.0625rem; line-height: 1.8; overflow-wrap: anywhere; }
+.eli p.deep { margin-top: 12px; padding-left: 12px; border-left: 2px solid var(--line); color: var(--copy); font-size: .9375rem; }
+.block.whole { margin-top: 16px; }
+.block.whole .eli h4:first-child { margin-top: 0; }
+.block .pl.now { margin-top: 14px; }
+
+/* The route: a short list of steps; a step opens in place */
+.wayline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 16px; font-size: .9375rem; overflow-wrap: anywhere; }
+.wayline .muted { font-size: .8125rem; }
+.way p { color: var(--copy); font-size: .875rem; line-height: 1.6; overflow-wrap: anywhere; }
+.way p.cost b { margin-right: 6px; color: var(--muted); font-weight: 500; }
+.sitem { border-radius: 12px; }
+.sitem + .sitem { box-shadow: 0 -1px 0 var(--line-soft); }
+.sitem[data-fresh] { background: var(--alf-soft); }
+.srow { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 10px; border-radius: 12px; text-align: left; }
+.srow:hover { background: var(--wash); }
+.srow .rt { font-weight: 550; overflow-wrap: anywhere; }
+.srow .re { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .75rem; white-space: nowrap; }
+.sdetail { padding: 0 10px 18px 36px; }
+.sdetail .eli h4:first-child { margin-top: 4px; }
+.resbox { margin-top: 16px; }
+.resbox h4 { margin-bottom: 4px; color: var(--muted); font-size: .75rem; font-weight: 600; }
+.rrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 0; font-size: .9375rem; }
+.rrow > span:first-of-type { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.rrow svg.i { width: 16px; height: 16px; color: var(--muted); }
+.pop.big { width: min(680px, 100%); padding: 32px 34px 28px; gap: 18px; }
+.pop.big h3 { font-size: 1.375rem; }
+.pop.big #gc-goal { min-height: 0; font-size: 1.25rem; font-weight: 600; line-height: 1.5; }
+.pop.big #gc-why { min-height: 160px; font-size: 1rem; }
+
+/* New goal */
+.newp { padding: 9vh 0 0; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.newp .fig { width: 64px; height: 64px; }
+.newp h2 { font-family: var(--serif); font-size: 1.625rem; font-weight: 500; line-height: 1.3; }
+.newp > p { color: var(--muted); font-size: .875rem; max-width: 34em; }
+.compose { width: 100%; margin-top: 10px; display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 14px; border-radius: 16px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); text-align: left; }
+.compose:focus-within { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.compose textarea { flex: 1; min-width: 0; min-height: 28px; max-height: 30vh; padding: 5px 0; border: 0; resize: none; background: none; outline: none; line-height: 1.5; }
+.compose textarea::placeholder { color: var(--muted); }
+.send { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: var(--ink); color: var(--bg); }
+.send svg.i { width: 16px; height: 16px; }
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.chip { min-height: 28px; display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--copy); font-size: .8125rem; text-align: left; }
+.chip:hover { color: var(--ink); background: var(--wash); }
+.working { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .875rem; }
+.working .fig { width: 24px; height: 24px; }
+
+/* Big picture */
+.wv { padding-top: 26px; }
+.wv-h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding-bottom: 8px; }
+.wv-h h3 { font-size: 1.125rem; font-weight: 650; }
+.wv p { color: var(--copy); font-size: 1rem; line-height: 1.8; overflow-wrap: anywhere; }
+.wv p + p { margin-top: .8em; }
+.wv sup { margin-left: 2px; color: var(--alf); font: .6875rem var(--mono); }
+.unsure { text-decoration: underline dashed; text-decoration-color: var(--warm); text-underline-offset: 4px; }
+.mine { padding: 10px 14px; border-radius: 12px; background: var(--wash); color: var(--ink); }
+.wv textarea { width: 100%; min-height: 84px; padding: 10px 12px; border: 0; border-radius: 12px; resize: vertical; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); outline: none; line-height: 1.6; }
+.wv textarea:focus { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.wv .acts { margin-top: 12px; }
+.srcs { margin-top: 30px; padding-top: 14px; box-shadow: 0 -1px 0 var(--line-soft); color: var(--muted); font-size: .8125rem; line-height: 1.8; }
+.srcs li { overflow-wrap: anywhere; }
+.srcs b { margin-right: 6px; color: var(--alf); font: .75rem var(--mono); }
+.skel { height: 12px; margin: 10px 0; border-radius: 6px; background: var(--wash); }
+
+/* Approaches: side by side, none marked as the one to take. */
+.ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.way { display: flex; flex-direction: column; gap: 10px; padding: 16px 16px 14px; border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.way h4 { font-size: 1rem; font-weight: 650; overflow-wrap: anywhere; }
+.way dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 10px; font-size: .8125rem; }
+.way dt { color: var(--muted); }
+.way dd { color: var(--copy); overflow-wrap: anywhere; }
+.way .btn { margin-top: auto; align-self: flex-start; }
+.calc { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.calc .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.calc .line > span:first-child { flex: none; width: 4.2em; color: var(--muted); font-size: .8125rem; }
+.calc .res { font-weight: 600; overflow-wrap: anywhere; }
+.calc .res[data-late] { color: var(--k-text); }
+
+/* Desk */
+.opening { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 28px; background: var(--alf-soft); font-size: .875rem; }
+.opening .w { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.opening .w b { font-weight: 600; }
+.tabs { flex: none; display: flex; align-items: center; gap: 4px; padding: 10px 28px 0; overflow-x: auto; }
+.tab { flex: none; height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; color: var(--copy); font-size: .8125rem; white-space: nowrap; }
+.tab:hover { background: var(--wash); }
+.tab[aria-selected="true"] { background: var(--pick); color: var(--on-pick); }
+.tab svg.i { width: 15px; height: 15px; }
+.player { margin-top: 18px; border-radius: 16px; overflow: hidden; background: var(--raise); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.screen { aspect-ratio: 16 / 9; max-height: 46vh; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px 28px; background: var(--wash); text-align: center; }
+.screen .cap { max-width: 30em; color: var(--ink); font-size: 1.1875rem; line-height: 1.6; font-weight: 550; overflow-wrap: anywhere; }
+.screen small { color: var(--muted); font-size: .75rem; }
+.ctrl { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+.playb { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--ink); color: var(--bg); }
+.playb svg.i { width: 16px; height: 16px; }
+.track { flex: 1; min-width: 60px; height: 22px; display: flex; align-items: center; cursor: pointer; }
+.track i { display: block; width: 100%; height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--copy) var(--at, 0%), var(--line) var(--at, 0%)); }
+.time { flex: none; color: var(--muted); font: .75rem var(--mono); }
+.vtitle { padding: 14px 0 0; }
+.vtitle b { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.reader { padding: 18px 0 20px; font-size: 1.0625rem; line-height: 1.85; color: var(--copy); }
+.reader h2 { margin-bottom: 6px; color: var(--ink); font-size: 1.625rem; line-height: 1.25; font-weight: 650; letter-spacing: -.01em; }
+.reader .askq { margin: 0 0 18px; color: var(--ink); font-family: var(--serif); font-size: 1.1875rem; line-height: 1.6; }
+.reader p + p { margin-top: 1.1em; }
+.reader ::selection, .wv ::selection { background: color-mix(in oklch, var(--alf) 24%, transparent); }
+.blind { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; padding: 18px 18px 16px; border-radius: 16px; border: 1px dashed var(--line); }
+.blind h4 { font-size: 1rem; font-weight: 650; overflow-wrap: anywhere; }
+.blind p { color: var(--copy); font-size: .875rem; overflow-wrap: anywhere; }
+
+/* The card beside a selection */
+#float { position: fixed; z-index: 60; }
+.selbar { display: flex; gap: 2px; padding: 4px; border-radius: 12px; background: var(--ink); color: var(--bg); box-shadow: var(--shadow); }
+.selbar button { height: 30px; padding: 0 11px; border-radius: 8px; font-size: .8125rem; white-space: nowrap; }
+.selbar button:hover { background: color-mix(in oklch, var(--bg) 18%, transparent); }
+.ans { width: min(360px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 16px; background: var(--raise); box-shadow: var(--shadow), inset 0 0 0 1px var(--line-soft); }
+.ans q { quotes: none; padding-left: 10px; border-left: 2px solid var(--alf); color: var(--muted); font-size: .8125rem; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ans p { min-height: 3.2em; color: var(--ink); font-size: .9375rem; line-height: 1.65; }
+.ans .acts .btn { min-height: 28px; padding: 0 11px; font-size: .75rem; }
+
+/* Record: a square a day, a column a week; under each column, whether the week met the pace you set. */
+.heat { display: flex; gap: 3px; align-items: flex-start; overflow-x: auto; padding-bottom: 2px; }
+.heat .hd, .heat .hc { flex: none; display: grid; grid-auto-rows: 15px; gap: 3px; }
+.heat .hd { margin-right: 4px; color: var(--muted); font-size: .6875rem; line-height: 15px; }
+.hm { display: block; width: 15px; height: 15px; border-radius: 4px; background: var(--wash); }
+.hm[data-l="1"] { background: color-mix(in oklch, var(--ok) 38%, transparent); }
+.hm[data-l="2"] { background: var(--ok); }
+.hm[data-l="x"] { background: none; box-shadow: inset 0 0 0 1px var(--line-soft); }
+.wk { display: block; width: 7px; height: 7px; margin: 3px auto 0; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line); }
+.wk.met { background: var(--copy); box-shadow: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; color: var(--muted); font-size: .75rem; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend .wk { margin: 0; }
+/* The countdown: digits only, beside the gear. */
+.tset { display: inline-flex; align-items: flex-start; gap: 6px; }
+.tset[data-on="false"] .tf, .tset[data-on="false"] > b { opacity: .4; }
+.tf { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; color: var(--muted); font-size: .6875rem; }
+.tset > b { line-height: 28px; color: var(--muted); font-family: var(--mono); }
+.tset input { width: 2.7em; height: 28px; padding: 0 4px; border: 0; border-radius: 7px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); text-align: center; font: 600 .875rem var(--mono); outline: none; }
+.tset input:focus { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.tset .unit { color: var(--copy); font-size: .8125rem; }
+.tset .linkish { margin-left: 8px; line-height: 28px; white-space: nowrap; }
+.ib.sm { width: 26px; height: 26px; }
+.ib.sm svg.i { width: 14px; height: 14px; }
+.clockb { flex: none; display: inline-flex; align-items: center; height: 30px; padding: 0 10px; border-radius: 8px; }
+.clockb:hover { background: var(--wash); }
+.clockb .time { color: var(--ink); font-size: .875rem; font-weight: 600; }
+.clockb[aria-pressed="true"] .time { opacity: .4; }
+.btn.counting { min-width: 64px; font: 650 .9375rem var(--mono); }
+/* (older) */
+.weeks { display: flex; flex-direction: column; gap: 8px; }
+.weeks li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: .875rem; }
+.weeks li > span:first-child { flex: none; width: 9.5em; color: var(--muted); }
+
+/* ── Zirma on the right: Ask and Notes ── */
+.alf { width: 372px; min-height: 0; display: flex; flex-direction: column; background: var(--raise); border-left: 1px solid var(--line-soft); }
+.alf-h { flex: none; display: flex; align-items: center; gap: 10px; padding: 14px 10px 8px 18px; }
+.alf-h .fig { width: 30px; height: 30px; flex: none; }
+.alf-h b { font-weight: 600; }
+.stance { height: 22px; display: inline-flex; align-items: center; padding: 0 9px; border-radius: 999px; background: var(--alf-soft); color: var(--alf); font-size: .75rem; font-weight: 550; white-space: nowrap; }
+.ptabs { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 0 14px 10px; padding: 2px; border-radius: 10px; background: var(--wash); }
+.ptabs button { min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 2px 8px; border-radius: 8px; color: var(--copy); font-size: .84375rem; text-align: center; }
+.ptabs button[aria-selected="true"] { background: var(--raise); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px #0002; }
+.ptabs svg.i { width: 15px; height: 15px; }
+.ptabs .n { color: var(--muted); font-size: .75rem; font-weight: 400; }
+.sees { flex: none; padding: 0 18px 10px; color: var(--muted); font-size: .75rem; border-bottom: 1px solid var(--line-soft); overflow-wrap: anywhere; }
+.thread { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; }
+.msg { max-width: 100%; overflow-wrap: anywhere; font-size: .9375rem; line-height: 1.65; }
+.msg.me { align-self: flex-end; max-width: 88%; padding: 7px 12px; border-radius: 16px 16px 4px 16px; background: var(--wash); }
+.msg .from { display: block; margin-bottom: 4px; color: var(--muted); font-size: .6875rem; }
+.msg .sel { display: block; margin-bottom: 6px; padding-left: 9px; border-left: 2px solid var(--alf); color: var(--muted); font-size: .8125rem; }
+.note { display: flex; flex-direction: column; gap: 2px; }
+.note[data-fresh] p { background: var(--alf-soft); }
+.note button { align-self: flex-start; color: var(--alf); font: .75rem var(--mono); }
+.note span { color: var(--muted); font-size: .75rem; }
+.note p { padding: 6px 10px; margin: 0 -10px; border-radius: 8px; overflow-wrap: anywhere; }
+.tries { flex: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 8px; }
+.alf .compose { flex: none; width: auto; margin: 0 14px 14px; background: var(--bg); }
+
+/* Things over the page: the close of a sitting, a choice, the cue, a toast */
+.veil { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px; background: color-mix(in oklch, var(--bg) 40%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.pop { width: min(460px, 100%); max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 22px 22px 18px; border-radius: 18px; background: var(--raise); box-shadow: 0 18px 50px #0003, inset 0 0 0 1px var(--line-soft); }
+.pop h3 { font-size: 1.1875rem; font-weight: 650; }
+.pop label { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: .8125rem; }
+.pop label input, .pop label textarea { padding: 9px 12px; border: 0; border-radius: 12px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); outline: none; color: var(--ink); font-size: .9375rem; line-height: 1.6; resize: vertical; }
+.pop label textarea { min-height: 84px; }
+.pop label input:focus, .pop label textarea:focus { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.pop dl { display: grid; grid-template-columns: 5.2em minmax(0, 1fr); gap: 8px 14px; font-size: .9375rem; }
+.pop dt { color: var(--muted); font-size: .8125rem; padding-top: 2px; }
+.pop dd { overflow-wrap: anywhere; }
+.opt { width: 100%; display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); }
+.opt:hover { background: var(--wash); }
+.opt b { font-weight: 600; overflow-wrap: anywhere; }
+.opt span { color: var(--muted); font-size: .8125rem; overflow-wrap: anywhere; }
+#cue { position: fixed; right: 18px; top: 96px; z-index: 75; width: min(340px, calc(100vw - 24px)); }
+.cue { display: flex; gap: 12px; padding: 14px 16px; border-radius: 16px; background: var(--raise); box-shadow: var(--shadow), inset 0 0 0 1px var(--line-soft); }
+.cue .fig { flex: none; width: 36px; height: 36px; }
+.cue p { font-weight: 550; overflow-wrap: anywhere; }
+.cue .acts { margin-top: 10px; }
+.cue .btn { min-height: 28px; padding: 0 11px; font-size: .75rem; }
+#toast { position: fixed; left: 50%; bottom: 26px; z-index: 90; transform: translateX(-50%); max-width: calc(100vw - 24px); }
+body[data-view="picture"] #toast, body[data-view="route"] #toast { bottom: 118px; }
+.toast { display: flex; align-items: center; gap: 14px; padding: 9px 14px; border-radius: 12px; background: var(--ink); color: var(--bg); font-size: .8125rem; box-shadow: var(--shadow); }
+.toast button { flex: none; text-decoration: underline; text-underline-offset: 3px; }
+.scrim, .bubbles { display: none; }
+
+/* By the width of the page column, not of the window */
+@container page (max-width: 560px) {
+  .col { padding: 0 16px; }
+  .obj, .opening, .saybar { padding-left: 16px; padding-right: 16px; }
+  .tabs { padding-left: 16px; padding-right: 16px; }
+  .row { grid-template-columns: auto minmax(0, 1fr); }
+  .row .re { grid-column: 2; grid-row: auto; flex-wrap: wrap; white-space: normal; gap: 4px 10px; }
+  .reader { font-size: 1rem; }
+  .reader h2, .head h2 { font-size: 1.3125rem; }
+  .screen { padding: 14px 16px; }
+  .screen .cap { font-size: 1rem; }
+  .card { padding: 18px 16px; }
+  .card .q { font-size: 1.0625rem; }
+  .newp h2 { font-size: 1.3125rem; }
+  .weeks li > span:first-child { width: 100%; }
+}
+@container page (max-width: 380px) {
+  .grades { grid-template-columns: minmax(0, 1fr); }
+  .grade { flex-direction: row; justify-content: space-between; padding: 9px 14px; }
+}
+
+@media (max-width: 1040px) { .alf { width: 320px; } }
+@media (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .top { display: none; }
+  .phone-head { position: relative; flex: none; display: flex; align-items: center; gap: 8px; padding: 14px 16px 8px; padding-top: calc(14px + env(safe-area-inset-top)); }
+  .phone-head svg.i { color: var(--k-solid); }
+  .phone-head b { font-size: 1.0625rem; font-weight: 650; }
+  .phone-head span { color: var(--muted); font-size: .8125rem; }
+  .side, body[data-side="off"] .side { display: flex; position: fixed; inset: 0 22% 0 0; z-index: 50; transform: translateX(-102%); transition: transform 250ms var(--ease); padding-top: calc(14px + env(safe-area-inset-top)); }
+  body[data-sheet="side"] .side { transform: none; }
+  .alf { position: fixed; inset: 0; z-index: 50; width: auto; border: 0; transform: translateY(102%); transition: transform 250ms var(--ease); }
+  .alf[hidden] { display: flex !important; }
+  body[data-sheet="alf"] .alf { transform: none; }
+  .scrim { position: fixed; inset: 0; z-index: 45; background: #00000040; }
+  body[data-sheet="side"] .scrim { display: block; }
+  .scroll { padding-bottom: 150px; }
+  .bubbles { position: fixed; left: 14px; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 30; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
+  body[data-sheet] .bubbles { display: none; }
+  body[data-view="picture"] .bubbles, body[data-view="route"] .bubbles { bottom: calc(112px + env(safe-area-inset-bottom)); }
+  .popmenu { right: 12px; top: 50px; }
+  .bubbles button { pointer-events: auto; height: 46px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border-radius: 999px; background: var(--raise); box-shadow: var(--shadow), inset 0 0 0 1px var(--line-soft); font-size: .875rem; font-weight: 550; }
+  .bubbles .round { width: 50px; height: 50px; padding: 0; justify-content: center; }
+  .bubbles .fig { width: 30px; height: 30px; }
+  #float { left: 12px !important; right: 12px; top: auto !important; bottom: calc(76px + env(safe-area-inset-bottom)); display: flex; justify-content: center; }
+  #toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
+  body[data-view="picture"] #toast, body[data-view="route"] #toast { bottom: calc(176px + env(safe-area-inset-bottom)); }
+  #cue { top: 14px; right: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="proto" id="proto"></div>
+<div class="app">
+  <header class="top" id="top"></header>
+  <nav class="side" id="side"></nav>
+  <main class="page" id="page"></main>
+  <aside class="alf" id="alf"></aside>
+</div>
+<div class="scrim" data-a="sheet-close"></div>
+<div class="bubbles" id="bubbles"></div>
+<div id="float" hidden></div>
+<div id="cue"></div>
+<div id="veil"></div>
+<div id="toast"></div>
+
+<script type="module">
+import { createFigure } from "./figure.js";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const params = new URLSearchParams(location.search);
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const phone = () => innerWidth <= 760;
+
+const ICON = {
+  home: '<path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
+  code: '<path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4M13.5 5.5l-3 13"/>',
+  /* scope: the telescope of Tabler Icons 3.19.0 (icons/outline/telescope.svg), https://github.com/tabler/tabler-icons, MIT licence,
+     © 2020-2024 Paweł Kuna. Its four paths unchanged; drawn at this set's stroke width (1.6, Tabler's own is 2). Row in THIRD-PARTY-NOTICES.md. */
+  scope: '<path d="M6 21l6 -5l6 5"/><path d="M12 13v8"/><path d="M3.294 13.678l.166 .281c.52 .88 1.624 1.265 2.605 .91l14.242 -5.165a1.023 1.023 0 0 0 .565 -1.456l-2.62 -4.705a1.087 1.087 0 0 0 -1.447 -.42l-.056 .032l-12.694 7.618c-1.02 .613 -1.357 1.897 -.76 2.905z"/><path d="M14 5l3 5.5"/>',
+  desk: '<rect x="3.5" y="5" width="17" height="11" rx="2"/><path d="M8.5 20h7M12 16v4"/>',
+  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 2.6 14.6 0 17M12 3.5c-2.6 2.4-2.6 14.6 0 17"/>',
+  route: '<circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6.5a3 3 0 0 0 0-6h-5a3 3 0 0 1 0-6H16"/>',
+  log: '<path d="M5 6h14M5 12h14M5 18h9"/>',
+  chat: '<path d="M5 19V7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5v6a2.5 2.5 0 0 1-2.5 2.5H9z"/>',
+  cards: '<rect x="4" y="7" width="13" height="12" rx="2"/><path d="M8 4h10a2 2 0 0 1 2 2v9"/>',
+  doc: '<path d="M7 3.5h7l4 4v13H7z"/><path d="M14 3.5v4h4M10 12h5M10 15.5h5"/>',
+  play: '<path d="M8 5.5v13l10.5-6.5z"/>',
+  pause: '<path d="M8.5 5.5v13M15.5 5.5v13"/>',
+  video: '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="m10.5 9.5 4 2.5-4 2.5z"/>',
+  mark: '<path d="M7 4h10v16l-5-3.5L7 20z"/>',
+  sidebar: '<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M9 4.5v15"/>',
+  panel: '<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M15 4.5v15"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6"/>',
+  half: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17"/><path d="M12 7.5h5.5M12 12h8M12 16.5h5.5"/>',
+  plus: '<path d="M12 5.5v13M5.5 12h13"/>',
+  minus: '<path d="M5.5 12h13"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
+  send: '<path d="M12 19V5M6 11l6-6 6 6"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
+};
+const ic = (n, cls = "") => `<svg viewBox="0 0 24 24" aria-hidden="true" class="i ${cls}">${ICON[n]}</svg>`;
+
+/* Live figures, moved into their slots after each render so they keep animating. */
+const FIG = {};
+for (const [key, width] of [["center", 5], ["head", 5.5], ["front", 6], ["dock", 5.5], ["cue", 5.5]]) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 120 120"); svg.setAttribute("class", "fig"); svg.setAttribute("aria-hidden", "true");
+  FIG[key] = { svg, fig: createFigure(svg, { width, small: true }) };
+}
+const figSlot = (key) => `<span data-fig="${key}"></span>`;
+const isDark = () => document.documentElement.dataset.scheme === "dark";
+function placeFigs(root, state = "rest") {
+  root.querySelectorAll("span[data-fig]").forEach((slot) => { const f = FIG[slot.dataset.fig]; slot.replaceWith(f.svg); f.fig.setDark(isDark()); f.fig.setState(state); });
+}
+
+/* ── Words and dates ── */
+let S;
+const L = () => (S.lang === "en" ? 1 : 0);
+const t = (zh, en) => (S.lang === "en" ? en : zh);
+const tr = (pair) => (Array.isArray(pair) ? pair[L()] : pair);
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const TODAY = new Date(2026, 10, 25);
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const addDays = (date, days) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+const day = (date) => t(`${date.getMonth() + 1} 月 ${date.getDate()} 日`, `${MONTHS[date.getMonth()].slice(0, 3)} ${date.getDate()}`);
+const monthEnd = (ahead) => new Date(TODAY.getFullYear(), TODAY.getMonth() + ahead + 1, 0);
+const isMonthEnd = (date) => addDays(date, 1).getDate() === 1;
+const dateWord = (date) => (isMonthEnd(date) ? t(`${date.getMonth() + 1} 月底`, `the end of ${MONTHS[date.getMonth()]}`) : day(date));
+const clock = (sec) => `${sec >= 3600 ? `${Math.floor(sec / 3600)}:` : ""}${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+
+/* ── Sample data: what would be a folder of Markdown, and the records beside it ── */
+const GOALS = {
+  la: {
+    id: "la", name: ["线性代数", "Linear algebra"],
+    goal: ["学会线性代数，到能看懂机器学习论文里的推导", "Learn linear algebra well enough to follow the derivations in machine learning papers"],
+    deadline: [2027, 4, 31], pace: 3, slip: 0, step: "b4",
+    week: { done: 1, next: ["周四 20:00", "Thu 20:00"] },
+    why: ["读论文时，矩阵那几步我总是跳过去。我想能跟着推下来。", "When I read papers I skip the matrix steps. I want to be able to follow them through."],
+    map: { asked: ["whole", "spread"], told: true, blocks: [
+      { id: "v", name: ["向量与空间", "Vectors and spaces"], line: ["能到哪里：几个向量伸缩再相加，能铺满多大的地方", "Where you can get to: how much room a few vectors cover when scaled and added"], topics: [
+        { id: "v0", name: ["向量的两种看法", "Two ways to see a vector"], state: 2, depth: 1, cards: [] },
+        { id: "v1", name: ["线性组合与张成", "Linear combinations and span"], state: 2, depth: 1, cards: [] },
+        { id: "v2", name: ["线性无关", "Linear independence"], state: 0, depth: 1, cards: [] },
+        { id: "v3", name: ["基与维数", "Basis and dimension"], state: 1, depth: 0, cards: [] }] },
+      { id: "m", name: ["矩阵与变换", "Matrices and transformations"], line: ["怎么搬：一个矩阵把整个空间挪到新位置", "How things move: a matrix shifts the whole space to a new place"], topics: [
+        { id: "m0", name: ["矩阵是线性变换", "A matrix is a linear transformation"], cards: [] },
+        { id: "m1", name: ["矩阵乘法", "Matrix multiplication"], state: 0, depth: 2, cards: [] },
+        { id: "m2", name: ["行列式", "The determinant"], state: 0, depth: 1, cards: [] },
+        { id: "m3", name: ["逆与秩", "Inverses and rank"], state: 0, depth: 1, cards: [] }] },
+      { id: "d", name: ["分解", "Decompositions"], line: ["把一个变换拆成几步简单的", "Taking one transformation apart into simple steps"], topics: [
+        { id: "d0", name: ["特征值与特征向量", "Eigenvalues and eigenvectors"], state: 1, depth: 0, cards: [] },
+        { id: "d1", name: ["奇异值分解", "The singular value decomposition"], state: 1, depth: 0, cards: [] }] },
+      { id: "u", name: ["用在哪", "Where it is used"], line: ["机器学习里哪些地方离不开它", "Where machine learning cannot do without it"], topics: [
+        { id: "u0", name: ["最小二乘", "Least squares"], state: 0, depth: 2, cards: [] },
+        { id: "u1", name: ["神经网络里的一层", "One layer of a neural network"], state: 2, depth: 1, cards: [] },
+        { id: "u2", name: ["主成分分析", "Principal component analysis"], state: 1, depth: 0, cards: [] }] },
+    ] },
+    bank: { whole: { what: ["线性代数研究的是「有规矩地搬东西」：把一大堆数一起放大、旋转、压扁，而且每次搬的方式都说得清。", "Linear algebra is the study of moving things by a rule: scaling, turning and squashing a whole pile of numbers at once, in a way you can always spell out."], why: ["因为很多东西都能写成「一大堆数，统一做同一种操作」：一张图片、一段声音、模型里的参数都是。把这种操作研究透了，就能一口气算一大片。", "Because a great many things can be written as a pile of numbers that all get the same treatment: a picture, a sound, the parameters of a model. Understand that treatment well and you can work on the whole pile in one go."] },
+      tell: {
+        m0: { what: ["矩阵是一张「搬家清单」：它规定空间里每个点搬到哪。规矩是原点不动，直线还是直线，平行的还平行。", "A matrix is a moving list: it says where every point in space goes. The rule is that the origin stays put, straight lines stay straight, and parallel stays parallel."], why: ["因为只要记下两把尺子被搬到哪，别的点跟着就定了。所以一个两行两列的小表格，就能说清整个平面怎么动。", "Because once you note where the two rulers go, every other point follows. So a small two-by-two table is enough to say how the whole plane moves."], more: ["那两把尺子叫基向量，通常是 (1, 0) 和 (0, 1)。矩阵的第一列就是第一把尺子的新位置，第二列是第二把的。", "The two rulers are called basis vectors, usually (1, 0) and (0, 1). The first column of the matrix is where the first ruler ends up; the second column is the second."] },
+        m1: { what: ["矩阵乘法就是连着搬两次家：先按 B 的清单搬，再按 A 的清单搬，合起来是一张新的清单，叫 AB。", "Multiplying matrices is moving house twice in a row: first by B's list, then by A's, and together they make one new list called AB."], why: ["它的算法看着怪，是因为它不是在乘数字，而是在把两次搬动接起来。所以先后不能换：先穿袜子再穿鞋，和反过来不是一回事。", "The rule looks odd because it is not multiplying numbers; it is joining two moves. That is why the order cannot be swapped: socks then shoes is not shoes then socks."], more: ["「行乘列」那条规则，只是把「跟着每把尺子，看它搬两次以后落在哪」写成了算式。", "The row-times-column rule is only “follow each ruler and see where it lands after both moves”, written as arithmetic."] },
+        m2: { what: ["行列式是一个数：这次搬家把面积放大了多少倍。等于 2，面积变成两倍；等于 0，整个平面被压成了一条线。", "The determinant is one number: how many times bigger this move makes an area. Two means twice the area; zero means the whole plane has been squashed onto a line."], why: ["因为压扁了就回不去了。看行列式是不是 0，就知道这次搬家能不能原路倒回来。", "Because once it is squashed flat there is no way back. Whether the determinant is zero tells you whether the move can be undone."] },
+        u0: { what: ["最小二乘是在一堆不听话的点里，找一条离大家都最近的线。", "Least squares is finding, among a scatter of unruly points, the line that is nearest to all of them."], why: ["因为真实的数据总有误差，没有一条线能穿过所有的点。只好退一步：找让总的偏差最小的那一条。", "Because real data always carry error and no line passes through every point. So you settle for the one that makes the total miss as small as it can be."] },
+      },
+      blocks: [], cards: {
+        m1: { under: { src: 1, items: [["AB 是先做 B 再做 A", "AB means B first, then A"], ["为什么 AB 一般不等于 BA", "Why AB is usually not BA"], ["行乘列的规则是怎么来的", "Where the row-times-column rule comes from"]] } } },
+      must: ["绕不开：向量与空间、矩阵与变换，还有最小二乘。推正规方程用不到「分解」那一块。", "Can't be skipped: vectors and spaces, matrices and transformations, and least squares. The normal equations do not need the decompositions."],
+      srcs: [["3Blue1Brown《线性代数的本质》", "3Blue1Brown, Essence of linear algebra"], ["Gilbert Strang，MIT 18.06 Linear Algebra（MIT OpenCourseWare）", "Gilbert Strang, MIT 18.06 Linear Algebra (MIT OpenCourseWare)"], ["Deisenroth、Faisal、Ong《Mathematics for Machine Learning》", "Deisenroth, Faisal, Ong, Mathematics for Machine Learning"]] },
+    way: { name: ["跟一门视频课，配一本书查", "Follow a video course, with a book to look things up"] }, waysOpen: true, routeSet: true, planSet: true,
+    stages: [
+      { name: ["向量", "Vectors"], steps: ["b1", "b2"] },
+      { name: ["矩阵", "Matrices"], steps: ["b3", "b4", "b5", "b6"] },
+      { name: ["分解", "Decompositions"], steps: ["b7", "b8"], coarse: true },
+    ],
+    steps: {
+      b1: { done: true, does: ["看几个向量，分别用箭头和一列数把它写出来。", "Take a few vectors and write each one both as an arrow and as a column of numbers."], topic: "v0", why: ["后面每一步都用向量来说话", "Every later step speaks in vectors"], title: ["向量是什么", "What a vector is"], est: 2, mats: [] },
+      b2: { done: true, does: ["拿两个向量，伸缩再相加，看能到哪些地方。", "Take two vectors, scale and add them, and see where you can get to."], topic: "v1", why: ["最小二乘里的「投影到列空间」靠它", "The projection onto the column space in least squares rests on it"], title: ["线性组合与张成", "Linear combinations and span"], est: 2, self: true, mats: [] },
+      b3: { done: true, does: ["看几个两行两列的矩阵，说出它把平面怎么搬：转了，拉了，还是压扁了。", "Look at a few two-by-two matrices and say how each moves the plane: turned, stretched or squashed."], topic: "m0", why: ["要看懂矩阵在做什么，不只是按规则算", "To see what a matrix does, not only compute with it"], title: ["矩阵是线性变换", "A matrix is a linear transformation"], est: 3, touched: true, mats: [{ id: "m2", kind: "link", title: ["线性代数的本质 · 第 3 集", "Essence of linear algebra, ch. 3"], src: "3Blue1Brown" }] },
+      b4: { does: ["把两个变换接起来做一遍，再用「行乘列」算一遍，看两边对不对得上。", "Do two transformations one after the other, then compute it by rows times columns, and see that the two agree."], topic: "m1", why: ["正规方程里的 AᵀA 就是两个矩阵相乘", "AᵀA in the normal equations is a product of two matrices"], title: ["矩阵乘法", "Matrix multiplication"], est: 3, touched: true, mats: [
+        { id: "v1", kind: "video", title: ["线性代数的本质 · 第 4 集", "Essence of linear algebra, ch. 4"], src: "3Blue1Brown" },
+        { id: "m1", kind: "text", zirma: true, title: ["矩阵乘法 · 讲解", "Matrix multiplication, explained"], src: ["你要的", "You asked for it"] },
+        { id: "m4", kind: "link", title: ["Strang《Introduction to Linear Algebra》2.4", "Strang, Introduction to Linear Algebra, 2.4"], src: ["书在你手上", "A book you have"] }] },
+      b5: { does: ["算几个矩阵的行列式，看面积变成了原来的几倍。", "Work out the determinant of a few matrices and see how many times bigger the area becomes."], topic: "m2", res: [[["线性代数的本质 · 第 6 集（视频）", "Essence of linear algebra, ch. 6 (video)"], ["十分钟，用面积讲行列式", "Ten minutes; the determinant told through area"]], [["Strang《Introduction to Linear Algebra》5.1", "Strang, Introduction to Linear Algebra, 5.1"], ["要动手算的时候看；书在你手上", "For when you want to calculate; a book you have"]]], why: ["判断一个变换能不能倒回去，要用到它", "It tells whether a transformation can be undone"], title: ["行列式", "The determinant"], est: 3, mats: [] },
+      b6: { does: ["判断几个变换能不能倒回去；能的，把它倒回去。", "Decide whether a few transformations can be undone, and undo the ones that can."], topic: "m3", why: ["解正规方程，要求 AᵀA 能倒回去", "Solving the normal equations needs AᵀA to be invertible"], title: ["逆与秩", "Inverses and rank"], est: 3, mats: [] },
+      b7: { why: ["推正规方程用不到；以后读主成分分析才需要", "Not needed for the normal equations; needed later for principal component analysis"], optional: true, title: ["特征值与特征向量", "Eigenvalues and eigenvectors"], est: 4, mats: [] },
+      b8: { why: ["推正规方程用不到；它给出更稳的算法", "Not needed for the normal equations; it gives a steadier way to compute"], optional: true, title: ["奇异值分解", "The singular value decomposition"], est: 4, mats: [] },
+    },
+    notes: [{ at: 112, mat: "v1", text: ["两个变换接起来，还是一个线性变换。", "Two transformations joined are still one linear transformation."] }],
+    video: { at: 192 },
+    heat: [[0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0], [1, 0, 0, 1, 0, 0, 0], [1, 0, 1, 0, 2, 0, 0], [0, 1, 0, 1, 0, 0, 0], [1, 0, 2, 0, 1, 0, 0], [1, 0, 1, 0, 2, 0, 0], [1, 0, 2, 0, 1, 0, 0], [2, 0, 0, 0, 1, 0, 0], [1, 0, 1, 0, 1, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
+    record: [
+      { d: -2, step: "b4", did: ["视频看到 03:12 · 问了 2 处 · 记了 1 笔", "Video to 03:12 · asked twice · 1 note"] },
+      { d: -5, step: "b3", did: ["书读了一半 · 记了 2 笔", "Half the reading · 2 notes"] },
+      { d: -7, step: "b3", did: ["视频看完 · 问了 3 处", "Finished the video · asked 3 times"] },
+      { d: -9, step: "b2", did: ["书读完 · 你说这一步走完了", "Finished the reading · you said this step is done"] },
+    ],
+    left: ["为什么 AB 和 BA 不一样？先自己想一个例子", "Why is AB not BA? Think of an example of your own first"],
+  },
+  job: {
+    id: "job", name: ["找到后端的工作", "A backend job"],
+    goal: ["拿到一个后端工程师的 offer", "Get an offer as a backend engineer"],
+    deadline: [2027, 1, 28], pace: 4, slip: 0, step: null, week: { done: 0, next: null },
+    why: null, map: { blocks: [] },
+    bank: { whole: { what: ["找后端的工作，就是连着过几道关：简历先过，再写代码，再讲怎么搭一套系统，再聊过去的经历，最后谈条件。", "Getting a backend job means passing a row of gates: the résumé first, then writing code, then saying how you would build a system, then talking about your past, and last the terms."], why: ["每一关看的东西不一样，是因为公司想从几个方向确认同一件事：这个人来了，能不能把活干好。", "Each gate looks at something different because a company wants to confirm one thing from several sides: will this person do the work well once they are here."] },
+      tell: {
+        sys0: { what: ["估算规模，就是动手之前先粗算一下：有多少人用，每秒来多少请求，要存多少东西。", "Estimating scale is doing rough sums before you build: how many people use it, how many requests a second, how much there is to store."], why: ["因为一千个人用和一千万个人用，搭法完全不同。面试官想看的是你先问清楚，再动手。", "Because a thousand users and ten million users call for quite different builds. What the interviewer wants to see is that you ask before you start."] },
+      },
+      blocks: [
+        { id: "cv", name: ["简历和项目", "Résumé and projects"], line: ["别人第一眼看到的你：做过什么，讲不讲得清", "The first thing anyone sees of you: what you did and whether you can tell it"], topics: [[["一页简历", "A one-page résumé"]], [["三个讲得清的项目", "Three projects I can tell clearly"]], [["作品或代码的链接", "Links to work or code"], true]] },
+        { id: "code", name: ["写代码的题", "Coding problems"], line: ["限时写出一个算法或一段程序", "Writing an algorithm or a piece of a program against the clock"], topics: [[["数组和字符串", "Arrays and strings"]], [["哈希表", "Hash tables"]], [["树和图", "Trees and graphs"]], [["动态规划", "Dynamic programming"], true]] },
+        { id: "sys", name: ["系统设计", "System design"], line: ["给一个需求，讲你会怎么搭这套系统", "Given a requirement, say how you would build the system"], topics: [[["估算规模", "Estimating scale"]], [["存储怎么选", "Choosing storage"]], [["缓存和队列", "Caches and queues"]], [["讲完一个完整的例子", "One example told end to end"]]] },
+        { id: "beh", name: ["聊经历的那一面", "The interview about your past"], line: ["过去怎么做事、怎么和人合作", "How you worked before, and how you worked with others"], topics: [[["讲一个难题", "Telling a hard problem"]], [["讲一次分歧", "Telling a disagreement"]]] },
+        { id: "find", name: ["找机会的渠道", "Where openings come from"], line: ["面试的机会从哪里来", "Where the chances to interview come from"], topics: [[["内推", "Referrals"]], [["招聘网站", "Job sites"]], [["公司官网直接投", "Applying on company sites"]], [["猎头", "Recruiters"], true]] },
+        { id: "terms", name: ["谈条件", "The terms"], line: ["拿到 offer 以后的事", "What comes after an offer"], topics: [[["了解行情", "Knowing the going rate"], true], [["怎么回价", "How to answer an offer"], true]] }],
+      cards: { find0: { what: { src: null, items: [["认识的人把你的简历递进去，通常比网上投回得快", "Someone you know hands your résumé in; replies usually come faster than from an application online"]] } } },
+      must: ["你放进来的三份职位描述都写了：简历和项目、写代码的题、系统设计。动态规划只有一份提到。「谈条件」可以等拿到面试再说。", "The three job descriptions you added all name résumé and projects, coding problems and system design. Only one mentions dynamic programming. The terms can wait until you have interviews."],
+      srcs: [["你放进来的 3 份职位描述", "The 3 job descriptions you added"]] },
+    way: null, stages: [], steps: {}, notes: [], weeks: [], record: [], left: null,
+    ways: [
+      { name: ["先准备，再投", "Prepare first, then apply"], like: ["四周只做题和系统设计，然后集中投", "Four weeks of problems and system design only, then apply in a batch"], uses: ["一个题库；一本系统设计的书", "A problem set; a book on system design"], long: ["约 10 周", "About 10 weeks"], cost: ["头一个月没有任何外面的反馈", "No word from outside for the first month"],
+        route: [{ name: ["准备", "Prepare"], steps: [["每周 5 道题", "5 problems a week"], ["系统设计的 4 类题", "4 kinds of system design question"]] }, { name: ["材料", "Papers"], steps: [["改出一版简历", "A new version of the résumé"], ["三个讲得清的项目", "Three projects I can tell clearly"]] }, { name: ["投", "Apply"], steps: [["列出 15 家", "List 15 companies"], ["每周投 5 份", "5 applications a week"]] }] },
+      { name: ["边投边准备", "Apply and prepare together"], like: ["每周投几份，拿面试当练习", "A few applications a week, using interviews as practice"], uses: ["真实的面试；同一个题库", "Real interviews; the same problem set"], long: ["约 8 周", "About 8 weeks"], cost: ["头几场可能用掉你最想去的公司", "The first few may use up the companies you want most"],
+        route: [{ name: ["材料", "Papers"], steps: [["改出一版简历", "A new version of the résumé"], ["三个讲得清的项目", "Three projects I can tell clearly"]] }, { name: ["投和练", "Apply and practise"], steps: [["每周投 5 份", "5 applications a week"], ["每周 3 道题", "3 problems a week"], ["每场面试后记下被问到的", "After each interview, note what was asked"]] }] },
+      { name: ["从认识的人入手", "Start from people you know"], like: ["先找在这些公司的人聊，再决定投哪里", "Talk to people at these companies first, then decide where to apply"], uses: ["你的联系人；他们说的话", "Your contacts; what they tell you"], long: ["说不准", "Hard to say"], cost: ["慢，而且要等别人回你", "Slow, and it waits on other people answering"],
+        route: [{ name: ["聊", "Talk"], steps: [["列出 10 个可以问的人", "List 10 people to ask"], ["每周聊 2 个", "Talk to 2 a week"]] }, { name: ["材料", "Papers"], steps: [["改出一版简历", "A new version of the résumé"]] }, { name: ["投", "Apply"], steps: [["投聊过的那几家", "Apply to the ones you talked to"]] }] },
+    ],
+  },
+};
+/* A goal made in the prototype gets this researched picture and these approaches, whatever was typed. */
+const FRESH = {
+  sentence: ["做一个能收款的小产品，并且上线", "Build a small product that takes payments, and ship it"],
+  bank: { whole: { what: ["一个能收款的小产品，就是开在网上的一家小店：有门面（前端），有后厨（后端），有账本（数据库），认得熟客（登录），有收银台（收款），还得有个地址让人找得到（部署和域名）。", "A small product that takes payments is a little shop on the web: a shopfront (front end), a kitchen (back end), a ledger (database), a way to know its regulars (sign-in), a till (payments), and an address people can find it at (deploying and a domain)."], why: ["分成这么几块，是因为每一块会出的问题不一样，能买到的现成服务也不一样。分开了，你可以一块一块弄，也可以每一块都用别人做好的。", "It splits into these parts because each goes wrong in its own way and each has its own ready-made services to buy. Split up, you can do one part at a time, or use someone else's for any of them."] },
+    tell: {
+      fe0: { what: ["页面是用户看到的一整屏。组件是可以重复用的小块，比如一个按钮、一张卡片。", "A page is one whole screen the user sees. A component is a small piece you can reuse, like a button or a card."], why: ["因为同样的东西会出现很多次。做成一块，改一处，处处都跟着变。", "Because the same thing turns up many times. Make it one piece, change it in one place, and it changes everywhere."] },
+      be2: { what: ["webhook 就是服务商打给你的电话。顾客付完钱，服务商主动告诉你的后端一声：这笔成了。", "A webhook is the service ringing you up. When a customer has paid, the service tells your back end of its own accord: this one went through."], why: ["因为顾客付完钱可能直接关掉页面，你不能指望他回来报信。只有服务商亲口说的才算数。", "Because a customer may close the page the moment they have paid, and you cannot count on them coming back to say so. Only what the service itself tells you counts."] },
+      db0: { what: ["数据库像一摞表格：一张记用户，一张记订单。「关系」就是表之间互相指着：这张订单是那个用户的。", "A database is like a stack of tables: one for users, one for orders. A relation is one table pointing at another: this order belongs to that user."], why: ["因为同一件事只该记在一处。用户改了邮箱，不用去每张订单里跟着改。", "Because a fact should be written down in one place only. When a user changes their email, you do not have to change it in every order."] },
+      auth0: { what: ["登录就是门口认人：你是谁，凭什么说你是你。", "Sign-in is knowing people at the door: who you are, and what shows that it is you."], why: ["因为东西是按人存的。不认人，就不知道该把谁买的东西给谁。", "Because things are kept per person. Without knowing people, you cannot tell whose purchase to hand to whom."] },
+      pay0: { what: ["结账页就是收银台。顾客在这一页填卡号、点付款。这一页通常不是你自己做的，是收款的服务商借给你用的。", "The checkout page is the till. This is where a customer types a card number and pays. Usually you do not build it yourself; the payment service lends you theirs."], why: ["因为卡号是很危险的东西：自己存、自己传，出了事要你负责。让专门的服务商来接，你的产品从头到尾碰不到卡号。", "Because a card number is a dangerous thing to hold: store it or pass it along yourself and you answer for whatever goes wrong. Let a specialist take it and your product never touches a card number at all."], more: ["过程是这样的：你的产品告诉服务商「这个人要买这个」，服务商给你一个链接，顾客去那里付钱，付完再被送回你的页面。", "It goes like this: your product tells the service “this person wants to buy this”, the service hands back a link, the customer pays there, and is sent back to your page afterwards."] },
+      ship0: { what: ["部署，就是把你电脑上跑着的东西，搬到一台一直开着、谁都连得上的电脑上。", "Deploying is moving what runs on your computer onto one that is always on and that anyone can reach."], why: ["因为你的电脑会合上盖子，而且外面的人本来就连不到它。", "Because your computer gets closed, and people outside could not reach it in the first place."] },
+      ship1: { what: ["密钥是你的产品去找服务商办事时出示的工牌。环境变量是放工牌的抽屉，不写在代码里。", "A secret key is the badge your product shows when it goes to a service on your behalf. Environment variables are the drawer the badge is kept in, outside the code."], why: ["因为代码会被很多人看到，还会传到网上。工牌写在里面，谁捡到都能冒充你。", "Because code is seen by many people and gets pushed to the web. With the badge written into it, whoever picks it up can pass as you."] },
+    },
+    blocks: [
+      { id: "fe", name: ["前端", "Front end"], line: ["用户看得见、点得到的那一层", "The layer people see and click"], topics: [[["页面和组件", "Pages and components"]], [["表单和校验", "Forms and validation"]], [["样式", "Styling"]], [["状态管理", "State management"], true]] },
+      { id: "be", name: ["后端和接口", "Back end and API"], line: ["收到请求以后，真正干活的地方", "Where the work is done once a request arrives"], topics: [[["路由和接口", "Routes and endpoints"]], [["校验和报错", "Validation and errors"]], [["接收 webhook", "Receiving webhooks"]], [["后台任务", "Background jobs"], true]] },
+      { id: "db", name: ["数据库", "Database"], line: ["东西存在哪，怎么查", "Where things are kept and how they are looked up"], topics: [[["表和关系", "Tables and relations"]], [["迁移", "Migrations"]], [["备份", "Backups"], true]] },
+      { id: "auth", name: ["登录", "Sign-in"], line: ["知道来的人是谁", "Knowing who has come"], topics: [[["注册和登录", "Sign-up and sign-in"]], [["会话", "Sessions"]], [["找回密码", "Password reset"]], [["第三方登录", "Sign-in with other accounts"], true]] },
+      { id: "pay", name: ["收款", "Payments"], line: ["把钱收进来，以及退款、发票、税", "Taking money in, and refunds, invoices, tax"], topics: [[["结账页", "The checkout page"]], [["用 webhook 对账", "Reconciling by webhook"]], [["退款", "Refunds"], true], [["发票和税", "Invoices and tax"], true]] },
+      { id: "ship", name: ["部署和域名", "Deploying and a domain"], line: ["让别人能从网上打开它", "Letting other people open it from the web"], topics: [[["部署一次", "Deploying once"]], [["环境变量和密钥", "Environment variables and secrets"]], [["域名和 HTTPS", "A domain and HTTPS"]], [["发邮件", "Sending email"], true]] },
+      { id: "ops", name: ["上线以后", "After launch"], line: ["日志、报错、备份", "Logs, errors, backups"], topics: [[["日志", "Logs"], true], [["报错监控", "Error monitoring"], true], [["备份和恢复", "Backup and restore"], true]] }],
+    cards: {
+      auth0: { options: { src: 1, items: [["自己写：用现成的库，账号存在自己的数据库里", "Write it yourself: a ready-made library, accounts in your own database"], ["Clerk：登录页和用户管理都替你做好", "Clerk: the sign-in pages and user management done for you"], ["Auth0：同上，面向更大的团队", "Auth0: the same, aimed at larger teams"], ["Supabase Auth：和它的数据库是一套", "Supabase Auth: comes as one with its database"]] } },
+      pay0: { options: { src: 1, items: [["Stripe：你自己是卖方，接口最全，税要自己管", "Stripe: you are the seller, the fullest API, and tax is yours to handle"], ["Paddle：它替你当卖方，各国的税它来交", "Paddle: it is the seller on your behalf and pays the taxes in each country"], ["Lemon Squeezy：同上，面向个人和小团队", "Lemon Squeezy: the same, aimed at individuals and small teams"]] },
+        under: { src: 1, items: [["一次性付款还是订阅", "A one-off payment or a subscription"], ["价格在哪里定、怎么改", "Where the price is set and how it is changed"], ["付完钱以后跳回哪一页", "Which page people return to after paying"]] },
+        res: { src: null, items: [["Stripe 文档：Checkout 快速上手", "Stripe docs: the Checkout quickstart"], ["Paddle 文档：Get started", "Paddle docs: Get started"]] } },
+      db0: { options: { src: 1, items: [["Postgres，用托管的（Supabase、Neon 这一类）", "Postgres, hosted (Supabase, Neon and the like)"], ["SQLite：就是一个文件，小产品够用", "SQLite: just a file, enough for a small product"]] } },
+      ship0: { options: { src: 1, items: [["Vercel：前端和接口一起放", "Vercel: front end and API together"], ["Fly.io 或 Railway：放一个一直跑着的服务", "Fly.io or Railway: for a service that keeps running"], ["自己租一台服务器：最自由，事情也最多", "Rent a server yourself: the most freedom, and the most to do"]] } } },
+    must: ["多数从零做起的教程都这样排：前端、后端和接口、数据库、部署和域名绕不开；要收钱，才需要登录和收款；状态管理、后台任务、退款、发票和税、发邮件，以及「上线以后」那一整块，可以等有了用户再说。", "Most build-it-from-nothing tutorials go this way: front end, back end and API, database, deploying and a domain can't be skipped; sign-in and payments are needed once you charge; state management, background jobs, refunds, invoices and tax, sending email, and the whole of “after launch” can wait until there are users."],
+    srcs: [["各家服务的官方文档（Stripe、Paddle、Clerk、Auth0、Supabase、Vercel、Fly.io、Railway）", "The services' own documentation (Stripe, Paddle, Clerk, Auth0, Supabase, Vercel, Fly.io, Railway)"]] },
+  ways: [
+    { name: ["先打通最小的一条线", "Get the thinnest line through first"], like: ["一个页面，一个按钮，能真的收到一块钱；再一块一块补", "One page, one button, and one real payment; then fill in part by part"], uses: ["Stripe 的快速上手；一个部署的服务", "Stripe's quickstart; one deploy service"], long: ["约 4 周", "About 4 weeks"], cost: ["开头做出来的东西很丑，登录和数据库都是后补的", "What you make at first is ugly; sign-in and the database come later"],
+      route: [{ name: ["一条线", "One line"], steps: [
+        { t: ["一个页面放到网上", "One page on the web"], topic: "ship0", does: ["做一个只有一句话和一个按钮的页面，放到网上，让别人用网址打得开。", "Make a page with one sentence and one button, put it on the web, and have someone else open it by its address."], why: ["因为「别人打得开」是后面所有事的前提。先把这条路走通，以后每加一样东西，都能马上在真的环境里看到行不行。", "Because “other people can open it” comes before everything else. Get that through first, and whatever you add later you can see working, or not, in the real place at once."],
+          res: [[["Vercel 文档：部署你的第一个项目", "Vercel docs: deploying your first project"], ["照着做，十几分钟能有一个网址", "Follow it and you have an address in a quarter of an hour"]], [["Next.js 官方教程（Learn Next.js）的头两章", "The first two chapters of the official Next.js tutorial (Learn Next.js)"], ["从一个空项目到一个页面", "From an empty project to one page"]]] },
+        { t: ["接上收款，收到第一笔", "Wire up payments and take the first one"], topic: "pay0", does: ["在那个按钮后面接上结账页，自己付一块钱，看钱是不是真的到了。", "Put the checkout page behind that button, pay a small sum yourself, and see whether the money really arrives."], why: ["因为收钱是这个产品和一个普通网页的区别。越早收到第一笔，越早知道会卡在哪里。", "Because taking money is what sets this product apart from an ordinary web page. The sooner the first payment comes in, the sooner you know where it sticks."],
+          res: [[["Stripe 文档：Checkout 快速上手", "Stripe docs: the Checkout quickstart"], ["从零到一个能付款的链接", "From nothing to a link that takes a payment"]], [["Stripe 文档：用测试卡号试付款", "Stripe docs: trying payments with test cards"], ["不花真钱，把整条路走一遍", "Walk the whole path without spending real money"]]] }] }, { name: ["补齐", "Fill in"], steps: [["登录", "Sign-in"], ["数据库", "Database"], ["域名和邮件", "A domain and email"]] }] },
+    { name: ["跟一个完整的教程做一遍", "Follow one complete tutorial"], like: ["照着一个从头到尾的教程做出一个样品，再改成自己的", "Build a sample from a start-to-finish tutorial, then turn it into your own"], uses: ["一个官方或知名的全流程教程", "One official or well-known end-to-end tutorial"], long: ["约 6 周", "About 6 weeks"], cost: ["前几周做的不是你的产品；教程选的工具不一定是你想要的", "For the first weeks it is not your product; the tutorial's tools may not be the ones you want"],
+      route: [{ name: ["教程", "The tutorial"], steps: [["照着做完", "Follow it to the end"], ["看懂每一块在哪", "See where each part lives"]] }, { name: ["换成自己的", "Make it yours"], steps: [["换掉内容和页面", "Replace the content and pages"], ["接上收款", "Wire up payments"], ["上线", "Ship"]] }] },
+    { name: ["从一个现成的模板起步", "Start from a ready-made template"], like: ["用一个带登录、收款、部署的模板，直接在上面写自己的功能", "Take a template with sign-in, payments and deploy in it, and write your features on top"], uses: ["一个开源或付费的模板", "An open-source or paid template"], long: ["约 3 周", "About 3 weeks"], cost: ["最快，但出了问题你不知道它里面怎么回事", "The quickest, but when something breaks you do not know its insides"],
+      route: [{ name: ["跑起来", "Get it running"], steps: [["把模板跑通并部署", "Run the template and deploy it"], ["换成自己的名字和域名", "Put your own name and domain on it"]] }, { name: ["写自己的", "Write yours"], steps: [["第一个功能", "The first feature"], ["定价和收款页", "Pricing and the payment page"]] }] },
+  ],
+};
+/* The stand-in video: a clock and sample captions. In the app this is the site's own player. */
+const VIDEO = { len: 604, caps: [
+  [0, ["上一集说过：矩阵就是一个线性变换。", "Last time: a matrix is a linear transformation."], ["这一段只是在提醒上一步：看矩阵，就是看它把空间怎么搬。", "This stretch only recalls the last step: to look at a matrix is to look at how it moves space."]],
+  [100, ["先做一个变换，再做一个，合起来还是一个线性变换。", "Do one transformation, then another: together they are still one linear transformation."], ["两次搬动接起来，网格线还是平行、等距的，所以它也能用一个矩阵记下来。", "Two moves in a row still keep the grid lines parallel and evenly spaced, so one matrix can record them."]],
+  [180, ["跟着两个基向量走：先看 B 把它们搬到哪，再让 A 搬一次。", "Follow the two basis vectors: see where B sends them, then let A move them again."], ["不用记公式。只盯两支箭头：(1, 0) 和 (0, 1)。先看 B 把它们放到哪，再把这两个落点交给 A。", "No formula needed. Watch two arrows only, (1, 0) and (0, 1): see where B puts them, then hand those two landing points to A."]],
+  [280, ["所以 AB 的两列，就是基向量搬了两次以后的落点。右边的先做。", "So the two columns of AB are where the basis vectors end up after both moves. The one on the right goes first."], ["AB 读起来从左到右，做起来从右到左：先 B，后 A。", "AB reads left to right but is done right to left: B first, then A."]],
+  [380, ["换个顺序：先拉再转，和先转再拉，落点不同。", "Change the order: stretch then turn lands elsewhere than turn then stretch."], ["顺序是内容的一部分。像先穿袜子再穿鞋，反过来就不是一回事。", "The order is part of what you did. Socks then shoes; the other way round is a different thing."]],
+  [480, ["三个变换连着做，括号加在哪都一样。这是结合律。", "Three transformations in a row: the brackets can go anywhere. That is associativity."], ["括号只是分组，没有改变先后，所以结果不变。", "Brackets only group; they do not change what comes first, so the result is the same."]],
+] };
+const capAt = (sec) => [...VIDEO.caps].reverse().find((cap) => cap[0] <= sec) ?? VIDEO.caps[0];
+/* The text on the desk, written on request, and what Zirma would say about a selection in it. */
+const LESSON = {
+  title: ["矩阵乘法", "Matrix multiplication"],
+  ask: ["为什么矩阵相乘，不是把对应位置的数乘起来？", "Why is multiplying matrices not just multiplying the numbers in the same places?"],
+  paras: [
+    ["一个矩阵就是一个线性变换：它把每个向量搬到一个新位置，并且让网格线保持平行、等距。矩阵的每一列，记的是一个基向量被搬到了哪里。", "A matrix is a linear transformation: it moves every vector to a new place and keeps the grid lines parallel and evenly spaced. Each column of the matrix records where one basis vector lands."],
+    ["矩阵乘法就是把两个变换接起来做。先做 B，再做 A，合起来还是一个线性变换，记这个变换的矩阵就是 AB。注意顺序：写在右边的先做。", "Multiplying matrices is doing two transformations one after the other. Do B first, then A; together they are still one linear transformation, and its matrix is AB. Mind the order: the one written on the right goes first."],
+    ["看一个例子。B 把平面逆时针转 90°，A 把平面横向拉长到两倍。先转再拉：(1, 0) 先被转到 (0, 1)，再拉，还是 (0, 1)；(0, 1) 先被转到 (−1, 0)，再被拉成 (−2, 0)。所以 AB 的两列是 (0, 1) 和 (−2, 0)。", "An example. B turns the plane 90° counter-clockwise; A stretches it to twice its width. Turn, then stretch: (1, 0) is turned to (0, 1), and stretching leaves it at (0, 1); (0, 1) is turned to (−1, 0), then stretched to (−2, 0). So the two columns of AB are (0, 1) and (−2, 0)."],
+    ["常见的误解是以为 AB 和 BA 一样。先拉再转：(1, 0) 先变成 (2, 0)，再转到 (0, 2)，和上面不同。矩阵乘法不满足交换律，但满足结合律：(AB)C 和 A(BC) 是同样三个变换按同一个顺序做。", "A common mistake is to think AB equals BA. Stretch, then turn: (1, 0) first becomes (2, 0), then turns to (0, 2), which is not what we got above. Matrix multiplication is not commutative, but it is associative: (AB)C and A(BC) are the same three transformations done in the same order."],
+  ],
+};
+const GLOSS = [
+  { re: /交换律|commutative/i, demo: ["不满足交换律", "not commutative"],
+    explain: ["交换律是说顺序换了结果不变，像 3 × 5 和 5 × 3。矩阵乘法没有这一条：先转再拉，和先拉再转，落点不一样。", "Commutative means the order does not matter, like 3 × 5 and 5 × 3. Matrices do not have it: turn then stretch lands somewhere else than stretch then turn."],
+    example: ["先穿袜子再穿鞋，和先穿鞋再穿袜子，结果不一样。变换也是这样：顺序是内容的一部分。", "Socks then shoes is not shoes then socks. Transformations are the same: the order is part of what you did."],
+  },
+  { re: /线性变换|linear transformation/i,
+    explain: ["一种搬动整个空间的方式：原点不动，直线还是直线，平行的还平行。旋转、拉伸都是；平移不是，因为原点动了。", "A way of moving the whole space: the origin stays put, lines stay lines, parallel stays parallel. Turning and stretching are; sliding is not, because the origin moves."],
+    example: ["把一张网格纸均匀地拉宽一倍：每条线都还直，间隔都还相等。把纸揉皱就不是。", "Stretch a sheet of grid paper evenly to twice its width: every line is still straight and evenly spaced. Crumpling it is not one."],
+  },
+  { re: /基向量|basis vector/i,
+    explain: ["用来量整个空间的那几把尺子。平面上通常是 (1, 0) 和 (0, 1)，任何向量都能写成它们的倍数相加。", "The rulers you measure the whole space with. In the plane they are usually (1, 0) and (0, 1), and every vector is some amount of each."],
+    example: ["(3, 2) 就是 3 份 (1, 0) 加 2 份 (0, 1)。知道这两把尺子被搬到哪，就知道 (3, 2) 被搬到哪。", "(3, 2) is 3 of (1, 0) plus 2 of (0, 1). Know where the two rulers go and you know where (3, 2) goes."],
+  },
+];
+const GLOSS_ELSE = {
+  explain: ["原型里只写了三处的解释：线性变换、基向量、交换律。App 里，Zirma 按你写的底子讲你划的这一处。", "The prototype has three written out: linear transformation, basis vector, commutative. In the app Zirma explains what you selected, at the level you wrote down."],
+  example: ["原型里只给上面三处备了例子。", "The prototype has examples for those three only."],
+};
+const STANCE = { planner: ["规划", "Plan"], guide: ["讲", "Explain"] };
+const HELLO = {
+  guide: ["我看得见你开着哪份材料、到哪了。卡住了就问。", "I can see which material you have open and where you are in it. Ask when you are stuck."],
+  planner: ["我摆事实、选项和后果，你来定。", "I lay out the facts, the options and what each costs. You decide."],
+};
+
+/* ── State ── */
+const SCENES = ["new", "picture", "route", "desk", "record"];
+function fresh(keep = {}) {
+  const scene = SCENES.includes(params.get("scene")) ? params.get("scene") : "desk";
+  const state = {
+    lang: keep.lang ?? (params.get("lang") === "en" ? "en" : "zh"),
+    goals: structuredClone(GOALS), goal: GOALS[params.get("goal")] ? params.get("goal") : "la", view: scene, mat: "v1",
+    side: true, panel: keep.panel ?? innerWidth > 1000, ptab: "ask", timerSec: 1500, timerOn: true, count: 0, sheet: null, menu: null,
+    sitting: null, playing: false, cue: false, veil: null, undo: null,
+    pop: null, toast: null, threads: {}, draftWhy: "", block: null, topic: null, telling: null, rstep: null,
+  };
+  return state;
+}
+const goal = () => S.goals[S.goal];
+const deadline = (g) => (g.deadline ? new Date(...g.deadline) : null);
+const allSteps = (g) => g.stages.flatMap((stage) => stage.steps);
+/* A step's state is two plain facts: you have sat at it, and you said it is done. Zirma never tests for either. */
+const status = (g, id) => ({ s: g.steps[id].done ? "done" : g.steps[id].touched ? "learning" : "none" });
+const there = (g, id) => !!g.steps[id].done;
+const STWORD = { none: ["没开始", "Not started"], learning: ["在走", "Under way"], done: ["走完了", "Done"] };
+const stWord = (st) => tr(STWORD[st.s]);
+function glyph(st) {
+  const ring = (color) => `<circle cx="7" cy="7" r="5" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+  const body = st.s === "none" ? ring("var(--line)")
+    : st.s === "learning" ? ring("var(--copy)") + '<path d="M7 2a5 5 0 0 1 0 10z" fill="var(--copy)"/>'
+    : '<circle cx="7" cy="7" r="5.5" fill="var(--ok)"/>';
+  return `<svg class="g" viewBox="0 0 14 14" role="img" aria-label="${esc(stWord(st))}">${body}</svg>`;
+}
+const stTag = (st) => `<span class="st" data-s="${st.s}">${esc(stWord(st))}</span>`;
+const matIcon = (mat) => ic(mat.kind === "video" ? "video" : mat.kind === "text" ? "doc" : "mark");
+const phase = (g) => (g.map.finding ? t("在查", "Looking it up") : !g.way ? t("在规划", "Planning") : t("在走", "Under way"));
+/* What Zirma works out and never decides: at this pace, about when. */
+function arrive(g, pace = g.pace, drop = []) {
+  const left = allSteps(g).filter((id) => !there(g, id) && !drop.includes(id)).reduce((sum, id) => sum + g.steps[id].est, 0);
+  const weeks = Math.ceil(left / pace) + (g.slip ?? 0);
+  return { left, weeks, date: addDays(TODAY, weeks * 7) };
+}
+const heatOf = (g) => (g.heat ??= Array.from({ length: 12 }, () => Array(7).fill(0)));
+const weekCount = (g, back) => heatOf(g).at(-1 - back).filter(Boolean).length;
+const late = (g, date = arrive(g).date) => !!deadline(g) && date > deadline(g);
+const objective = (g) => (deadline(g) ? t(`${dateWord(deadline(g))}前 · ${tr(g.goal)}`, `By ${dateWord(deadline(g))} · ${tr(g.goal)}`) : tr(g.goal));
+const stance = () => (S.view === "desk" ? "guide" : "planner");
+const noPanel = () => ["picture", "route", "new"].includes(S.view);
+function thread(who = stance()) { return (S.threads[`${S.goal}:${who}`] ??= [{ who: "al", text: HELLO[who] }]); }
+const curMat = (g) => g.steps[g.step]?.mats.find((mat) => mat.id === S.mat) ?? g.steps[g.step]?.mats[0] ?? null;
+
+/* ── Top bar and sidebar ── */
+function renderTop() {
+  const g = goal(), inGoal = S.view !== "new";
+  $("top").innerHTML = `<div class="lead"><span class="lights"><i></i><i></i><i></i></span>
+      <button class="ib" data-a="side" aria-label="${t("收起侧栏", "Hide the sidebar")}" aria-pressed="${S.side}">${ic("sidebar")}</button>
+      <span class="modes" role="group" aria-label="${t("模式", "Mode")}">
+        <button title="${t("日常", "Everyday")}" aria-label="${t("日常", "Everyday")}" aria-pressed="false" data-a="other">${ic("home")}</button>
+        <button title="${t("开发", "Development")}" aria-label="${t("开发", "Development")}" aria-pressed="false" data-a="other">${ic("code")}</button>
+        <button title="${t("目标", "Goals")}" aria-label="${t("目标", "Goals")}" aria-pressed="true">${ic("scope")}</button>
+      </span></div>
+    <div class="titlebar" data-k="violet">${ic("scope")}<h1 class="cut">${esc(inGoal ? tr(g.name) : t("目标", "Goals"))}</h1>
+      <span class="sum cut grow">${esc(inGoal ? phase(g) : t(`${Object.keys(S.goals).length} 个目标`, plural(Object.keys(S.goals).length, "goal")))}</span>
+      ${inGoal && !phone() ? timerTop() : ""}${noPanel() ? "" : `<button class="ib" data-a="panel" aria-label="Zirma" aria-pressed="${S.panel}">${ic("panel")}</button>`}
+      <button class="ib" data-a="other" aria-label="${t("设置", "Settings")}">${ic("gear")}</button></div>`;
+}
+function renderSide() {
+  const g = goal(), inGoal = S.view !== "new";
+  const goalMenu = S.menu === "goal" ? `<div class="menu" style="left:8px;right:8px;top:50px">${Object.values(S.goals).map((x) => `<button data-a="goal" data-id="${x.id}"><span class="ck">${inGoal && x.id === S.goal ? ic("check") : ""}</span><span class="grow">${esc(tr(x.name))}<small>${esc(phase(x))}</small></span></button>`).join("")}<hr><button data-a="go" data-view="new"><span class="ck">${ic("plus")}</span>${t("新目标", "New goal")}</button></div>` : "";
+  if (!inGoal) {
+    $("side").innerHTML = `<div class="label">${t("目标", "Goals")}</div>
+      ${Object.values(S.goals).map((x) => `<button class="nav" data-a="goal" data-id="${x.id}" data-k="violet">${ic("scope")}<span class="cut grow">${esc(tr(x.name))}</span><span class="end">${esc(phase(x))}</span></button>`).join("")}
+      <button class="nav" aria-current="true">${ic("plus")}<span>${t("新目标", "New goal")}</span></button>`;
+    return;
+  }
+  const row = (view, icon, name, end = "") => `<button class="nav" data-a="go" data-view="${view}" aria-current="${S.view === view}">${ic(icon)}<span class="cut grow">${name}</span>${end}</button>`;
+  const stage = g.stages.find((x) => x.steps.includes(g.step));
+  $("side").innerHTML = `<button class="pick" data-a="menu" data-id="goal" aria-expanded="${S.menu === "goal"}" data-k="violet">${ic("scope", "ic")}<span class="cut grow">${esc(tr(g.name))}</span>${ic("down")}</button>${goalMenu}
+    ${row("desk", "desk", t("书桌", "Desk"))}
+    ${row("picture", "globe", t("世界观", "Big picture"), g.map.finding ? `<span class="end">${t("在查", "Looking it up")}</span>` : !g.map.blocks.length ? `<span class="end">${t("从这里开始", "Start here")}</span>` : "")}
+    ${row("route", "route", t("路线", "Route"), routeWord(g) ? `<span class="end">${esc(routeWord(g))}</span>` : "")}
+    ${row("record", "log", t("记录", "Record"))}
+    ${stage ? `<div class="label">${t("这一段", "This stage")} · ${esc(tr(stage.name))}</div>${stage.steps.map((id) => { const st = status(g, id); return `<button class="nav" data-a="step" data-id="${id}" aria-current="${S.view === "desk" && g.step === id}" title="${esc(stWord(st))}">${glyph(st)}<span class="cut grow">${esc(tr(g.steps[id].title))}</span></button>`; }).join("")}` : ""}`;
+}
+
+/* ── Pages ── */
+const phoneHead = (title, sub = "") => `<div class="phone-head" data-k="violet">${ic("scope")}<b class="cut">${esc(title)}</b><span class="cut grow">${esc(sub)}</span>${phone() && S.view !== "new" ? timerTop() : ""}</div>`;
+
+function newView() {
+  const tries = [FRESH.sentence, ["明年 3 月前换一份后端的工作", "Move to a backend job by next March"], ["一年内能用日语看懂工作邮件", "Read work email in Japanese within a year"]];
+  return `${phoneHead(t("目标", "Goals"), t("新目标", "New goal"))}<div class="scroll"><div class="col"><div class="newp">${figSlot("center")}
+    <h2>${t("你想达到什么？", "What do you want to reach?")}</h2>
+    <p>${t("一件要走很久的事。目标是你的，我不改写它；我先去把这件事查清楚，摆给你看", "Something that takes a long while. The goal is yours and I will not reword it; I go and look the thing up first, and lay it out for you")}</p>
+    <form class="compose" data-form="new"><textarea id="sentence" rows="1" aria-label="${t("你的目标", "Your goal")}" placeholder="${esc(tr(FRESH.sentence))}"></textarea><button class="send" aria-label="${t("好", "Go")}">${ic("send")}</button></form>
+    <div class="chips">${tries.map((x, i) => `<button class="chip" data-a="try" data-id="${i}">${esc(tr(x))}</button>`).join("")}</div></div></div></div>`;
+}
+
+/* ── The plan in two tabs: the big picture, and the route. Zirma as planner works in the page, not beside it ── */
+const routeWord = (g) => (g.way ? "" : t("还没开始", "Not started"));
+const saidAt = (g, key) => `<div id="said-${key}">${(g.said?.[key] ?? []).map((x) => `${x.me ? `<p class="pl me">${esc(x.me)}</p>` : ""}<p class="pl">${esc(tr(x.al))}</p>${x.act && !x.done ? `<div class="acts" style="margin-top:8px"><button class="btn" data-a="${x.act}">${esc(tr(x.label))}</button></div>` : ""}`).join("")}</div>`;
+const working = (text) => `<div class="pl now">${figSlot("front")}<div><p>${esc(text)}</p></div></div>`;
+const sayBar = () => `<div class="saybar"><div class="in"><div class="tries">${tries().map((x, i) => `<button class="chip" data-a="say" data-id="${i}">${esc(tr(x))}</button>`).join("")}</div>
+  <form class="compose" data-form="plan"><textarea id="planin" rows="1" aria-label="${t("跟 Zirma 说", "Say it to Zirma")}" placeholder="${t("问什么，改哪里。答在上面那一节底下", "Ask, or say what to change. The answer goes under that part above")}"></textarea><button class="send" aria-label="${t("发送", "Send")}">${ic("send")}</button></form></div></div>`;
+function openWays(g) {
+  g.waysOpen = true; g.waysFinding = true; renderSide(); renderPage();
+  setTimeout(() => { delete g.waysFinding; if (S.goals[g.id] === g && S.view === "route" && S.goal === g.id) renderPage(); }, reduced ? 0 : 1500);
+}
+function calcBox(g) {
+  const a = arrive(g), dl = deadline(g), isLate = late(g);
+  const ends = [3, 6, 12].map(monthEnd), names = [t("3 个月后", "In 3 months"), t("半年后", "In half a year"), t("一年后", "In a year")];
+  return `<div class="calc">
+    <div class="line"><span>${t("期限", "Deadline")}</span><span class="seg" role="group">${ends.map((date, i) => `<button data-a="deadline" data-id="${date.getFullYear()},${date.getMonth()},${date.getDate()}" aria-pressed="${!!dl && +dl === +date}">${esc(names[i])}</button>`).join("")}<button data-a="deadline" data-id="" aria-pressed="${!dl}">${t("先不定", "Not yet")}</button></span>${dl && !ends.some((date) => +date === +dl) ? `<span class="small">${esc(day(dl))}</span>` : ""}</div>
+    <div class="line"><span>${t("节奏", "Pace")}</span><span class="seg" role="group">${[1, 2, 3, 5].map((n) => `<button data-a="pace" data-id="${n}" aria-pressed="${g.pace === n}">${t(`每周 ${n} 次`, `${n} a week`)}</button>`).join("")}</span></div>
+    <div class="line"><span>${t("大约", "About")}</span><span class="res" ${isLate ? 'data-late data-k="warm"' : ""}>${esc(t(`${day(a.date)}到`, `There by ${day(a.date)}`))}${dl ? ` · ${isLate ? t("比期限晚", "after the deadline") : t("在期限前", "before the deadline")}` : ""}</span><span class="muted small">${t("我算的，你定", "I work it out, you decide")}</span></div>
+    ${isLate ? `<div class="acts"><button class="btn" data-a="behind">${t("看三个选择", "See three choices")}</button></div>` : ""}</div>`;
+}
+
+/* The big picture: one whole thing, explained. A board (a column a part, a short row a topic) so the whole is in
+   view; pressing a row does not list facts, it explains two things in plain words, as to someone hearing it for the
+   first time: what it is, and why. Once you know that much, the questions are your own; each is answered in the
+   same plain way and stays on that topic. Nothing here is tracked: no "I know this", no counts, nothing to fill in. */
+const STARTERS = [["whole", ["这到底是什么？给我讲明白", "What is this, really? Explain it to me"]], ["spread", ["把每一块都铺开一层", "Open every part one level"]]];
+const NO_TELL = { what: ["原型里这一项没有备讲解。App 里，Zirma 用大白话讲，像讲给第一次听的人。", "The prototype has no explanation ready for this topic. In the app Zirma explains it in plain words, as to someone hearing it for the first time."], why: ["同上：为什么有它，为什么是现在这样，也用大白话讲。", "The same: why it exists and why it is the way it is, in plain words too."] };
+const NO_ANSWER = [["原型里没有备这个问题的回答。App 里，Zirma 去搜、去整理，用同样的大白话回答，带出处。", "The prototype has no answer ready for this question. In the app Zirma searches and tidies and answers in the same plain words, with sources."]];
+const topicsOf = (g) => g.map.blocks.flatMap((block) => block.topics);
+const openBlock = (g) => g.map.blocks.find((block) => block.id === S.block) ?? g.map.blocks[0];
+const openTopic = (g) => topicsOf(g).find((topic) => topic.id === S.topic) ?? null;
+function spread(g, block) {
+  const bank = g.bank.blocks.find((x) => x.id === block.id);
+  if (!block.topics.length && bank) block.topics = bank.topics.map(([name], i) => ({ id: `${block.id}${i}`, name, cards: [] }));
+}
+function starter(key) {
+  const g = goal(), map = g.map;
+  map.finding = true; renderSide(); renderPage();
+  setTimeout(() => {
+    delete map.finding;
+    if (!map.blocks.length) { map.blocks = g.bank.blocks.map(({ id, name, line }) => ({ id, name: structuredClone(name), line: structuredClone(line), topics: [] })); S.block = map.blocks[0].id; S.topic = null; }
+    map.told = true;
+    if (key === "spread") for (const block of map.blocks) spread(g, block);
+    map.asked = [...new Set([...(map.asked ?? []), "whole", key])];
+    if (S.goals[g.id] === g) renderAll();
+  }, reduced ? 0 : 1500);
+}
+const tellHtml = (tell, deep) => `<div class="eli"><h4>${t("是什么", "What it is")}</h4><p>${esc(tr(tell.what))}</p><h4>${t("为什么", "Why")}</h4><p>${esc(tr(tell.why))}</p>${deep && tell.more ? `<p class="deep">${esc(tr(tell.more))}</p>` : ""}</div>`;
+function pictureView(g) {
+  const map = g.map, blocks = map.blocks, all = topicsOf(g), topic = blocks.length ? openTopic(g) : null, block = blocks.length ? openBlock(g) : null;
+  let body;
+  if (map.finding) body = working(t("在搜、在整理，然后讲给你听", "Searching and tidying, then explaining it to you"));
+  else if (!blocks.length) body = `<div class="pl now">${figSlot("front")}<div><p>${t("先弄明白两件事：它是什么，为什么是这样。我用大白话讲；之后想知道什么，你来问。", "Two things first: what it is, and why it is so. I explain in plain words; after that, you ask what you want to know.")}</p></div></div>
+    <div class="starters">${STARTERS.map(([key, text]) => `<button class="starter" data-a="starter" data-id="${key}">${esc(tr(text))}</button>`).join("")}</div>
+    <p class="muted small" style="margin-top:10px">${t("也可以在底下问你自己的问题", "Or ask a question of your own in the line below")}</p>`;
+  else {
+    const row = (x) => `<button class="trow" data-a="topic" data-id="${x.id}" aria-pressed="${topic?.id === x.id}"><span>${esc(tr(x.name))}</span>${x.cards.length ? `<i>${t(`你问过 ${x.cards.length} 个`, `${x.cards.length} of your questions`)}</i>` : ""}</button>`;
+    const column = (b) => `<div class="bcol"><button class="bcol-h" data-a="col" data-id="${b.id}" aria-pressed="${!topic && block.id === b.id}"><b>${esc(tr(b.name))}</b></button>
+        ${b.topics.length ? b.topics.map(row).join("") : `<button class="trow ghost" data-a="spread" data-id="${b.id}">${t("铺开这一块", "Open this part")}</button>`}</div>`;
+    let detail;
+    if (topic) {
+      const parent = blocks.find((b) => b.topics.includes(topic)), tell = g.bank?.tell?.[topic.id] ?? NO_TELL;
+      detail = `<section class="block" id="detail"><div class="block-h"><h3>${esc(tr(topic.name))}</h3><span class="muted small">${esc(tr(parent.name))}</span><span class="grow"></span><button class="linkish" data-a="tdrop">${t("去掉这一项", "Remove this topic")}</button></div>
+        ${S.telling === topic.id ? working(t("在想怎么讲明白…", "Working out how to make it clear…")) : `${tellHtml(tell, topic.deep)}
+        ${tell.more ? `<div class="acts" style="margin-top:12px"><button class="btn" data-a="deep">${topic.deep ? t("收起", "Less") : t("讲细一点", "A little more detail")}</button></div>` : ""}
+        ${topic.cards.map((card, ci) => `<div class="qa"><div class="qa-h"><span>${t("你问的：", "You asked: ")}${esc(tr(card.q))}</span>${card.src ? `<sup>${card.src}</sup>` : ""}<span class="grow"></span><button class="linkish" data-a="card-drop" data-id="${ci}">${t("删掉", "Remove")}</button></div>
+          <ul>${card.items.map((item) => `<li><span>${esc(tr(item))}</span></li>`).join("")}</ul></div>`).join("")}
+        <p class="muted small" style="margin-top:16px">${t("还想知道什么，在底下问。回答留在这一项里", "Whatever else you want to know, ask below. The answer stays on this topic")}</p>`}</section>`;
+    } else detail = `<section class="block" id="detail"><div class="block-h"><h3>${esc(tr(block.name))}</h3><span class="grow"></span><button class="linkish" data-a="bdrop">${t("去掉这一块", "Remove this part")}</button></div>
+        <p class="bline">${esc(tr(block.line))}</p>
+        <div class="asks">${block.topics.length ? `<span class="muted small">${t("点一项，听它是什么、为什么", "Press a topic to hear what it is and why")}</span>` : `<button class="btn" data-a="spread" data-id="${block.id}">${t("铺开这一块", "Open this part")}</button>`}</div></section>`;
+    body = `${map.told && g.bank?.whole ? `<section class="block whole">${tellHtml(g.bank.whole, false)}</section>` : ""}
+      <div class="btools"><span class="muted small">${all.length ? t("点一项，听它是什么、为什么", "Press a topic to hear what it is and why") : ""}</span><span class="grow"></span><button class="linkish" data-a="tile-add">${t("加一块", "Add a part")}</button></div>
+      <div class="board">${blocks.map(column).join("")}</div>${detail}${saidAt(g, "map")}
+      ${g.bank?.srcs?.length ? `<ol class="srcs">${g.bank.srcs.map((src, i) => `<li><b>${i + 1}</b>${esc(tr(src))}</li>`).join("")}</ol>` : ""}
+      ${!g.way ? `<div class="acts" style="margin-top:22px"><button class="btn" data-a="go" data-view="route">${t("去路线", "To the route")}</button><span class="muted small">${t("心里有数了再去，或者现在就去看看", "Go when you have a feel for it, or have a look now")}</span></div>` : ""}`;
+  }
+  return `${phoneHead(tr(g.name), t("世界观", "Big picture"))}${objLine(g)}<div class="scroll"><div class="col board-col">
+    <div class="head"><h2>${t("世界观", "The big picture")}</h2><p>${blocks.length ? (all.length ? t(`${blocks.length} 块，${all.length} 项`, `${plural(blocks.length, "part")}, ${plural(all.length, "topic")}`) : t(`${blocks.length} 块`, plural(blocks.length, "part"))) : t("这件事到底是什么，为什么是这样", "What this thing actually is, and why it is so")}</p></div>
+    ${body}</div></div>${sayBar()}`;
+}
+
+/* The route: how to get there, a step at a time. Like the big picture, it explains before it lists. You ask how
+   people usually get there; Zirma tells two or three ways in plain words, each with what it costs, none recommended;
+   you take one, or bring your own. Then only the stage at hand is laid out. Pressing a step explains two things:
+   what you do, and why this step. Under it: what you can use from the web, which you put on the desk yourself.
+   Nothing to confirm on the way: once there is a first step you can go and do it. */
+const NO_STEP = { does: ["原型里这一步没有备讲解。App 里，Zirma 用大白话讲这一步具体做什么。", "The prototype has no explanation ready for this step. In the app Zirma says in plain words what you actually do here."], why: ["同上：为什么现在走这一步，也用大白话讲。", "The same: why this step comes now, in plain words too."] };
+function routeView(g) {
+  let ways = "";
+  if (g.way) ways = `<p class="wayline"><span class="muted">${t("走法", "Approach")}</span>${esc(tr(g.way.name))}<button class="linkish" data-a="reway">${t("换走法", "Change approach")}</button></p>`;
+  else if (g.waysOpen) ways = g.waysFinding ? working(t("在找真实的人是怎么走到的…", "Finding how real people got there…"))
+    : `<p class="pl">${t("走到这里的人，大致是这三种走法。没有哪一种是我推荐的；每种的代价写在下面。", "People who got here went roughly these three ways. None of them is my pick; what each costs is written under it.")}</p>
+    <div class="ways" style="margin-top:12px">${g.ways.map((way, i) => `<div class="way"><h4>${esc(tr(way.name))}</h4><p>${esc(tr(way.like))}</p><p class="cost"><b>${t("代价", "Cost")}</b>${esc(tr(way.cost))}</p>
+      <p class="muted small">${t("靠", "Leans on")} ${esc(tr(way.uses))} · <span class="guess">${esc(tr(way.long))}</span></p><button class="btn" data-a="way" data-id="${i}">${t("走这条", "Take this one")}</button></div>`).join("")}
+      <div class="way"><h4>${t("我有自己的路", "I have my own way")}</h4><p>${t("贴一份大纲、一门课、一本书的目录，我排成一步一步的。", "Paste an outline, a course or a book's contents, and I lay it out step by step.")}</p><button class="btn" data-a="own-way">${t("用我的", "Use mine")}</button></div></div>${saidAt(g, "ways")}`;
+  else ways = `<div class="pl now">${figSlot("front")}<div><p>${t("世界观讲的是它是什么。这一页想的是怎么走：从哪一步开始，用什么走。", "The big picture says what it is. This page is about how to go: which step first, and what to use.")}</p></div></div>
+    <div class="starters"><button class="starter" data-a="open-ways">${t("别人一般是怎么走到的？", "How do people usually get there?")}</button><button class="starter" data-a="own-way">${t("我有自己的路", "I have my own way")}</button></div>
+    <p class="muted small" style="margin-top:10px">${t("也可以在底下问你自己的问题", "Or ask a question of your own in the line below")}</p>`;
+
+  let route = "", pace = "";
+  if (g.way) {
+    const board = topicsOf(g), first = allSteps(g).find((id) => !there(g, id)) ?? allSteps(g)[0];
+    const detail = (id) => {
+      const step = g.steps[id], topic = step.topic ? board.find((x) => x.id === step.topic) : null, left = (step.res ?? []).map((item, i) => [item, i]).filter(([, i]) => !(step.put ?? []).includes(i));
+      if (S.telling === id) return `<div class="sdetail">${working(t("在想怎么讲明白…", "Working out how to make it clear…"))}</div>`;
+      return `<div class="sdetail"><div class="eli"><h4>${t("做什么", "What you do")}</h4><p>${esc(tr(step.does ?? NO_STEP.does))}</p><h4>${t("为什么走这一步", "Why this step")}</h4><p>${esc(tr(step.why ?? NO_STEP.why))}</p></div>
+        ${topic ? `<div class="acts" style="margin-top:12px"><button class="chip" data-a="see-topic" data-id="${topic.id}">${t(`世界观里的「${tr(topic.name)}」`, `“${tr(topic.name)}” in the big picture`)}</button></div>` : ""}
+        <div class="resbox"><h4>${t("用什么走", "What to use")}</h4>
+          ${step.mats.map((m) => `<div class="rrow">${matIcon(m)}<span>${esc(tr(m.title))}</span><span class="muted small">${t("在书桌上", "On the desk")}</span></div>`).join("")}
+          ${step.resShown ? (left.length ? left.map(([[title, note], i]) => `<div class="rrow">${ic("mark")}<span>${esc(tr(title))}<br><span class="muted small">${esc(tr(note))}</span></span><button class="btn mini" data-a="put" data-id="${id}:${i}">${t("放到书桌上", "Put on the desk")}</button></div>`).join("") : `<p class="muted small">${step.res ? t("找到的都放上去了", "Everything found is on the desk") : t("原型里这一步没有备资料。App 里，Zirma 去找两三样真的能用的，说清每样好在哪。", "The prototype has nothing ready for this step. In the app Zirma finds two or three things you can really use, and says what each is good for.")}</p>`)
+            : `<button class="chip" data-a="sres" data-id="${id}">${t("网上有什么能直接用？", "What can I use from the web?")}</button>`}</div>
+        <div class="acts" style="margin-top:16px"><button class="btn solid" data-a="step" data-id="${id}">${t("去书桌做这一步", "Do this step at the desk")}</button><button class="btn" data-a="done-step" data-id="${id}">${step.done ? t("改回没走完", "Not done after all") : t("这一步走完了", "This step is done")}</button></div></div>`;
+    };
+    const stepRow = (id) => { const step = g.steps[id], st = status(g, id), open = S.rstep === id; return `<div class="sitem" ${step.fresh ? "data-fresh" : ""}><button class="srow" data-a="rstep" data-id="${id}" aria-expanded="${open}">${glyph(st)}<span class="rt">${esc(tr(step.title))}</span><span class="re">${step.optional ? `<span class="tag">${t("可选", "Optional")}</span>` : ""}${st.s !== "none" ? stTag(st) : ""}</span></button>${open ? detail(id) : ""}</div>`; };
+    const review = g.review ? `<div class="pl now">${figSlot("front")}<div><p>${t("这一周回看：你在「行列式」里三次问到同一处：它什么时候为零。要不要在它前面加一步「线性无关」？", "Looking back on the week: in “The determinant” you asked about the same thing three times: when it is zero. Add a step “Linear independence” before it?")}</p><div class="acts"><button class="btn solid" data-a="review-yes">${t("好", "Yes")}</button><button class="btn" data-a="review-no">${t("不", "No")}</button></div></div></div>` : "";
+    route = `<section class="ps" id="sec-route"><h3>${t("一步一步", "Step by step")}<span>${t("点一步，听它做什么、为什么", "Press a step to hear what you do and why")}</span></h3>${review}
+      ${g.stages.map((stage, i) => `<div class="stagename">${esc(tr(stage.name))}</div>${stage.coarse ? `<div class="later" style="margin-top:6px"><span>${esc(stage.steps.map((id) => tr(g.steps[id].title)).join(t("、", ", ")))}</span><span>${t("走到这一段再排细", "Laid out in detail when you get here")}</span><button class="linkish" data-a="detail" data-id="${i}">${t("现在排", "Lay it out now")}</button></div>` : stage.steps.map(stepRow).join("")}`).join("")}
+      ${g.record.length ? "" : `<div class="acts" style="margin-top:18px"><button class="btn solid" data-a="step" data-id="${first}">${t("从第一步开始", "Start with the first step")}</button></div>`}</section>${saidAt(g, "route")}`;
+    pace = `<section class="ps" id="sec-calc"><h3>${t("期限和节奏", "Deadline and pace")}<span>${t("想定再定。哪天到是我算的，定是你定", "Set them when you want to. I work out the date; the decision is yours")}</span></h3><div style="margin-top:10px">${calcBox(g)}</div></section>`;
+  }
+  return `${phoneHead(tr(g.name), t("路线", "Route"))}${objLine(g)}<div class="scroll"><div class="col read">
+    <div class="head"><h2>${t("路线", "Route")}</h2><p>${t("怎么走到那里，一步一步", "How to get there, a step at a time")}</p></div>${ways}${route}${pace}</div></div>${sayBar()}`;
+}
+
+function objLine(g) {
+  const w = g.week;
+  return `<div class="obj"><button class="objb grow" data-a="goal-card" title="${t("看目标，写为什么要它", "See the goal and why you want it")}">${esc(objective(g))}</button>${g.way ? `<span class="when">${t(`这一周 · 第 ${Math.min(w.done + 1, g.pace)} 次`, `This week · sitting ${Math.min(w.done + 1, g.pace)}`)}</span><span class="dots">${Array.from({ length: g.pace }, (_, i) => `<i class="${i < w.done ? "on" : ""}"></i>`).join("")}</span>` : ""}</div>`;
+}
+function timerTop() {
+  if (S.sitting) return S.sitting.timer == null ? "" : `<button class="clockb" data-a="timer-toggle" aria-pressed="${!!S.sitting.paused}" title="${t("点一下暂停或继续", "Press to pause or go on")}"><span class="time" id="timer">${clock(S.sitting.timer)}</span></button>`;
+  const on = S.timerOn, sec = S.timerSec, two = (n) => String(n).padStart(2, "0");
+  const field = (id, value, label) => `<label class="tf"><input id="${id}" inputmode="numeric" maxlength="2" value="${two(value)}" aria-label="${label}">${label}</label>`;
+  const menu = S.menu === "timer" ? `<div class="popmenu"><span class="tset" data-on="${on}">${field("th", Math.floor(sec / 3600), t("时", "h"))}<b>:</b>${field("tm", Math.floor((sec % 3600) / 60), t("分", "min"))}<b>:</b>${field("ts", sec % 60, t("秒", "s"))}<button class="linkish" data-a="timer-off">${on ? t("不计时", "No timer") : t("要计时", "Use a timer")}</button></span></div>` : "";
+  return `<button class="clockb" data-a="menu" data-id="timer" aria-expanded="${S.menu === "timer"}" title="${t("倒计时，点开来设", "Countdown. Press to set it")}"><span class="time" id="tlabel">${on ? clock(sec) : t("不计时", "No timer")}</span></button>${menu}`;
+}
+function deskView(g) {
+  if (!g.way) return `${phoneHead(tr(g.name), t("书桌", "Desk"))}${objLine(g)}<div class="scroll"><div class="col"><div class="head"><h2>${t("还没有路线", "No route yet")}</h2><p>${t("先看清这件事，再定怎么走。书桌是每天走一步的地方", "See the thing clearly, then decide how to go. The desk is where you take a step each day")}</p></div>
+    <div class="acts" style="margin-top:16px"><button class="btn solid" data-a="go" data-view="picture">${t("世界观", "Big picture")}</button><button class="btn" data-a="go" data-view="route">${t("路线", "Route")}</button></div></div></div>`;
+  const step = g.steps[g.step], mat = curMat(g);
+  const about = Math.max(5, step.est * 4);
+  const opening = S.sitting ? `<div class="opening"><span class="w"><b>${esc(tr(step.title))}</b></span><button class="btn" data-a="close-sitting">${t("今天到这", "That's it for today")}</button></div>`
+    : `<div class="opening"><span class="w">${g.left ? `${t("上次留下的：", "Left from last time: ")}<b>${esc(tr(g.left))}</b>` : `${t("今天这一步：", "Today's step: ")}<b>${esc(tr(step.title))}</b>`} · ${t(`约 ${about} 分钟`, `about ${about} minutes`)}</span><button class="btn solid ${S.count ? "counting" : ""}" data-a="start" id="startb">${S.count || t("开始", "Start")}</button>${S.count ? `<span class="muted small">${t("数到 1 开始 · 再点直接开始", "Starts at 1 · press again to start now")}</span>` : ""}</div>`;
+  const beside = !S.panel && !phone() ? `<span class="grow"></span><button class="tab" data-a="open-panel" data-id="ask">${ic("chat")}${t("问 Zirma", "Ask Zirma")}</button><button class="tab" data-a="open-panel" data-id="keep">${ic("doc")}${t("我的笔记", "My notes")}</button>` : "";
+  const tabs = `<div class="tabs" role="tablist">${step.mats.map((m) => `<button class="tab" role="tab" data-a="mat" data-id="${m.id}" aria-selected="${mat?.id === m.id}">${matIcon(m)}${esc(tr(m.title))}</button>`).join("")}${beside}</div>`;
+  let body;
+  if (!mat) body = `<div class="col"><div class="blind"><h4>${t("这一步还没有材料", "This step has no material yet")}</h4><p>${t("拖一份 PDF、贴一个链接进来；或者在右边让我找几份真实的，你点头才放上来", "Drop a PDF or paste a link; or ask me on the right to find a few real ones, which go up only when you say so")}</p></div></div>`;
+  else if (mat.kind === "video") {
+    const cap = capAt(g.video.at);
+    body = `<div class="col wide"><div class="player"><div class="screen"><p class="cap" id="cap">${esc(tr(cap[1]))}</p><small>${t("原型里是假的播放器：只走时间和示例字幕", "A stand-in player: it only runs a clock and sample captions")}</small></div>
+      <div class="ctrl"><button class="playb" data-a="play" id="playb" aria-label="${t("播放或暂停", "Play or pause")}">${ic(S.playing ? "pause" : "play")}</button><div class="track" id="track" data-a="seek" role="slider" aria-label="${t("进度", "Position")}" aria-valuemin="0" aria-valuemax="${VIDEO.len}" aria-valuenow="${g.video.at}"><i style="--at:${(g.video.at / VIDEO.len) * 100}%"></i></div><span class="time" id="vtime">${clock(g.video.at)} / ${clock(VIDEO.len)}</span></div></div>
+      <div class="vtitle"><b>${esc(tr(mat.title))}</b><span class="muted small">${esc(tr(mat.src))} · ${t("嵌着看：Zirma 知道时间点和这附近的字幕", "Embedded: Zirma knows the time and the captions around it")}</span></div>
+      <div class="acts" style="margin-top:14px"><button class="btn" data-a="lost">${t("这里没懂", "Lost me here")}</button><button class="btn" data-a="note-now">${t("记一笔", "Note this")}</button></div></div>`;
+  } else if (mat.kind === "text") body = `<div class="col read"><article class="reader" id="reader"><h2>${esc(tr(LESSON.title))}</h2><p class="askq">${esc(tr(LESSON.ask))}</p>${LESSON.paras.map((para) => `<p>${esc(tr(para))}</p>`).join("")}</article>
+      <p class="muted small">${t("Zirma 写的，因为你要了一个换种讲法的版本 · 收进来的文字可以划词", "Written by Zirma because you asked for another telling · text taken in can be selected")}</p></div>`;
+  else body = `<div class="col"><div class="blind"><h4>${esc(tr(mat.title))}</h4><p>${esc(tr(mat.src))}</p><p>${t("只给链接：这份材料 Zirma 看不见。卡住了截图给它，或者读完回来记一笔", "Link only: Zirma cannot see this one. Send it a screenshot when you are stuck, or come back and make a note when you have read it")}</p><div class="acts"><button class="btn" data-a="outside">${t("读完了，记一笔", "Read it, make a note")}</button></div></div></div>`;
+  return `${phoneHead(tr(g.name), tr(step.title))}${objLine(g)}${opening}${tabs}<div class="scroll">${body}</div>`;
+}
+
+function heatBox(g) {
+  const heat = heatOf(g), monday = addDays(TODAY, -((TODAY.getDay() + 6) % 7) - 7 * (heat.length - 1));
+  const names = [t("一", "Mon"), "", t("三", "Wed"), "", t("五", "Fri"), "", ""];
+  const word = (level) => (level === 2 ? t("走完了一步", "a step finished") : level === 1 ? t("坐下来过", "sat down") : t("没来", "nothing"));
+  return `<div class="heat" role="group" aria-label="${t("每天的记录", "The record by day")}"><div class="hd" aria-hidden="true">${names.map((name) => `<span>${name}</span>`).join("")}</div>${heat.map((col, w) => {
+    const n = w === heat.length - 1 ? Math.max(g.week.done, col.filter(Boolean).length) : col.filter(Boolean).length, met = n >= g.pace;
+    return `<div class="hc">${col.map((level, d) => { const date = addDays(monday, w * 7 + d); return `<i class="hm" data-l="${date > TODAY ? "x" : level}" title="${esc(day(date))} · ${esc(date > TODAY ? t("还没到", "not yet") : word(level))}"></i>`; }).join("")}<b class="wk ${met ? "met" : ""}" title="${esc(t(`${n} 次`, plural(n, "sitting")))}"></b></div>`; }).join("")}</div>
+    <p class="legend"><span><i class="hm" data-l="1"></i>${t("坐下来过", "Sat down")}</span><span><i class="hm" data-l="2"></i>${t("走完了一步", "A step finished")}</span><span><b class="wk met"></b>${t("这一周到了你定的节奏", "The week met the pace you set")}</span></p>`;
+}
+function recordView(g) {
+  const head = `${phoneHead(tr(g.name), t("记录", "Record"))}${objLine(g)}<div class="scroll"><div class="col">`;
+  if (!g.way) return `${head}<div class="head"><h2>${t("记录", "Record")}</h2><p>${t("每坐下来一次，这里多一条。现在还没有", "Each time you sit down, one line is added here. None yet")}</p></div></div></div>`;
+  const a = arrive(g);
+  return `${head}<div class="head"><h2>${t("记录", "Record")}</h2><p>${t("一格一天。坐下来过就亮，走完一步更亮", "A square a day. Lit when you sat down, brighter when you finished a step")}</p></div>
+    <section class="sec"><h3>${t("这几周", "These weeks")}<span>${t(`这一周 ${g.week.done} 次 · 你定的是每周 ${g.pace} 次`, `${plural(g.week.done, "sitting")} this week · you set ${g.pace} a week`)}</span></h3>${heatBox(g)}</section>
+    <section class="sec"><h3>${t("期限", "Deadline")}</h3><p ${late(g) ? 'data-k="warm" style="color:var(--k-text);font-weight:600"' : ""}>${esc(t(`按每周 ${g.pace} 次，大约 ${day(a.date)}到`, `At ${g.pace} a week, there by about ${day(a.date)}`))}${deadline(g) ? ` · ${t("期限", "deadline")} ${esc(dateWord(deadline(g)))}` : ""}</p>
+      ${late(g) ? `<div class="acts" style="margin-top:10px"><button class="btn" data-a="behind">${t("看三个选择", "See three choices")}</button></div>` : ""}</section>
+    <section class="sec"><h3>${t("每一次", "Each sitting")}</h3>${g.record.length ? g.record.map((r) => `<div class="row" ${r.fresh ? "data-fresh" : ""}>${ic("log")}<span class="rt">${esc(tr(g.steps[r.step].title))}</span><span class="re">${esc(r.d === 0 ? t("今天", "Today") : day(addDays(TODAY, r.d)))}</span><span class="rs">${esc(tr(r.did))}</span></div>`).join("") : `<p class="empty">${t("还没有", "None yet")}</p>`}</section>
+  </div></div>`;
+}
+
+function renderPage() {
+  const g = goal(), page = $("page"), keep = page.dataset.view === S.view ? page.querySelector(".scroll")?.scrollTop ?? 0 : 0;
+  page.dataset.view = S.view; document.body.dataset.view = S.view;
+  page.innerHTML = S.view === "new" ? newView() : S.view === "picture" ? pictureView(g) : S.view === "route" ? routeView(g) : S.view === "record" ? recordView(g) : deskView(g);
+  placeFigs(page, g.map.finding || g.waysFinding ? "think" : "rest");
+  if (keep) page.querySelector(".scroll")?.scrollTo(0, keep);
+}
+
+/* ── Zirma on the right ── */
+function sees() {
+  const g = goal();
+  if (S.view === "new") return t("还没有目标", "No goal yet");
+  if (S.view === "record") return t("看得见：每一次的记录", "Sees: the record of each sitting");
+  const mat = g.way ? curMat(g) : null;
+  if (!mat) return t("看得见：目标和世界观", "Sees: the goal and the big picture");
+  if (mat.kind === "video") return t(`看得见：视频 ${clock(g.video.at)} 和这附近的字幕`, `Sees: the video at ${clock(g.video.at)} and the captions around it`);
+  if (mat.kind === "text") return t("看得见：这篇讲解和你选中的话", "Sees: this text and what you select");
+  return t("看不见这份材料：只有链接", "Cannot see this material: link only");
+}
+function tries() {
+  const g = goal();
+  if (S.view === "picture") return g.map.blocks.length && !g.map.finding ? STARTERS.filter(([key]) => !(g.map.asked ?? []).includes(key)).map(([, words]) => words) : [];
+  if (S.view === "route") return g.way ? [["这周我只能来两次", "I can only come twice this week"]] : g.waysOpen && !g.waysFinding ? [["哪条最好", "Which is best"]] : [];
+  if (S.view === "record") return [["我是不是落后了", "Am I behind"]];
+  if (S.view === "desk" && g.way) return curMat(g)?.kind === "video" ? [["这里没懂", "Lost me here"]] : [["这一步和上一步什么关系", "How does this step follow the last one"]];
+  return [];
+}
+function renderAlf() {
+  const who = stance(), el = $("alf"), g = goal(), notes = g.notes;
+  el.hidden = !S.panel || noPanel();
+  const ask = `<div class="thread" id="thread">${thread(who).map((m) => `<div class="msg ${m.who}">${m.from ? `<span class="from">${esc(tr(m.from))}</span>` : ""}${m.sel ? `<span class="sel">${esc(m.sel)}</span>` : ""}${esc(tr(m.text))}</div>`).join("")}</div>
+    <div class="tries">${tries().map((x, i) => `<button class="chip" data-a="say" data-id="${i}">${esc(tr(x))}</button>`).join("")}</div>
+    <form class="compose" data-form="alf"><textarea id="ask" rows="1" aria-label="${t("问 Zirma", "Ask Zirma")}" placeholder="${who === "planner" ? t("问后果，或者说你的打算", "Ask what follows, or say what you intend") : t("问这一页", "Ask about this page")}"></textarea><button class="send" aria-label="${t("发送", "Send")}">${ic("send")}</button></form>`;
+  const keep = `<div class="thread" id="thread">${notes.length ? notes.map((n, i) => `<div class="note" ${n.fresh ? "data-fresh" : ""}>${n.mat === "v1" && n.at != null ? `<button data-a="jump" data-id="${i}" title="${t("跳回这里", "Jump back here")}">${clock(n.at)}</button>` : `<span>${n.mat === "m1" ? t("讲解", "The text") : t("别处", "Elsewhere")}</span>`}<p>${esc(tr(n.text))}</p></div>`).join("") : `<p class="empty">${t("还没有笔记", "No notes yet")}</p>`}</div>
+    <form class="compose" data-form="note"><textarea id="notein" rows="1" aria-label="${t("记一笔", "A note")}" placeholder="${t("记一笔，带上现在的位置", "A note, with where you are now")}"></textarea><button class="send" aria-label="${t("记下", "Keep")}">${ic("check")}</button></form>`;
+  el.innerHTML = `<div class="alf-h">${figSlot("head")}<b>Zirma</b><span class="stance">${esc(tr(STANCE[who]))}</span><span class="grow"></span><button class="ib" data-a="panel" aria-label="${t("收起", "Close")}">${ic("close")}</button></div>
+    <div class="ptabs" role="tablist"><button role="tab" data-a="ptab" data-id="ask" aria-selected="${S.ptab === "ask"}">${ic("chat")}${t("问 Zirma", "Ask Zirma")}</button><button role="tab" data-a="ptab" data-id="keep" aria-selected="${S.ptab === "keep"}">${ic("doc")}${t("我的笔记", "My notes")}${notes.length ? `<span class="n">${notes.length}</span>` : ""}</button></div>
+    <p class="sees" id="sees">${esc(sees())}</p>${S.ptab === "ask" ? ask : keep}`;
+  const showHead = S.panel && !noPanel() && !S.cue && (!phone() || S.sheet === "alf");
+  if (showHead) placeFigs(el); else el.querySelector("span[data-fig]")?.remove();
+  $("bubbles").innerHTML = `${S.view === "new" ? "<span></span>" : `<button data-a="sheet" data-id="side">${ic("scope")}${esc(tr(g.name))}</button>`}${noPanel() ? "" : `<button class="round" data-a="sheet" data-id="alf" aria-label="Zirma">${showHead || S.cue ? "" : figSlot("dock")}</button>`}`;
+  placeFigs($("bubbles"));
+  const box = $("thread"); box.scrollTop = box.scrollHeight;
+}
+function say(text, from = null) {
+  const who = stance(), g = goal();
+  let reply;
+  if (S.view === "desk" && g.way && curMat(g)?.kind === "video" && /没懂|lost/i.test(text)) {
+    const cap = capAt(g.video.at); S.playing = false;
+    from = [`视频 ${clock(g.video.at)}`, `Video at ${clock(g.video.at)}`];
+    reply = [`你停在 ${clock(g.video.at)}。这一段在说：「${cap[1][0]}」换个说法：${cap[2][0]}`, `You stopped at ${clock(g.video.at)}. This stretch says: “${cap[1][1]}” Put another way: ${cap[2][1]}`];
+  }
+  else if (/最好|best/i.test(text)) reply = ["没有哪条对谁都最好。这要看你更在意什么：每条路的代价都写在卡上，比的是你更受不了哪一种代价。你定。", "None is best for everyone. It depends on what you mind most: each card says what its way costs, and the question is which cost you can least bear. You decide."];
+  else if (/两次|twice/i.test(text)) { const a = arrive(g, 2); reply = [`每周 2 次的话，大约 ${day(a.date)}到，${late(g, a.date) ? "比期限晚" : "还在期限前"}。要改就点上面的「每周 2 次」，我不替你改。`, `At 2 a week you would be there by about ${day(a.date)}, ${late(g, a.date) ? "after the deadline" : "still before the deadline"}. To change it, press “2 a week” above; I will not change it for you.`]; }
+  else if (/落后|behind/i.test(text)) { const a = arrive(g); reply = late(g) ? [`按现在的节奏大约 ${day(a.date)}到，比期限晚。有三个选择，后果我都算好了，在这一页上。`, `At this pace you get there by about ${day(a.date)}, after the deadline. There are three choices on this page, each with what it costs.`] : [`没有。这一周 ${g.week.done} 次，上一周 ${weekCount(g, 1)} 次；按现在的节奏大约 ${day(a.date)}到，在期限前。`, `No. ${plural(g.week.done, "sitting")} this week and ${weekCount(g, 1)} last week; at this pace you get there by about ${day(a.date)}, before the deadline.`]; }
+  else if (/不一样|different/i.test(text)) reply = ["「你现在在哪」那一半是你的话，我不替你写。你说一句现在的情况，我原样放上去。", "“Where you are” is your half and I will not write it for you. Tell me how things are and I put it there as you said it."];
+  else if (/关系|follow/i.test(text)) reply = ["上一步说矩阵的每一列是基向量的落点。这一步用的就是它：把 B 的落点再交给 A 搬一次，得到的就是 AB 的列。", "The last step said each column is where a basis vector lands. This step uses exactly that: hand B's landing points to A to move again, and you have the columns of AB."];
+  else reply = ["原型里我只会几句。App 里，我按你写的底子来答，引材料里的原话；该你定的事，我只摆出后果。", "I only know a few lines in the prototype. In the app I answer at the level you wrote down, quoting the material; where the choice is yours, I only lay out what follows."];
+  if (S.view === "picture") {
+    const hit = STARTERS.find(([, words]) => tr(words) === text);
+    if (hit || !g.map.blocks.length) return starter(hit ? hit[0] : "whole");
+    const topic = openTopic(g);
+    if (topic) topic.cards.push({ key: `q${Date.now()}`, q: [text, text], items: structuredClone(NO_ANSWER), src: null });
+    else ((g.said ??= {}).map ??= []).push({ me: text, al: NO_ANSWER[0] });
+    return renderPage();
+  }
+  if (S.view === "route") {
+    if (!g.way && !g.waysOpen) return openWays(g);
+    const key = g.way ? "route" : "ways";
+    ((g.said ??= {})[key] ??= []).push({ me: text, al: reply }); renderPage();
+    return document.getElementById(`said-${key}`)?.scrollIntoView({ block: "nearest" });
+  }
+  thread(who).push({ who: "me", text, from }); thread(who).push({ who: "al", text: reply });
+  if (S.sitting) S.sitting.asks += 1;
+  S.ptab = "ask"; renderPage(); renderAlf();
+}
+function addNote(text, at = null) {
+  const g = goal(), mat = S.view === "desk" && g.way ? curMat(g) : null;
+  const note = { text, mat: mat?.id ?? null, at: mat?.kind === "video" ? (at ?? g.video.at) : null, fresh: true };
+  g.notes.push(note); if (S.sitting) S.sitting.notes += 1;
+  return note;
+}
+
+/* ── The stand-in player: only its own parts are repainted while it runs ── */
+function paintPlayer() {
+  const g = goal();
+  if (!$("vtime")) return;
+  $("vtime").textContent = `${clock(g.video.at)} / ${clock(VIDEO.len)}`;
+  $("track").firstElementChild.style.setProperty("--at", `${(g.video.at / VIDEO.len) * 100}%`);
+  $("track").setAttribute("aria-valuenow", String(Math.round(g.video.at)));
+  $("cap").textContent = tr(capAt(g.video.at)[1]);
+  $("playb").innerHTML = ic(S.playing ? "pause" : "play");
+  if ($("sees")) $("sees").textContent = sees();
+}
+setInterval(() => {
+  if (!S) return;
+  if (S.count > 0) { S.count -= 1; if (S.count <= 0) go(); else if ($("startb")) $("startb").textContent = S.count; }
+  if (S.sitting?.timer > 0 && !S.sitting.paused) {
+    S.sitting.timer -= 1;
+    if ($("timer")) $("timer").textContent = clock(S.sitting.timer);
+    if (S.sitting.timer === 0) toast(t("时间到了。收尾，或者歇五分钟", "Time is up. Close, or rest for five"), () => { if (S.sitting) S.sitting.timer = 300; renderTop(); renderPage(); }, t("再 5 分钟", "5 more"));
+  }
+  if (!S.playing) return;
+  const g = goal();
+  if (S.view !== "desk" || curMat(g)?.kind !== "video") { S.playing = false; return; }
+  g.video.at = Math.min(VIDEO.len, g.video.at + 2);
+  if (g.video.at >= VIDEO.len) S.playing = false;
+  paintPlayer();
+}, 1000);
+function begin() { if (!S.sitting) { S.sitting = { asks: 0, notes: 0, timer: S.timerOn ? S.timerSec : null }; S.menu = null; renderTop(); return true; } return false; }
+/* Into the desk once the five are counted (or skipped). */
+function go() { S.count = 0; begin(); renderTop(); if (S.view === "desk" && curMat(goal())?.kind === "video") S.playing = true; renderPage(); renderAlf(); paintPlayer(); }
+
+/* ── Selecting in a text on the desk ── */
+function showPop() {
+  const el = $("float"), pop = S.pop;
+  el.hidden = !pop;
+  if (!pop) { el.innerHTML = ""; return; }
+  if (pop.mode === "bar") el.innerHTML = `<div class="selbar" role="toolbar" aria-label="${t("对选中的字", "For the selection")}">${[["explain", t("解释", "Explain")], ["example", t("举例", "Example")], ["keep", t("记下", "Keep")]].map(([a, name]) => `<button data-a="sel" data-id="${a}">${name}</button>`).join("")}</div>`;
+  else el.innerHTML = `<div class="ans" role="dialog" aria-label="Zirma"><q>${esc(pop.text)}</q><p id="anstext"></p>
+      <div class="acts"><button class="btn" data-a="sel" data-id="keep-answer">${t("记下", "Keep")}</button><button class="btn" data-a="sel" data-id="more">${t("接着问", "Ask more")}</button></div></div>`;
+  if (!phone()) {
+    const box = el.getBoundingClientRect(), r = pop.rect;
+    el.style.left = `${Math.max(12, Math.min(r.left + r.width / 2 - box.width / 2, innerWidth - box.width - 12))}px`;
+    el.style.top = `${r.bottom + 8 + box.height < innerHeight - 12 ? r.bottom + 8 : Math.max(12, r.top - box.height - 8)}px`;
+  }
+  if (pop.mode === "answer") typeOut($("anstext"), tr(pop.entry[pop.kind]));
+}
+let typing = 0;
+function typeOut(el, text) {
+  const run = ++typing;
+  if (reduced) { el.textContent = text; return; }
+  const chars = [...text], stepSize = Math.max(1, Math.round(chars.length / 60));
+  let i = 0;
+  const tick = () => { if (run !== typing || !el.isConnected) return; i = Math.min(chars.length, i + stepSize); el.textContent = chars.slice(0, i).join(""); if (i < chars.length) setTimeout(tick, 22); };
+  tick();
+}
+function readSelection() {
+  const sel = getSelection(), reader = $("reader");
+  if (!sel || sel.isCollapsed || !reader || !reader.contains(sel.anchorNode) || !reader.contains(sel.focusNode)) { if (S.pop?.mode === "bar") { S.pop = null; showPop(); } return; }
+  const text = sel.toString().trim().slice(0, 300);
+  if (!text || (S.pop?.mode === "answer" && S.pop.text === text)) return;
+  S.pop = { mode: "bar", text, rect: sel.getRangeAt(0).getBoundingClientRect(), entry: GLOSS.find((entry) => entry.re.test(text)) ?? GLOSS_ELSE };
+  showPop();
+}
+function selAct(act) {
+  const pop = S.pop, g = goal();
+  if (!pop) return;
+  const started = begin();
+  g.steps[g.step].touched = true;
+  if (act === "explain" || act === "example") { S.pop = { ...pop, mode: "answer", kind: act }; S.sitting.asks += 1; showPop(); if (started) renderPage(); return; }
+  if (act === "keep" || act === "keep-answer") {
+    const note = addNote(act === "keep" ? pop.text : `${pop.text}：${tr(pop.entry[pop.kind ?? "explain"])}`);
+    toast(t("记下了", "Kept in your notes"), () => { g.notes = g.notes.filter((x) => x !== note); S.sitting && (S.sitting.notes -= 1); });
+  }
+  if (act === "more") {
+    thread("guide").push({ who: "me", sel: pop.text, text: ["这里是什么意思？", "What does this mean?"], from: ["在讲解里划的", "Selected in the text"] });
+    thread("guide").push({ who: "al", text: [tr(pop.entry.explain) + " 要看一个算到底的例子吗？", tr(pop.entry.explain) + " Want an example worked to the end?"] });
+    S.panel = true; S.ptab = "ask"; if (phone()) S.sheet = "alf";
+  }
+  getSelection()?.removeAllRanges(); S.pop = null; showPop(); syncBody(); renderTop(); renderSide(); renderAlf();
+  if (started) renderPage();
+}
+function demoSelect() {
+  const g = S.goals.la;
+  S.goal = "la"; g.step = "b4"; S.view = "desk"; S.mat = "m1"; S.playing = false; renderAll();
+  const want = tr(GLOSS[0].demo), walker = document.createTreeWalker($("reader"), NodeFilter.SHOW_TEXT);
+  for (let node; (node = walker.nextNode());) {
+    const at = node.data.indexOf(want);
+    if (at < 0) continue;
+    const range = document.createRange(); range.setStart(node, at); range.setEnd(node, at + want.length);
+    node.parentElement.scrollIntoView({ block: "center" });
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    return readSelection();
+  }
+}
+
+/* ── Things over the page ── */
+let toastTimer = 0;
+function toast(text, undo, label) { S.toast = { text, undo, label }; clearTimeout(toastTimer); renderToast(); toastTimer = setTimeout(() => { S.toast = null; renderToast(); }, 6000); }
+function renderToast() { $("toast").innerHTML = S.toast ? `<div class="toast" role="status"><span>${esc(S.toast.text)}</span>${S.toast.undo ? `<button data-a="undo">${esc(S.toast.label ?? t("撤销", "Undo"))}</button>` : ""}</div>` : ""; }
+function renderCue() {
+  const g = S.goals.la;
+  $("cue").innerHTML = S.cue ? `<div class="cue" role="status">${figSlot("cue")}<div><p>${esc(t(`${tr(g.name)}：${tr(g.steps[g.step].title)}，还差一半，约 12 分钟`, `${tr(g.name)}: ${tr(g.steps[g.step].title)}, half to go, about 12 minutes`))}</p>
+    <div class="acts"><button class="btn solid" data-a="cue-start">${t("开始", "Start")}</button><button class="btn" data-a="cue-no">${t("今天不了", "Not today")}</button></div></div></div>` : "";
+  placeFigs($("cue"), "hello");
+}
+function renderVeil() {
+  const g = goal(), v = S.veil;
+  if (!v) { $("veil").innerHTML = ""; return; }
+  let inner = "";
+  if (v === "close") {
+    const sit = S.sitting ?? { asks: 0, notes: 0 }, mat = g.way ? curMat(g) : null, step = g.steps[g.step];
+    const done = [mat?.kind === "video" ? t(`视频看到 ${clock(g.video.at)}`, `Video to ${clock(g.video.at)}`) : null,
+      sit.asks ? t(`问了 ${sit.asks} 处`, `asked ${plural(sit.asks, "time")}`) : null, sit.notes ? t(`记了 ${sit.notes} 笔`, plural(sit.notes, "note")) : null].filter(Boolean);
+    S.closing = done.length ? done.join(" · ") : t("坐下来了", "Sat down");
+    inner = `<h3>${t("今天到这", "That's it for today")}</h3><dl>
+      <dt>${t("这一步", "The step")}</dt><dd>${esc(tr(step.title))} · ${esc(stWord(status(g, g.step)))} <button class="linkish" data-a="done-step">${step.done ? t("改回没走完", "Not done after all") : t("这一步走完了", "This step is done")}</button></dd>
+      <dt>${t("今天", "Today")}</dt><dd>${esc(S.closing)}</dd>
+      <dt>${t("这一周", "This week")}</dt><dd><span class="dots">${Array.from({ length: g.pace }, (_, i) => `<i class="${i < g.week.done + 1 ? "on" : ""}"></i>`).join("")}</span></dd>
+      <dt>${t("留给下次", "For next time")}</dt><dd>${esc(tr(g.left ?? ["", ""]))}</dd>
+      <dt>${t("下次", "Next")}</dt><dd>${esc(tr(g.week.next ?? ["你来的时候", "When you come"]))}</dd></dl>
+      <div class="acts"><button class="btn solid" data-a="close-ok">${t("好", "Done")}</button><button class="btn" data-a="veil-close">${t("还没完", "Not finished")}</button></div>`;
+  }
+  if (v === "goalcard") inner = `<h3>${t("目标", "The goal")}</h3><form data-form="goalcard" style="display:flex;flex-direction:column;gap:14px">
+      <label>${t("你要达到的 · 一件要走几个月、甚至更久的事", "What you want to reach · something that takes months, or longer")}<textarea id="gc-goal" rows="2">${esc(tr(g.goal))}</textarea></label>
+      <label>${t("我为什么要它", "Why I want it")}<textarea id="gc-why" placeholder="${t("做成了，你第一件想做的事是什么？只有你能写，可以以后再写", "Once it is done, what is the first thing you want to do? Only you can write this; later is fine")}">${esc(g.why ? tr(g.why) : "")}</textarea></label>
+      <p class="muted small">${deadline(g) ? `${t("期限", "Deadline")}：${esc(dateWord(deadline(g)))} · ` : ""}${t("期限和节奏在「路线」里定", "Deadline and pace are set on the Route tab")}</p>
+      <div class="acts"><button class="btn solid">${t("好", "Done")}</button><button type="button" class="btn" data-a="veil-close">${t("取消", "Cancel")}</button></div></form>`;
+  if (v === "behind") {
+    const more = arrive(g, 5), cut = g.stages.at(-1), less = arrive(g, g.pace, cut.steps.filter((id) => !there(g, id))), now = arrive(g);
+    inner = `<h3>${t("比期限晚了", "Behind the deadline")}</h3><p class="muted small">${esc(t(`按现在的节奏大约 ${day(now.date)}到，期限是 ${dateWord(deadline(g))}。三个选择，你定`, `At this pace you get there by about ${day(now.date)}; the deadline is ${dateWord(deadline(g))}. Three choices, yours to make`))}</p>
+      <button class="opt" data-a="fix" data-id="more"><b>${t("加次数：每周 5 次", "Come more often: 5 a week")}</b><span>${esc(t(`大约 ${day(more.date)}到`, `There by about ${day(more.date)}`))}</span></button>
+      <button class="opt" data-a="fix" data-id="less"><b>${esc(t(`砍掉「${tr(cut.name)}」这一段`, `Drop the stage “${tr(cut.name)}”`))}</b><span>${esc(t(`大约 ${day(less.date)}到`, `There by about ${day(less.date)}`))}${g.id === "la" ? esc(t(" · 推正规方程用不到这一段", " · the normal equations do not need this stage")) : ""}</span></button>
+      <button class="opt" data-a="fix" data-id="later"><b>${esc(t(`推期限：改到 ${day(now.date)}`, `Move the deadline to ${day(now.date)}`))}</b><span>${t("节奏和路线都不变", "Pace and route stay as they are")}</span></button>
+      <div class="acts"><button class="btn" data-a="veil-close">${t("先不定", "Not now")}</button></div>`;
+  }
+  $("veil").innerHTML = `<div class="veil" data-a="veil-bg"><div class="pop ${v === "goalcard" ? "big" : ""}" role="dialog" aria-modal="true">${inner}</div></div>`;
+}
+
+/* ── The strip ── */
+function renderStrip() {
+  document.documentElement.lang = S.lang === "en" ? "en" : "zh-CN";
+  document.title = t("Zirma：目标", "Zirma: Goals");
+  const scene = (id, name) => `<button data-a="scene" data-id="${id}" aria-pressed="${S.view === id}">${name}</button>`;
+  $("proto").innerHTML = `<b>Goals</b>${scene("new", t("新目标", "New goal"))}${scene("picture", t("世界观", "Big picture"))}${scene("route", t("路线", "Route"))}${scene("desk", t("书桌", "Desk"))}${scene("record", t("记录", "Record"))}
+    <span class="lab">${t("演", "Play")}</span><button data-a="demo-ways">${t("选走法", "Choose an approach")}</button><button data-a="demo-select">${t("划词", "Select a word")}</button><button data-a="demo-cue">${t("到点了", "It is time")}</button><button data-a="demo-behind">${t("落后了", "Fell behind")}</button><button data-a="demo-review">${t("每周回看", "Weekly look back")}</button>
+    <span class="grow"></span><button data-a="reset">${t("重来", "Reset")}</button><button data-a="lang">${S.lang === "en" ? "中文" : "EN"}</button><button data-a="scheme" aria-label="${t("深浅", "Light or dark")}">${ic("half")}</button>`;
+}
+function syncBody() { document.body.dataset.side = S.side ? "on" : "off"; if (S.sheet) document.body.dataset.sheet = S.sheet; else delete document.body.dataset.sheet; }
+function renderAll() { S.pop = null; showPop(); syncBody(); renderStrip(); renderTop(); renderSide(); renderPage(); renderAlf(); renderCue(); renderVeil(); renderToast(); }
+
+/* ── Doing things ── */
+function open(view, extra = {}) {
+  Object.assign(S, { view, menu: null, sheet: null, playing: false, count: 0 }, extra); renderAll(); $("page").querySelector(".scroll")?.scrollTo(0, 0);
+}
+function chooseWay(index) {
+  const g = goal(), way = g.ways[index], steps = {}, stages = [];
+  way.route.forEach((stage, si) => { const ids = stage.steps.map((item, pi) => { const id = `${g.id}-${si}-${pi}`, spec = item.t ? item : { t: item };
+      steps[id] = { title: spec.t, does: spec.does ?? null, why: spec.why ?? null, topic: spec.topic ?? null, res: spec.res ?? null, est: 3, mats: [] }; return id; }); stages.push({ name: stage.name, steps: ids, coarse: si > 0 }); });
+  Object.assign(g, { way: { name: way.name }, stages, steps, step: stages[0].steps[0] });
+  renderAll(); document.getElementById("sec-route")?.scrollIntoView({ block: "start" });
+  toast(t("定了走法。段和步是我起草的，你改", "Approach set. I drafted the stages and steps; change them as you like"), () => { Object.assign(g, { way: null, stages: [], steps: {}, step: null, routeSet: false, planSet: false }); renderAll(); });
+}
+function newGoal(sentence) {
+  const id = `g${Date.now()}`, name = sentence.length > 14 ? `${sentence.slice(0, 14)}…` : sentence;
+  S.goals[id] = { id, name: [name, name], goal: [sentence, sentence], deadline: null, pace: 3, slip: 0, step: null, week: { done: 0, next: null },
+    why: null, map: { blocks: [] }, bank: structuredClone(FRESH.bank), way: null, ways: structuredClone(FRESH.ways), stages: [], steps: {}, notes: [], record: [], left: null };
+  open("picture", { goal: id, block: null, topic: null });
+}
+
+document.addEventListener("click", (event) => {
+  const el = event.target.closest("[data-a]");
+  if (!el) { if (S.menu && !event.target.closest(".menu, .popmenu")) { S.menu = null; renderSide(); renderTop(); if (phone()) renderPage(); } if (S.pop?.mode === "answer" && !event.target.closest("#float")) { S.pop = null; showPop(); } return; }
+  const a = el.dataset.a, id = el.dataset.id, g = goal();
+  switch (a) {
+    case "scene": return open(id, id === "new" ? {} : { goal: S.view === "new" ? "la" : S.goal });
+    case "go": return open(el.dataset.view);
+    case "goal": return open(S.goals[id].way ? "desk" : "picture", { goal: id, mat: "v1", sitting: null, block: null, topic: null });
+    case "step": g.step = id; return open("desk", { mat: g.steps[id].mats[0]?.id ?? null });
+    case "mat": S.mat = id; S.playing = false; renderPage(); return renderAlf();
+    case "start": if (S.count > 0) return go(); S.count = 5; return renderPage();
+    case "timer-off": S.timerOn = !S.timerOn; renderTop(); if (phone()) renderPage(); return;
+    case "timer-toggle": S.sitting.paused = !S.sitting.paused; renderTop(); if (phone()) renderPage(); return;
+    case "open-panel": S.panel = true; S.ptab = id; syncBody(); renderTop(); renderPage(); renderAlf(); return (id === "keep" ? $("notein") : $("ask"))?.focus();
+    case "play": { const started = begin(); S.playing = !S.playing; g.steps[g.step].touched = true; if (started) { renderPage(); renderAlf(); } return paintPlayer(); }
+    case "seek": { const box = el.getBoundingClientRect(); g.video.at = Math.round(Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * VIDEO.len); return paintPlayer(); }
+    case "lost": begin(); S.panel = true; if (phone()) S.sheet = "alf"; syncBody(); renderTop(); return say(t("这里没懂", "Lost me here"));
+    case "note-now": { begin(); const cap = capAt(g.video.at); addNote(cap[1]); S.panel = true; S.ptab = "keep"; if (phone()) S.sheet = "alf"; syncBody(); renderTop(); renderPage(); renderAlf(); return $("notein")?.focus(); }
+    case "outside": begin(); S.panel = true; S.ptab = "keep"; if (phone()) S.sheet = "alf"; syncBody(); renderTop(); renderPage(); renderAlf(); return $("notein")?.focus();
+    case "jump": { const note = g.notes[Number(id)]; g.video.at = note.at; S.mat = "v1"; S.sheet = null; syncBody(); renderPage(); return renderAlf(); }
+    case "ptab": S.ptab = id; return renderAlf();
+    case "done-step": { const step = g.steps[id || g.step]; step.done = !step.done; if (step.done) step.touched = true; renderSide(); return S.veil ? renderVeil() : renderPage(); }
+    case "close-sitting": begin(); S.playing = false; S.veil = "close"; return renderVeil();
+    case "close-ok": {
+      g.week.done = Math.min(g.pace, g.week.done + 1);
+      { const col = heatOf(g).at(-1), today = (TODAY.getDay() + 6) % 7, won = there(g, g.step); col[today] = Math.max(col[today], won ? 2 : 1); }
+      g.record.unshift({ d: 0, step: g.step, did: [S.closing, S.closing], fresh: true });
+      Object.assign(S, { veil: null, sitting: null });
+      FIG.head.fig.play?.("hop");
+      return open("record");
+    }
+    case "veil-close": S.veil = null; return renderVeil();
+    case "goal-card": S.veil = "goalcard"; renderVeil(); return $("gc-why")?.focus();
+    case "veil-bg": if (event.target === el) { S.veil = null; renderVeil(); } return;
+    case "starter": return starter(id);
+    case "col": S.block = id; S.topic = null; return renderPage();
+    case "topic": { const parent = g.map.blocks.find((b) => b.topics.some((x) => x.id === id)); S.block = parent.id; S.topic = S.topic === id ? null : id; const topic = openTopic(g);
+      if (topic && !topic.told) { S.telling = id; setTimeout(() => { topic.told = true; if (S.telling === id) S.telling = null; if (S.view === "picture") renderPage(); }, reduced ? 0 : 900); }
+      renderPage(); const box = document.getElementById("detail")?.getBoundingClientRect(); if (box && box.top > innerHeight - 220) $("page").querySelector(".scroll").scrollBy({ top: box.top - (innerHeight - 340) }); return; }
+    case "spread": spread(g, g.map.blocks.find((b) => b.id === id)); if (g.map.blocks.every((b) => b.topics.length)) g.map.asked = [...new Set([...(g.map.asked ?? []), "spread"])]; return renderPage();
+    case "deep": { const topic = openTopic(g); topic.deep = !topic.deep; return renderPage(); }
+    case "tile-add": return toast(t("原型里没做：自己加一块，或者让 Zirma 再找一找", "Not in the prototype: add a part yourself, or have Zirma look again"));
+    case "tdrop": { const topic = openTopic(g), parent = g.map.blocks.find((b) => b.topics.includes(topic)), at = parent.topics.indexOf(topic); parent.topics.splice(at, 1); S.topic = null; renderPage();
+      return toast(t(`去掉了「${tr(topic.name)}」`, `Removed “${tr(topic.name)}”`), () => { parent.topics.splice(at, 0, topic); S.topic = topic.id; renderPage(); }); }
+    case "bdrop": { const block = openBlock(g), at = g.map.blocks.indexOf(block); g.map.blocks.splice(at, 1); S.block = g.map.blocks[0]?.id ?? null; S.topic = null; renderSide(); renderPage();
+      return toast(t(`去掉了「${tr(block.name)}」`, `Removed “${tr(block.name)}”`), () => { g.map.blocks.splice(at, 0, block); S.block = block.id; renderSide(); renderPage(); }); }
+    case "card-drop": openTopic(g).cards.splice(Number(id), 1); return renderPage();
+    case "way": return chooseWay(Number(id));
+    case "reway": return toast(t("原型里只在「找到后端的工作」那个目标演示选走法", "The prototype shows choosing an approach on the goal “A backend job” only"));
+    case "pace": g.pace = Number(id); return renderPage();
+    case "open-ways": return openWays(g);
+    case "rstep": { S.rstep = S.rstep === id ? null : id; const step = g.steps[id];
+      if (S.rstep && !step.told) { S.telling = id; setTimeout(() => { step.told = true; if (S.telling === id) S.telling = null; if (S.view === "route") renderPage(); }, reduced ? 0 : 800); }
+      return renderPage(); }
+    case "sres": g.steps[id].resShown = true; return renderPage();
+    case "put": { const [sid, i] = id.split(":"), step = g.steps[sid], [title, note] = step.res[Number(i)], mat = { id: `r${Date.now()}`, kind: "link", title, src: note }; step.mats.push(mat); (step.put ??= []).push(Number(i)); renderPage();
+      return toast(t("放到书桌上了", "Put on the desk"), () => { step.mats = step.mats.filter((x) => x !== mat); step.put = step.put.filter((x) => x !== Number(i)); renderPage(); }); }
+    case "see-topic": { const parent = g.map.blocks.find((b) => b.topics.some((x) => x.id === id)); return open("picture", { block: parent.id, topic: id }); }
+    case "detail": g.stages[Number(id)].coarse = false; return renderPage();
+    case "own-way": return toast(t("原型里没做：贴一份大纲，Zirma 排成段和步", "Not in the prototype: paste an outline and Zirma lays it out as stages and steps"));
+    case "jump-sec": return document.getElementById(`sec-${id}`)?.scrollIntoView({ block: "start", behavior: reduced ? "auto" : "smooth" });
+    case "review-yes": {
+      const stage = g.stages[1];
+      g.steps.b9 = { title: ["线性无关", "Linear independence"], est: 2, fresh: true, mats: [] };
+      stage.steps.splice(stage.steps.indexOf("b5"), 0, "b9"); g.review = false; renderAll();
+      return toast(t("加了一步「线性无关」", "Added the step “Linear independence”"), () => { stage.steps = stage.steps.filter((x) => x !== "b9"); delete g.steps.b9; renderAll(); });
+    }
+    case "review-no": g.review = false; return renderPage();
+    case "demo-review": S.goals.la.review = true; return open("route", { goal: "la" });
+    case "deadline": g.deadline = id ? id.split(",").map(Number) : null; renderTop(); return renderPage();
+    case "behind": S.veil = "behind"; return renderVeil();
+    case "fix": {
+      const before = structuredClone({ pace: g.pace, deadline: g.deadline, stages: g.stages, slip: g.slip });
+      if (id === "more") g.pace = 5;
+      if (id === "less") g.stages = g.stages.slice(0, -1);
+      if (id === "later") { const d = arrive(g).date; g.deadline = [d.getFullYear(), d.getMonth(), d.getDate()]; }
+      S.veil = null; renderAll();
+      return toast(t("改好了", "Changed"), () => { Object.assign(g, before); renderAll(); });
+    }
+    case "menu": S.menu = S.menu === id ? null : id; renderSide(); renderTop(); if (phone()) renderPage(); return (id === "timer" ? $("tm") : null)?.select();
+    case "side": S.side = !S.side; syncBody(); return renderTop();
+    case "panel": if (phone()) S.sheet = null; else S.panel = !S.panel; syncBody(); renderTop(); if (S.view === "desk") renderPage(); return renderAlf();
+    case "sheet": S.sheet = id; if (id === "alf") S.panel = true; syncBody(); return renderAlf();
+    case "sheet-close": S.sheet = null; return syncBody();
+    case "other": return toast(t("原型里只有目标这一边", "Only the Goals side is in this prototype"));
+    case "try": $("sentence").value = tr([FRESH.sentence, ["明年 3 月前换一份后端的工作", "Move to a backend job by next March"], ["一年内能用日语看懂工作邮件", "Read work email in Japanese within a year"]][Number(id)]); return $("sentence").focus();
+    case "say": return say(tr(tries()[Number(id)]));
+    case "sel": return selAct(id);
+    case "undo": S.toast?.undo?.(); S.toast = null; renderToast(); renderSide(); return renderAlf();
+    case "cue-start": S.cue = false; S.goal = "la"; begin(); open("desk", { mat: "v1" }); S.playing = true; return paintPlayer();
+    case "cue-no": S.cue = false; renderCue(); renderAlf(); return toast(t("好。下一次只留最小的一步", "All right. Next time I keep only the smallest step"));
+    case "demo-ways": open("route", { goal: "job" }); return S.goals.job.way || S.goals.job.waysOpen ? null : openWays(S.goals.job);
+    case "demo-select": return demoSelect();
+    case "demo-cue": S.cue = true; renderAlf(); return renderCue();
+    case "demo-behind": S.goals.la.slip = 4; S.goals.la.deadline = [2027, 0, 31]; open("record", { goal: "la" }); S.veil = "behind"; return renderVeil();
+    case "reset": S = fresh({ lang: S.lang }); return renderAll();
+    case "lang": S.lang = S.lang === "en" ? "zh" : "en"; return renderAll();
+    case "scheme": { const root = document.documentElement; root.dataset.scheme = root.dataset.scheme === "dark" ? "light" : "dark"; for (const f of Object.values(FIG)) f.fig.setDark(isDark()); return; }
+  }
+});
+document.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = event.target.dataset.form;
+  if (form === "new") return newGoal($("sentence").value.trim() || tr(FRESH.sentence));
+  if (form === "alf") { const text = $("ask").value.trim(); if (text) say(text); }
+  if (form === "plan") { const text = $("planin").value.trim(); if (text) say(text); }
+  if (form === "goalcard") {
+    const g = goal(), text = $("gc-goal").value.trim(), why = $("gc-why").value.trim();
+    if (text && text !== tr(g.goal)) g.goal = [text, text];
+    g.why = why ? (g.why && why === tr(g.why) ? g.why : [why, why]) : null;
+    S.veil = null; return renderAll();
+  }
+  if (form === "note") { const text = $("notein").value.trim(); if (!text) return; begin(); addNote([text, text]); renderPage(); renderAlf(); }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") { if (S.count) { S.count = 0; renderPage(); } Object.assign(S, { menu: null, pop: null, sheet: null, veil: null }); showPop(); syncBody(); renderSide(); renderTop(); renderVeil(); }
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.target.matches(".compose textarea")) { event.preventDefault(); event.target.form.requestSubmit(); }
+});
+document.addEventListener("input", (event) => {
+  if (event.target.id === "why") S.draftWhy = event.target.value;
+  if (["th", "tm", "ts"].includes(event.target.id)) {
+    const read = (id, max) => Math.max(0, Math.min(max, parseInt($(id).value, 10) || 0)), sec = read("th", 23) * 3600 + read("tm", 59) * 60 + read("ts", 59);
+    if (!sec) return;
+    S.timerSec = sec; S.timerOn = true; $("tlabel").textContent = clock(sec);
+  }
+});
+
+$("float").addEventListener("mousedown", (event) => event.preventDefault());
+let selTimer = 0;
+document.addEventListener("selectionchange", () => { clearTimeout(selTimer); selTimer = setTimeout(readSelection, 220); });
+document.addEventListener("mouseup", (event) => { if (!event.target.closest("#float")) { clearTimeout(selTimer); setTimeout(readSelection, 0); } });
+addEventListener("resize", () => { if (S.pop) { S.pop = null; showPop(); } });
+
+if (params.has("bare")) document.documentElement.dataset.bare = "";
+document.documentElement.dataset.scheme = params.get("scheme") ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+S = fresh();
+renderAll();
+Object.assign(window, { goals: { get state() { return S; }, demoSelect } });
+</script>
+</body>
+</html>
