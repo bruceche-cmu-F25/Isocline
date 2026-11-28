@@ -143,8 +143,12 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   // A page that was open stays open when it vanishes from the library (deleted or renamed elsewhere): its words may
   // not be saved yet, and the page says what happened instead of dropping them.
   const [detail, setDetail] = useState<PageDetail | null>(null);
-  const at = item && (pages.some((page) => page.id === item) || !snapshot || detail?.id === item) ? item : null;
-  const gone = !!(at && detail && detail.fp !== null && snapshot && !pages.some((page) => page.id === at));
+  // Pages this window has just made, renamed or moved, opened before the page list from the home node has them: for a
+  // few seconds they count as there, so the page opens at once instead of Recent (or the "gone" banner) flashing first.
+  const known = useRef(new Map<string, number>());
+  const isKnown = (id: string) => Date.now() - (known.current.get(id) ?? 0) < 5000;
+  const at = item && (pages.some((page) => page.id === item) || !snapshot || detail?.id === item || isKnown(item)) ? item : null;
+  const gone = !!(at && detail && detail.fp !== null && snapshot && !pages.some((page) => page.id === at) && !isKnown(at));
   const listed = useMemo(() => new Set((todos ?? []).filter((todo) => todo.source?.kind === "note").map((todo) => todo.source!.ref)), [todos]);
   const exists = (target: string) => {
     const name = target.toLowerCase().replace(/\.md$/, "");
@@ -251,6 +255,12 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
   const refreshHistory = () => { if (at) api.query<HistoryEntry[]>("note.history", { id: at }).then(setHistory).catch(() => {}); };
   useEffect(() => { if (historyOpen) refreshHistory(); }, [historyOpen, at, page?.mtime]);
 
+  /** Opens a page this window has just made or moved, which the page list may not have yet. */
+  const openNew = (id: string) => {
+    known.current.set(id, Date.now());
+    go("note.list", id);
+  };
+
   const openPage = async (id: string | null, words?: string) => {
     await editor.current?.flush();
     setFlash(id && words ? { page: id, words } : null);
@@ -277,7 +287,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
       await fetch("/api/notes/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ library: found.library, id: made.id, base: found.fp, text }) });
     }
     if (parent) setOpen((was) => new Set(was).add(parent));
-    go("note.list", made.id);
+    openNew(made.id);
   };
 
   const rename = async () => {
@@ -290,7 +300,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     // A file name cannot hold some characters: say so when the title had any, instead of changing it quietly.
     const became = moved.id.split("/").pop()!;
     if (became !== next) { setTitle(became); setToast({ text: t("notes.titleCleaned", { title: became }) }); }
-    go("note.list", moved.id);
+    openNew(moved.id);
   };
 
   const setIcon = async (icon: string | null) => {
@@ -315,7 +325,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
         const entries = await api.query<HistoryEntry[]>("note.history", { id });
         const entry = entries.find((one) => one.kind === "delete" && !one.undone);
         if (entry) await op("note.undo", { entry: entry.id });
-        go("note.list", id);
+        openNew(id);
       },
     });
   };
@@ -325,7 +335,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     await editor.current?.flush();
     const answer = await op("note.undo", { entry: entry.id, redo: entry.undone });
     if (answer.ok === false) setToast({ text: t(UNDO_WHY[answer.reason ?? "changed"] ?? "notes.undo.changed") });
-    if (entry.kind === "rename" && answer.ok) { go("note.list", (entry.undone ? entry.extra.to : entry.extra.from) ?? detail.id); return; }
+    if (entry.kind === "rename" && answer.ok) { openNew((entry.undone ? entry.extra.to : entry.extra.from) ?? detail.id); return; }
     if (entry.kind === "create" && answer.ok && !entry.undone) { go("note.list"); return; }
     await reload(detail.id).catch(() => {});
     refreshHistory();
@@ -340,7 +350,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     if (!moved.id) { setToast({ text: moved.code === "exists" ? t("notes.renameExists") : moved.error ?? t("notes.failed") }); return; }
     setToast({ text: parent ? t("notes.moved", { to: parent.split("/").pop()! }) : t("notes.movedTop") });
     if (parent) setOpen((was) => new Set(was).add(parent));
-    go("note.list", moved.id);
+    openNew(moved.id);
   };
 
   const showMarkdown = async () => {
@@ -357,7 +367,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     const answer = await op("note.suggestion", { id: suggestion.id, accept });
     if (answer.ok === false) setToast({ text: t("notes.sug.stale") });
     else if (accept) setToast({ text: t("notes.sug.done"), ...(answer.entry ? { undo: async () => { await op("note.undo", { entry: answer.entry }); if (detail) await reload(answer.id ?? detail.id).catch(() => {}); } } : {}) });
-    if (answer.ok && accept && suggestion.kind === "move" && answer.id && answer.id !== detail?.id) { go("note.list", answer.id); return; }
+    if (answer.ok && accept && suggestion.kind === "move" && answer.id && answer.id !== detail?.id) { openNew(answer.id); return; }
     if (detail) await reload(detail.id).catch(() => {});
   };
 
@@ -374,8 +384,8 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
     setMenu(null);
     const answer = await op("note.adopt", { id: detail.id });
     if (!answer.id) { setToast({ text: answer.error ?? t("notes.failed") }); return; }
-    setToast({ text: t("notes.kept.adopted", { title: detail.title }), ...(answer.entry ? { undo: async () => { await op("note.undo", { entry: answer.entry }); go("note.list", detail.id); } } : {}) });
-    go("note.list", answer.id);
+    setToast({ text: t("notes.kept.adopted", { title: detail.title }), ...(answer.entry ? { undo: async () => { await op("note.undo", { entry: answer.entry }); openNew(detail.id); } } : {}) });
+    openNew(answer.id);
   };
 
   const giveBack = async () => {
@@ -410,7 +420,7 @@ export function Notes({ snapshot, item: asked, go, side, todos }: {
       if (!moved.id) { setToast({ text: moved.code === "exists" ? t("notes.renameExists") : moved.error ?? t("notes.failed") }); return; }
       now = moved.id;
       setToast({ text: parent ? t("notes.moved", { to: parent.split("/").pop()! }) : t("notes.movedTop") });
-      if (opened) go("note.list", now + at!.slice(id.length));
+      if (opened) openNew(now + at!.slice(id.length));
     }
     if (target.where === "inside") { setOpen((was) => new Set(was).add(onto.id)); return; }
     siblings.splice(siblings.indexOf(onto.id) + (target.where === "after" ? 1 : 0), 0, now);

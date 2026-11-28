@@ -146,6 +146,23 @@ for (const locale of ["en", "zh"]) {
     assert.equal(await page.locator(".nt-recent-head .nt-btn").isVisible(), false, "the in-page tree has its own +");
     await page.keyboard.press("Meta+Backslash");
 
+    // A new page opens straight away: Recent never shows in between, nor the "gone" banner, while the page list catches up.
+    await row("Apple").locator(".nt-node-main").click();
+    await page.locator(".nt-title").waitFor();
+    await page.evaluate(() => {
+      window.__flash = [];
+      const watch = new MutationObserver(() => {
+        if (document.querySelector(".nt-recent-head")) window.__flash.push("recent");
+        if (document.querySelector(".nt-banner[role=alert]")) window.__flash.push("banner");
+      });
+      watch.observe(document.body, { childList: true, subtree: true });
+      window.__watch = watch;
+    });
+    await side.locator(".nt-new-row .nt-node-main").click();
+    await page.waitForFunction((untitled) => document.querySelector(".nt-title")?.value === untitled, locale === "en" ? "Untitled" : "无标题");
+    await page.waitForTimeout(400);
+    assert.deepEqual(await page.evaluate(() => { window.__watch.disconnect(); return [...new Set(window.__flash)]; }), [], "no flash of Recent or a banner");
+
     // A narrow window: the same tree in the page's drawer.
     await page.setViewportSize({ width: 420, height: 790 });
     await page.goto(base + "/#p=note.list");
