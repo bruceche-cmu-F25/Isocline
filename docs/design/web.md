@@ -1,6 +1,7 @@
 # 联网：让 Zirma 能搜、能读网页
 
-> 状态：v0.4，**2026-11-27 已批准**，§8 六条都按建议定。W1–W3 已合进 `zirma`，W4 在做。
+> 状态：v0.5，**2026-11-27 已批准**，§8 七条都已定。W1–W4 已合进 `zirma`；「用模型的 API key 搜」在做（W5）。
+> v0.5 的改动：§8 第 7 条你 2026-11-28 定了「做」（「做吧可以做用模型的api key搜」）；§4.6 写上做法：Claude、OpenAI、Gemini、DeepSeek 四家，用「模型」里填的 API key，不用订阅登录。
 > v0.4 的改动：W4 做了 Serper、Perplexity、Firecrawl（搜和读共用一个 key）、读 PDF；Kimi 和「用模型账号搜」查了条款，订阅登录都不能这样用（§4.6），先不做，等你定。
 > v0.3 的改动：§8 写上定下的结果。对着 W1 的代码改了三处：pi-web-access 是先用 Readability、再用 defuddle（v0.2 写反了）；搜到的网址在整个对话里都算见过；W1 的问题只有「允许」「不允许」（§5）。
 > v0.2 的改动：读过 pi-web-access 0.48.0 的代码以后，定了不把它默认装上，改成借它的代码（§4.5）；§4.3 和 §4.4 写上每一块从它哪里来。
@@ -214,7 +215,18 @@ Claude、OpenAI、Gemini 的 API 都有自带搜索，质量往往最好。但�
 - **OpenAI**：ChatGPT 订阅登录可以用 Codex；有没有允许第三方 agent 用它、拿它调搜索，帮助页没写清楚（[Using Codex with your ChatGPT plan](https://help.openai.com/en/articles/11369540)）。
 - **Kimi Code**：会员权益只在 Kimi 认可的编程工具里用；把 key 用在别的平台或工具上，可能被当成违规、限制权益（[Kimi 帮助：第三方编程工具](https://www.kimi.com/help/kimi-code/third-party-agents)）。pi-web-access 的 Kimi 搜索用的正是这个会员登录。
 
-**所以【建议】**：订阅登录一律不拿来搜，Kimi 搜索也不接。「用模型账号搜」只做 API key 这一种：Claude、OpenAI、Gemini 的 API key 本来就按用量付费，条款允许在自己的产品里调。要不要做、先做哪家，等你定（§8 第 7 条）。
+**所以【已定】**：订阅登录一律不拿来搜，Kimi 搜索也不接。「用模型账号搜」只做 API key 这一种（§8 第 7 条）。
+
+**做法（W5）**：「联网」的搜索服务里多四家，key 都不另外填，用「模型」里已经填好的；「模型」里只有订阅登录、或者 key 要跑命令才拿得到的，都算没有 key。每家另外发一次请求，只为搜索：
+
+| 服务 | 用「模型」里哪家的 key | 怎么搜 | 用的模型 |
+|---|---|---|---|
+| Claude | Anthropic | Messages API 的 `web_search_20260209` 工具，只搜一次；结果从 `web_search_tool_result` 取，摘录从回答的引用里取 | `claude-opus-5-5`，effort `low` |
+| OpenAI | OpenAI | Responses API 的 `web_search` 工具；结果从回答的 `url_citation` 和搜索调用列出的来源取 | `gpt-6-luna`（照 pi-web-access 0.48.0 的默认）【未实测】 |
+| Gemini | Google | `generateContent` 加 `google_search`；结果从 `groundingChunks` 取，Google 的跳转地址解开成真正的网址 | `gemini-3.6-flash`（同上）【未实测】 |
+| DeepSeek | DeepSeek | 它的搜索接口 `/v1/tools/search`，不经过模型；查询最多 128 个字，网站和日期写成 `site:`、`after:` | 不用模型 |
+
+每次搜索都另外收费（搜索费加上模型读结果的 token），卡片上写「按次另收费」。
 
 ## 5. 网页里的话不能指挥 Zirma【建议】
 
@@ -257,6 +269,7 @@ Claude、OpenAI、Gemini 的 API 都有自带搜索，质量往往最好。但�
 | W2 | 设置里的「联网」：列表、顺序、换下一家、key、「试一下」、放行的网站、记录 | 新手不填任何东西就能搜；填了博查的 key 并排到第一，中文结果就从博查来 |
 | W3 | 第一批其他服务：博查、Tavily、Brave、SearXNG、Jina Reader；「用连接器里的」 | 每家「试一下」都通过；SearXNG 没开 JSON 时，卡片里写清楚怎么开 |
 | W4 | 第二批：Firecrawl（搜和读）、Perplexity、Serper，读 PDF；Kimi 和订阅登录不做（§4.6） | 三家的「试一下」都能用；`web_fetch` 能读 PDF；Firecrawl 的 key 填一次，搜和读都能用 |
+| W5 | 用模型的 API key 搜：Claude、OpenAI、Gemini、DeepSeek（§4.6） | 「模型」里填了 key，这一家就能「加上」、能「试一下」；只有订阅登录时，卡片说去「模型」填 key |
 
 每一刀都要通过 `npm test` 和 `npm run typecheck`。每家服务的接法都配一个测试：用录下来的假响应，不打真接口。设置页要在中文和英文、窄屏下都看一遍。W1 之后要用真模型跑一遍：在 `scripts/eval` 里加几个要上网的场景。
 
@@ -270,7 +283,7 @@ Claude、OpenAI、Gemini 的 API 都有自带搜索，质量往往最好。但�
 | 4 | 网页要不要先让一个小模型摘要，再交给 Zirma（Claude Code 的做法）？ | **第一批不做**：多一次模型调用，而很多人只配了一个模型。先靠 §5 的规则；W1 的真模型测试里，如果网页里的指令真的骗动了它，再加上 |
 | 5 | 自动任务能不能用这两个工具？ | **能**，但只打开 §5 第 2 条那三种来源的网址 |
 | 6 | 第一批里有没有你一定要的服务，或者一定不要的？ | 照 §4.3 的表：Exa、博查、Tavily、Brave、SearXNG、Jina Reader |
-| 7 | 「用模型账号搜」要不要做？订阅登录按 §4.6 不能用，只剩 API key：Claude、OpenAI、Gemini 的 API key 各自带搜索，按次另收费 | **待定**（W4 提出）。建议：做，先做你在「模型」里已经填了 API key 的那几家，不另外再填一遍 |
+| 7 | 「用模型账号搜」要不要做？订阅登录按 §4.6 不能用，只剩 API key：Claude、OpenAI、Gemini 的 API key 各自带搜索，按次另收费 | **做**（2026-11-28）：用「模型」里已经填的 API key，不另外再填一遍；Claude、OpenAI、Gemini，再加上 DeepSeek 的搜索接口（§4.6） |
 
 ## 9. 这一轮不做
 

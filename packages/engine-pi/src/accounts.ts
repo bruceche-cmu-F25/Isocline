@@ -267,6 +267,13 @@ export class ModelAccounts {
     return { usage };
   }
 
+  /** A provider's plain API key, for a web search service that searches with it (docs/design/web.md §4.6). Never a
+   * subscription sign-in, and never a key Pi would get by running a command: null for those, and when there is none. */
+  async apiKey(providerId: string): Promise<string | null> {
+    const credential = await this.options.store.read(providerId).catch(() => undefined);
+    return credential && importable(credential) && credential.type === "api_key" ? credential.key ?? null : null;
+  }
+
   close(): void {
     for (const flowId of this.flows.keys()) this.cancel(flowId);
   }

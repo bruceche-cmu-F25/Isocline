@@ -339,6 +339,7 @@ button.area-dot:hover, button.area-dot:focus-visible, button.area-dot[aria-check
 /* Settings → Web (WebSettings.tsx). */
 .web-on { border-bottom: 0; padding-bottom: 4px; }
 .web-unused .set-name { color: var(--muted); }
+.web-inline-link { color: inherit; font: inherit; padding: 0; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .web-row .set-note a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .web-ask .model-input { width: 220px; }
 .web-limited[data-k] { color: var(--k-text); }

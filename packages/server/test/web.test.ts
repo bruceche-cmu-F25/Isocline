@@ -14,6 +14,7 @@ import { parseBrave, stripHtml } from "../src/web/providers/brave.ts";
 import { parseJina } from "../src/web/providers/jina.ts";
 import { parseSearxng, searxng, searxngAddress } from "../src/web/providers/searxng.ts";
 import { parseTavily } from "../src/web/providers/tavily.ts";
+import { claudeSearch, deepseekQuery, parseClaude, parseDeepSeek, parseGemini, parseOpenAI } from "../src/web/providers/models.ts";
 import { parseSerper } from "../src/web/providers/serper.ts";
 import { parsePerplexity } from "../src/web/providers/perplexity.ts";
 import { firecrawl, firecrawlReader, parseFirecrawlPage, parseFirecrawlSearch } from "../src/web/providers/firecrawl.ts";
@@ -425,4 +426,52 @@ test("a PDF is read page by page, titled by its own details, else by its file na
   const untitled = await pdfToText(tinyPdf("Hi", ""), new URL("https://example.com/files/q3_report.pdf"));
   assert.equal(untitled.title, "q3 report");
   await assert.rejects(pdfToText(Buffer.from("not a pdf"), new URL("https://example.com/x.pdf")), /could not be opened/);
+});
+
+test("searching with a model's key: Claude's results and excerpts, OpenAI's citations and sources, Gemini's grounding, DeepSeek's results", () => {
+  assert.deepEqual(parseClaude([
+    { type: "server_tool_use", id: "s1", name: "web_search", input: { query: "q" } },
+    { type: "web_search_tool_result", tool_use_id: "s1", content: [
+      { type: "web_search_result", url: "https://a.example/x", title: "A", page_age: "2 days ago", encrypted_content: "…" },
+      { type: "web_search_result", url: "https://b.example/y", title: "B", page_age: null, encrypted_content: "…" },
+    ] },
+    { type: "text", text: "A says so.", citations: [{ type: "web_search_result_location", url: "https://a.example/x", title: "A", cited_text: "  what A\n says ", encrypted_index: "…" }] },
+  ]), [
+    { title: "A", url: "https://a.example/x", snippet: "what A says", published: "2 days ago" },
+    { title: "B", url: "https://b.example/y", snippet: "" },
+  ]);
+  assert.throws(() => parseClaude([{ type: "web_search_tool_result", content: { type: "web_search_tool_result_error", error_code: "too_many_requests" } }]), (error: unknown) => error instanceof SearchError && error.code === "limit");
+
+  assert.deepEqual(parseOpenAI({ output: [
+    { type: "web_search_call", action: { type: "search", sources: [{ type: "url", url: "https://b.example/y" }, { type: "url", url: "https://a.example/x" }] } },
+    { type: "message", content: [{ type: "output_text", text: "Lead. A explains it.", annotations: [{ type: "url_citation", url: "https://a.example/x", title: "A", start_index: 20, end_index: 30 }] }] },
+  ] }), [
+    { title: "A", url: "https://a.example/x", snippet: "Lead. A explains it." },
+    { title: "https://b.example/y", url: "https://b.example/y", snippet: "" },
+  ]);
+
+  assert.deepEqual(parseGemini({ candidates: [{ content: { parts: [{ text: "x" }] }, groundingMetadata: {
+    groundingChunks: [{ web: { uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc", title: "a.example" } }, { web: { uri: "https://b.example/y", title: "b.example" } }],
+    groundingSupports: [{ segment: { text: "B said this." }, groundingChunkIndices: [1] }],
+  } }] }), [
+    { title: "a.example", url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc", snippet: "" },
+    { title: "b.example", url: "https://b.example/y", snippet: "B said this." },
+  ]);
+
+  assert.deepEqual(parseDeepSeek({ results: [{ title: "C", url: "https://c.example/z", summary: "sum", snippet: "snip" }, { title: "No address" }] }), [{ title: "C", url: "https://c.example/z", snippet: "sum" }]);
+  const long = "字".repeat(200);
+  const query = deepseekQuery({ query: long, count: 5, site: "example.com", freshness: "week" }, Date.UTC(2026, 10, 28));
+  assert.equal([...query].length, 128);
+  assert.match(query, / site:example\.com after:2026-11-21$/);
+});
+
+test("a service that searches with a model's key is used only while Models has a plain key for that provider", async (t) => {
+  const keys = new Map<string, string>();
+  const dir = mkdtempSync(join(tmpdir(), "zirma-web-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const web = new WebAccess({ dataDir: dir, providers: [claudeSearch], secrets: { async get() { return undefined; }, async set() {}, async delete() {} }, modelKeys: { async apiKey(provider) { return keys.get(provider) ?? null; } } });
+  web.update({ search: ["anthropic"] });
+  assert.deepEqual(await web.order(), []);
+  keys.set("anthropic", "sk-ant-test");
+  assert.deepEqual((await web.order()).map((entry) => [entry.provider.id, entry.secret]), [["anthropic", "sk-ant-test"]]);
 });

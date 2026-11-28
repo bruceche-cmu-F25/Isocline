@@ -13,6 +13,7 @@
     "./rename": "./src/rename.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.129.0",
     "@mozilla/readability": "0.6.0",
     "@zirma/core": "*",
     "@zirma/engine-pi": "*",

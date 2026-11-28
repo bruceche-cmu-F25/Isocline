@@ -23,11 +23,14 @@ export interface SearchProvider {
   title: string;
   /** Its name on the Chinese page, when it has its own there. */
   zhTitle?: string;
-  needs: "nothing" | "key" | "address";
+  /** "model": it searches with the API key of a model provider the user added under Models (`modelProvider`). */
+  needs: "nothing" | "key" | "address" | "model";
+  /** For one that needs a model's key: Pi's id of that provider ("anthropic", "openai", "google", "deepseek"). */
+  modelProvider?: string;
   about: { zh: string; en: string };
   /** Where the user gets a key (or, for one that needs an address, how to set one up). */
   keyPage?: string;
-  /** `secret` is what the service needs: its key, or for one that needs an address, the address. */
+  /** `secret` is what the service needs: its key, the address of one the user runs, or the model provider's API key. */
   search(input: SearchInput, secret: string | null, signal: AbortSignal): Promise<SearchResult[]>;
 }
 
