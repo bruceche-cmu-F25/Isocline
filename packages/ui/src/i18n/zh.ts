@@ -1251,6 +1251,8 @@ export const zh = {
   "links.auto.filedMade": "{assistant} 归了 {n} 条，新建 {m} 个分类",
   "links.auto.undone": "已放回没分类",
   "links.auto.dismiss": "知道了",
+  "links.auto.failed": "归类没成功，{time} 再试",
+  "links.auto.failedTomorrow": "归类没成功，明天 {time} 再试",
   "links.auto.sorting": "{assistant} 正在归没分类的链接",
   "links.auto.mark": "{assistant} 归的",
   "links.auto.madeMark": "{assistant} 建的",

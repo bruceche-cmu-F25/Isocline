@@ -11,7 +11,7 @@ import { classify, isShortener, nameFromUrl, normalizeUrl, parseShareText, tidyT
 import { COVER_MIGRATION } from "./covers.ts";
 import { MAX_TOPIC_DEPTH, topicDepth, topicPath, topicTree, under } from "./tree.ts";
 import { IMPORT_CHUNK, MAX_IMPORT, type ImportEntry } from "./bookmarks.ts";
-import { AUTO_FILE_MIGRATION, FILE_PASS_MIGRATION, queueFlag, recordFix, type FiledBy } from "./autofile.ts";
+import { AUTO_FILE_MIGRATION, FILE_FAIL_MIGRATION, FILE_PASS_MIGRATION, queueFlag, recordFix, type FiledBy } from "./autofile.ts";
 
 export type LinkResult<T> = T | { error: string };
 const failed = (result: object): result is { error: string } => "error" in result;
@@ -143,7 +143,7 @@ CREATE TABLE link_imports (
       if (tidy.title !== row.title) write.run(tidy.title.slice(0, 300), tidy.description?.slice(0, 600) ?? null, row.id as string);
     }
   },
-}, AUTO_FILE_MIGRATION, FILE_PASS_MIGRATION];
+}, AUTO_FILE_MIGRATION, FILE_PASS_MIGRATION, FILE_FAIL_MIGRATION];
 
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "");
 

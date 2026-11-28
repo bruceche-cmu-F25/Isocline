@@ -123,3 +123,10 @@ CREATE INDEX link_file_passes_ended ON link_file_passes(ended_at);
 ALTER TABLE link_autofile ADD COLUMN sweep TEXT;
 `,
 };
+
+/** A pass whose run did not end well (no model, a refused key, a used-up quota, a crash): its links keep waiting, and
+ * the page says so (filing.ts, `finishFilePass`). */
+export const FILE_FAIL_MIGRATION: Migration = {
+  id: "link:11",
+  sql: "ALTER TABLE link_file_passes ADD COLUMN failed INTEGER NOT NULL DEFAULT 0 CHECK (failed IN (0, 1));",
+};
