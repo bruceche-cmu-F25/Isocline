@@ -741,7 +741,7 @@ export function Mail({ snapshot, state, line, focus, onFocused, refresh, side }:
               <button type="button" popoverTarget={moreId} popoverTargetAction="hide" aria-label={t("common.close")}><Icon name="close" /></button>
             </div>
             <button type="button" className="mail-phone-draft" popoverTarget={moreId} popoverTargetAction="hide"
-              aria-pressed={line.about === "mail:compose"} onClick={compose}><Icon name="alfred" />{t("mail.compose")}</button>
+              aria-pressed={line.about === "mail:compose"} onClick={compose}>{t("mail.compose")}</button>
             {!needsConnection && sourceBar}
           </div>}
         </div>

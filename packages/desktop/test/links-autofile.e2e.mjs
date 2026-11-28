@@ -79,8 +79,8 @@ test("Links: Auto-file, its line, its marks and Not filed's offer, in zh and en,
 
       const phone = width < 500;
       const button = page.locator(".la-button");
-      // Wide: the line says what the last pass did, the button is in the head, rows Zirma filed are marked.
-      // A phone shows the links first: no line, no button in the head (⋯ has it), no marks on rows.
+      // Wide: the line says what the last pass did, the button is in the head. Rows carry no mark of
+      // who filed them (an opened link says it). A phone shows the links first: no line, no button in the head (⋯ has it).
       const line = page.locator(".la-line");
       await page.locator(".lr-row", { hasText: "Weekly tools roundup" }).waitFor();
       if (!phone) {
@@ -88,13 +88,10 @@ test("Links: Auto-file, its line, its marks and Not filed's offer, in zh and en,
         assert.match(await line.innerText(), new RegExp(say.filed));
         assert.equal(await button.getAttribute("aria-pressed"), "false");
         assert.equal((await button.innerText()).trim(), say.button);
-        await page.locator(".lr-row", { hasText: "Weekly tools roundup" }).locator(".la-mark").waitFor();
       } else {
         assert.equal(await line.isVisible(), false);
         assert.equal(await button.isVisible(), false);
-        assert.equal(await page.locator(".lr-row", { hasText: "Weekly tools roundup" }).locator(".la-mark").isVisible(), false);
       }
-      assert.equal(await page.locator(".lr-row", { hasText: "A book I filed myself" }).locator(".la-mark").count(), 0);
       assert.deepEqual(await overlaps(page, ".lk-head > *, .la-line > *"), [], `nothing on top of anything in the head and the line (${locale}, ${width})`);
       assert.deepEqual(await clipped(page, ".la-button, .lk-crumbs"), []);
       await shot("line");
