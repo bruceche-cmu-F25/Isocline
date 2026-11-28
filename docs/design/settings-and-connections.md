@@ -114,6 +114,7 @@
 
 - **目录**：内置一份精选的远程 MCP 列表（名字、图标、网址、能做什么）。支持 OAuth 自动注册的，点「连接」就走 pi-mcp 的登录，体验和 Google 一样。
 - **添加**：高级里可以填网址或命令自己加；存储格式仍是 `mcp.json`（和 Pi、Claude Desktop 兼容），但 token 和 header 里的密钥进钥匙串，不进这个文件。
+- **搜索添加**（2026-11-27，和「技能」页同一个样子）：目录上面一个搜索框。打字时筛目录和「这台 Mac 上」的服务（Claude、Claude Code、Cursor、Codex、VS Code、Windsurf、Gemini CLI、Pi 自己配置里的 MCP；列表里不带密钥，添加时才读，密钥进钥匙串）；按「搜 MCP Registry」去官方的 registry.modelcontextprotocol.io 找。能加的只有：有 streamable HTTP 地址的，或者 npm / PyPI 包（用 npx / uvx 跑）。要令牌或别的值的，点「添加」先在这一行下面填，填的都进钥匙串。排序：自己的名字对上 > 发布者就是这个词（多半是官方的）> 标题 > 全名 > 描述；有地址的排在要安装的前面。代码：`packages/engine-pi/src/mcp-find.ts`。
 - 每个服务一行：已连接 / 需要登录 / 出错，工具数，有多少个是只读（只读的直接用，其它的每次问——这是 worker 里现有的闸门，不变）。
 - Alfred 给 `createMcpExtension` 传自己的 `credentials`（钥匙串）和 `openUrl`（转给设备），不再落到 Pi 的 `mcp-auth.json`。
 

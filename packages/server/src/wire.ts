@@ -152,7 +152,7 @@ const REFUSALS: Record<string, Refusal> = {
   // The engine's (skills, model sign-in, connectors).
   SkillError: { by: { not_found: 404, exists: 409, too_large: 413, unreachable: 502 }, otherwise: 400, code: "skill_" },
   ModelSignInError: { by: { unknown_provider: 404, missing: 404, busy: 409, state: 409 }, otherwise: 400, code: "" },
-  McpConnectorError: { by: { missing: 404, exists: 409, state: 409, busy: 409 }, otherwise: 400, code: "" },
+  McpConnectorError: { by: { missing: 404, exists: 409, state: 409, busy: 409, unreachable: 502 }, otherwise: 400, code: "" },
 };
 
 /** The status and body an error is answered with. */

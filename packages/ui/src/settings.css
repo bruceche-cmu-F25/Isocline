@@ -135,6 +135,15 @@ html[data-web-covered] dialog[open] { display: none !important; }
 /* A connector's row has a state, up to three buttons and a switch at its end: in a narrow column they go under its
    name instead of squeezing it. */
 .mcp-row .set-note { overflow-wrap: anywhere; }
+/* Adding: a registry server that needs a token or a value says which, and asks for them under its line. */
+.mcp-result { list-style: none; }
+.mcp-needs { flex: none; max-width: 32%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .75rem; }
+.mcp-fill { margin: 8px 0 10px; }
+.mcp-fill .model-input { width: 100%; min-width: 0; }
+.mcp-fill-where { font-family: var(--mono, ui-monospace, monospace); font-size: .75rem; overflow-wrap: anywhere; }
+.mcp-fill-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.mcp-fill p { margin: 0; }
+@container page (max-width: 560px) { .mcp-needs { display: none; } }
 @container page (max-width: 640px) {
   .set-row.has-logo.mcp-row .set-name, .set-row.has-logo.mcp-row .set-note { grid-column: 2 / 4; }
   .set-row.has-logo.mcp-row .set-end { grid-column: 2 / 4; grid-row: 3; justify-content: flex-start; margin-top: 8px; }

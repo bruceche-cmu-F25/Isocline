@@ -12,6 +12,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { McpAuthRequiredError, McpClient } from "@earendil-works/pi-mcp";
 import {
@@ -19,14 +20,15 @@ import {
   type OAuthChallenge,
 } from "@earendil-works/pi-mcp/oauth";
 import type { SecretStore } from "@zirma/core";
-import type { McpCatalogItem, McpConnector, McpConnectorsResponse, McpSignIn, NewMcpConnector } from "@zirma/protocol";
+import type { McpCatalogItem, McpConnector, McpConnectorsResponse, McpSearchResult, McpSignIn, NewMcpConnector } from "@zirma/protocol";
 import { MCP_CATALOG } from "./mcp-catalog.ts";
-import { alfredMeta, MCP_NAME, mcpEntryProblem, readMcpFile, writeMcpFile, type ZirmaMeta } from "./mcp-config.ts";
+import { findMcpOnMac, MCP_REGISTRY, registryPlan, registryResult, registryScore, type McpPlan, type RegistryEntry } from "./mcp-find.ts";
+import { alfredMeta, MCP_NAME, mcpEntryProblem, readMcpFile, shownCommand, shownUrl, writeMcpFile, type ZirmaMeta } from "./mcp-config.ts";
 import { createMcpTransport, createMcpVault, MCP_CLIENT_NAME, oauthSettings, usesHeaderAuth, type McpVault } from "./mcp-store.ts";
 
 export class McpConnectorError extends Error {
   override name = "McpConnectorError";
-  readonly code: "missing" | "invalid" | "exists" | "busy" | "state";
+  readonly code: "missing" | "invalid" | "exists" | "busy" | "state" | "unreachable";
   constructor(code: McpConnectorError["code"], message: string) { super(message); this.code = code; }
 }
 
@@ -39,6 +41,11 @@ export interface McpConnectorsOptions {
   onChange?: (kind: "added" | "removed" | "enabled" | "disabled" | "signed_in" | "signed_out", name: string) => void;
   /** How a server is reached, for tests; the real one otherwise. */
   probe?: (entry: { name: string; config: Record<string, unknown> }) => Promise<Probe>;
+  /** The user's home folder, where other agents keep their MCP servers. */
+  home?: string;
+  /** The MCP Registry, or a stand-in for it. */
+  registry?: string;
+  fetcher?: typeof fetch;
 }
 
 interface Probe { state: "connected" | "needs_login" | "error"; tools?: number; readOnly?: number; error?: string; challenge?: OAuthChallenge; search?: McpSearchTool[] }
@@ -78,35 +85,15 @@ export function searchToolsOf(server: string, tools: Array<{ name: string; descr
 interface Flow { state: McpSignIn; abort: AbortController; timer: NodeJS.Timeout }
 
 const PROBE_TTL_MS = 5 * 60_000;
+const REGISTRY_TIMEOUT_MS = 20_000;
+/** The `{name}` a registry header template has for the user's value. */
+const SLOT = /\{[A-Za-z0-9_.-]+\}/;
 const PROBE_TIMEOUT_MS = 20_000;
 const SIGN_IN_MS = 5 * 60_000;
 const HEADER = /^[A-Za-z0-9-]{1,64}$/;
 const ENV = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error)).slice(0, 300);
-
-/** Names that mean a credential, in a URL's query or a command's arguments (after pi-web's Settings › MCP, github.com/agegr/pi-web, MIT). */
-const SECRET_WORD = /(key|token|secret|passw(or)?d|passphrase|credential|auth)/i;
-const MASK = "•••";
-/** A server's address as it is shown: without a password in it, and without the values of query parameters. */
-function shownUrl(text: string): string {
-  try {
-    const url = new URL(text);
-    if (url.password) url.password = MASK;
-    for (const key of [...url.searchParams.keys()]) url.searchParams.set(key, MASK);
-    return url.href.replaceAll(encodeURIComponent(MASK), MASK);
-  } catch { return text; }
-}
-/** A command line as it is shown: a value given to an option that names a credential is masked. */
-function shownCommand(command: string, args: readonly string[]): string {
-  const shown = args.map((arg, index) => {
-    const pair = /^(--?[^=]+)=(.+)$/.exec(arg);
-    if (pair && SECRET_WORD.test(pair[1])) return `${pair[1]}=${MASK}`;
-    const before = args[index - 1];
-    return before?.startsWith("-") && !before.includes("=") && SECRET_WORD.test(before) ? MASK : arg;
-  });
-  return [command, ...shown].join(" ").slice(0, 300);
-}
 
 export class McpConnectors {
   readonly #options: McpConnectorsOptions;
@@ -218,7 +205,56 @@ export class McpConnectors {
       ...(entry.token ? { tokenPage: entry.token.page } : {}),
       added: added.has(entry.id) || urls.has(entry.url),
     }));
-    return { servers, catalog, ...(file.error ? { error: file.error } : {}) };
+    const found = findMcpOnMac(this.#home, file.servers).map((item) => item.found);
+    return { servers, catalog, found, ...(file.error ? { error: file.error } : {}) };
+  }
+
+  get #home(): string { return this.#options.home ?? homedir(); }
+  get #registry(): string { return (this.#options.registry ?? MCP_REGISTRY).replace(/\/+$/, ""); }
+
+  async #ask(path: string): Promise<unknown> {
+    let response: Response;
+    try { response = await (this.#options.fetcher ?? fetch)(`${this.#registry}${path}`, { cache: "no-store", signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS) }); }
+    catch (error) { throw new McpConnectorError("unreachable", `The MCP Registry could not be reached: ${message(error)}`); }
+    if (response.status === 404) throw new McpConnectorError("missing", "The MCP Registry has no such server");
+    if (!response.ok) throw new McpConnectorError("unreachable", `The MCP Registry answered ${response.status}`);
+    return response.json();
+  }
+
+  /** Servers in the MCP Registry whose name has what was typed (its longest word: the registry matches names, not
+   * words), best match first. It is asked twice, for names that have the word and for names whose own part starts
+   * with it, since a word like "github" is in every `io.github.*` name. Only the ones Zirma can add: an address, or an
+   * npm or PyPI package. */
+  async search(query: string): Promise<McpSearchResult[]> {
+    const typed = query.trim().slice(0, 200);
+    if (!typed) throw new McpConnectorError("invalid", "Say what to look for");
+    const word = typed.split(/\s+/).sort((a, b) => b.length - a.length)[0];
+    const asked = await Promise.allSettled([`/${word}`, word].map((search) => this.#ask(`/v0/servers?search=${encodeURIComponent(search)}&version=latest&limit=100`) as Promise<{ servers?: RegistryEntry[] }>));
+    if (asked.every((one) => one.status === "rejected")) throw (asked[0] as PromiseRejectedResult).reason;
+    const entries = asked.flatMap((one) => (one.status === "fulfilled" && Array.isArray(one.value.servers) ? one.value.servers : []));
+    const servers = readMcpFile(this.#options.dataDir).servers;
+    const urls = new Set(Object.values(servers).map((config) => config.url));
+    const added = (plan: McpPlan) => (plan.url ? urls.has(plan.url) : Object.values(servers).some((config) => config.command === plan.command && JSON.stringify(config.args ?? []) === JSON.stringify(plan.args ?? [])));
+    const seen = new Set<string>();
+    const results: McpSearchResult[] = [];
+    for (const entry of entries) {
+      const result = registryResult(entry, added);
+      if (!result || seen.has(result.id)) continue;
+      seen.add(result.id);
+      results.push(result);
+    }
+    return results
+      .map((result) => ({ result, score: registryScore(result, typed) }))
+      .sort((a, b) => b.score - a.score || a.result.id.localeCompare(b.result.id))
+      .slice(0, 30)
+      .map(({ result }) => result);
+  }
+
+  /** A key for a new entry: the plan's own, or with -2, -3… after it when that one is taken. */
+  static #free(name: string, servers: Record<string, unknown>): string {
+    if (!servers[name]) return name;
+    for (let n = 2; n < 100; n += 1) { const next = `${name.slice(0, 60)}-${n}`; if (!servers[next]) return next; }
+    throw new McpConnectorError("exists", `There is already a connector named ${name}`);
   }
 
   async #one(name: string, fresh: boolean): Promise<McpConnector> {
@@ -268,7 +304,8 @@ export class McpConnectors {
   /** Reaches one server now and says how it went. */
   check(name: string): Promise<McpConnector> { return this.#one(name, true); }
 
-  /** Adds a server: one from the catalog (by `catalog`, with its `token` if it takes one), or the user's own, by
+  /** Adds a server: one from the catalog (by `catalog`, with its `token` if it takes one), one another agent on this
+   * Mac has (`found`), one from the MCP Registry (`registry`, with `values` for what it needs), or the user's own, by
    * address or by command. A secret header or variable goes to the keychain; the file only names it. */
   async add(input: NewMcpConnector): Promise<McpConnector> {
     const servers = this.#servers();
@@ -277,7 +314,42 @@ export class McpConnectors {
     const meta: ZirmaMeta = {};
     const secretHeaders: Record<string, string> = {};
     const secretEnv: Record<string, string> = {};
-    if (input.catalog !== undefined) {
+    if (input.found !== undefined || input.registry !== undefined) {
+      let plan: McpPlan;
+      /** A value from another agent's file is a secret unless it only names an environment variable. */
+      let keepPlain = (_value: string) => false;
+      if (input.found !== undefined) {
+        const hit = findMcpOnMac(this.#home, servers).find((item) => item.found.id === input.found);
+        if (!hit) throw new McpConnectorError("missing", "No such server on this Mac, or Zirma already has it");
+        plan = hit.plan;
+        keepPlain = (value) => /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(value);
+      } else {
+        const id = String(input.registry).trim();
+        if (!/^[A-Za-z0-9.-]+\/[A-Za-z0-9._-]+$/.test(id)) throw new McpConnectorError("invalid", "A registry server is named like io.github.owner/server");
+        const entry = await this.#ask(`/v0/servers/${encodeURIComponent(id)}/versions/latest`) as RegistryEntry;
+        const found = entry.server ? registryPlan(entry.server) : null;
+        if (!found) throw new McpConnectorError("invalid", "Zirma cannot add this server: it has no address and no npm or PyPI package");
+        plan = found;
+        keepPlain = () => true;
+      }
+      name = McpConnectors.#free(plan.name, servers);
+      meta.title = plan.title;
+      const plain = (values: Record<string, string> | undefined, secret: Record<string, string>) => {
+        const kept: Record<string, string> = {};
+        for (const [key, value] of Object.entries(values ?? {})) (keepPlain(value) ? kept : secret)[key] = value;
+        return Object.keys(kept).length ? kept : undefined;
+      };
+      const headers = plain(plan.headers, secretHeaders), env = plain(plan.env, secretEnv);
+      config = plan.url
+        ? { url: plan.url, ...(headers ? { headers } : {}) }
+        : { command: plan.command, ...(plan.args?.length ? { args: plan.args } : {}), ...(env ? { env } : {}) };
+      for (const want of plan.inputs) {
+        const value = (input.values?.[want.name] ?? "").trim();
+        if (!value || /[\r\n]/.test(value)) throw new McpConnectorError("invalid", `Give ${want.name}`);
+        if (want.kind === "header") secretHeaders[want.name] = want.template && SLOT.test(want.template) ? want.template.replace(SLOT, value) : value;
+        else secretEnv[want.name] = value;
+      }
+    } else if (input.catalog !== undefined) {
       const entry = MCP_CATALOG.find((candidate) => candidate.id === input.catalog);
       if (!entry) throw new McpConnectorError("invalid", "No such connector in the catalog");
       name = entry.id;

@@ -5,7 +5,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { McpConnectors, ModelAccounts } from "@zirma/engine-pi";
-import type { ConnectionsResponse, GoogleConnectRequest, NewMcpConnector } from "@zirma/protocol";
+import type { ConnectionsResponse, GoogleConnectRequest, McpSearchResponse, NewMcpConnector } from "@zirma/protocol";
 import { isGoogleCapability, type GoogleConnections } from "./google.ts";
 import { Fault, HttpError, readJson, send } from "./wire.ts";
 
@@ -23,7 +23,7 @@ export interface Connections { google?: GoogleConnections; models?: ModelAccount
 
 const texts = (value: unknown): Record<string, string> | undefined => {
   if (value === undefined) return undefined;
-  if (!value || typeof value !== "object" || Array.isArray(value) || !Object.values(value).every((item) => typeof item === "string")) throw new HttpError(400, "headers and env are names with text values");
+  if (!value || typeof value !== "object" || Array.isArray(value) || !Object.values(value).every((item) => typeof item === "string")) throw new HttpError(400, "headers, env and values are names with text values");
   return value as Record<string, string>;
 };
 
@@ -31,11 +31,17 @@ const texts = (value: unknown): Record<string, string> | undefined => {
 async function mcpRoutes(mcp: McpConnectors, req: IncomingMessage, res: ServerResponse, path: string): Promise<boolean> {
   const method = req.method ?? "GET";
   if (method === "GET" && path === "/api/connections/mcp") return send(res, 200, await mcp.describe()), true;
+  if (method === "POST" && path === "/api/connections/mcp/search") {
+    const body = await readJson(req);
+    if (typeof body.query !== "string" || !body.query.trim()) throw new HttpError(400, "query is required");
+    return send(res, 200, { results: await mcp.search(body.query) } satisfies McpSearchResponse), true;
+  }
   if (method === "POST" && path === "/api/connections/mcp") {
     const body = await readJson(req);
     const text = (key: string) => (typeof body[key] === "string" ? body[key] as string : undefined);
     const input: NewMcpConnector = {
-      catalog: text("catalog"), token: text("token"), name: text("name"), url: text("url"), command: text("command"),
+      catalog: text("catalog"), token: text("token"), found: text("found"), registry: text("registry"), values: texts(body.values),
+      name: text("name"), url: text("url"), command: text("command"),
       ...(Array.isArray(body.args) ? { args: body.args.filter((item): item is string => typeof item === "string") } : {}),
       headers: texts(body.headers), env: texts(body.env),
     };
