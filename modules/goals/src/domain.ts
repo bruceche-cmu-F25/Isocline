@@ -89,13 +89,13 @@ interface Indexed {
   goal_page: string; picture_page: string | null; route_page: string | null; parts: number; topics: number; stages: string; created: string | null;
 }
 
-function readFolder(library: Library, folder: string, taken: ReadonlySet<string>): Indexed | null {
+function readFolder(library: Library, folder: string, keeps: (id: string) => boolean): Indexed | null {
   const goal = findPage(library, folder, "goal");
   if (!goal) return null;
   const file = readGoal(goal.text);
   let id = file.id;
   // A folder made by hand, or a copy of another goal's folder: it gets an id of its own, written in its file.
-  if (!id || taken.has(id)) {
+  if (!id || !keeps(id)) {
     id = `g${newId().replace(/[^A-Za-z0-9]/g, "")}`;
     if (!library.save(goal.id, goal.fp, setProperty(goal.text, "zirma-goal", id)).ok) return null;
   }
@@ -114,10 +114,20 @@ const COLUMNS = ["id", "folder", "name", "sentence", "deadline", "pace", "goal_p
 
 /** Reads the goals' folders into the index. Says whether anything changed; when it did, devices are told. */
 export function indexGoals(world: World, library: Library): boolean {
+  const folders = goalFolders(library);
+  // A folder copied in the Finder carries the original's id. The folder the index already knows by that id keeps it
+  // (and so its record of steps); with none known, the first does. The other gets an id of its own.
+  const known = new Map(world.db.prepare("SELECT id, folder FROM goal_goals").all().map((row) => [row.id as string, row.folder as string]));
+  const keeper = new Map<string, string>();
+  for (const folder of folders) {
+    let id: string | null = null;
+    try { const goal = findPage(library, folder, "goal"); id = goal ? readGoal(goal.text).id : null; } catch { id = null; }
+    if (id && (!keeper.has(id) || known.get(id) === folder)) keeper.set(id, folder);
+  }
   const found = new Map<string, Indexed>();
-  for (const folder of goalFolders(library)) {
+  for (const folder of folders) {
     let one: Indexed | null = null;
-    try { one = readFolder(library, folder, new Set(found.keys())); } catch { one = null; }
+    try { one = readFolder(library, folder, (id) => keeper.get(id) === folder); } catch { one = null; }
     if (one) found.set(one.id, one);
   }
   return world.tx((db) => {
@@ -153,7 +163,7 @@ function summary(world: World, row: Record<string, unknown>): GoalSummary {
   };
 }
 
-/** The goals, oldest first. */
+/** The goals by the day they were made, oldest first; those of one day by name. */
 export function listGoals(world: World): GoalSummary[] {
   return world.db.prepare("SELECT * FROM goal_goals ORDER BY created IS NULL, created, lower(name)").all().map((row) => summary(world, row));
 }
@@ -201,7 +211,7 @@ export function goalDetail(world: World, library: Library, id: string): GoalDeta
 /** A short name for the goal's folder from its sentence: its first clause, and of a long one the first words, never
  * cut inside a word. The user can change it. */
 export function nameFrom(sentence: string, most = 28): string {
-  const clause = /^(.{4,}?)[，。；,;.！!]/u.exec(sentence.trim())?.[1] ?? sentence;
+  const clause = /^(.{4,}?)[，。；,;！!]/u.exec(sentence.trim())?.[1] ?? sentence;
   const words = [...safeName(clause)];
   if (words.length <= most) return words.join("") || "Goal";
   const cut = words.slice(0, most).join("");

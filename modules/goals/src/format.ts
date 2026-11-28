@@ -31,7 +31,8 @@ export interface Outline {
 }
 
 const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
-const HEADING = /^(#{1,6})[ \t]+(.*?)[ \t]*#*[ \t]*$/;
+// Closing hashes count only after a space (`## Title ##`): "C#" at the end of a title is part of the title.
+const HEADING = /^(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$/;
 const BLOCK_ID = /[ \t]\^([A-Za-z0-9-]+)$/;
 
 /** The lines of a text and where its properties end (the line after the closing `---`; 0 when it has none). */
@@ -88,7 +89,7 @@ export function withStepId(text: string, n: number, id: string): string | null {
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = text.slice(bom.length).split(/\r?\n/);
   // Closing hashes (`### Title ###`) would hide the id from Obsidian: it goes at the very end of the words.
-  lines[step.line] = `${lines[step.line].replace(/[ \t]*#*[ \t]*$/, "")} ^${id}`;
+  lines[step.line] = `${lines[step.line].replace(/(?:[ \t]+#+)?[ \t]*$/, "")} ^${id}`;
   return bom + lines.join(eol);
 }
 
@@ -119,40 +120,42 @@ function property(lines: readonly string[], bodyAt: number, key: string): string
   return null;
 }
 
-/** Where the goal's file keeps its three pieces, as line ranges of the body: the sentence before the first heading,
- * the words under the first second-level heading, and the rest. */
+/** Where the goal's file keeps its three pieces, as lines: the sentence from `start` to the first heading, the words
+ * under that heading up to `next`, and the rest. A first-level heading at the very top is the page's own title (a
+ * file written by hand often has one): the sentence starts after it. */
 function goalShape(text: string) {
   const { lines, bodyAt } = linesOf(text);
-  let fence: string | null = null, heading = -1, next = lines.length;
+  let fence: string | null = null, heading = -1, next = lines.length, start = bodyAt, words = false;
   for (let index = bodyAt; index < lines.length; index++) {
     const mark = FENCE.exec(lines[index])?.[1];
-    if (mark) { if (!fence) fence = mark[0]; else if (mark[0] === fence) fence = null; continue; }
+    if (mark) { if (!fence) fence = mark[0]; else if (mark[0] === fence) fence = null; words = true; continue; }
     if (fence) continue;
     const found = HEADING.exec(lines[index]);
-    if (!found || found[1].length > 2) continue;
+    if (found && found[1].length === 1 && !words && heading === -1 && start === bodyAt) { start = index + 1; continue; }
+    if (!found || found[1].length > 2) { words ||= !!lines[index].trim(); continue; }
     if (heading === -1) heading = index;
     else { next = index; break; }
   }
-  return { lines, bodyAt, heading, next };
+  return { lines, start, heading, next, bodyAt };
 }
 
 export function readGoal(text: string): GoalFile {
-  const { lines, bodyAt, heading, next } = goalShape(text);
+  const { lines, bodyAt, start, heading, next } = goalShape(text);
   const pace = Number(property(lines, bodyAt, "pace"));
   const deadline = property(lines, bodyAt, "deadline");
   return {
     id: property(lines, bodyAt, "zirma-goal") || null,
-    sentence: lines.slice(bodyAt, heading === -1 ? lines.length : heading).join("\n").trim().replace(/\s*\n\s*/g, " "),
+    sentence: lines.slice(start, heading === -1 ? lines.length : heading).join("\n").trim().replace(/\s*\n\s*/g, " "),
     why: heading === -1 ? "" : tidy(lines.slice(heading + 1, next)),
     deadline: isDate(deadline) ? deadline : null,
     pace: Number.isInteger(pace) && pace >= 1 && pace <= 7 ? pace : null,
   };
 }
 
-/** The goal's file with its sentence or its "why" rewritten. Its properties, the heading's own words and anything
- * the user wrote after the "why" stay as they are. `whyHeading` is used only when the file has no heading yet. */
+/** The goal's file with its sentence or its "why" rewritten. Its properties, its title if it has one, the heading's
+ * own words and anything the user wrote after the "why" stay as they are. `whyHeading` is used only when the file has no heading yet. */
 export function writeGoal(text: string, patch: { sentence?: string; why?: string }, whyHeading: string): string {
-  const { lines, bodyAt, heading, next } = goalShape(text);
+  const { lines, bodyAt, start, heading, next } = goalShape(text);
   const now = readGoal(text);
   const sentence = (patch.sentence ?? now.sentence).trim().replace(/\s*\n\s*/g, " ");
   const why = (patch.why ?? now.why).trim();
@@ -161,5 +164,5 @@ export function writeGoal(text: string, patch: { sentence?: string; why?: string
   const rest = heading === -1 ? [] : lines.slice(next);
   const body = [sentence, "", heading === -1 ? `## ${whyHeading}` : lines[heading], "", ...(why ? [...why.split(/\r?\n/), ""] : []), ...rest];
   while (body.length && !body.at(-1)!.trim()) body.pop();
-  return bom + [...lines.slice(0, bodyAt), ...body, ""].join(eol);
+  return bom + [...lines.slice(0, start), ...(start > bodyAt ? [""] : []), ...body, ""].join(eol);
 }

@@ -83,7 +83,9 @@ export function Goals({ snapshot, notes, item, go, side }: {
   const [card, setCard] = useState(false);
   const [openTopic, setOpenTopic] = useState<string | null>(null);
   const [openStep, setOpenStep] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ which: "picture" | "route"; page: PageDetail } | null>(null);
+  /** The page being written by hand, and the address it was opened at. */
+  const [editing, setEditing] = useState<{ which: "picture" | "route"; page: PageDetail; at: string } | null>(null);
+  const at = `${goalId}/${view}`;
   const [save, setSave] = useState<SaveState>({ kind: "saved" });
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const editor = useRef<EditorHandle>(null);
@@ -99,8 +101,12 @@ export function Goals({ snapshot, notes, item, go, side }: {
       if (found.error) { setDetail(null); setGone(goalId); } else { setDetail(found); setGone(null); }
     }).catch(() => {});
     return () => { alive = false; };
-  }, [goalId, stamp, tick]);
+  }, [goalId, view, stamp, tick]);
   useEffect(() => { if (goalId) keep(`${goalId}/${view}`); }, [goalId, view]);
+  // The address moved from under the editor (the browser's Back): the editor goes, and saves as it closes.
+  useEffect(() => { setEditing((was) => (was && was.at !== at ? null : was)); }, [at]);
+  // What was open in one goal means nothing in another (two routes may both have a step `s1`).
+  useEffect(() => { setOpenTopic(null); setOpenStep(null); }, [goalId]);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 6000); return () => window.clearTimeout(timer); }, [toast]);
   useEffect(() => {
     if (!menu) return;
@@ -131,7 +137,7 @@ export function Goals({ snapshot, notes, item, go, side }: {
     const page = await api.query<PageDetail & { error?: string }>("note.page", { id: made.page });
     if (page.error) { setToast({ text: t("goals.failed") }); return; }
     setSave({ kind: "saved" });
-    setEditing({ which, page });
+    setEditing({ which, page, at });
   };
   const setDone = async (step: GoalStep, done: boolean) => {
     if (!goal) return;
@@ -205,7 +211,7 @@ export function Goals({ snapshot, notes, item, go, side }: {
   let body: ReactNode = null;
   if (fresh) {
     body = <NewGoal onMade={(id) => void open(`${id}/picture`)} onFailed={() => setToast({ text: t("goals.failed") })} />;
-  } else if (goal && editing) {
+  } else if (goal && editing && editing.at === at) {
     const state = save.kind;
     body = (
       <div className="gl-col gl-edit">
@@ -473,9 +479,9 @@ function GoalCard({ goal, onClose, onSaved, onRemoved, onFailed }: { goal: GoalD
         </div>
         <div className="gl-field">
           <span>{t("goals.card.pace")}</span>
-          <div className="gl-chips" role="radiogroup" aria-label={t("goals.card.pace")}>
+          <div className="gl-chips" role="group" aria-label={t("goals.card.pace")}>
             {PACES.map((n) => (
-              <button type="button" key={n} role="radio" className="chip gl-n" aria-checked={pace === n} aria-pressed={pace === n} onClick={() => setPace(pace === n ? null : n)}>{n}</button>
+              <button type="button" key={n} className="chip gl-n" aria-pressed={pace === n} onClick={() => setPace(pace === n ? null : n)}>{n}</button>
             ))}
             <span className="gl-unit">{t("goals.card.paceUnit")}</span>
           </div>

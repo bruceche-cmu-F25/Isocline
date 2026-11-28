@@ -53,6 +53,9 @@ test("a step gets a block id at the end of its heading, and only once", () => {
   assert.equal(withStepId(next, 1, "s3"), null);
   assert.equal(withStepId(text, 5, "s9"), null);
   assert.equal(withStepId("### 标题 ###\n", 1, "s1"), "### 标题 ^s1\n");
+  // A hash that is part of the title's last word is not a closing one.
+  assert.equal(readOutline("### Learn C#\n").parts[0].items[0].title, "Learn C#");
+  assert.equal(withStepId("### Learn C#\n", 1, "s1"), "### Learn C# ^s1\n");
 });
 
 test("the goal's file: the sentence, then why; rewriting one leaves the rest as it was", () => {
@@ -65,6 +68,10 @@ test("the goal's file: the sentence, then why; rewriting one leaves the rest as 
   assert.equal(writeGoal("一句话\n", { why: "因为" }, "Why I want it"), "一句话\n\n## Why I want it\n\n因为\n");
   assert.equal(readGoal("---\ndeadline: someday\npace: 12\n---\nx\n").deadline, null);
   assert.equal(readGoal("---\ndeadline: someday\npace: 12\n---\nx\n").pace, null);
+  // A file written by hand with a title at its top: the sentence is what follows it, and the title stays.
+  const titled = "# 日语\n\n一年内能看懂工作邮件\n\n## 为什么\n工作要用。\n";
+  assert.deepEqual([readGoal(titled).sentence, readGoal(titled).why], ["一年内能看懂工作邮件", "工作要用。"]);
+  assert.equal(writeGoal(titled, { sentence: "半年内能看懂工作邮件" }, "Why"), "# 日语\n\n半年内能看懂工作邮件\n\n## 为什么\n\n工作要用。\n");
 });
 
 test("a folder's name comes from the sentence, cut at a clause", () => {
@@ -72,6 +79,7 @@ test("a folder's name comes from the sentence, cut at a clause", () => {
   assert.equal(nameFrom("Ship a small product people pay for"), "Ship a small product people");
   assert.equal(nameFrom("Ship a small product that people pay for, and put it online"), "Ship a small product that");
   assert.equal(nameFrom("一年内换一份后端工程师的工作"), "一年内换一份后端工程师的工作");
+  assert.equal(nameFrom("Learn Node.js well"), "Learn Node.js well");
   assert.equal(nameFrom("  "), "Goal");
 });
 
@@ -156,6 +164,11 @@ test("a folder made by hand is a goal; a copy gets its own id; a removed goal co
   index();
   assert.equal(new Set(goals().map((goal) => goal.id)).size, 2);
   assert.equal(goals().find((goal) => goal.name === "日语")!.id, hand.id);
+  // A copy that sorts before the original does not take the original's id either: the index knows whose it is.
+  write("目标/0 日语/目标", file("目标/日语/目标"));
+  index();
+  assert.equal(goals().find((goal) => goal.name === "日语")!.id, hand.id);
+  assert.equal(new Set(goals().map((goal) => goal.id)).size, 3);
 
   assert.deepEqual(op("goal.page", { id: hand.id, which: "route" }), { page: "目标/日语/路线" });
   write("目标/日语/路线", "## 一\n### 五十音 ^s1\n");
@@ -164,7 +177,7 @@ test("a folder made by hand is a goal; a copy gets its own id; a removed goal co
   const removed = op("goal.remove", { id: hand.id });
   assert.ok(removed.entry);
   assert.ok(!existsSync(join(root, "目标/日语")));
-  assert.deepEqual(goals().map((goal) => goal.name), ["日语 副本"]);
+  assert.deepEqual(goals().map((goal) => goal.name).sort(), ["0 日语", "日语 副本"]);
   assert.deepEqual(op("goal.restore", { entry: removed.entry }), { ok: true });
   const back = goals().find((goal) => goal.name === "日语")!;
   assert.deepEqual([back.id, back.stages[0].steps[0].done], [hand.id, true]);

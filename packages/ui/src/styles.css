@@ -55,7 +55,7 @@ a:hover { text-decoration-color: var(--accent); }
 .workspace {
   position: relative; height: var(--vvh, 100dvh); display: grid;
   /* Column widths. Not --alf: that is Zirma's colour (tokens.css). */
-  --top-h: 52px; --nav-col: var(--nav-px, 208px); --page-col: minmax(0, 1fr); --alf-col: var(--alf-px, 400px);
+  --top-h: 52px; --nav-col: var(--nav-px, 224px); --page-col: minmax(0, 1fr); --alf-col: var(--alf-px, 400px);
   grid-template-columns: var(--nav-col) var(--page-col) var(--alf-col); grid-template-rows: var(--top-h) minmax(0, 1fr);
   grid-template-areas: "top top top" "nav page alf";
 }
