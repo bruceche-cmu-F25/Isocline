@@ -149,6 +149,16 @@ export function createWorkerEngine(options: WorkerEngineOptions): WorkerEngine {
       return result.models;
     },
 
+    async title(input) {
+      const result = await ask(
+        (id) => ({ type: "title", id, goal: input.goal, reply: input.reply, model: input.model }),
+        (message, id) => (message.type === "title_result" && message.id === id ? message : undefined),
+        40_000,
+      );
+      if (result.error !== undefined || result.title === undefined) throw new Error(result.error ?? "No title");
+      return result.title;
+    },
+
     async steer(thread, text) {
       const current = running.get(thread);
       if (!current?.worker.alive) return false;

@@ -72,6 +72,27 @@ export function titleFrom(goal: string): string {
   return line.length > 40 ? `${line.slice(0, 39)}…` : line || "新对话";
 }
 
+/** A new everyday conversation that can be given a better title than the start of its first message: one finished
+ * exchange, no other, and still the title cut from that message (nobody renamed it). What it said, for naming it. */
+export function untitledExchange(world: World, conversationId: string): { goal: string; reply: string; model: string | null } | null {
+  const conversation = world.db.prepare("SELECT title, project_id, model FROM core_conversations WHERE id = ? AND archived_at IS NULL").get(conversationId);
+  if (!conversation || conversation.project_id) return null;
+  const runs = world.db.prepare("SELECT goal, state, outcome, automation_id FROM core_runs WHERE conversation_id = ? ORDER BY created_at LIMIT 2").all(conversationId);
+  if (runs.length !== 1 || runs[0].automation_id || runs[0].state !== "completed") return null;
+  const goal = runs[0].goal as string;
+  if (conversation.title !== titleFrom(goal)) return null;
+  const reply = (JSON.parse((runs[0].outcome as string | null) ?? "null") as { reply?: unknown } | null)?.reply;
+  return typeof reply === "string" && reply.trim() ? { goal, reply, model: (conversation.model as string | null) ?? null } : null;
+}
+
+/** A title a model wrote: one line, without quotes or a closing full stop; null when nothing usable is left. */
+export function cleanTitle(text: string): string | null {
+  const line = text.replace(/<think>[\s\S]*?<\/think>/g, "").split("\n").map((part) => part.trim()).find(Boolean) ?? "";
+  const bare = line.replace(/^(?:title|标题)\s*[:：]\s*/i, "").replace(/^[\s"'“”‘’「」《》*#]+|[\s"'“”‘’「」《》*#。.]+$/g, "").trim();
+  if (!bare) return null;
+  return [...bare].length > 60 ? `${[...bare].slice(0, 59).join("")}…` : bare;
+}
+
 const SELECT = `SELECT c.*,
   EXISTS (SELECT 1 FROM core_automations a WHERE a.conversation_id = c.id
     AND NOT EXISTS (SELECT 1 FROM core_runs r WHERE r.conversation_id = c.id AND

@@ -1,5 +1,8 @@
 import { useMemo, type CSSProperties, type ReactNode, type Ref } from "react";
 import { OutLink } from "./Linked.tsx";
+import { highlight } from "./highlight.ts";
+import { t } from "./i18n/index.ts";
+import { CopyButton } from "./shell/CopyButton.tsx";
 import { inboxReadingBlocks, parseMarkdown, type Block, type Inline } from "./markdown.ts";
 import "./markdown.css";
 
@@ -17,6 +20,22 @@ function inline(nodes: Inline[]): ReactNode[] {
   });
 }
 
+/** A fenced block: what language it is and a copy button above it, the code coloured (highlight.ts). */
+function CodeBlock({ text, lang }: { text: string; lang?: string }) {
+  const tokens = useMemo(() => highlight(text, lang), [text, lang]);
+  return (
+    <div className="md-code-block">
+      <div className="md-code-head">
+        <span className="md-code-lang">{lang ?? ""}</span>
+        <CopyButton text={() => text} label={t("md.copyCode")} showLabel />
+      </div>
+      <pre className="md-code" data-lang={lang || undefined}>
+        <code>{tokens.map((token, index) => token.kind === "plain" ? token.text : <span key={index} className={`tok-${token.kind}`}>{token.text}</span>)}</code>
+      </pre>
+    </div>
+  );
+}
+
 function blocks(list: Block[], tight = false): ReactNode[] {
   return list.map((block, key) => {
     switch (block.kind) {
@@ -27,7 +46,7 @@ function blocks(list: Block[], tight = false): ReactNode[] {
         const Tag = `h${Math.min(6, block.level + 2)}` as "h3" | "h4" | "h5" | "h6";
         return <Tag key={key} className="md-h" data-level={block.level}>{inline(block.children)}</Tag>;
       }
-      case "code": return <pre key={key} className="md-code" data-lang={block.lang || undefined}><code>{block.text}</code></pre>;
+      case "code": return <CodeBlock key={key} text={block.text} lang={block.lang} />;
       case "quote": return <blockquote key={key}>{blocks(block.blocks)}</blockquote>;
       case "list": {
         const items = block.items.map((item, index) => (

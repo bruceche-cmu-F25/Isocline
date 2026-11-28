@@ -62,6 +62,7 @@ export type ToParent =
   | { type: "usage"; run: string; usage: UsageInfo }
   | { type: "steered"; run: string; ok: boolean }
   | { type: "models_result"; id: string; models: ModelInfo[]; error?: string }
+  | { type: "title_result"; id: string; title?: string; error?: string }
   | { type: "done"; run: string; reply: string }
   | { type: "error"; run: string; message: string; code?: string };
 
@@ -76,6 +77,7 @@ export type ToWorker =
   /** Close this conversation's warm session: another worker takes it over. */
   | { type: "release"; thread: string }
   | { type: "models"; id: string }
+  | { type: "title"; id: string; goal: string; reply: string; model: string | null }
   /** Close every session (and its MCP servers), then exit. */
   | { type: "shutdown" };
 
@@ -128,4 +130,14 @@ export function composeHistory(request: Pick<EngineRequest, "history">): string 
     "Earlier in this conversation (context only; do not act on it again):",
     ...request.history.map((turn) => `${turn.role === "user" ? "User" : "Zirma"}: ${turn.text}`),
   ].join("\n");
+}
+
+/** What a model is asked to name a new conversation: the first message and the start of the reply, and the rule to
+ * write the title in the language the user wrote in. */
+export function titlePrompt(goal: string, reply: string): { system: string; user: string } {
+  return {
+    system: "You name conversations for a chat list. Reply with the title only: at most 6 words in English, or at most 14 characters in Chinese, "
+      + "in the language of the user's message. No quotes, no full stop, no emoji. Name the topic, not the request (\"Lisbon trip with kids\", not \"Help me plan\").",
+    user: `User: ${goal.slice(0, 1500)}\n\nAssistant: ${reply.slice(0, 1500)}`,
+  };
 }

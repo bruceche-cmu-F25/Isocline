@@ -26,6 +26,16 @@
 .md code { padding: .1em .35em; border-radius: 5px; background: var(--wash); font: .875em/1.4 var(--mono); }
 .md .md-code { max-width: 100%; overflow-x: auto; padding: 10px 12px; border-radius: 8px; background: var(--wash); color: var(--copy); font: .8125rem/1.55 var(--mono); white-space: pre; overflow-wrap: normal; }
 .md .md-code code { padding: 0; background: none; font: inherit; }
+/* A fenced block: its language and a copy button on a line above the code. */
+.md .md-code-block { align-self: stretch; max-width: 100%; border-radius: 8px; background: var(--wash); }
+.md .md-code-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; padding: 2px 4px 0 12px; color: var(--muted); font: .6875rem/1 var(--mono); }
+.md .md-code-lang { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md .md-code-head .copy-btn { flex: none; padding: 4px 7px; font: 500 .6875rem/1 var(--sans); }
+.md .md-code-block > .md-code { padding-top: 4px; border-radius: 0 0 8px 8px; background: none; }
+.md .tok-comment { color: var(--muted); font-style: italic; }
+.md .tok-string { color: color-mix(in oklab, var(--ok), var(--ink) 25%); }
+.md :is(.tok-number, .tok-literal, .tok-attr) { color: color-mix(in oklab, var(--warm), var(--ink) 20%); }
+.md :is(.tok-keyword, .tok-tag) { color: var(--alf); }
 
 .md blockquote { display: flex; flex-direction: column; gap: .5em; padding-left: 12px; border-left: 2px solid var(--line); color: var(--copy); }
 .md hr { width: 100%; height: 1px; border: 0; background: var(--line); }

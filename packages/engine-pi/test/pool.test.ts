@@ -202,3 +202,10 @@ test("through the core: the model's tool writes under the run's lease; a crash k
   assert.equal(await drain.steer(slow.id, "after the fact"), false, "a finished run takes no more words");
   w.close();
 });
+
+test("a title is one request to a worker, with the conversation's model; a failure is an error", async () => {
+  const pool = engine();
+  assert.equal(await pool.title!({ goal: "trip", reply: "ok", model: "openai/gpt-5.4" }), "「trip」 with openai/gpt-5.4");
+  assert.equal(await pool.title!({ goal: "trip", reply: "ok", model: null }), "「trip」 with default");
+  await assert.rejects(() => pool.title!({ goal: "fail", reply: "ok", model: null }), /no key/);
+});

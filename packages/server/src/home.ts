@@ -13,6 +13,7 @@ import { moduleMigrations, type ZirmaModule, type ModuleServices } from "@zirma/
 import { syncAssistantName } from "./assistant-name.ts";
 import { Outlets, watchAttention, type Reach } from "./attention.ts";
 import { FileStore, type FileStoreOptions } from "./files.ts";
+import { createTitler } from "./titles.ts";
 import { Terminals } from "./terminals.ts";
 import { SessionArchives } from "./archives.ts";
 import { Processes } from "./processes.ts";
@@ -157,6 +158,7 @@ export function openHome(options: HomeOptions): Home {
     attach: (list) => files.attach(list),
     onLive: (update) => live.emit("update", update),
     onEngineError: (run: Run, error) => options.log?.(`run ${run.id} failed in the engine: ${error instanceof Error ? error.message : String(error)}`),
+    onFinished: createTitler(world, options.engine, options.log),
   });
   let current: Promise<void> = Promise.resolve();
   const kick = () => {
