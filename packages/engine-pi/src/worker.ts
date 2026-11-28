@@ -55,6 +55,7 @@ import { loadZirmaMcpConfig, mcpPath } from "./mcp-config.ts";
 import { createMcpTransport, createMcpVault, type McpSecrets } from "./mcp-store.ts";
 import { composePrompt, type ExternalStep, type ModelInfo, type RunJob, type ToParent, type ToWorker } from "./protocol.ts";
 import { Skills } from "./skills.ts";
+import { placeFor, readRecord, recordEnd } from "./turns.ts";
 import { defaultSecretStore, normalizeCommand, type Attachment } from "@zirma/core";
 import { createCredentialStore } from "./credentials.ts";
 
@@ -283,12 +284,13 @@ async function close(thread: string): Promise<void> {
   entry.session.dispose();
 }
 
-async function open(job: RunJob): Promise<Warm> {
+/** `fresh`: a new session file, not the most recent one (turns.ts: the turn goes on from somewhere it cannot reach). */
+async function open(job: RunJob, options: { fresh?: boolean } = {}): Promise<Warm> {
   // The gate checks the home node's live permissions for each command and file edit.
   const place = job.workspace ? { root: job.workspace.root, name: job.workspace.name, mode: job.workspace.mode, others: job.workspace.others ?? [] } : null;
   const shape = createHash("sha256").update(JSON.stringify({ instructions: job.instructions, tools: job.tools, workspace: place, mcp: mcpRevision(), skills: skillsRevision() })).digest("hex");
   const existing = warm.get(job.thread);
-  if (existing && existing.shape === shape) return existing;
+  if (existing && existing.shape === shape && !options.fresh) return existing;
   if (existing) await close(job.thread);
 
   const dir = join(sessions, job.thread);
@@ -337,7 +339,7 @@ async function open(job: RunJob): Promise<Warm> {
     ...(agentDir ? { agentDir } : {}),
     resourceLoader: loader,
     // The conversation's own session: continued if it exists, created if not.
-    sessionManager: SessionManager.continueRecent(root ?? cwd, dir),
+    sessionManager: options.fresh ? SessionManager.create(root ?? cwd, dir) : SessionManager.continueRecent(root ?? cwd, dir),
     settingsManager: SettingsManager.create(cwd, agentDir),
     modelRuntime: await ModelRuntime.create(modelOptions),
     customTools: definitions,
@@ -442,9 +444,36 @@ async function attached(files: readonly Attachment[], sees: boolean): Promise<{ 
   return out;
 }
 
+/** Puts the conversation's session where this turn goes on from (turns.ts): where it is, an earlier entry, or a new
+ * session file when the place cannot be reached. */
+async function placed(job: RunJob): Promise<Warm> {
+  let entry = await open(job);
+  const manager = entry.session.sessionManager;
+  const place = placeFor({
+    after: job.after, branched: Boolean(job.branched), empty: entry.session.messages.length === 0,
+    leaf: manager.getLeafId(), record: readRecord(recordPath(job.thread), manager.getSessionFile()),
+  });
+  if (place.kind === "go") {
+    try {
+      await entry.session.navigateTree(place.to);
+      return entry;
+    } catch {
+      // The entry is gone (the record outlived its session): start over from the core's history.
+    }
+  }
+  if (place.kind !== "stay") {
+    if (entry.idle) clearTimeout(entry.idle);
+    await close(job.thread);
+    entry = await open(job, { fresh: true });
+  }
+  return entry;
+}
+
+const recordPath = (thread: string) => join(sessions, `${thread}.turns.json`);
+
 async function runTurn(run: string, job: RunJob): Promise<string> {
   if (!THREAD.test(job.thread)) throw new Error("Invalid thread");
-  const entry = await open(job);
+  const entry = await placed(job);
   if (entry.idle) clearTimeout(entry.idle);
   entry.idle = null;
   const { session } = entry;
@@ -497,6 +526,11 @@ async function runTurn(run: string, job: RunJob): Promise<string> {
   } finally {
     unsubscribe();
     if (timer) clearTimeout(timer);
+    // Where this turn ended, for a later turn that goes on from it after another version was made (turns.ts).
+    const file = session.sessionManager.getSessionFile(), leaf = session.sessionManager.getLeafId();
+    if (job.turn && file && leaf) {
+      try { recordEnd(recordPath(job.thread), file, job.turn, leaf); } catch { /* without it, a later version starts a new session */ }
+    }
     entry.run = null;
     currentAbort = null;
     // Warm until idle, then closed properly.

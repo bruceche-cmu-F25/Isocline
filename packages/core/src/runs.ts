@@ -669,6 +669,16 @@ export function runAfter(world: World, run: Run): string | null {
   return (row?.id as string | undefined) ?? null;
 }
 
+/** Whether this run does not simply follow the conversation's previous run (in the order they were made, set-aside
+ * versions included): it is another version of a turn, or comes after switching versions. An engine whose session
+ * ran that previous run must move back before going on (EngineRequest.branched). */
+export function runBranches(world: World, run: Run): boolean {
+  const previous = world.db.prepare(`SELECT id FROM core_runs WHERE conversation_id = ? AND id != ?
+    AND (created_at, rowid) < (SELECT created_at, rowid FROM core_runs WHERE id = ?)
+    ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(run.conversationId, run.id, run.id);
+  return ((previous?.id as string | undefined) ?? null) !== runAfter(world, run);
+}
+
 /** Page through a rule's own runs, including manual triggers. Ordinary follow-up turns in the conversation stay out. */
 export function listAutomationRuns(world: World, automationId: string, before: string | null = null, limit = 20) {
   const scope = "FROM core_runs WHERE automation_id = ?";

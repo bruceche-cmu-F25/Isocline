@@ -17,7 +17,7 @@ import { newId } from "./ids.ts";
 import { getSettings, userLocale, type Locale } from "./settings.ts";
 import { completionNotification } from "./result-delivery.ts";
 import {
-  answerRequest, claimNextRun, conversationBefore, finishRun, heartbeatRun, runAfter, openRequest, RUN_LEASE_MS, runAnswers, sweepRuns,
+  answerRequest, claimNextRun, conversationBefore, finishRun, heartbeatRun, runAfter, runBranches, openRequest, RUN_LEASE_MS, runAnswers, sweepRuns,
   type Run, type RunRequest, type ViewContext,
 } from "./runs.ts";
 import type { World } from "./world.ts";
@@ -96,10 +96,15 @@ export interface EngineRequest {
   context?: ViewContext;
   /** Earlier turns of the same conversation, oldest first. Context, not instructions. */
   history: Array<{ role: "user" | "assistant"; text: string }>;
+  /** This turn's run id: an engine that keeps its own session records where in it each turn ended (`after`). */
+  turn?: string;
   /** The turn this one goes on from (the newest version in use before it); null for the first. An engine that keeps
    * its own session puts it back at that turn's end first, so a regenerated or edited turn, or a switched version,
    * is what the model goes on from (docs/design/chat-regenerate.md §4.5). */
   after?: string | null;
+  /** This turn does not simply follow the conversation's previous run: the session must move to `after` first even
+   * when it has no record of where that is (core runBranches). */
+  branched?: boolean;
   tools: RunTool[];
   today: string;
   /** The local time the request was made, HH:MM: "in half an hour", "tonight at 8" (already past?) need it. */
@@ -369,7 +374,9 @@ async function drive(world: World, run: Run, engine: EnginePort, options: Execut
     ...(run.context ? { context: run.context } : {}),
     instructions: workspace && profile.modes ? `${profile.instructions}\n\n${profile.modes[workspace.mode]}` : profile.instructions,
     history: conversationBefore(world, run),
+    turn: run.id,
     after: runAfter(world, run),
+    branched: runBranches(world, run),
     tools,
     today: localDate(),
     now: localTime(),

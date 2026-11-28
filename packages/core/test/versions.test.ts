@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import {
   addFile, againRun, CORE_MIGRATIONS, createRunDrain, getConversation, getRun, listConversations, listRunFiles, openWorld,
-  recordDomainEvent, resumeRun, RunError, runAfter, submitRun, useVersion, type EngineRequest, type World,
+  recordDomainEvent, resumeRun, RunError, runAfter, runBranches, submitRun, useVersion, type EngineRequest, type World,
 } from "../src/index.ts";
 
 const profiles = { chat: { instructions: "", tools: [] } };
@@ -145,4 +145,29 @@ test("upgrading: every existing run is a first version, in use", (t) => {
   const run = getRun(after, old.id).run;
   assert.equal(run.versionOf, null);
   assert.equal(run.setAside, false);
+});
+
+test("a turn branches when it does not simply follow the conversation's previous run", async () => {
+  const w = world();
+  const first = ask(w, "a", "One");
+  assert.equal(runBranches(w, first), false, "the first turn follows nothing");
+  await drain(w);
+  const second = ask(w, "b", "Two", first.conversationId);
+  assert.equal(runBranches(w, second), false);
+  await drain(w);
+  const again = againRun(w, second.id, { requestId: "b2" }).run;
+  assert.equal(runBranches(w, again), true, "another version: the previous run is the one set aside");
+  await drain(w);
+  const third = ask(w, "c", "Three", first.conversationId);
+  assert.equal(runBranches(w, third), false, "after a new version, simply going on");
+  await drain(w);
+  const regenerated = againRun(w, third.id, { requestId: "c2" }).run;
+  const [heardAgain] = await drain(w);
+  assert.deepEqual([heardAgain.turn, heardAgain.after, heardAgain.branched], [regenerated.id, again.id, true],
+    "the engine hears which run this is, what it goes on from, and that it branches");
+  useVersion(w, third.id);
+  const fourth = ask(w, "d", "Four", first.conversationId);
+  assert.equal(runBranches(w, fourth), true, "after switching back, the session last ran the other version");
+  const [heardFourth] = await drain(w);
+  assert.deepEqual([heardFourth.turn, heardFourth.after, heardFourth.branched], [fourth.id, third.id, true]);
 });
