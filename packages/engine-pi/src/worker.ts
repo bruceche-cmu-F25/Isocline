@@ -55,6 +55,7 @@ import { loadZirmaMcpConfig, mcpPath } from "./mcp-config.ts";
 import { createMcpTransport, createMcpVault, type McpSecrets } from "./mcp-store.ts";
 import { composePrompt, titlePrompt, type ExternalStep, type ModelInfo, type RunJob, type ToParent, type ToWorker } from "./protocol.ts";
 import { Skills } from "./skills.ts";
+import { titleThinkingLevel } from "./title-thinking.ts";
 import { defaultSecretStore, normalizeCommand, type Attachment } from "@zirma/core";
 import { createCredentialStore } from "./credentials.ts";
 
@@ -538,8 +539,10 @@ async function title(job: { goal: string; reply: string; model: string | null })
   const model = chosen ?? await engineDefault(runtime, SettingsManager.create(cwd, agentDir));
   if (!model) throw new Error("No model to name the conversation with");
   const prompt = titlePrompt(job.goal, job.reply);
+  const thinking = titleThinkingLevel(model);
+  // Too small and too unique to reuse a cached prefix or to write a cache nobody reads.
   const answer = await runtime.completeSimple(model, { systemPrompt: prompt.system, messages: [{ role: "user", content: prompt.user, timestamp: Date.now() }] },
-    { maxTokens: 1024, signal: AbortSignal.timeout(30_000) });
+    { maxTokens: 1024, cacheRetention: "none", signal: AbortSignal.timeout(30_000), ...(thinking !== "off" ? { reasoning: thinking } : {}) });
   if (answer.stopReason === "error" || answer.stopReason === "aborted") throw new Error(answer.errorMessage ?? "The model did not answer");
   return answer.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }
