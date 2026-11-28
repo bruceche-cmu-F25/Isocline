@@ -4,7 +4,7 @@
 .chats .ch-open { flex: 1; min-width: 0; grid-area: auto; border-left: 0; }
 .chats .ch-open .conversation { --read-w: 760px; --lean: clamp(16px, calc((100% - 760px) / 4), 136px); }
 .chats .ch-open .turns { padding: 22px max(16px, calc(100% - 760px - var(--lean))) 12px var(--lean); }
-.chats .ch-open :is(.composer, .suggestions) { width: auto; max-width: var(--read-w); margin-left: var(--lean); margin-right: max(16px, calc(100% - 760px - var(--lean))); }
+.chats .ch-open :is(.composer, .suggestions, .session-settings) { width: auto; max-width: var(--read-w); margin-left: var(--lean); margin-right: max(16px, calc(100% - 760px - var(--lean))); }
 .chats .ch-open .empty { padding-left: var(--lean); text-align: left; align-items: flex-start; }
 
 /* The list: in the app sidebar it is the sidebar's; in the page, a column of its own. */

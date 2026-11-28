@@ -448,6 +448,29 @@ test("Zirma can list, make and change automations when asked; an automation's ow
   }
 });
 
+test("a new chat's first message carries the model and thinking picked for it; a wrong type is refused", async () => {
+  const heard: unknown[] = [];
+  const listening: EnginePort = { async submit(request) { heard.push([request.model, request.thinking]); return { reply: "ok" }; } };
+  const home = openHome({ dataDir: mkdtempSync(join(tmpdir(), "alfred-")), engine: listening, modules: [todoModule] });
+  const { server, base } = await start(home);
+  try {
+    const before = (await (await fetch(`${base}/api/state`)).json()) as StateResponse;
+    const submitted = await post(base, "/api/runs", { requestId: "r-tuned", goal: "hi", model: "openai/gpt-5.4", thinking: "high", speed: null });
+    assert.equal(submitted.status, 202);
+    const { run } = (await submitted.json()) as SubmitRunResponse;
+    await waitForEvent(base, before.cursor, (event) => event.kind === "run.completed");
+    assert.deepEqual(heard, [["openai/gpt-5.4", "high"]]);
+    const detail = (await (await fetch(`${base}/api/conversations/${run.conversationId}`)).json()) as ConversationDetail;
+    assert.deepEqual([detail.conversation.model, detail.conversation.thinking], ["openai/gpt-5.4", "high"]);
+
+    assert.equal((await post(base, "/api/runs", { requestId: "r-num", goal: "x", model: 3 })).status, 400);
+    assert.equal((await post(base, "/api/runs", { requestId: "r-old", goal: "x", conversationId: run.conversationId, thinking: "low" })).status, 400);
+  } finally {
+    server.close(); server.closeAllConnections();
+    home.close();
+  }
+});
+
 test("the model picked when opening Code receives the first message and can switch back to the displayed default", { timeout: 20_000 }, async (t) => {
   const dataDir = mkdtempSync(join(tmpdir(), "alfred-code-model-"));
   const agentDir = join(dataDir, "agent"), projectDir = join(dataDir, "project");

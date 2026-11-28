@@ -4,7 +4,7 @@
 import type { Area, Preference,
   ArchivedConversation, Automation, AutomationHistory, RunSources, Schedule,
   Conversation, ConversationDetail, CoreEvent, DeviceInfo, FileInfo, DeviceKind, DeviceScopeRequest, LiveUpdate, ModelsResponse, Notice, OpResponse, PairingCode, ProposalResponse,
-  Project, ProjectBranches, StartSessionRequest, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunResponse, ThinkingLevel, UserSettings, SettingsRequest, ViewContext, VoiceStatus, WebLockStatus,
+  Project, ProjectBranches, StartSessionRequest, SessionBranch, SessionChanges, SessionMode, SessionProcess, SessionProcesses, SessionPublished, SessionPullRequest, PushInfo, PushResult, RemoteResponse, Run, StateResponse, SubmitRunRequest, SubmitRunResponse, ThinkingLevel, UserSettings, SettingsRequest, ViewContext, VoiceStatus, WebLockStatus,
 } from "@zirma/protocol";
 import "./desktop.ts";
 import type { OpName } from "./modules.ts";
@@ -124,9 +124,10 @@ export const api = {
     const held = have ? Object.entries(have).map(([id, revision]) => `${encodeURIComponent(id)}.${encodeURIComponent(revision)}`).join(",") : "";
     return call<StateResponse>(`/api/state${have === null ? "?modules=0" : held ? `?have=${held}` : ""}`);
   },
-  /** Without a conversation id, the run starts a new conversation. `context`: the page it was asked from. */
-  submit: (goal: string, conversationId?: string, context?: ViewContext, attachments?: string[]) =>
-    post<SubmitRunResponse>("/api/runs", { requestId: newRequestId(), goal, ...(conversationId ? { conversationId } : {}), ...(context ? { context } : {}), ...(attachments?.length ? { attachments } : {}) }),
+  /** Without a conversation id, the run starts a new conversation, made with `tuning` when one was picked.
+   * `context`: the page it was asked from. */
+  submit: (goal: string, conversationId?: string, context?: ViewContext, attachments?: string[], tuning?: Pick<SubmitRunRequest, "model" | "thinking" | "speed">) =>
+    post<SubmitRunResponse>("/api/runs", { requestId: newRequestId(), goal, ...(conversationId ? { conversationId } : {}), ...(context ? { context } : {}), ...(attachments?.length ? { attachments } : {}), ...(tuning ?? {}) }),
   /** A file for the next message: kept on the home node, which says what it is (an image, a PDF, text) or refuses it. */
   upload: (file: Blob, name: string) => call<FileInfo>(`/api/files?name=${encodeURIComponent(name)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file }),
   archivedConversations: () => call<{ conversations: ArchivedConversation[] }>("/api/conversations/archived"),

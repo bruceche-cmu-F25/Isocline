@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { DatabaseSync } from "node:sqlite";
 import { withCoreContext } from "./context.ts";
-import { CONVERSATION_ID, ConversationError, createConversation, requireOpenSession, recordUnreadReply, titleFrom, touchConversation, updateConversation } from "./conversations.ts";
+import { CONVERSATION_ID, ConversationError, checkTuning, createConversation, requireOpenSession, recordUnreadReply, titleFrom, touchConversation, updateConversation, type Speed, type ThinkingLevel } from "./conversations.ts";
 import { appendEvent, readRunEvents, type CoreEvent } from "./events.ts";
 import { attachFiles } from "./files.ts";
 import { iso, newId } from "./ids.ts";
@@ -244,6 +244,11 @@ export interface SubmitRunInput {
   automationId?: string;
   /** Files sent with the message (files.ts), by id: uploaded before, and no other message's. */
   attachments?: readonly string[];
+  /** For a run that starts a new conversation: the model, thinking level and speed it is made with (picked
+   * before its first message). An existing conversation is changed with updateConversation instead. */
+  model?: string | null;
+  thinking?: ThinkingLevel | null;
+  speed?: Speed | null;
   now?: number;
 }
 
@@ -258,9 +263,14 @@ export function submitRun(world: World, input: SubmitRunInput): { run: Run; repl
   if (!goal || goal.length > 8000) throw new Error("Goal must be 1–8000 characters");
   const context = viewContext(input.context);
   const attachments = [...new Set(input.attachments ?? [])];
+  const tuning = { model: input.model ?? null, thinking: input.thinking ?? null, speed: input.speed ?? null };
+  const tuned = !!(tuning.model || tuning.thinking || tuning.speed);
+  if (tuned && input.conversationId !== undefined) throw new ConversationError("invalid", "A model, thinking level or speed comes with a new conversation's first message only");
+  checkTuning(tuning);
   const hash = createHash("sha256").update(JSON.stringify({
     goal, profile: input.profile, conversationId: input.conversationId ?? null, ...(context ? { context } : {}),
     ...(input.automationId ? { automationId: input.automationId } : {}), ...(attachments.length ? { attachments } : {}),
+    ...(tuned ? { tuning } : {}),
   })).digest("hex");
   const now = input.now ?? Date.now();
   return world.tx((db) => {
@@ -271,7 +281,7 @@ export function submitRun(world: World, input: SubmitRunInput): { run: Run; repl
     }
     let conversationId = input.conversationId;
     if (conversationId) { requireOpenSession(db, conversationId); touchConversation(db, conversationId, now); }
-    else conversationId = createConversation(db, { title: titleFrom(goal), now });
+    else conversationId = createConversation(db, { title: titleFrom(goal), now, ...tuning });
     const id = newId();
     db.prepare(`INSERT INTO core_runs (id, request_id, request_hash, conversation_id, goal, profile, state, created_at, updated_at, context, automation_id)
       VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)`).run(id, input.requestId, hash, conversationId, goal, input.profile, iso(now), iso(now), context ? JSON.stringify(context) : null, input.automationId ?? null);
